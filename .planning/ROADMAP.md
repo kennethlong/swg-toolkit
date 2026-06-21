@@ -35,7 +35,20 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `crossOriginIsolated === true` in the packaged renderer (COOP/COEP set), so a `SharedArrayBuffer` can be allocated.
   4. A shared-types `contracts/` package compiles and is imported by both backend and renderer, defining IPC, byte-offset, and opcode types.
   5. The user sees a dark, dockable, persistent multi-panel workspace (sidebar / 3D canvas / data pane / inspector) whose layout survives a restart.
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1**
+- [ ] 00-01-PLAN.md — Monorepo scaffold, pnpm workspace, contracts/ shared types, Vitest + Playwright test harness
+- [ ] 00-02-PLAN.md — cmake-js native addon (hello + allocateSab C++ stub, TDD RED->GREEN)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 00-03-PLAN.md — Electron security posture, COOP/COEP, utility process IPC, SAB round-trip pipeline
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 00-04-PLAN.md — Dark dockable workspace shell: DockviewReact, 4 panels, theme system, StatusBar
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 00-05-PLAN.md — E2E test suite (Playwright specs SC-1 through SC-5) + VALIDATION.md sign-off
 **UI hint**: yes
 
 ### Phase 1: Core Engine — IFF + TRE + Verification Harness
@@ -150,7 +163,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Toolchain De-risk & App Shell | 0/TBD | Not started | - |
+| 0. Toolchain De-risk & App Shell | 0/5 | In progress | - |
 | 1. Core Engine — IFF + TRE + Verification Harness | 0/TBD | Not started | - |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/TBD | Not started | - |
 | 3. Live-Injection Foundation | 0/TBD | Not started | - |

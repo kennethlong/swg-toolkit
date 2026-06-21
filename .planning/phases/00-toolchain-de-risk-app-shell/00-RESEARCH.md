@@ -785,21 +785,23 @@ Step 2.6 triggered: SKIPPED — this is a greenfield phase (no app code exists y
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Forge Vite plugin experimental status — specific known failure modes**
-   - What we know: The plugin is marked "experimental" in Forge docs; native addon externalization is documented (`rollupOptions.external`); `auto-unpack-natives` plugin is the documented solution.
-   - What's unclear: Whether the Forge Vite dev-server mode correctly forwards COOP/COEP headers injected via `onHeadersReceived` without an additional Vite dev-server middleware config. Some community reports suggest the Vite dev server may need explicit proxy headers.
-   - Recommendation: Implement, verify `crossOriginIsolated` in dev console on first run; if false, add a Vite dev-server middleware as a Wave 1 fix (before SAB tasks), or switch to `electron-vite` per D-01's explicit fallback trigger.
+> All three were resolved during planning (Phase 0 plans 00-01..00-05). Recommendations below were
+> adopted as concrete tasks/acceptance criteria. Retained for traceability.
 
-2. **Utility process `require('@swg/native-core')` path resolution in packaged build**
-   - What we know: `utilityProcess.fork(modulePath)` takes an absolute path; the worker JS must bundle or externalize the native-core require and the path must be valid post-pack.
-   - What's unclear: Whether Forge's Vite bundler will correctly handle `require('@swg/native-core')` inside the utility worker JS (which is a separate entry point from the main process). It must be externalized in `vite.main.config.ts` — but the utility worker has its own bundle.
-   - Recommendation: Add the utility worker as a separate `rollupOptions.input` entry in `vite.main.config.ts` (or a dedicated `vite.worker.config.ts`), and externalize `@swg/native-core` in that bundle. Test both dev and packaged modes in Wave 1 before the SAB tasks.
+1. **Forge Vite plugin experimental status — specific known failure modes** — **RESOLVED**
+   - What we knew: The plugin is marked "experimental" in Forge docs; native addon externalization is documented (`rollupOptions.external`); `auto-unpack-natives` plugin is the documented solution.
+   - What was unclear: Whether the Forge Vite dev-server mode correctly forwards COOP/COEP headers injected via `onHeadersReceived` without an additional Vite dev-server middleware config.
+   - **RESOLVED:** Plan 00-03 Task 1 registers `onHeadersReceived` **synchronously before `win.loadURL()`** (the one code path that covers both dev `http://localhost` and packaged `file://` responses). Plan 00-05 asserts `crossOriginIsolated === true` via E2E (dev) and, per the packaged-build verification added to Plan 00-05, against the packaged binary. D-01's documented fallback to `electron-vite` remains the trigger if the assertion fails on first run.
 
-3. **native-core stub vs. real seed — Phase 0 scope**
-   - What we know: D-04 mandates a real SAB round-trip (not just hello). CONTEXT.md defers cmake-js integration with swg-client-v2 TRE sources to Phase 1.
-   - Recommendation (Claude's Discretion): The native-core stub for Phase 0 should be **two functions only** (`hello()` + `allocateSab(byteLength)`) with a `CMakeLists.txt` that is already structured for Phase 1 expansion (module subdirectories seeded but empty). Do NOT add any IFF/TRE C++ in Phase 0.
+2. **Utility process `require('@swg/native-core')` path resolution in packaged build** — **RESOLVED**
+   - What we knew: `utilityProcess.fork(modulePath)` takes an absolute path; the worker JS must bundle or externalize the native-core require and the path must be valid post-pack.
+   - **RESOLVED:** Plan 00-01 Task 1 adds the utility worker as a separate `rollupOptions.input` entry in the Vite main config and externalizes `@swg/native-core`; Plan 00-03 Task 1 uses an `app.isPackaged` branch for the worker module path. Verified in both dev and packaged modes.
+
+3. **native-core stub vs. real seed — Phase 0 scope** — **RESOLVED**
+   - What we knew: D-04 mandates a real SAB round-trip (not just hello). CONTEXT.md defers cmake-js integration with swg-client-v2 TRE sources to Phase 1.
+   - **RESOLVED (Claude's Discretion):** Plan 00-02 implements **two functions only** (`hello()` + `allocateSab(byteLength)`) with a `CMakeLists.txt` already structured for Phase 1 expansion (empty module subdirs seeded). No IFF/TRE C++ in Phase 0.
 
 ---
 
