@@ -28,7 +28,7 @@ IFF reader/writer boilerplate (`IffBinaryWriter`, FORM/chunk framing, little-end
    - 3.2 [Installing the Node-Canvas Engine](#32-installing-the-node-canvas-engine)
    - 3.3 [Shader Node Schema (TypeScript)](#33-shader-node-schema-typescript)
    - 3.4 [Live WebGL Fragment Shader Compiler (TypeScript)](#34-live-webgl-fragment-shader-compiler-typescript)
-   - 3.5 [React Flow Node Editor UI](#35-react-flow-node-editor-ui)
+   - 3.5 [@xyflow/react Node Editor UI](#35-xyflowreact-node-editor-ui) *(previously "React Flow" — corrected)*
    - 3.6 [.sht Binary Serialization Engine (C++)](#36-sht-binary-serialization-engine-c)
 
 ---
@@ -907,8 +907,10 @@ The shader-graph editor lets artists build multi-texture SWG shader files visual
 
 ### 3.1 Shader-Graph Architecture
 
+> **Correction (research review 2026-06-21):** The node-graph library is **`@xyflow/react` v12** — the current package name for React Flow. The old `reactflow` package name is deprecated; use `@xyflow/react` for all new installs. Source: [`../../.planning/research/STACK.md`](../../.planning/research/STACK.md).
+
 ```
-[ React Flow UI Node Canvas ] ──(State Change)──> [ TypeScript Graph Compiler ]
+[ @xyflow/react UI Node Canvas ] ──(State Change)──> [ TypeScript Graph Compiler ]
              │                                               │
              ├──> (Generates WebGL Custom Fragment Shader) ──┤
              │    -> Live 3D Mesh Preview Canvas             │
@@ -921,7 +923,7 @@ The shader-graph editor lets artists build multi-texture SWG shader files visual
 ### 3.2 Installing the Node-Canvas Engine
 
 ```
-npm install reactflow
+npm install @xyflow/react
 ```
 
 ### 3.3 Shader Node Schema (TypeScript)
@@ -1026,18 +1028,18 @@ export class SwgShaderGraphCompiler {
 }
 ```
 
-### 3.5 React Flow Node Editor UI
+### 3.5 @xyflow/react Node Editor UI
 
 Provides the drag-and-drop node canvas. Connecting two nodes triggers immediate shader recompilation and preview update.
 
+> **Package name corrected:** import from `@xyflow/react`, not the deprecated `reactflow`. Source: [`../../.planning/research/STACK.md`](../../.planning/research/STACK.md).
+
 ```tsx
 import React, { useState, useMemo, useCallback } from 'react';
-import ReactFlow, {
-  MiniMap, Controls, Background,
-  useNodesState, useEdgesState, addEdge,
-  Connection, Edge
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+import { ReactFlow, MiniMap, Controls, Background,
+  useNodesState, useEdgesState, addEdge } from '@xyflow/react';
+import type { Connection, Edge } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { SwgShaderGraphCompiler } from './ShaderGraphCompiler';
 
 const initialNodes = [

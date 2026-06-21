@@ -1,6 +1,6 @@
 # Workspace Layout
 
-> Covers: main workspace layout, dark theme, CSS Grid, Golden Layout docking, advanced studio modules catalog. Source: research doc lines 11586–11643, 12384–12896.
+> Covers: main workspace layout, dark theme, CSS Grid, dockview docking (previously Golden Layout — corrected per research review 2026-06-21), advanced studio modules catalog. Source: research doc lines 11586–11643, 12384–12896.
 
 > **Caveat:** This is a proposed UI design to be refined during implementation. See [source provenance](../00-overview/source-provenance.md) for context on the AI-generated research this document is drawn from.
 
@@ -19,8 +19,8 @@
    - [Installing Required Monospace Styles](#41-installing-required-monospace-styles)
    - [Unified CSS Grid Layout Matrix Component](#42-unified-css-grid-layout-matrix-component)
    - [Layout Wins](#43-layout-wins)
-5. [Golden Layout Docking](#5-golden-layout-docking)
-   - [Installing Dependencies](#51-installing-golden-layout-dependencies)
+5. [Dockview Docking](#5-dockview-docking) *(previously "Golden Layout" — corrected)*
+   - [Installing Dependencies](#51-installing-dockview-dependencies)
    - [Layout Configuration Blueprints](#52-layout-configuration-blueprints)
    - [Persistent Portal Docker Component](#53-persistent-portal-docker-component)
    - [Wrapping the Unified Workspace Core](#54-wrapping-the-unified-workspace-core)
@@ -34,7 +34,7 @@
 
 The UI must look and feel like a modern game engine (Unreal Engine, Unity, Blender) rather than a simple web page. It must balance high-density information with absolute performance, particularly when streaming real-time metrics and WebGL canvas operations concurrently.
 
-Built on a React / Electron / Vite stack, the layout is achieved with modern desktop UI frameworks: **Allotment** for performance-optimized smooth window-resizing dividers, or **React-Mosaic / Golden Layout** when modders need drag, drop, and detach-to-monitor tab behavior.
+Built on a React / Electron / Vite stack, the layout is achieved with modern desktop UI frameworks: **Allotment** for performance-optimized smooth window-resizing dividers, or **`dockview`** when modders need drag, drop, and detach-to-monitor tab behavior. (`dockview` is zero-dependency, React-native, and supports multi-monitor popout windows — it replaces the previously referenced "React-Mosaic / Golden Layout". Source: [`.planning/research/`](../../.planning/research/STACK.md).)
 
 ```
 +---------------------------------------------------------------------------------------------------+
@@ -544,44 +544,36 @@ export const SwgStudioMainWorkspace: React.FC = () => {
 
 ---
 
-## 5. Golden Layout Docking
+## 5. Dockview Docking
 
-A static layout is insufficient for power users. Modders need to drag tabs, split views, and tear panels to floating windows across multi-monitor setups. **Golden Layout v2+** is the gold standard for web-based engine interfaces.
+> **Correction (research review 2026-06-21):** This section previously referenced **Golden Layout**. The validated choice is **`dockview`** — a zero-dependency, React-native docking library with built-in multi-monitor popout window support. The docking/persistence concept and React Portal strategy below remain valid; only the library has changed. Source: [`../../.planning/research/STACK.md`](../../.planning/research/STACK.md).
 
-**Critical trap when combining Golden Layout with React and Three.js:** When a user drags and docks a panel, Golden Layout completely tears down and remounts the underlying DOM tree. Without mitigation, every drag reboots the WebGL context — dropping the entire Three.js terrain cache or clearing running memory injection state.
+A static layout is insufficient for power users. Modders need to drag tabs, split views, and tear panels to floating windows across multi-monitor setups. **`dockview`** is the validated choice for this project's React/Electron stack.
 
-The solution is a **Virtual Portal Registry** using React hooks and Golden Layout. This keeps data-view components persistent in memory inside a hidden root cluster while their visuals are mirrored into Golden Layout containers via React Portals.
+**Critical trap when combining a docking library with React and Three.js:** When a user drags and docks a panel, the docking library can tear down and remount the underlying DOM tree. Without mitigation, every drag reboots the WebGL context — dropping the entire Three.js terrain cache or clearing running memory injection state.
 
-### 5.1 Installing Golden Layout Dependencies
+The solution is a **Virtual Portal Registry** using React hooks and `dockview`. This keeps data-view components persistent in memory inside a hidden root cluster while their visuals are mirrored into dockview containers via React Portals.
+
+### 5.1 Installing Dockview Dependencies
 
 ```bash
-npm install golden-layout
+npm install dockview
 ```
 
 Add the base dark skins to `src/index.css`, then override to match the Nordic Carbon Dark aesthetic:
 
 ```css
-@import "golden-layout/dist/css/goldenlayout-base.css";
-@import "golden-layout/dist/css/themes/goldenlayout-dark-theme.css";
+@import "dockview/dist/styles/dockview.css";
 
 /* Override to conform with Nordic Carbon Dark aesthetic */
-.lm_root {
-  background: #0c0c0e !important;
-}
-.lm_header {
-  background: #121214 !important;
-}
-.lm_tab {
-  background: #16161a !important;
-  color: #666 !important;
+.dockview-theme-dark {
+  --dv-background-color: #0c0c0e;
+  --dv-tabs-and-actions-container-background-color: #121214;
+  --dv-activegroup-visiblepanel-tab-background-color: #1a1a1f;
+  --dv-activegroup-visiblepanel-tab-color: #00ffcc;
+  --dv-tab-color: #666;
   font-family: monospace;
   font-size: 11px;
-  font-weight: bold;
-}
-.lm_tab.lm_active {
-  background: #1a1a1f !important;
-  color: #00ffcc !important;
-  border-bottom: 2px solid #00ffcc !important;
 }
 ```
 
@@ -590,64 +582,74 @@ Add the base dark skins to `src/index.css`, then override to match the Nordic Ca
 Create the initial window docking layout configuration that structures the workspace views upon tool startup.
 
 ```typescript
-import { LayoutConfig } from 'golden-layout';
+import { SerializedDockview } from 'dockview';
 
-export const INITIAL_SWG_WORKSPACE_CONFIG: LayoutConfig = {
-  root: {
-    type: 'row',
-    content: [
-      {
-        type: 'component',
-        componentType: 'TreExplorer',
-        componentState: { label: 'Archive Assets Tree' },
-        title: 'TRE EXPLORER',
-        width: 15
-      },
-      {
-        type: 'column',
-        width: 65,
-        content: [
-          {
-            type: 'component',
-            componentType: 'ThreejsViewport',
-            componentState: { renderMode: 'lit' },
-            title: '3D VIEWPORT CANVAS'
-          },
-          {
-            type: 'component',
-            componentType: 'TimelineConsole',
-            componentState: { activeTab: 'timeline' },
-            title: 'SEQUENCER TIMELINE / DATA SHEETS',
-            height: 35
+export const INITIAL_SWG_WORKSPACE_CONFIG: SerializedDockview = {
+  grid: {
+    root: {
+      type: 'branch',
+      data: [
+        {
+          type: 'leaf',
+          data: {
+            views: ['TreExplorer'],
+            activeView: 'TreExplorer',
+            id: 'panel_explorer',
+            size: 15
           }
-        ]
-      },
-      {
-        type: 'component',
-        componentType: 'AttributesInspector',
-        componentState: { targetNode: 'root' },
-        title: 'ATTRIBUTES INSPECTOR',
-        width: 20
-      }
-    ]
-  }
+        },
+        {
+          type: 'branch',
+          data: [
+            {
+              type: 'leaf',
+              data: {
+                views: ['ThreejsViewport'],
+                activeView: 'ThreejsViewport',
+                id: 'panel_viewport'
+              }
+            },
+            {
+              type: 'leaf',
+              data: {
+                views: ['TimelineConsole'],
+                activeView: 'TimelineConsole',
+                id: 'panel_timeline',
+                size: 35
+              }
+            }
+          ],
+          size: 65
+        },
+        {
+          type: 'leaf',
+          data: {
+            views: ['AttributesInspector'],
+            activeView: 'AttributesInspector',
+            id: 'panel_inspector',
+            size: 20
+          }
+        }
+      ]
+    },
+    width: 0,
+    height: 0,
+    orientation: 'HORIZONTAL'
+  },
+  panels: {},
+  activeGroup: 'panel_viewport'
 };
 ```
 
 ### 5.3 Persistent Portal Docker Component
 
-This specialized manager orchestrates Golden Layout initialization, hooks window resize operations, captures panel mount elements, and uses `ReactDOM.createPortal` to inject persistent views into shifting DOM nodes.
+This specialized manager orchestrates `dockview` initialization, hooks window resize operations, captures panel mount elements, and uses `ReactDOM.createPortal` to inject persistent views into shifting DOM nodes.
 
 ```tsx
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { GoldenLayout, ComponentContainer } from 'golden-layout';
+import { createDockview, DockviewApi } from 'dockview';
 import { INITIAL_SWG_WORKSPACE_CONFIG } from './WorkspaceLayoutConfig';
-
-interface PortalBinding {
-  componentId: string;
-  renderElement: React.ReactNode;
-}
 
 export const SwgDockingWorkspaceManager: React.FC<{
   explorerView: React.ReactNode;
@@ -656,77 +658,82 @@ export const SwgDockingWorkspaceManager: React.FC<{
   inspectorView: React.ReactNode;
 }> = ({ explorerView, viewportView, timelineView, inspectorView }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const glRef = useRef<GoldenLayout | null>(null);
+  const apiRef = useRef<DockviewApi | null>(null);
 
-  // Maps active components currently tracking layout dock anchors
+  // Maps active panel DOM elements to their persistent React content
   const [portals, setPortals] = useState<Map<HTMLElement, React.ReactNode>>(new Map());
+
+  const viewMap: Record<string, React.ReactNode> = {
+    TreExplorer: explorerView,
+    ThreejsViewport: viewportView,
+    TimelineConsole: timelineView,
+    AttributesInspector: inspectorView,
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // 1. Initialize Golden Layout Core Engine
-    const layout = new GoldenLayout(containerRef.current);
-    glRef.current = layout;
+    // 1. Initialize dockview core engine
+    const api = createDockview(containerRef.current, {
+      className: 'dockview-theme-dark',
+      createComponent: (options) => {
+        // Return a lightweight host element; React Portal fills the content
+        const el = document.createElement('div');
+        el.style.cssText = 'width:100%;height:100%;overflow:hidden;background:#111216';
 
-    // 2. Multi-Component Registration Loop
-    const registerComponentProxy = (componentType: string, reactView: React.ReactNode) => {
-      layout.registerComponentFactory(componentType, (container: ComponentContainer) => {
-        const element = container.element;
-
-        // Push the target DOM element into state so React Portals can target it
-        setPortals((prev) => {
-          const next = new Map(prev);
-          next.set(element, reactView);
-          return next;
-        });
-
-        // Listen for panel closure to drop memory hooks safely
-        container.on('destroy', () => {
+        const reactContent = viewMap[options.name];
+        if (reactContent) {
           setPortals((prev) => {
             const next = new Map(prev);
-            next.delete(element);
+            next.set(el, reactContent);
             return next;
           });
-        });
-      });
-    };
+        }
 
-    // Bind component nodes to factories
-    registerComponentProxy('TreExplorer', explorerView);
-    registerComponentProxy('ThreejsViewport', viewportView);
-    registerComponentProxy('TimelineConsole', timelineView);
-    registerComponentProxy('AttributesInspector', inspectorView);
-
-    // 3. Load the initial workspace blueprint configuration
-    layout.loadLayout(INITIAL_SWG_WORKSPACE_CONFIG);
-
-    // 4. Handle Window Resize Events (forces Three.js to recalculate resolution ratios)
-    const resizeObserver = new ResizeObserver(() => {
-      layout.updateSize();
+        return {
+          element: el,
+          dispose: () => {
+            setPortals((prev) => {
+              const next = new Map(prev);
+              next.delete(el);
+              return next;
+            });
+          }
+        };
+      }
     });
+    apiRef.current = api;
+
+    // 2. Load the initial workspace blueprint
+    api.fromJSON(INITIAL_SWG_WORKSPACE_CONFIG);
+
+    // 3. Handle resize events (forces Three.js to recalculate resolution ratios)
+    const resizeObserver = new ResizeObserver(() => api.layout(
+      containerRef.current!.clientWidth,
+      containerRef.current!.clientHeight
+    ));
     resizeObserver.observe(containerRef.current);
 
     return () => {
       resizeObserver.disconnect();
-      layout.destroy();
+      api.dispose();
     };
-  }, [explorerView, viewportView, timelineView, inspectorView]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      {/* Surface element where Golden Layout builds window frames */}
+      {/* Surface element where dockview builds window frames */}
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Render active portals into shifting DOM nodes */}
       {Array.from(portals.entries()).map(([domElement, reactComponent], index) =>
         ReactDOM.createPortal(
-          <div
-            style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#111216' }}
-          >
+          <div style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#111216' }}>
             {reactComponent}
           </div>,
           domElement,
-          `gl_portal_${index}`
+          `dv_portal_${index}`
         )
       )}
     </div>
@@ -740,7 +747,7 @@ Use the manager component inside the top-level layout wrapper to connect state f
 
 ```tsx
 import React from 'react';
-import { SwgDockingWorkspaceManager } from './SwgDockingWorkspaceManager';
+import { SwgDockingWorkspaceManager } from './SwgDockingWorkspaceManager'; // now uses dockview
 
 export const SwgStudioAppWorkspace: React.FC = () => {
   // These views remain persistently instantiated in the memory heap:
@@ -817,6 +824,7 @@ export const SwgStudioAppWorkspace: React.FC = () => {
 ### 5.5 Strategic Wins
 
 - **Zero-Copy Canvas Preservation:** Because `SwgDockingWorkspaceManager` encapsulates components via `ReactDOM.createPortal`, dragging windows does not re-instantiate data classes. Three.js geometries, texture maps, and active packet interceptors remain persistent in memory throughout all panel docking adjustments.
+- **Multi-Monitor Popouts:** `dockview` supports native Electron multi-monitor popout windows out of the box — no extra configuration needed.
 - **Pro-Tier Custom Layouts:** Modders gain the ergonomic freedom expected of production software. Level designers can isolate and maximize the 3D canvas on a primary display while pushing data tables, string lists, or packet terminals to secondary monitors.
 
 ---
@@ -833,7 +841,7 @@ To elevate the platform from a geometry compiler to a world-class All-In-One SWG
 
 SWG models rely on custom Shader Templates (`.sht`) to handle texture layers, scrolling water maps, environment reflections, and transparency indices.
 
-- **The Tool:** A 2D node-based visual shader editor (similar to Unreal Engine's Material Graph or Unity's Shader Graph) built directly into the React dashboard using libraries like `reactflow`.
+- **The Tool:** A 2D node-based visual shader editor (similar to Unreal Engine's Material Graph or Unity's Shader Graph) built directly into the React dashboard using **`@xyflow/react` v12** (React Flow's current package name).
 - **The Value:** Modders can connect visual nodes to create advanced shaders — adding a shimmering force-field overlay or scrolling lava texture to a building — and the C++ backend automatically serializes the graph back into little-endian binary `.sht` templates.
 
 ---

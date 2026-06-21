@@ -82,3 +82,58 @@ Building raw Three.js inside React produces messy lifecycle code. Standardize on
 ## App shell
 
 The desktop shell is **Electron Forge** (recommended over Tauri for this project: Electron's built-in Node.js runtime executes the native C++ addon directly, whereas Tauri would require bridging C++ data through a Rust middleware layer). See [`../06-workflow/packaging-and-distribution.md`](../06-workflow/packaging-and-distribution.md).
+
+---
+
+## Electron process model (corrected)
+
+> Source: [`../../.planning/research/ARCHITECTURE.md`](../../.planning/research/ARCHITECTURE.md) — validated 2026-06-21.
+
+### Native addon placement
+
+A compiled `.node` addon **cannot be loaded in a sandboxed renderer process**. It must live in the Electron **main process** (or a dedicated **utility process** spawned from main). The renderer never `require()`s the addon directly.
+
+### SharedArrayBuffer data channel
+
+The zero-copy data path from C++ to the renderer uses a **`MessageChannel` + transferred `SharedArrayBuffer`**:
+
+1. C++ allocates / fills the `SharedArrayBuffer` in the main/utility process.
+2. The main process transfers one end of a `MessageChannel` port to the renderer via `webContents.postMessage`.
+3. The renderer receives the port, then reads the `SharedArrayBuffer` on every animation frame — no IPC round-trip per update.
+
+**Cross-origin isolation is mandatory.** `SharedArrayBuffer` requires `crossOriginIsolated === true` in the renderer. Enable it by setting the following headers on all Electron responses:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Verify at runtime with `if (!crossOriginIsolated) throw new Error('COOP/COEP not active')`.
+
+### C++ core module split
+
+The monolithic "C++ core" should be decomposed into focused modules for maintainability and independent testing:
+
+| Module | Responsibility |
+|--------|---------------|
+| `iff` | IFF chunk parsing and serialization |
+| `tre` | TRE archive mounting, CRC, zlib decompression |
+| `formats` | Format-specific parsers (mesh, terrain, collision, etc.) |
+| `inject` | Win32 `OpenProcess` / `WriteProcessMemory` live injection |
+| `navmesh` | Recast & Detour navmesh voxelization |
+
+### Recommended monorepo structure
+
+Use **pnpm workspaces** with the following packages:
+
+```
+packages/
+  native-core/   ← C++ addon (node-addon-api, cmake-js, prebuildify)
+  backend/       ← Electron main + utility process, file watchers, plugin routing
+  renderer/      ← React + Vite UI
+  contracts/     ← Shared TypeScript types (the keystone package imported by all)
+blender-plugin/  ← In-repo but out-of-workspace (Python/bpy, no npm)
+mcp-server/      ← Optional; separate workspace package if included
+```
+
+The `contracts/` package is the single source of truth for all IPC message shapes, buffer schemas, and shared enums. Every other package imports from it — never from each other directly.

@@ -6,6 +6,31 @@
 
 ---
 
+> **⚠ Corrections from research review (2026-06-21)**
+>
+> The C++ code in this document contains several bugs identified during a 4-researcher review. Do **not** use the code below verbatim without applying these fixes. See [`../../.planning/research/PITFALLS.md`](../../.planning/research/PITFALLS.md) for full detail.
+>
+> 1. **Process-handle global is inconsistent.** The code alternates between `hSwgProcess` and `g_swgProcessHandle` — two different globals that are never both initialized. Unify to **one handle** (e.g. `g_swgProcessHandle`) with a single open/close lifecycle.
+>
+> 2. **`OpenProcess` flag set was incomplete.** `AttachToClient` only requested `PROCESS_VM_OPERATION | PROCESS_VM_WRITE`. For a read-verify path (and to match `HookClientProcess`) also request **`PROCESS_VM_READ`**. Full correct set: `PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE`.
+>
+> 3. **`SIZE_t` is a typo.** Win32 uses **`SIZE_T`** (all caps). `SIZE_t` will not compile on MSVC.
+>
+> 4. **`ArrayBuffer.Data()` lifetime / use-after-free bug.** `InitializeSharedChannel` caches the raw pointer returned by `arrayBuffer.Data()` into `g_sharedMatrixBuffer`. This pointer becomes a **dangling pointer** if V8's GC collects the `SharedArrayBuffer` object, causing silent memory corruption during live injection. Fix: hold a **`Napi::Reference<Napi::ArrayBuffer>`** (a persistent strong reference) alongside the raw pointer so V8 cannot collect the backing store while the addon holds the pointer.
+>
+>    ```cpp
+>    // Correct pattern — add alongside g_sharedMatrixBuffer:
+>    Napi::Reference<Napi::ArrayBuffer> g_sharedBufferRef;
+>
+>    // In InitializeSharedChannel:
+>    g_sharedBufferRef = Napi::Persistent(arrayBuffer); // prevents GC
+>    g_sharedMatrixBuffer = static_cast<float*>(arrayBuffer.Data());
+>    ```
+>
+> 5. **Process placement and cross-origin isolation.** The addon and `initializeSharedChannel` **must run in the Electron main (or utility) process**, not the renderer. The renderer process must be **cross-origin isolated** (`COOP: same-origin` + `COEP: require-corp` headers, `crossOriginIsolated === true`) for the `SharedArrayBuffer` transfer path to work at all. See [architecture.md](../00-overview/architecture.md#electron-process-model-corrected).
+
+---
+
 ## Why Live Memory Injection Matters
 
 Traditional modding requires a full restart loop for every change:
