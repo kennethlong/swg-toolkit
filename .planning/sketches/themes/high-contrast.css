@@ -1,0 +1,42 @@
+/* SWG Toolkit — accessibility theme: high contrast
+   Goals: WCAG AAA-leaning text contrast, visible panel separators, large focus rings,
+   and state cues that never rely on color alone (borders/underlines do the work too).
+   Imports the base token set, then overrides for maximum legibility. */
+@import "default.css";
+:root {
+  /* Near-black surfaces with clearly-lighter steps */
+  --color-bg:            #000000;
+  --color-surface:       #101012;
+  --color-surface-2:     #18181b;
+  --color-header:        #1f1f23;
+  --color-header-2:      #2b2b30;
+  --color-widget:        #1c1c20;
+  --color-widget-hover:  #30303a;
+
+  /* Borders are visible on purpose — panel edges must be obvious */
+  --color-border:        #7a7a82;
+  --color-border-soft:   #5a5a62;
+
+  /* Maximum-legibility text */
+  --color-text:          #ffffff;
+  --color-text-muted:    #dcdce2;
+  --color-text-faint:    #aeaeb6;
+
+  /* Bright, high-luminance accent (cyan family — distinguishable for red-green CVD) */
+  --color-accent:        #4fe3f0;
+  --color-accent-hover:  #7df0fb;
+  --color-accent-text:   #00181c;
+  --color-accent-dim:    rgba(79, 227, 240, 0.28);
+  --color-accent-line:   rgba(79, 227, 240, 0.85);
+
+  /* Semantic colors lifted for contrast */
+  --color-danger:        #ff6b61;
+  --color-warn:          #ffc24a;
+  --color-info:          #6fb0ff;
+
+  --drop-fill:           rgba(79, 227, 240, 0.30);
+  --drop-line:           rgba(79, 227, 240, 1);
+
+  /* Thicker, more obvious focus ring */
+  --focus-ring:          0 0 0 2px #000, 0 0 0 4px var(--color-accent);
+}

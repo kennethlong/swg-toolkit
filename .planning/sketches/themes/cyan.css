@@ -1,0 +1,11 @@
+/* SWG Toolkit — accent variant: hologram cyan/blue */
+@import "default.css";
+:root {
+  --color-accent:       #38bec9;
+  --color-accent-hover: #5ad6e0;
+  --color-accent-text:  #04201f;
+  --color-accent-dim:   rgba(56, 190, 201, 0.16);
+  --color-accent-line:  rgba(56, 190, 201, 0.45);
+  --drop-fill:          rgba(56, 190, 201, 0.18);
+  --drop-line:          rgba(56, 190, 201, 0.85);
+}

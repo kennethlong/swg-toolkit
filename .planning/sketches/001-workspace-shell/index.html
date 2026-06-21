@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWG Toolkit — Sketch 001: Workspace Shell</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    color: var(--color-text);
+    background: var(--color-bg);
+    padding-top: 40px;               /* room for variant nav */
+    overflow: hidden;
+  }
+
+  /* ---------- variant switcher (sketch chrome) ---------- */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 40px;
+    background: #101010; border-bottom: 1px solid #000;
+    display: flex; align-items: center; gap: 6px; padding: 0 12px;
+    font-family: system-ui;
+  }
+  #variant-nav .brand { color: #777; font-size: 12px; margin-right: 8px; letter-spacing: .04em; }
+  .variant-tab {
+    background: #222; color: #bbb; border: 1px solid #333; border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all .15s ease;
+  }
+  .variant-tab:hover { background: #2c2c2c; color: #eee; }
+  .variant-tab.active { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+
+  .variant { height: calc(100vh - 40px); display: none; }
+  .variant.active { display: block; }
+
+  /* ---------- app frame ---------- */
+  .app { display: flex; flex-direction: column; height: 100%; background: var(--color-bg); }
+
+  .titlebar {
+    height: var(--titlebar-h); flex: 0 0 auto; display: flex; align-items: center;
+    background: #1c1c1c; border-bottom: 1px solid var(--color-border); padding: 0 10px; gap: 14px;
+    -webkit-app-region: drag; user-select: none;
+  }
+  .titlebar .logo { width: 16px; height: 16px; border-radius: 4px;
+    background: linear-gradient(135deg, var(--color-accent), #3a7a1f); flex: 0 0 auto; }
+  .titlebar .app-name { font-size: var(--text-sm); font-weight: 600; letter-spacing: .03em; }
+  .titlebar .menu { display: flex; gap: 2px; }
+  .titlebar .menu span { padding: 3px 8px; font-size: var(--text-sm); color: var(--color-text-muted);
+    border-radius: var(--radius-sm); cursor: default; transition: all .12s; }
+  .titlebar .menu span:hover { background: var(--color-widget); color: var(--color-text); }
+  .titlebar .winctl { margin-left: auto; display: flex; gap: 4px; }
+  .titlebar .winctl b { width: 13px; height: 13px; border-radius: 50%; display: inline-block; }
+  .winctl .c1 { background: #e0584f; } .winctl .c2 { background: #e0a13a; } .winctl .c3 { background: #7ec94e; }
+  .app-theme-ctl { margin-left: auto; display: flex; align-items: center; gap: 5px; -webkit-app-region: no-drag;
+    font-size: var(--text-xs); color: var(--color-text-muted); }
+  .app-theme-ctl > span { color: var(--color-accent); }
+  .app-theme-ctl select { background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 2px 6px; font-size: var(--text-xs); cursor: pointer; }
+  .app-theme-ctl select:focus { outline: none; box-shadow: var(--focus-ring); }
+  #variant-a .titlebar .winctl { margin-left: 14px; }
+
+  .statusbar {
+    height: var(--statusbar-h); flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+    background: #1c1c1c; border-top: 1px solid var(--color-border); padding: 0 12px;
+    font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono);
+  }
+  .statusbar .ok { color: var(--color-accent); }
+  .statusbar .sep { color: var(--color-text-faint); }
+
+  /* ---------- workspace grids ---------- */
+  .workspace { flex: 1; min-height: 0; padding: 5px; gap: 5px; display: grid; }
+  /* Variant A & B: left | center | right ; bottom spans all */
+  .ws-3col {
+    grid-template-columns: 240px 1fr 280px;
+    grid-template-rows: 1fr 200px;
+    grid-template-areas: "left center right" "bottom bottom bottom";
+  }
+  .area-left   { grid-area: left; }
+  .area-center { grid-area: center; }
+  .area-right  { grid-area: right; }
+  .area-bottom { grid-area: bottom; }
+
+  /* ---------- panel ---------- */
+  .panel {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: var(--shadow-panel); min-height: 0; min-width: 0; position: relative;
+  }
+  .panel.collapsed .panel-body, .panel.collapsed .panel-tabs { display: none; }
+  .panel-head {
+    height: var(--tabstrip-h); flex: 0 0 auto; display: flex; align-items: stretch;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+  }
+  .drag-dots { width: 18px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: grab; font-size: 11px; letter-spacing: -1px; }
+  .drag-dots:hover { color: var(--color-text-muted); }
+  .panel-tabs { display: flex; align-items: stretch; flex: 1; overflow-x: auto; }
+  .ptab {
+    display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: var(--text-sm);
+    color: var(--color-text-muted); cursor: pointer; border-right: 1px solid var(--color-border);
+    transition: all .12s; white-space: nowrap; position: relative;
+  }
+  .ptab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-faint); }
+  .ptab:hover { background: var(--color-header-2); color: var(--color-text); }
+  .ptab.active { background: var(--color-surface); color: var(--color-text); }
+  .ptab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+    height: 2px; background: var(--color-accent); }
+  .ptab.active .dot { background: var(--color-accent); }
+  .ptab .x { color: var(--color-text-faint); font-size: 13px; }
+  .ptab .x:hover { color: var(--color-text); }
+  .tab-add { width: 26px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; font-size: 15px; }
+  .tab-add:hover { color: var(--color-accent); }
+  .panel-actions { display: flex; align-items: center; gap: 2px; padding: 0 6px; margin-left: auto; }
+  .pbtn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: var(--radius-sm); font-size: 13px; transition: all .12s; }
+  .pbtn:hover { background: var(--color-widget); color: var(--color-text); }
+  .panel-body { flex: 1; overflow: auto; min-height: 0; }
+  .tab-pane { display: none; height: 100%; } .tab-pane.active { display: block; }
+
+  /* ---------- tree ---------- */
+  .tree { padding: 4px 0; font-size: var(--text-sm); }
+  .tree-row {
+    display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 0; cursor: pointer;
+    white-space: nowrap; border-left: 2px solid transparent; transition: background .1s;
+  }
+  .tree-row:hover { background: var(--color-surface-2); }
+  .tree-row.selected { background: var(--color-accent-dim); border-left-color: var(--color-accent); }
+  .tree-row .chev { width: 14px; text-align: center; color: var(--color-text-faint);
+    transition: transform .15s; flex: 0 0 auto; font-size: 10px; }
+  .tree-item.open > .tree-row .chev { transform: rotate(90deg); }
+  .tree-row .ico { width: 14px; text-align: center; flex: 0 0 auto; opacity: .85; }
+  .tree-row .lbl { overflow: hidden; text-overflow: ellipsis; }
+  .tree-row .badge { margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+    color: var(--color-text-faint); padding-left: 8px; }
+  .tree-children { display: none; } .tree-item.open > .tree-children { display: block; }
+  .tree-children .tree-row { padding-left: 16px; }
+  .tree-children .tree-children .tree-row { padding-left: 32px; }
+
+  /* ---------- viewport ---------- */
+  .viewport { height: 100%; position: relative; overflow: hidden;
+    background:
+      radial-gradient(ellipse at 50% 40%, #2a2e26 0%, #1b1b1b 60%, #141414 100%);
+  }
+  .viewport .grid { position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 28px 28px; mask-image: radial-gradient(ellipse at center, #000 40%, transparent 80%); }
+  .viewport .model { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+  .vp-overlay { position: absolute; display: flex; gap: 4px; }
+  .vp-overlay.tl { top: 8px; left: 8px; } .vp-overlay.tr { top: 8px; right: 8px; }
+  .vp-chip { background: rgba(20,20,20,.7); border: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted); border-radius: var(--radius-sm); padding: 3px 8px;
+    font-size: var(--text-xs); cursor: pointer; backdrop-filter: blur(4px); transition: all .12s; }
+  .vp-chip:hover { color: var(--color-text); border-color: var(--color-accent-line); }
+  .vp-chip.on { color: var(--color-accent-text); background: var(--color-accent); border-color: var(--color-accent); }
+  .gizmo { position: absolute; bottom: 12px; right: 12px; width: 48px; height: 48px; opacity: .8; }
+  .vp-stats { position: absolute; bottom: 10px; left: 12px; font-family: var(--font-mono);
+    font-size: var(--text-xs); color: var(--color-text-faint); }
+
+  /* ---------- inspector ---------- */
+  .accordion { border-bottom: 1px solid var(--color-border-soft); }
+  .acc-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: pointer;
+    background: var(--color-surface); font-size: var(--text-sm); font-weight: 600; user-select: none; transition: background .1s; }
+  .acc-head:hover { background: var(--color-surface-2); }
+  .acc-head .chev { color: var(--color-text-faint); transition: transform .15s; font-size: 10px; width: 12px; }
+  .accordion.open .acc-head .chev { transform: rotate(90deg); }
+  .acc-head .ico { color: var(--color-accent); opacity: .9; }
+  .acc-body { display: none; padding: 6px 10px 10px; }
+  .accordion.open .acc-body { display: block; }
+  .field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; margin: 4px 0; }
+  .field > label { font-size: var(--text-xs); color: var(--color-text-muted); }
+  .vec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .numbox { background: var(--color-widget); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 3px 7px; font-family: var(--font-mono);
+    font-size: var(--text-xs); color: var(--color-text); width: 100%; transition: all .12s; }
+  .numbox:hover { background: var(--color-widget-hover); }
+  .numbox:focus { outline: none; box-shadow: var(--focus-ring); }
+  .kv { display: flex; justify-content: space-between; padding: 3px 0; font-size: var(--text-xs); }
+  .kv .k { color: var(--color-text-muted); } .kv .v { font-family: var(--font-mono); color: var(--color-text); }
+
+  /* ---------- data table ---------- */
+  .dt { width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+  .dt thead th { position: sticky; top: 0; background: var(--color-header); text-align: left;
+    padding: 5px 10px; font-weight: 600; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);
+    font-size: var(--text-xs); }
+  .dt tbody td { padding: 4px 10px; border-bottom: 1px solid var(--color-border-soft); font-family: var(--font-mono); }
+  .dt tbody tr { cursor: pointer; transition: background .1s; }
+  .dt tbody tr:nth-child(even) { background: rgba(255,255,255,.015); }
+  .dt tbody tr:hover { background: var(--color-surface-2); }
+  .dt tbody tr.selected { background: var(--color-accent-dim); box-shadow: inset 2px 0 0 var(--color-accent); }
+  .console { font-family: var(--font-mono); font-size: var(--text-xs); padding: 8px 12px; line-height: 1.7; }
+  .console .t { color: var(--color-text-faint); } .console .g { color: var(--color-accent); } .console .w { color: var(--color-warn); }
+
+  /* ---------- docking drop-zone overlay ---------- */
+  .drop-overlay { position: absolute; inset: 0; z-index: 50; display: none; }
+  .variant.show-drops .drop-overlay { display: block; }
+  .dz { position: absolute; background: var(--drop-fill); border: 1.5px dashed var(--drop-line);
+    border-radius: var(--radius-sm); transition: background .12s; }
+  .dz:hover { background: rgba(126,201,78,.32); }
+  .dz.center { top: 28%; left: 28%; right: 28%; bottom: 28%; }
+  .dz.top    { top: 6%; left: 30%; right: 30%; height: 16%; }
+  .dz.bottom { bottom: 6%; left: 30%; right: 30%; height: 16%; }
+  .dz.left   { left: 6%; top: 32%; bottom: 32%; width: 14%; }
+  .dz.right  { right: 6%; top: 32%; bottom: 32%; width: 14%; }
+  .drop-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, 120px);
+    color: var(--color-accent); font-size: var(--text-sm); font-family: var(--font-mono);
+    background: rgba(20,20,20,.85); padding: 4px 10px; border-radius: var(--radius-sm); white-space: nowrap; }
+
+  /* ---------- Variant C: compact / activity rail ---------- */
+  .ws-compact { grid-template-columns: var(--activity-w) 220px 1fr; grid-template-rows: 1fr;
+    grid-template-areas: "rail left center"; position: relative; }
+  .ws-compact.left-hidden { grid-template-columns: var(--activity-w) 0 1fr; }
+  .ws-compact .area-left { grid-area: left; transition: all .2s; }
+  .ws-compact.left-hidden .area-left { opacity: 0; pointer-events: none; }
+  .activity-rail { grid-area: rail; background: #1c1c1c; border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center;
+    padding: 6px 0; gap: 2px; }
+  .arail-btn { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); border-radius: var(--radius-sm); cursor: pointer; font-size: 16px;
+    position: relative; transition: all .12s; }
+  .arail-btn:hover { color: var(--color-text); background: var(--color-widget); }
+  .arail-btn.active { color: var(--color-accent); }
+  .arail-btn.active::before { content:""; position:absolute; left:-6px; top:8px; bottom:8px; width:2px;
+    background: var(--color-accent); border-radius: 2px; }
+  .arail-btn.bottom { margin-top: auto; }
+  /* slide-over inspector */
+  .overlay-inspector { position: absolute; top: 5px; right: 5px; bottom: 5px; width: 290px; z-index: 40;
+    transform: translateX(calc(100% + 10px)); transition: transform .22s ease; }
+  .ws-compact.insp-open .overlay-inspector { transform: translateX(0); }
+  /* bottom strip */
+  .bottom-strip { position: absolute; left: calc(var(--activity-w) + 10px); right: 5px; bottom: 5px; z-index: 30;
+    height: 26px; transition: height .2s ease; }
+  .ws-compact.data-open .bottom-strip { height: 190px; }
+  .strip-head { height: 26px; display: flex; align-items: center; gap: 10px; padding: 0 10px;
+    background: var(--color-header); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    font-size: var(--text-xs); cursor: pointer; }
+  .ws-compact.data-open .strip-head { border-radius: var(--radius-md) var(--radius-md) 0 0; border-bottom: none; }
+
+  /* annotation mode */
+  body.annotate .panel { outline: 1px solid var(--color-accent-line); outline-offset: -1px; }
+  body.annotate .panel-head::after { content: attr(data-note); position: absolute; right: 4px; top: 26px;
+    background: var(--color-accent); color: var(--color-accent-text); font-size: 9px; font-family: var(--font-mono);
+    padding: 1px 4px; border-radius: 3px; z-index: 60; pointer-events: none; }
+
+  /* ---------- sketch toolbar ---------- */
+  #sketch-tools {
+    position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 10px; border-radius: 8px; opacity: .45;
+    transition: opacity .2s; display: flex; align-items: center; gap: 10px;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button {
+    background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 5px; padding: 4px 8px;
+    font-size: 11px; cursor: pointer; }
+  #sketch-tools button.on { background: var(--color-accent); color: #122005; border-color: var(--color-accent); }
+  #sketch-tools .lbl { color: #888; font-size: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ============ VARIANT SWITCHER ============ -->
+<div id="variant-nav">
+  <span class="brand">SKETCH 001 · workspace shell</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A · Classic Regions ★</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B · Tabbed Dock-Groups</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C · Compact / Edge-Overlay</button>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT A — Classic Editor Regions                            -->
+<!-- ============================================================= -->
+<div id="variant-a" class="variant active">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <label class="app-theme-ctl" title="Accent &amp; contrast — an accessibility setting">
+        <span aria-hidden="true">◐</span> Theme
+        <select id="app-theme" onchange="setTheme(this.value)">
+          <optgroup label="Accent">
+            <option value="cyan" selected>Hologram cyan</option>
+            <option value="default">SWG green</option>
+            <option value="amber">Amber</option>
+            <option value="blue">IDE blue</option>
+          </optgroup>
+          <optgroup label="Accessibility">
+            <option value="high-contrast">High contrast</option>
+          </optgroup>
+        </select>
+      </label>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace ws-3col">
+      <!-- LEFT: asset tree -->
+      <div class="panel area-left" data-note="dockview panel">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Assets</div></div>
+          <div class="panel-actions"><div class="pbtn" title="Split">⊟</div><div class="pbtn collapse-btn" title="Collapse">▾</div></div>
+        </div>
+        <div class="panel-body"><div class="tree">
+          <div class="tree-item open">
+            <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">appearance</span></div>
+            <div class="tree-children">
+              <div class="tree-item open">
+                <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">mesh</span></div>
+                <div class="tree-children">
+                  <div class="tree-row asset selected" onclick="pick(this)" data-name="shared_landspeeder.msh" data-type="Static Mesh (MSH)" data-verts="4,812" data-tris="3,104"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_landspeeder.msh</span></div>
+                  <div class="tree-row asset" onclick="pick(this)" data-name="shared_bantha.msh" data-type="Static Mesh (MSH)" data-verts="9,330" data-tris="6,118"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_bantha.msh</span></div>
+                  <div class="tree-row asset" onclick="pick(this)" data-name="player_human_male.mgn" data-type="Skinned Mesh (MGN)" data-verts="12,044" data-tris="8,510"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">player_human_male.mgn</span></div>
+                </div>
+              </div>
+              <div class="tree-item">
+                <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">texture</span><span class="badge">42</span></div>
+                <div class="tree-children">
+                  <div class="tree-row asset" onclick="pick(this)" data-name="speeder_body.dds" data-type="Texture (DDS)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">🖼</span><span class="lbl">speeder_body.dds</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tree-item">
+            <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">object</span></div>
+            <div class="tree-children">
+              <div class="tree-row" onclick="pick(this)" data-name="shared_speederbike.iff" data-type="Tangible Template (IFF)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">📄</span><span class="lbl">shared_speederbike.iff</span></div>
+            </div>
+          </div>
+          <div class="tree-item open">
+            <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">datatables</span></div>
+            <div class="tree-children">
+              <div class="tree-row" onclick="pick(this)" data-name="creature_names.iff" data-type="Datatable (IFF)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">▦</span><span class="lbl">creature_names.iff</span></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- CENTER: viewport -->
+      <div class="panel area-center" data-note="utility-proc render">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport<span class="x" onclick="event.stopPropagation()">×</span></div></div>
+          <div class="panel-actions"><div class="pbtn" title="Maximize">⤢</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+          <div class="vp-overlay tl">
+            <div class="vp-chip on" onclick="toggleChip(this)">Solid</div>
+            <div class="vp-chip" onclick="toggleChip(this)">Wire</div>
+            <div class="vp-chip" onclick="toggleChip(this)">Textured</div>
+          </div>
+          <div class="vp-overlay tr">
+            <div class="vp-chip" title="Orbit">⟲</div><div class="vp-chip" title="Pan">✥</div><div class="vp-chip" title="Frame">⛶</div>
+          </div>
+          <div class="model">
+            <svg width="260" height="180" viewBox="0 0 260 180" fill="none" stroke="var(--color-accent)" stroke-width="1.4" opacity="0.9">
+              <polygon points="60,120 160,120 200,80 100,80" fill="rgba(126,201,78,0.06)"/>
+              <polygon points="60,120 60,90 100,50 100,80" fill="rgba(126,201,78,0.10)"/>
+              <polygon points="100,80 200,80 200,50 100,50" fill="rgba(126,201,78,0.04)"/>
+              <line x1="60" y1="120" x2="60" y2="90"/><line x1="160" y1="120" x2="200" y2="80"/>
+              <line x1="200" y1="80" x2="200" y2="50"/><line x1="100" y1="50" x2="100" y2="80"/>
+              <circle cx="130" cy="100" r="2.5" fill="var(--color-accent)" stroke="none"/>
+            </svg>
+          </div>
+          <svg class="gizmo" viewBox="0 0 60 60"><line x1="30" y1="30" x2="30" y2="6" stroke="#6db33f" stroke-width="2"/><line x1="30" y1="30" x2="52" y2="40" stroke="#e0584f" stroke-width="2"/><line x1="30" y1="30" x2="10" y2="42" stroke="#4a8cff" stroke-width="2"/></svg>
+          <div class="vp-stats">persp · 1280×720 · 60 fps · SAB ✓</div>
+          <!-- docking drop zones -->
+          <div class="drop-overlay">
+            <div class="dz center"></div><div class="dz top"></div><div class="dz bottom"></div><div class="dz left"></div><div class="dz right"></div>
+            <div class="drop-hint">drop to dock · center=tab · edges=split</div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- RIGHT: inspector -->
+      <div class="panel area-right" data-note="dockview panel">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Inspector</div></div>
+          <div class="panel-actions"><div class="pbtn collapse-btn" title="Collapse">▾</div></div>
+        </div>
+        <div class="panel-body" id="inspector-a">
+          <div style="padding:9px 10px; border-bottom:1px solid var(--color-border-soft);">
+            <div class="insp-name" style="font-weight:600; font-size:var(--text-md);">shared_landspeeder.msh</div>
+            <div class="insp-type" style="color:var(--color-text-muted); font-size:var(--text-xs); margin-top:2px;">Static Mesh (MSH)</div>
+          </div>
+          <div class="accordion open">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">✥</span>Transform</div>
+            <div class="acc-body">
+              <div class="field"><label>Position</label><div class="vec"><input class="numbox" value="0.000"><input class="numbox" value="0.000"><input class="numbox" value="0.000"></div></div>
+              <div class="field"><label>Rotation</label><div class="vec"><input class="numbox" value="0.0"><input class="numbox" value="90.0"><input class="numbox" value="0.0"></div></div>
+              <div class="field"><label>Scale</label><div class="vec"><input class="numbox" value="1.000"><input class="numbox" value="1.000"><input class="numbox" value="1.000"></div></div>
+            </div>
+          </div>
+          <div class="accordion open">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◳</span>Mesh</div>
+            <div class="acc-body">
+              <div class="kv"><span class="k">Vertices</span><span class="v insp-verts">4,812</span></div>
+              <div class="kv"><span class="k">Triangles</span><span class="v insp-tris">3,104</span></div>
+              <div class="kv"><span class="k">Shaders</span><span class="v">2</span></div>
+              <div class="kv"><span class="k">Bounding r</span><span class="v">3.46</span></div>
+            </div>
+          </div>
+          <div class="accordion">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◐</span>Material</div>
+            <div class="acc-body">
+              <div class="kv"><span class="k">Shader</span><span class="v">a_speeder.sht</span></div>
+              <div class="kv"><span class="k">Texture</span><span class="v">speeder_body.dds</span></div>
+              <div class="kv"><span class="k">Blend</span><span class="v">opaque</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM: data pane -->
+      <div class="panel area-bottom" data-note="dockview panel">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchTab(this,0)"><span class="dot"></span>Datatable</div>
+            <div class="ptab" onclick="switchTab(this,1)"><span class="dot"></span>Console</div>
+            <div class="ptab" onclick="switchTab(this,2)"><span class="dot"></span>Log</div>
+            <div class="tab-add" title="New tab">＋</div>
+          </div>
+          <div class="panel-actions"><div class="pbtn collapse-btn" title="Collapse">▾</div></div>
+        </div>
+        <div class="panel-body">
+          <div class="tab-pane active">
+            <table class="dt">
+              <thead><tr><th>row</th><th>object</th><th>hit_points</th><th>armor</th><th>speed</th></tr></thead>
+              <tbody>
+                <tr onclick="pickRow(this)"><td>0</td><td>bantha</td><td>14000</td><td>40</td><td>1.0</td></tr>
+                <tr class="selected" onclick="pickRow(this)"><td>1</td><td>ronto</td><td>9000</td><td>25</td><td>1.2</td></tr>
+                <tr onclick="pickRow(this)"><td>2</td><td>dewback</td><td>11000</td><td>32</td><td>1.1</td></tr>
+                <tr onclick="pickRow(this)"><td>3</td><td>rancor</td><td>52000</td><td>70</td><td>0.8</td></tr>
+                <tr onclick="pickRow(this)"><td>4</td><td>krayt_dragon</td><td>180000</td><td>95</td><td>0.9</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tab-pane"><div class="console">
+            <div><span class="t">[12:04:01]</span> <span class="g">native-core</span> addon loaded in utility process (pid 8841)</div>
+            <div><span class="t">[12:04:01]</span> cmake-js build: <span class="g">ok</span> · node-addon-api 8 · electron 42 abi</div>
+            <div><span class="t">[12:04:02]</span> COOP/COEP set · <span class="g">crossOriginIsolated = true</span></div>
+            <div><span class="t">[12:04:02]</span> SharedArrayBuffer round-trip: <span class="g">PASS</span> (4 MB @ 60 fps)</div>
+            <div><span class="t">[12:04:03]</span> <span class="w">warn</span> Forge Vite plugin: experimental — watching addon reload</div>
+          </div></div>
+          <div class="tab-pane"><div class="console"><div><span class="t">[log]</span> contracts/ types compiled · renderer + backend in sync</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span><span class="insp-name">shared_landspeeder.msh</span></span>
+      <span class="sep">·</span><span>4,812 verts</span>
+      <span class="sep">·</span><span>addon: <span class="ok">utility-process ✓</span></span>
+      <span class="sep">·</span><span>crossOriginIsolated: <span class="ok">true</span></span>
+      <span class="sep">·</span><span>SAB: <span class="ok">60 fps</span></span>
+      <span style="margin-left:auto">pnpm · contracts ✓</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT B — Tabbed Dock-Groups (dockview emphasis)            -->
+<!-- ============================================================= -->
+<div id="variant-b" class="variant">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace ws-3col" id="ws-b">
+      <!-- LEFT group: Assets + Archives + Outliner -->
+      <div class="panel area-left" data-note="tab group (3)">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchTab(this,0)"><span class="dot"></span>Assets</div>
+            <div class="ptab" onclick="switchTab(this,1)"><span class="dot"></span>Archives<span class="x" onclick="event.stopPropagation()">×</span></div>
+            <div class="ptab" onclick="switchTab(this,2)"><span class="dot"></span>Outliner</div>
+            <div class="tab-add" title="New tab">＋</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="tab-pane active"><div class="tree">
+            <div class="tree-item open"><div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">appearance/mesh</span></div>
+              <div class="tree-children">
+                <div class="tree-row asset selected" onclick="pick(this)" data-name="shared_landspeeder.msh" data-type="Static Mesh (MSH)" data-verts="4,812" data-tris="3,104"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_landspeeder.msh</span></div>
+                <div class="tree-row asset" onclick="pick(this)" data-name="shared_bantha.msh" data-type="Static Mesh (MSH)" data-verts="9,330" data-tris="6,118"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_bantha.msh</span></div>
+              </div>
+            </div>
+          </div></div>
+          <div class="tab-pane"><div class="tree">
+            <div class="tree-row" onclick="pick(this)" data-name="bottom_00.tre" data-type="TRE Archive" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">🗄</span><span class="lbl">bottom_00.tre</span><span class="badge">182 MB</span></div>
+            <div class="tree-row" onclick="pick(this)" data-name="patch_14_00.tre" data-type="TRE Archive" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">🗄</span><span class="lbl">patch_14_00.tre</span><span class="badge">96 MB</span></div>
+            <div class="tree-row" onclick="pick(this)" data-name="data_sku0_01.tre" data-type="TRE Archive" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">🗄</span><span class="lbl">data_sku0_01.tre</span><span class="badge">211 MB</span></div>
+          </div></div>
+          <div class="tab-pane"><div class="console"><div class="t">scene outliner — empty (no world loaded)</div></div></div>
+        </div>
+      </div>
+
+      <!-- CENTER group: Viewport + UV -->
+      <div class="panel area-center show-drop-target" data-note="active drop target">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchTab(this,0)"><span class="dot"></span>Viewport</div>
+            <div class="ptab" onclick="switchTab(this,1)"><span class="dot"></span>2D / UV</div>
+          </div>
+          <div class="panel-actions"><div class="pbtn" title="Maximize">⤢</div></div>
+        </div>
+        <div class="panel-body">
+          <div class="tab-pane active"><div class="viewport">
+            <div class="grid"></div>
+            <div class="vp-overlay tl"><div class="vp-chip on" onclick="toggleChip(this)">Solid</div><div class="vp-chip" onclick="toggleChip(this)">Wire</div></div>
+            <div class="model">
+              <svg width="260" height="180" viewBox="0 0 260 180" fill="none" stroke="var(--color-accent)" stroke-width="1.4" opacity="0.9">
+                <polygon points="60,120 160,120 200,80 100,80" fill="rgba(126,201,78,0.06)"/>
+                <polygon points="60,120 60,90 100,50 100,80" fill="rgba(126,201,78,0.10)"/>
+                <polygon points="100,80 200,80 200,50 100,50" fill="rgba(126,201,78,0.04)"/>
+              </svg>
+            </div>
+            <div class="vp-stats">persp · 60 fps · SAB ✓</div>
+            <div class="drop-overlay">
+              <div class="dz center"></div><div class="dz top"></div><div class="dz bottom"></div><div class="dz left"></div><div class="dz right"></div>
+              <div class="drop-hint">drop to dock · center=tab · edges=split</div>
+            </div>
+          </div></div>
+          <div class="tab-pane"><div class="viewport"><div class="grid"></div><div class="vp-stats">UV editor</div></div></div>
+        </div>
+      </div>
+
+      <!-- RIGHT group: Inspector + Properties -->
+      <div class="panel area-right" data-note="tab group (2)">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchTab(this,0)"><span class="dot"></span>Inspector</div>
+            <div class="ptab" onclick="switchTab(this,1)"><span class="dot"></span>Properties</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="tab-pane active">
+            <div style="padding:9px 10px; border-bottom:1px solid var(--color-border-soft);">
+              <div class="insp-name" style="font-weight:600;">shared_landspeeder.msh</div>
+              <div class="insp-type" style="color:var(--color-text-muted); font-size:var(--text-xs);">Static Mesh (MSH)</div>
+            </div>
+            <div class="accordion open"><div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">✥</span>Transform</div>
+              <div class="acc-body">
+                <div class="field"><label>Position</label><div class="vec"><input class="numbox" value="0.000"><input class="numbox" value="0.000"><input class="numbox" value="0.000"></div></div>
+                <div class="field"><label>Rotation</label><div class="vec"><input class="numbox" value="0.0"><input class="numbox" value="90.0"><input class="numbox" value="0.0"></div></div>
+              </div>
+            </div>
+            <div class="accordion open"><div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◳</span>Mesh</div>
+              <div class="acc-body"><div class="kv"><span class="k">Vertices</span><span class="v insp-verts">4,812</span></div><div class="kv"><span class="k">Triangles</span><span class="v insp-tris">3,104</span></div></div>
+            </div>
+          </div>
+          <div class="tab-pane"><div class="console"><div class="t">raw IFF chunk tree…</div></div></div>
+        </div>
+      </div>
+
+      <!-- BOTTOM group -->
+      <div class="panel area-bottom" data-note="tab group (2)">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchTab(this,0)"><span class="dot"></span>Datatable</div>
+            <div class="ptab" onclick="switchTab(this,1)"><span class="dot"></span>Console</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="tab-pane active"><table class="dt">
+            <thead><tr><th>row</th><th>object</th><th>hit_points</th><th>armor</th></tr></thead>
+            <tbody>
+              <tr class="selected" onclick="pickRow(this)"><td>0</td><td>bantha</td><td>14000</td><td>40</td></tr>
+              <tr onclick="pickRow(this)"><td>1</td><td>ronto</td><td>9000</td><td>25</td></tr>
+              <tr onclick="pickRow(this)"><td>2</td><td>dewback</td><td>11000</td><td>32</td></tr>
+            </tbody>
+          </table></div>
+          <div class="tab-pane"><div class="console"><div><span class="t">[ok]</span> <span class="g">SAB round-trip PASS</span></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>3 tab-groups · 9 panels</span><span class="sep">·</span>
+      <span>drag a tab → <span class="ok">5-way drop zones</span></span>
+      <span style="margin-left:auto">layout: <span class="ok">restored from last session</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT C — Compact / Edge-Overlay                            -->
+<!-- ============================================================= -->
+<div id="variant-c" class="variant">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace ws-compact insp-open" id="ws-c">
+      <!-- activity rail -->
+      <div class="activity-rail">
+        <div class="arail-btn active" title="Assets" onclick="railToggleLeft(this)">📁</div>
+        <div class="arail-btn" title="Search">🔍</div>
+        <div class="arail-btn" title="Datatables" onclick="toggleData(this)">▦</div>
+        <div class="arail-btn" title="Inspector" onclick="toggleInsp(this)">◐</div>
+        <div class="arail-btn bottom" title="Settings">⚙</div>
+      </div>
+
+      <!-- thin left panel -->
+      <div class="panel area-left" data-note="collapsible rail panel">
+        <div class="panel-head"><div class="drag-dots">⠿</div><div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Assets</div></div></div>
+        <div class="panel-body"><div class="tree">
+          <div class="tree-item open"><div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">mesh</span></div>
+            <div class="tree-children">
+              <div class="tree-row asset selected" onclick="pick(this)" data-name="shared_landspeeder.msh" data-type="Static Mesh (MSH)" data-verts="4,812" data-tris="3,104"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_landspeeder.msh</span></div>
+              <div class="tree-row asset" onclick="pick(this)" data-name="shared_bantha.msh" data-type="Static Mesh (MSH)" data-verts="9,330" data-tris="6,118"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_bantha.msh</span></div>
+              <div class="tree-row asset" onclick="pick(this)" data-name="player_human_male.mgn" data-type="Skinned Mesh (MGN)" data-verts="12,044" data-tris="8,510"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">player_human_male.mgn</span></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- big viewport -->
+      <div class="panel area-center" data-note="edge-to-edge viewport" style="grid-area:center">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>shared_landspeeder.msh</div></div>
+          <div class="panel-actions">
+            <div class="pbtn" title="Toggle inspector" onclick="toggleInsp()">◐</div>
+            <div class="pbtn" title="Maximize">⤢</div>
+          </div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+          <div class="vp-overlay tl"><div class="vp-chip on" onclick="toggleChip(this)">Solid</div><div class="vp-chip" onclick="toggleChip(this)">Wire</div><div class="vp-chip" onclick="toggleChip(this)">Textured</div></div>
+          <div class="vp-overlay tr"><div class="vp-chip" title="Orbit">⟲</div><div class="vp-chip" title="Frame">⛶</div></div>
+          <div class="model">
+            <svg width="300" height="210" viewBox="0 0 260 180" fill="none" stroke="var(--color-accent)" stroke-width="1.4" opacity="0.9">
+              <polygon points="60,120 160,120 200,80 100,80" fill="rgba(126,201,78,0.06)"/>
+              <polygon points="60,120 60,90 100,50 100,80" fill="rgba(126,201,78,0.10)"/>
+              <polygon points="100,80 200,80 200,50 100,50" fill="rgba(126,201,78,0.04)"/>
+              <line x1="60" y1="120" x2="60" y2="90"/><line x1="160" y1="120" x2="200" y2="80"/>
+            </svg>
+          </div>
+          <svg class="gizmo" viewBox="0 0 60 60"><line x1="30" y1="30" x2="30" y2="6" stroke="#6db33f" stroke-width="2"/><line x1="30" y1="30" x2="52" y2="40" stroke="#e0584f" stroke-width="2"/><line x1="30" y1="30" x2="10" y2="42" stroke="#4a8cff" stroke-width="2"/></svg>
+          <div class="vp-stats">persp · 1280×720 · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+
+      <!-- slide-over inspector -->
+      <div class="panel overlay-inspector" data-note="slide-over">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Inspector</div></div>
+          <div class="panel-actions"><div class="pbtn" title="Close" onclick="toggleInsp()">×</div></div>
+        </div>
+        <div class="panel-body">
+          <div style="padding:9px 10px; border-bottom:1px solid var(--color-border-soft);">
+            <div class="insp-name" style="font-weight:600;">shared_landspeeder.msh</div>
+            <div class="insp-type" style="color:var(--color-text-muted); font-size:var(--text-xs);">Static Mesh (MSH)</div>
+          </div>
+          <div class="accordion open"><div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">✥</span>Transform</div>
+            <div class="acc-body">
+              <div class="field"><label>Position</label><div class="vec"><input class="numbox" value="0.000"><input class="numbox" value="0.000"><input class="numbox" value="0.000"></div></div>
+              <div class="field"><label>Scale</label><div class="vec"><input class="numbox" value="1.000"><input class="numbox" value="1.000"><input class="numbox" value="1.000"></div></div>
+            </div>
+          </div>
+          <div class="accordion open"><div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◳</span>Mesh</div>
+            <div class="acc-body"><div class="kv"><span class="k">Vertices</span><span class="v insp-verts">4,812</span></div><div class="kv"><span class="k">Triangles</span><span class="v insp-tris">3,104</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- expandable bottom strip -->
+      <div class="bottom-strip">
+        <div class="strip-head" onclick="toggleData()">
+          <span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--color-accent);display:inline-block"></span>
+          <span>Datatable · creature_names.iff</span>
+          <span style="margin-left:auto; color:var(--color-text-faint)">▴ click to expand</span>
+        </div>
+        <div class="panel" style="border-radius:0 0 var(--radius-md) var(--radius-md); height:calc(100% - 26px);">
+          <div class="panel-body"><table class="dt">
+            <thead><tr><th>row</th><th>object</th><th>hit_points</th><th>armor</th><th>speed</th></tr></thead>
+            <tbody>
+              <tr class="selected" onclick="pickRow(this)"><td>0</td><td>bantha</td><td>14000</td><td>40</td><td>1.0</td></tr>
+              <tr onclick="pickRow(this)"><td>1</td><td>ronto</td><td>9000</td><td>25</td><td>1.2</td></tr>
+              <tr onclick="pickRow(this)"><td>2</td><td>dewback</td><td>11000</td><td>32</td><td>1.1</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>compact mode</span><span class="sep">·</span>
+      <span>activity rail + slide-over inspector</span>
+      <span style="margin-left:auto"><span class="ok">crossOriginIsolated: true</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SKETCH TOOLBAR ============ -->
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select id="tb-theme" onchange="setTheme(this.value)">
+    <option value="cyan" selected>Cyan</option>
+    <option value="default">SWG green</option>
+    <option value="amber">Amber</option>
+    <option value="blue">IDE blue</option>
+    <option value="high-contrast">High contrast</option>
+  </select>
+  <button id="btn-drops" onclick="toggleDrops(this)">⬚ docking demo</button>
+  <button id="btn-annot" onclick="toggleAnnot(this)">⊙ annotate</button>
+</div>
+
+<script>
+  // Theme is a first-class, user-selectable setting (accent + accessibility),
+  // not sketch-only chrome. Both pickers stay in sync.
+  function setTheme(name) {
+    document.querySelector('link[href*=themes]').href = '../themes/' + name + '.css';
+    const a = document.getElementById('app-theme'); if (a) a.value = name;
+    const t = document.getElementById('tb-theme'); if (t) t.value = name;
+  }
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).classList.add('active');
+    btn.classList.add('active');
+  }
+  function toggleTree(rowEl) {
+    rowEl.closest('.tree-item').classList.toggle('open');
+  }
+  function pick(rowEl) {
+    const v = rowEl.closest('.variant');
+    v.querySelectorAll('.tree-row.asset, .tree-row[data-name]').forEach(r => r.classList.remove('selected'));
+    rowEl.classList.add('selected');
+    const name = rowEl.dataset.name, type = rowEl.dataset.type, verts = rowEl.dataset.verts, tris = rowEl.dataset.tris;
+    v.querySelectorAll('.insp-name').forEach(e => e.textContent = name);
+    v.querySelectorAll('.insp-type').forEach(e => e.textContent = type);
+    if (verts) v.querySelectorAll('.insp-verts').forEach(e => e.textContent = verts);
+    if (tris)  v.querySelectorAll('.insp-tris').forEach(e => e.textContent = tris);
+  }
+  function pickRow(tr) {
+    tr.closest('tbody').querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+    tr.classList.add('selected');
+  }
+  function switchTab(tabEl, idx) {
+    const panel = tabEl.closest('.panel');
+    panel.querySelectorAll('.panel-tabs .ptab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    const panes = panel.querySelectorAll('.panel-body > .tab-pane');
+    panes.forEach((p, i) => p.classList.toggle('active', i === idx));
+  }
+  function toggleAcc(headEl) { headEl.closest('.accordion').classList.toggle('open'); }
+  function toggleChip(chip) {
+    chip.parentElement.querySelectorAll('.vp-chip').forEach(c => c.classList.remove('on'));
+    chip.classList.add('on');
+  }
+  // collapse panels (the ▾ button)
+  document.querySelectorAll('.collapse-btn').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); btn.closest('.panel').classList.toggle('collapsed');
+      btn.textContent = btn.closest('.panel').classList.contains('collapsed') ? '▸' : '▾'; });
+  });
+  // docking demo — show drop zones on the active variant
+  function toggleDrops(btn) {
+    btn.classList.toggle('on');
+    document.querySelectorAll('.variant').forEach(v => v.classList.toggle('show-drops', btn.classList.contains('on')));
+  }
+  function toggleAnnot(btn) { btn.classList.toggle('on'); document.body.classList.toggle('annotate', btn.classList.contains('on')); }
+  // Variant C controls
+  function railToggleLeft(btn) { btn.classList.toggle('active'); document.getElementById('ws-c').classList.toggle('left-hidden'); }
+  function toggleData(btn) { document.getElementById('ws-c').classList.toggle('data-open'); if (btn) btn.classList.toggle('active'); }
+  function toggleInsp(btn) { document.getElementById('ws-c').classList.toggle('insp-open'); if (btn && btn.classList) btn.classList.toggle('active'); }
+</script>
+</body>
+</html>

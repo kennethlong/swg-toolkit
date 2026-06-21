@@ -1,0 +1,11 @@
+/* SWG Toolkit — accent variant: Star Wars amber/gold */
+@import "default.css";
+:root {
+  --color-accent:       #e0a13a;
+  --color-accent-hover: #f2bd5a;
+  --color-accent-text:  #241701;
+  --color-accent-dim:   rgba(224, 161, 58, 0.16);
+  --color-accent-line:  rgba(224, 161, 58, 0.45);
+  --drop-fill:          rgba(224, 161, 58, 0.18);
+  --drop-line:          rgba(224, 161, 58, 0.85);
+}

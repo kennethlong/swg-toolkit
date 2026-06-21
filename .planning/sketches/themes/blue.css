@@ -1,0 +1,11 @@
+/* SWG Toolkit — accent variant: neutral IDE blue */
+@import "default.css";
+:root {
+  --color-accent:       #4a8cff;
+  --color-accent-hover: #6ba2ff;
+  --color-accent-text:  #04122e;
+  --color-accent-dim:   rgba(74, 140, 255, 0.16);
+  --color-accent-line:  rgba(74, 140, 255, 0.45);
+  --drop-fill:          rgba(74, 140, 255, 0.18);
+  --drop-line:          rgba(74, 140, 255, 0.85);
+}
