@@ -57,8 +57,9 @@ These are authoritative — harvest logic from them and validate formats against
 
 ## Repo & branch model
 
-- **origin** = `github.com/kennethlong/swg-toolset.git`. Branch: **`main`**. (Note: the GitHub repo is
-  named `swg-toolset`; the local dir is `SWG-Toolkit`.)
+- **origin** = `github.com/kennethlong/swg-toolkit.git`. Branch: **`main`**. (Repo and project name now
+  match: `swg-toolkit`. Local dir is `SWG-Toolkit` — case-only difference. Renamed from the old
+  `swg-toolset`, which GitHub still redirects.)
 - Trunk-based on `main` for now (the maintainer manages git directly). `.planning/` and `docs/` are
   tracked; `CLAUDE.md`, `AGENTS.md`, `.claude/`, and build artifacts are gitignored.
 - `git fetch` before pushing.
