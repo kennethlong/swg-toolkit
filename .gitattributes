@@ -1,0 +1,144 @@
+# ===========================================================================
+# .gitattributes — SWG-Toolkit
+# Windows + cross-platform project: TypeScript/React/Node, a C++ Node-API
+# addon, a Python Blender plugin, and binary SWG game assets.
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Default: treat everything as text, normalize to LF in the repo, and check out
+# as LF on every platform. Git still auto-detects binary and leaves it alone.
+# This eliminates the "LF will be replaced by CRLF" churn on Windows checkouts.
+# ---------------------------------------------------------------------------
+* text=auto eol=lf
+
+# ---------------------------------------------------------------------------
+# Explicit text types (eol=lf inherited from the default above)
+# ---------------------------------------------------------------------------
+*.md        text
+*.txt       text
+*.json      text
+*.jsonc     text
+*.js        text
+*.jsx       text
+*.ts        text
+*.tsx       text
+*.mjs       text
+*.cjs       text
+*.css       text
+*.scss      text
+*.html      text
+*.svg       text
+*.yml       text
+*.yaml      text
+*.toml      text
+*.xml       text
+*.c         text
+*.h         text
+*.cc        text
+*.cpp       text
+*.hpp       text
+*.cxx       text
+*.glsl      text
+*.vert      text
+*.frag      text
+*.py        text
+*.lua       text
+*.cfg       text
+*.ini       text
+*.cmake     text
+*.gyp       text
+*.gypi      text
+.editorconfig text
+
+# ---------------------------------------------------------------------------
+# Windows scripts MUST stay CRLF (cmd.exe / batch break with LF)
+# ---------------------------------------------------------------------------
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# POSIX shell scripts MUST stay LF (even on Windows checkouts)
+*.sh        text eol=lf
+
+# ---------------------------------------------------------------------------
+# Binary assets — never normalize, never diff/merge as text
+# ---------------------------------------------------------------------------
+# Images / fonts / media
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.bmp   binary
+*.tga   binary
+*.dds   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.wav   binary
+*.mp3   binary
+*.ogg   binary
+
+# Archives / native binaries
+*.zip   binary
+*.7z    binary
+*.gz    binary
+*.exe   binary
+*.dll   binary
+*.lib   binary
+*.node  binary
+*.pdb   binary
+*.obj   binary
+
+# Blender
+*.blend  binary
+*.blend1 binary
+
+# SWG proprietary game-asset formats (IFF containers / archives): pin binary so
+# chunk sizes and byte layouts are never corrupted by EOL conversion.
+*.tre   binary
+*.toc   binary
+*.iff   binary
+*.msh   binary
+*.mgn   binary
+*.apt   binary
+*.pob   binary
+*.skt   binary
+*.sat   binary
+*.ans   binary
+*.lmg   binary
+*.trn   binary
+*.fld   binary
+*.ws    binary
+*.pal   binary
+*.snd   binary
+*.prt   binary
+*.eft   binary
+*.lsb   binary
+*.cdf   binary
+*.floc  binary
+*.spw   binary
+*.sky   binary
+*.wth   binary
+*.prp   binary
+*.stf   binary
+*.sht   binary
+*.fnt   binary
+
+# ---------------------------------------------------------------------------
+# Git LFS (optional) — the toolkit is designed to version large binary mod
+# assets via Git LFS (see docs/06-workflow/version-control-and-backup.md).
+# To enable, run once:   git lfs install
+# then track the heavy types (this supersedes the `binary` rules above):
+#     git lfs track "*.tre" "*.trn" "*.fld" "*.dds" "*.blend"
+# which appends `filter=lfs diff=lfs merge=lfs -text` rules here.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Diff hints / GitHub linguist
+# ---------------------------------------------------------------------------
+docs/**           linguist-documentation
+*.lock            -diff
+package-lock.json -diff
