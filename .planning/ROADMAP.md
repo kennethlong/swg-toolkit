@@ -1,0 +1,161 @@
+# Roadmap: SWG Toolkit
+
+## Overview
+
+The journey runs from a proven cross-process pipeline to a complete, in-game-verified modding studio. It opens by de-risking the riskiest infrastructure (C++ -> N-API -> backend -> preload -> renderer wiring, Electron security, cross-origin isolation) and standing up the dark dockable shell. It then builds the **dependency root** — IFF read/write primitives, TRE mount, and the byte-exact verification harness that retires the project's #1 risk (format fidelity) — and proves the whole zero-copy contract by rendering a real SWG mesh in the viewport (the MVP). In parallel, the Win32 live-injection foundation branches off early (it depends only on Win32, not the format tower). The edit/deploy loop closes "idea -> deployed `.tre`," then the two independently-built halves (viewport gizmo + injection) join into the WYSIWYG zero-restart loop alongside the first typed edit surfaces. The Blender bridge (decoupled sidecar) and the parallelizable format-editor leaves add breadth, and the suite finishes with the independent islands: Core3 parity, navmesh, MCP, and AI assists.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases (1, 2, 3): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 0: Toolchain De-risk & App Shell** - Prove the full native->renderer pipeline, lock Electron security/isolation, ship the dark dockable shell
+- [ ] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate
+- [ ] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export
+- [ ] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track)
+- [ ] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs
+- [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
+- [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
+- [ ] **Phase 7: Format Editors** - Terrain, world snapshots, flora, collision/portals, UI, audio/FX — parallelizable leaves on the IFF root
+- [ ] **Phase 8: Parity, Navmesh, MCP & AI** - Core3 dual-track parity, navmesh, MCP server, and advisory AI assists (independent islands)
+
+## Phase Details
+
+### Phase 0: Toolchain De-risk & App Shell
+**Goal**: Prove the entire pipeline wiring (C++ -> N-API -> backend -> preload -> renderer) with a trivial round-trip, lock the security posture, and present the dark dockable workspace — before any real format work accrues.
+**Mode:** mvp
+**Depends on**: Nothing (first phase)
+**Requirements**: FND-01, FND-02, FND-03, FND-04, FND-05
+**Success Criteria** (what must be TRUE):
+  1. The app boots as an Electron desktop app with `contextIsolation: true`, `nodeIntegration: false`, and a renderer that calls native code only through a narrow, typed, validated preload bridge (no Node in the renderer).
+  2. The C++ Node-API addon builds via cmake-js, loads in the Electron main/utility process (never the sandboxed renderer), and returns a value from a "hello" call observable in the renderer.
+  3. `crossOriginIsolated === true` in the packaged renderer (COOP/COEP set), so a `SharedArrayBuffer` can be allocated.
+  4. A shared-types `contracts/` package compiles and is imported by both backend and renderer, defining IPC, byte-offset, and opcode types.
+  5. The user sees a dark, dockable, persistent multi-panel workspace (sidebar / 3D canvas / data pane / inspector) whose layout survives a restart.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 1: Core Engine — IFF + TRE + Verification Harness
+**Goal**: Stand up the dependency root — IFF read/write primitives, TRE mount with correct override resolution, and the byte-exact verification harness that retires the format-fidelity risk — all on async worker threads so the UI never blocks.
+**Mode:** mvp
+**Depends on**: Phase 0
+**Requirements**: CORE-01, CORE-02, CORE-03, CORE-04, CORE-05, CORE-06
+**Success Criteria** (what must be TRUE):
+  1. The user can mount one or more real `.tre` archives from an installed client as a virtual filesystem, with load-order/override resolution where a patch archive correctly shadows retail trees.
+  2. The user can browse and search the mounted virtual filesystem by path/name.
+  3. The system parses an arbitrary real IFF (FORM/chunk) file into a navigable tree with zero unexplained trailing bytes, and serializes an edited structure back **byte-exact** (round-trip gate, verified against a cited `swg-client-v2` loader).
+  4. The reusable format-verification harness round-trips a real extracted asset byte-for-byte from fixtures and is wired in as a standing gate every later format inherits.
+  5. Mounting/decompressing a multi-GB archive and parsing a large IFF run on async worker threads — the UI stays responsive (no main-thread freeze) throughout.
+**Plans**: TBD
+
+### Phase 2: 3D Mesh Viewport (MVP Proof)
+**Goal**: Validate the zero-copy contract end-to-end by rendering a real SWG mesh in the Three.js/R3F viewport with textures, palette customization, skeletons, and animation — and let the user extract and export it. This is the moment the tool beats TRE Explorer on viewing.
+**Mode:** mvp
+**Depends on**: Phase 1
+**Requirements**: VIEW-01, VIEW-02, VIEW-03, VIEW-04
+**Success Criteria** (what must be TRUE):
+  1. The user can open a real static or skinned mesh (`.msh`/`.mgn`) and see it render correctly in the viewport with an orbit camera (geometry crosses the bridge zero-copy into `BufferGeometry`).
+  2. The displayed mesh shows its `.dds` textures and `.pal` palette customization applied correctly.
+  3. The user can preview a `.skt`/`.sat` skeleton and play back an `.ans` animation on the mesh without per-frame GC hitching.
+  4. The user can extract a raw asset and export a viewed mesh to glTF/COLLADA that opens in an external tool.
+  5. Each parser added here passes the Phase 1 byte-exact round-trip gate with a cited `swg-client-v2` source.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 3: Live-Injection Foundation
+**Goal**: Build the Win32 injection module — which depends only on Win32, not on the format tower — so attach + read-verify is proven early against a running client; ensure the editor degrades gracefully to file-patch mode when injection is unavailable. (Parallel track off the critical path.)
+**Mode:** mvp
+**Depends on**: Phase 0 (Win32-only; independent of Phases 1-2)
+**Requirements**: LIVE-01, LIVE-02, LIVE-04, LIVE-05
+**Success Criteria** (what must be TRUE):
+  1. The user can attach the toolkit to a running SWG client process on Windows through a single, correctly-flagged process-handle lifecycle (`PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE`), with graceful failure messaging when not elevated.
+  2. The system resolves target addresses at runtime via signature/AOB scanning (mined from Utinni, build-hash-keyed), not hard-coded offsets — and attaches successfully on a different client build.
+  3. The system read-verifies an object's live memory state (sane matrix / known sentinel) before any write, refusing to patch when validation fails.
+  4. The system provides a live memory/packet inspector HUD that surfaces the verified object state.
+  5. The editor remains fully usable in file-patch mode when injection is unavailable (no feature requires admin/injection to do core editing).
+**Plans**: TBD
+
+### Phase 4: Edit & Deploy Loop
+**Goal**: Turn the viewer into an editor that closes the modder loop — repack validated edits into a deployable `.tre` patch, activate it via the client `.cfg`, and provide changeset rollback and safe Git/LFS versioning of mod outputs only.
+**Mode:** mvp
+**Depends on**: Phase 1
+**Requirements**: DEPLOY-01, DEPLOY-02, DEPLOY-03, DEPLOY-04
+**Success Criteria** (what must be TRUE):
+  1. The user can repack edits into a deployable `.tre` patch archive that the client loads.
+  2. The system updates the client `.cfg` search order to activate a patch with a safe, BOM-free, atomic write that preserves duplicate `searchTree=` entries in priority order (with backup).
+  3. The user can roll back changes via a changeset/snapshot history that reverts the workspace to a prior state.
+  4. The user can version mod-produced assets via Git/LFS, and a fresh clone is small with no retail `.tre` in `git log` (base/extracted assets are ignored, never blind `git add .`).
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 5: WYSIWYG Live-Sync & Typed Editors
+**Goal**: Join the two independently-built halves — viewport gizmo and injection module — into the zero-restart WYSIWYG loop over the SharedArrayBuffer data channel, and ship the first typed edit surfaces (DTII grid, `.stf` strings) as the highest-frequency editing entry points.
+**Mode:** mvp
+**Depends on**: Phase 2, Phase 3
+**Requirements**: LIVE-03, DATA-01, DATA-02
+**Success Criteria** (what must be TRUE):
+  1. The user can drag a viewport gizmo and see the object move in the running client in real time with zero restart, driven through a `SharedArrayBuffer` write + control ping (no allocation in the 60 fps path; survives a GC-pressure soak test without dangling the native pointer).
+  2. A bad live write can be reverted via the changeset/snapshot system (read-verify guard before write).
+  3. The user can view and edit DTII datatables in a virtualized grid and save them back, passing the byte-exact round-trip gate.
+  4. The user can view and edit `.stf` localized strings and save them back, passing the byte-exact round-trip gate.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 6: Blender Bridge
+**Goal**: Connect Blender to the toolkit over a decoupled WebSocket sidecar and round-trip animation into a valid native SWG `.ans`, developed against fixtures so it never blocks on injection or the renderer.
+**Mode:** mvp
+**Depends on**: Phase 1 (animation parsers); develops in parallel against fixtures
+**Requirements**: BLND-01, BLND-02
+**Success Criteria** (what must be TRUE):
+  1. The Blender plugin connects to the toolkit over the WebSocket bridge (`localhost:9012`) and exchanges messages without touching the renderer/sandbox.
+  2. The user can export a Blender animation to a valid SWG `.ans` with correct Z-up -> Y-up coordinate conversion, and the result passes the byte-exact round-trip gate against `swg-client-v2`/community-plugin output.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 7: Format Editors
+**Goal**: Add breadth by building the parallelizable format-editor leaves on the IFF root — terrain, world snapshots, flora, collision/portals, UI, and audio/FX — each re-applying the Phase 1 verification gate and (for world/flora) designed around `InstancedMesh` from the start.
+**Mode:** mvp
+**Depends on**: Phase 2
+**Requirements**: FMT-01, FMT-02, FMT-03, FMT-04, FMT-05, FMT-06
+**Success Criteria** (what must be TRUE):
+  1. The user can view/edit and serialize terrain (`.trn`) layers and fractals, with the terrain/world rendering built on `InstancedMesh` so a dense scene stays within a draw-call ceiling.
+  2. The user can view/edit and serialize world snapshots (`.ws`) object placement and flora (`.fld`) placement.
+  3. The user can view/edit and serialize collision/portals (`.cdf`/`.pob`/`.floc`).
+  4. The user can view/edit and serialize client UI layouts (`.ui`) and audio (`.snd`) plus particles/effects (`.prt`/`.eft`).
+  5. Every format added here passes the Phase 1 byte-exact round-trip gate with a cited `swg-client-v2` source before merge.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 8: Parity, Navmesh, MCP & AI
+**Goal**: Layer the independent islands — sequenced by value, not dependency — onto the established service layer: Core3/SWGEmu dual-track parity with a standalone audit, a Recast/Detour navmesh, an MCP server wrapping the backend services, and advisory AI assists that always preview before writing.
+**Mode:** mvp
+**Depends on**: Phase 5 (datatable editor for parity), Phase 1-2 (assets for navmesh)
+**Requirements**: SRV-01, AI-01, AI-02
+**Success Criteria** (what must be TRUE):
+  1. The user can sync client datatable changes to Core3/SWGEmu Lua templates through a transactional stage-validate-commit-both flow (verified against the real `MMOCoreORB` tree), and a standalone parity audit reports zero drift.
+  2. The toolkit exposes its capabilities as an MCP server with read-only resources and confirmation-gated write tools, reusing the same backend services the UI calls.
+  3. AI assists add value advisorily (e.g. natural-language datatable queries, mocap->`.ans`, format reverse-engineering aid) and always show a diff/preview before any write.
+**Plans**: TBD
+**UI hint**: yes
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
+
+(Phase 3 — live-injection — and Phase 6 — Blender bridge — are deliberately OFF the critical path and may be developed in parallel with the format chain; they are listed in numeric order here.)
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 0. Toolchain De-risk & App Shell | 0/TBD | Not started | - |
+| 1. Core Engine — IFF + TRE + Verification Harness | 0/TBD | Not started | - |
+| 2. 3D Mesh Viewport (MVP Proof) | 0/TBD | Not started | - |
+| 3. Live-Injection Foundation | 0/TBD | Not started | - |
+| 4. Edit & Deploy Loop | 0/TBD | Not started | - |
+| 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
+| 6. Blender Bridge | 0/TBD | Not started | - |
+| 7. Format Editors | 0/TBD | Not started | - |
+| 8. Parity, Navmesh, MCP & AI | 0/TBD | Not started | - |

@@ -90,8 +90,44 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 
 ## Traceability
 
-*(Phase mapping filled in by the roadmapper — every v1 requirement maps to exactly one phase.)*
+*Every v1 requirement maps to exactly one phase. Coverage: 37/37 (100%).*
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| _pending roadmap_ | — | — |
+| FND-01 | Phase 0 | Pending |
+| FND-02 | Phase 0 | Pending |
+| FND-03 | Phase 0 | Pending |
+| FND-04 | Phase 0 | Pending |
+| FND-05 | Phase 0 | Pending |
+| CORE-01 | Phase 1 | Pending |
+| CORE-02 | Phase 1 | Pending |
+| CORE-03 | Phase 1 | Pending |
+| CORE-04 | Phase 1 | Pending |
+| CORE-05 | Phase 1 | Pending |
+| CORE-06 | Phase 1 | Pending |
+| VIEW-01 | Phase 2 | Pending |
+| VIEW-02 | Phase 2 | Pending |
+| VIEW-03 | Phase 2 | Pending |
+| VIEW-04 | Phase 2 | Pending |
+| LIVE-01 | Phase 3 | Pending |
+| LIVE-02 | Phase 3 | Pending |
+| LIVE-04 | Phase 3 | Pending |
+| LIVE-05 | Phase 3 | Pending |
+| DEPLOY-01 | Phase 4 | Pending |
+| DEPLOY-02 | Phase 4 | Pending |
+| DEPLOY-03 | Phase 4 | Pending |
+| DEPLOY-04 | Phase 4 | Pending |
+| LIVE-03 | Phase 5 | Pending |
+| DATA-01 | Phase 5 | Pending |
+| DATA-02 | Phase 5 | Pending |
+| BLND-01 | Phase 6 | Pending |
+| BLND-02 | Phase 6 | Pending |
+| FMT-01 | Phase 7 | Pending |
+| FMT-02 | Phase 7 | Pending |
+| FMT-03 | Phase 7 | Pending |
+| FMT-04 | Phase 7 | Pending |
+| FMT-05 | Phase 7 | Pending |
+| FMT-06 | Phase 7 | Pending |
+| SRV-01 | Phase 8 | Pending |
+| AI-01 | Phase 8 | Pending |
+| AI-02 | Phase 8 | Pending |
