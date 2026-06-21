@@ -12,11 +12,12 @@ A brief map of smaller SWG formats not yet given full deep-dives in this doc set
 
 | Extension | Name | Purpose |
 |-----------|------|---------|
-| `.mif` | Movie/Movement Interface Format | Scripted client camera sequences: keyframed coordinate paths, FOV changes, camera shake, lens-flare, and event timeline cues over a continuous track. Visualizing in R3F would allow previewing camera splines inside the editor canvas. |
+| `.mif` | Movie Interface Format | Keyframed sequencer for client camera paths: camera spline paths, FOV alterations, camera shake, lens-flare positions, and event timeline cues used to drive cutscenes. Each track is a time-indexed sequence of camera transforms; the engine interpolates between keyframes at playback. Design opportunity: an **R3F editable camera-spline visualization** would let modders edit camera path loops directly in the 3D viewport — clicking control-points to reposition spline knots and preview the animated camera path in real time before export. |
 | `.fnt` | Font Descriptor | Proprietary typography tables mapping character bitmask bounding boxes across companion texture atlases. Defines kerning, line height, and pixel offsets for nameplates, chat frames, and UI text blocks. |
 | `.cmd` | Command/Script Registry | Client-side action hook tables: hotkey bindings, command-line execution parameters, input constraints, cooldown processing, and macro loops for player abilities (e.g. `/burstRun`, `/feignDeath`). |
 | `.pob` / `.cdf` | Portal Object Blueprint / Collision Description File | Indoor portal-cell building interiors (`.pob`) and bounding collision capsules around static objects (`.cdf`). Full treatment in [collision-and-portals.md](./collision-and-portals.md). |
-| `.wth` | Weather Blueprint | Companion to `.sky`; stores weather probabilities such as sandstorm triggers on Tatooine. Parsed the same way as `.sky` timeline tracks. |
+| `.wth` | Weather Blueprint | Companion to `.sky`; stores weather probabilities such as **Tatooine sandstorm triggers** and **Endor's dense fog canopy** layers. Each probability entry maps a weather-state ID to a chance weight and duration band. Parsed the same way as `.sky` timeline tracks — see the [Sky / Weather (`.sky`)](#sky--weather-sky) section above for the IFF chunk layout and TypeScript interpolation engine. |
+| `.cls` | *(unknown)* | **UNVERIFIED** — this extension appeared alongside `.sat` and `.eft` in a skeletal-and-particle-animation context (source line 101) but was given no further detail. Listed here as a placeholder; confirm against `swg-client-v2` before relying on it. |
 
 ---
 

@@ -254,6 +254,8 @@ export const SwgGitVersionControlPanel: React.FC<{ activeWorkspaceRoot: string }
 };
 ```
 
+> **WARNING — do NOT commit raw retail `.tre` game-client dumps.** Original client `.tre` archives are copyrighted Sony Online Entertainment / Daybreak assets and are multi-GB in size; adding them to any Git history (even via LFS) creates a copyright violation and an uncloneable repository. Git/LFS in this toolkit is strictly for **mod-produced** binary outputs (compiled patch `.tre` files, exported `.trn` terrain maps, generated `.msh` meshes, etc.). To work with original client data, extract the assets you need via the toolkit's extraction utilities or pull them from a local client install / authorised CDN on demand — never commit the raw archives themselves.
+
 **Key wins:**
 
 - **No local bloat:** Automating `.gitattributes` creation prevents modders from accidentally committing heavy game objects to the standard history. Large assets route directly to LFS block allocations, keeping clones and pulls fast.
@@ -732,7 +734,7 @@ export const SwgChangesetTimelinePanel: React.FC<Props> = ({
 
 ## 4. Remote Differential Sync
 
-Transferring raw, expanded changeset directories over HTTP breaks bandwidth budgets. The remote sync system uses a three-stage differential pipeline:
+Transferring raw, expanded changeset directories over HTTP breaks bandwidth budgets — multi-GB mod asset trees cannot be streamed as uncompressed file sets without exhausting typical connection limits and stalling the editor for minutes at a time. This is exactly why the SHA-256 broadphase audit combined with a binary-delta delivery pipeline exists: only the files whose hash has changed are packaged and transferred, keeping typical update payloads in the kilobyte-to-low-megabyte range regardless of total workspace size. The remote sync system uses a three-stage differential pipeline:
 
 1. **Server-side manifest:** The remote server hosts a JSON file listing the path, size, and SHA-256 hash of every file in each changeset index row.
 2. **Client-side broadphase audit:** The TypeScript sync service downloads this manifest, compares hashes against the local workspace registry, and isolates only the files that are missing or out of date.

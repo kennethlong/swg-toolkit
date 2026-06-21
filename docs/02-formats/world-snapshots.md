@@ -29,6 +29,8 @@ IFF reader/writer primitives (`IffBinaryWriter`, `TrnBinaryParser`, tag/chunk he
 
 ## 1. IFF Structure
 
+> **AI-proposed / unverified:** In addition to object placement, the `.ws` system is also believed to act as a **World Audio Script** layer — linking coordinate boundary regions (reusing the same spatial-bounds model as `.trn` terrain layers) to environmental ambiance templates. When a player crosses into a defined boundary, the engine crossfades to the associated ambient audio template (e.g. a wind loop in open desert). This region-to-ambiance binding is thought to live in the world snapshot rather than in individual `.snd` emitter files, but the exact chunk tag and field layout have not been confirmed against `swg-client-v2` source. For the per-emitter `.snd` audio pipeline and the complementary description of this feature, see [audio-and-effects.md](./audio-and-effects.md).
+
 A `.ws` file is an IFF container with the following nested hierarchy:
 
 ```

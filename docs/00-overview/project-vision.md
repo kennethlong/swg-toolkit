@@ -29,6 +29,8 @@ This project replaces all of that with one modern, cross-platform-leaning, open,
 
 If everything else is cut, the thing that must work is: **open SWG assets, edit them with live 3D feedback, and get the result into the game.**
 
+**North-star workflow** (the integrative end-goal that justifies the unified architecture): a modder selects a building in the 3D canvas → renames it via its `.stf` string entry → alters its armor points by rewriting its template datatable → and repacks the entire patch into a `.tre` archive **in one continuous step**, without leaving the app. Every format the toolkit learns is another slice of that single editing surface — see [object templates & "everything is IFF"](../02-formats/object-templates.md).
+
 ## Foundations the maintainer already has
 
 This is not greenfield-from-nothing. Existing assets to draw from:

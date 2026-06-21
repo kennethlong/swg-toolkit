@@ -15,6 +15,16 @@ SWG separates relational game data from localized text into two distinct binary 
 
 For generic IFF container reading/writing, see [../01-core-engine/iff-and-tre.md](../01-core-engine/iff-and-tre.md) — only DTII/.stf-specific logic is shown here. For client↔server datatable parity, see [../05-server-integration/core3-parity.md](../05-server-integration/core3-parity.md).
 
+### Illustrative DTII use-cases
+
+Three concrete examples from the client archives illustrate the scope of the format:
+
+- **`datatables/skill/skills.iff`** — defines the complete 32-profession skill tree: XP thresholds, stat modifiers, skill box titles, and prerequisite chains. Every profession branch and every novice-to-master path is a row in this table.
+- **`datatables/crafting/recipes.iff`** — holds component requirements, experiment caps (the per-attribute ceiling that governs how high a crafted item's stats can be pushed during the experimentation phase), and assembly formulas for all craftable items.
+- **`object_template_*.iff`** — maps item blueprints to their base stats, socket counts, and appearance references; the `object_template_weapon.iff` variant is the primary source for the weapon query engine in Part 2 of this document.
+
+For the IFF object-template layer that backs these blueprint paths, see [object-templates.md](./object-templates.md).
+
 ---
 
 ## Part 1: Datatables (DTII .iff)
@@ -373,6 +383,17 @@ public:
 
 ### 2.3 N-API Query Bridge (C++)
 
+**`QueryOp` integer enum** — this is a load-bearing contract between the React payload and the C++ filter engine. The `op` field in every filter object sent to `queryWeaponTableMetrics` must be one of:
+
+| Value | Name | Applies to |
+|-------|------|------------|
+| `0` | `Equals` | integer, float, string |
+| `1` | `Contains` | string (substring match) |
+| `2` | `GreaterThan` | integer, float |
+| `3` | `LessThan` | integer, float |
+
+The C++ side casts the raw `uint32` to `QueryOp` via `static_cast` — passing any value outside 0–3 produces undefined behavior. String columns silently skip `GreaterThan`/`LessThan` predicates (see the query engine in §2.2).
+
 Operation enum mapping (matches the JS side): `0=Equals, 1=Contains, 2=GreaterThan, 3=LessThan`.
 
 ```cpp
@@ -500,6 +521,13 @@ export const SwgWeaponQueryPanel: React.FC<{ nativeBridge: any }> = ({ nativeBri
 ## Part 3: DPS Charting
 
 Uses **Recharts** (`npm install recharts`) to render weapon balance curves directly from query results, without exporting to external spreadsheets.
+
+The chart renders **two distinct series** to separate sustained throughput from the critical-strike ceiling:
+
+- **`baseDps` (Sustained DPS)** — `(minDamage + maxDamage) / 2 / attackSpeed`. This is the long-run average output, equivalent to the classic SWG balance formula. It is the primary ranking axis and is plotted in cyan.
+- **`burstDps` (Burst / Critical Ceiling)** — `maxDamage / attackSpeed`. This represents the theoretical peak if every hit landed at maximum damage (e.g. under a critical-hit modifier or species buff). It is plotted in red as an upper bound, not an expected value.
+
+The gap between the two bars for a given weapon reflects the damage variance: a wide spread (high `maxDamage` relative to `minDamage`) produces a tall red cap; a tight spread collapses them nearly together. Both values are computed in `processWeaponDpsPayload` and exposed on the `ChartCoordinates` interface.
 
 The DPS formula: `DPS = (minDamage + maxDamage) / (2 × attackSpeed)`
 

@@ -35,13 +35,13 @@ The current community pipeline is fragmented: create in Blender → export .obj/
 ### High-Utility Blender-to-App Synergies
 
 **Skeletal rigging and animation parity (.skt / .ans)**
-The studio reads resting bone transforms from .skt data files and passes them over the bridge to auto-construct a matching Armature inside Blender. Artists animate or weight-paint against the correct legacy bones, then pass keyframe matrices back for serialization into .ans files. See [../swg-blender-plugin](../swg-blender-plugin) for the authoritative rig naming scheme.
+The studio reads resting bone transforms from .skt data files and passes them over the bridge to auto-construct a matching Armature inside Blender. Artists animate or weight-paint against the correct legacy bones, then pass keyframe matrices back for serialization into .ans files. The `.ans` format internals (ANST/CHNL/POSK/ROTK chunk layout) are documented separately in [../02-formats/skeletons-and-animation.md](../02-formats/skeletons-and-animation.md) — they are not reproduced here. See [../swg-blender-plugin](../swg-blender-plugin) for the authoritative rig naming scheme and existing serialization code.
 
-**Collision voxelization boundaries (.cdf / .pob)**
-Artists sketch bounding boxes, spheres, or simplified collision hulls over their high-poly mesh in Blender. Clicking save extracts coordinates and feeds them to the C++ .cdf / .pob portal boundary compilers.
+**Collision hull extraction (.cdf / .pob)**
+The bridge eliminates hand-authoring of collision volumes entirely. The artist sketches simple bounding boxes or spheres directly over a high-poly mesh inside Blender — no separate collision-geometry tool required. On save, the bridge extracts the primitive coordinates from those proxy objects and feeds them straight to the C++ `.cdf` / `.pob` collision compilers, producing accurate per-object collision data from the original sculpt without any manual measurement. For the full chunk layout of the compiled collision and portal files see [../02-formats/collision-and-portals.md](../02-formats/collision-and-portals.md). The integration target for this workflow is the [`../swg-blender-plugin`](../swg-blender-plugin).
 
-**Material node system mapping (.sht)**
-Blender's native shader node trees (Principled BSDF) map to SWG's .sht rules. Connecting an image texture node to the "Emissive" slot can be translated by the studio to write the correct PASS and ANIM chunks in the .sht binary. IFF reader/writer boilerplate is documented in [../01-core-engine/iff-and-tre.md](../01-core-engine/iff-and-tre.md).
+**Material node mapping specifics (.sht)**
+The Principled BSDF → `.sht` translation is more literal than it might appear. Connecting a Blender image texture node to the **Emissive** slot of a Principled BSDF node is the key signal the bridge watches: the studio detects that connection and writes the corresponding **`PASS`** and **`ANIM`** chunks into the `.sht` shader binary — the same chunks the renderer uses to drive scrolling, animated, or emissive texture layers. Other Principled BSDF sockets (Base Color, Roughness, Normal) map to their analogous `.sht` texture-stage declarations through the same mechanism. For a full treatment of `.sht` chunk semantics and the IFF serialization layer see [../03-rendering/shaders-and-fx.md](../03-rendering/shaders-and-fx.md). IFF reader/writer boilerplate is also documented in [../01-core-engine/iff-and-tre.md](../01-core-engine/iff-and-tre.md).
 
 ---
 

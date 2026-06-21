@@ -855,8 +855,8 @@ Instead of just patching structural object transforms via `WriteProcessMemory`, 
 
 Placing cities or outposts structure-by-structure inside a `.ws` snapshot template is tedious — hundreds of streetlamps, wall boundaries, and paving tiles positioned one by one.
 
-- **The Tool:** A 3D "Brush Prefab Painter" that treats a collection of snapshot objects as a single layout brush (e.g., a "Corellia Street Block" prefab consisting of roads, sidewalks, trash cans, and lamps).
-- **The Value:** Level designers can select a custom layout blueprint and paint whole streets or military outposts across procedural terrain in real time, with the tool handling individual object height-snapping automatically.
+- **The Tool:** A **prefab brush** painter that treats a curated collection of world-snapshot (`.ws`) objects — roads, sidewalks, lamps, walls, and props — as a single reusable layout brush (e.g., a "Corellia Street Block" or "Imperial Outpost" prefab). The designer selects a blueprint, clicks or drags across the Three.js terrain canvas, and the brush stamps all constituent `.ws` objects into the world simultaneously, with **automatic terrain height-snapping** applied per object so each piece conforms to the underlying heightfield without manual Z-adjustment.
+- **The Value:** Level designers can paint whole settlement or city layouts — streets, military compounds, cantina districts — across procedural terrain in seconds rather than hours. The tool serializes the final object placements back into a valid `.ws` snapshot file that the C++ backend can package and inject directly. For `.ws` format internals see [../02-formats/world-snapshots.md](../02-formats/world-snapshots.md).
 
 ---
 

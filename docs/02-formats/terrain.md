@@ -722,6 +722,18 @@ Instead of one giant mesh, a recycled grid of terrain chunks (e.g. 3×3 or 5×5)
 
 ### 8.1 N-API: `generateTerrainChunk`
 
+The C++ layer accepts a simplified fractal-rule struct that mirrors the parsed `SwgFRACTemplate` fields needed for noise evaluation:
+
+```cpp
+// Simplified representation of an SWG Fractal Noise Rule
+struct SwgFractalRule {
+    int seed;
+    float octaves;
+    float frequency;
+    float amplitude;
+};
+```
+
 Returns `Float32Array` height data plus 4-channel splat blend weights per vertex, ready for WebGL buffer upload.
 
 ```cpp
@@ -1111,6 +1123,24 @@ export const SwgTerrainTreeExplorerPanel: React.FC<{ rootLayer: TerrainLayerData
 ```
 
 ### 11.2 Fractal Inspector Card
+
+To populate the inspector panel, the C++ N-API layer packages a parsed `SwgFRACTemplate` into a JS object that the React frontend can consume directly:
+
+```cpp
+Napi::Object PackageFractalToJsObject(Napi::Env env, const SwgFRACTemplate& frac) {
+    Napi::Object obj = Napi::Object::New(env);
+    obj.Set("id", Napi::Number::New(env, frac.id));
+    obj.Set("name", Napi::String::New(env, frac.name));
+    obj.Set("seed", Napi::Number::New(env, frac.seed));
+    obj.Set("octaves", Napi::Number::New(env, frac.octaves));
+    obj.Set("frequency", Napi::Number::New(env, frac.frequency));
+    obj.Set("amplitude", Napi::Number::New(env, frac.amplitude));
+    obj.Set("gain", Napi::Number::New(env, frac.gain));
+    obj.Set("lacunarity", Napi::Number::New(env, frac.lacunarity));
+    obj.Set("combinationType", Napi::Number::New(env, frac.combinationType));
+    return obj;
+}
+```
 
 Allows real-time slider manipulation of fBm parameters. `onParameterChange` should pipe the updated config to the C++ engine context and trigger a Three.js re-render.
 

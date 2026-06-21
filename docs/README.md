@@ -14,7 +14,7 @@ This `docs/` tree is the **AI-readable specification and reference** for plannin
 |---------|---------------|
 | **[00-overview/](00-overview/)** | Project vision, target architecture, tech-stack decisions, source provenance |
 | **[01-core-engine/](01-core-engine/)** | IFF chunk format, TRE archive read/pack/consolidate, the N-API binary bridge |
-| **[02-formats/](02-formats/)** | Per-format parse → serialize → render reference for every SWG asset type |
+| **[02-formats/](02-formats/)** | Per-format parse → serialize → render reference for every SWG asset type. Start with [object-templates.md](02-formats/object-templates.md) for the "everything is IFF" overview that ties the formats together. |
 | **[03-rendering/](03-rendering/)** | Three.js / R3F viewport: shaders, gizmos, brushes, painting, culling, baking |
 | **[04-live-sync/](04-live-sync/)** | Live client memory injection, dual-channel IPC, packet analysis (the Utinni core) |
 | **[05-server-integration/](05-server-integration/)** | Core3 / SWGEmu Lua parity, server deployment daemon, client↔server sync |

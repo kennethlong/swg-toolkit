@@ -1,0 +1,24 @@
+# Dependencies / build output
+node_modules/
+dist/
+out/
+*.tsbuildinfo
+
+# Native (N-API / node-gyp / cmake-js) addon build artifacts
+build/
+prebuilds/
+*.node
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+
+# Claude Code local (personal) settings — also ignored globally; listed for clarity
+.claude/settings.local.json
+
+# Bulky AI research artifacts — keep the distilled docs/ and the small synthesis,
+# NOT the raw 808KB source copy or the multi-MB consult transcripts.
+.planning/research/source-transcript.txt
+.planning/research/*.out
+.planning/research/*.utf8.txt

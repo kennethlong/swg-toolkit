@@ -69,6 +69,8 @@ Building raw Three.js inside React produces messy lifecycle code. Standardize on
 2. **@react-three/drei** — helpers: `TransformControls`, `OrbitControls`, camera rigs, in-canvas HTML overlays (nameplates, debug HUDs).
 3. **Zustand** — lightweight state that works both in the React render cycle and inside high-frequency R3F `useFrame` loops, so the properties panel and the 3D canvas stay in sync without re-render storms.
 
+**Three.js capabilities to keep in reach.** Beyond the SWG-specific pipelines documented elsewhere, Three.js offers building blocks worth remembering as features are scoped: standard model **loaders** (glTF/FBX/OBJ — useful for reference imports), **morph targets / shape keys** (relevant if a character-customization slider system is built), **procedural mesh generation**, **instanced rendering** (already leaned on for foliage/spawns), and **cinematic post-processing** (bloom, DoF, ambient occlusion). Not all are near-term, but morph targets in particular map cleanly onto SWG character customization.
+
 ## Performance principles (apply everywhere)
 
 - **Keep the main thread free.** All decompression/parsing in async C++ workers.

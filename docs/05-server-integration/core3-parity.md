@@ -292,6 +292,8 @@ For remote servers (e.g., a Linux machine running Core3), the toolkit includes a
 
 Dependencies: [`cpp-httplib`](https://github.com/yhirose/cpp-httplib) (header-only), [`nlohmann/json`](https://github.com/nlohmann/json).
 
+> **Vendored headers required.** The daemon depends on two header-only libraries that are not bundled with the toolkit and must be copied into the build tree before compilation. Place [`httplib.h`](https://github.com/yhirose/cpp-httplib/blob/master/httplib.h) (cpp-httplib) and [`nlohmann/json.hpp`](https://github.com/nlohmann/json/releases) on your include path — the `#include` directives in the code below will resolve them once the headers are present. The published source omitted these includes; they are restored here for completeness.
+
 ```cpp
 #include <httplib.h>           // High-performance C++ header-only HTTP server
 #include <nlohmann/json.hpp>   // JSON library for C++

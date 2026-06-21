@@ -39,3 +39,27 @@ Gemini does not have access to the proprietary SWG format specs. When it describ
 ## Canonical ground-truth sources
 
 See the table in [`../README.md`](../README.md#reference-projects-local-on-the-maintainers-machine). The client source (`../swg-client-v2`) is the single most authoritative reference for client-readable formats; `../Core3` and `../swg-main` for server-side templates and data tables.
+
+## Corrected-source-bugs rule
+
+The source transcript's code contains real bugs (it is AI-generated). During distillation, obvious
+defects were **silently corrected** — e.g. broken N-API argument indexing (`info.As<T>()` →
+`info[n].As<T>()`, ~20 sites), a malformed `SwgBoneJoint` scalar-vs-array field declaration, a
+`(val: float)` → `(val: number)` TypeScript type, and identifier typos (`SwgGlfCompiler` →
+`SwgStfCompiler`). These are improvements, but to keep the docs trustworthy the rule is:
+
+> When a doc corrects a source bug, the correction stands (don't propagate the bug), but it should be
+> *technically sound* and ideally noted. Where a doc instead preserves a source bug verbatim, flag it
+> with a "known source bug" note rather than leaving it silently wrong.
+
+A few source bugs were preserved as-is in early docs (e.g. a stray `info.As` in `DeconstructCdfFile`,
+a `Math.clamp` misuse); treat any N-API `info.As<...>()` that isn't reading argument 0 as suspect.
+
+## Coverage audit (2026-06-21)
+
+These docs were audited against the original transcript by a four-AI "phone a friend" crew (Codex,
+Cursor, Opus, Sonnet) on divergent lenses. Overall fidelity was rated **high** (structural 452/456
+blocks clean; first-half semantics 0 HIGH findings). All gaps the crew found were incorporated — see
+[`../../.planning/research/CONSULT-SYNTHESIS.md`](../../.planning/research/CONSULT-SYNTHESIS.md) for the
+full findings and resolution log. The largest gap (unanimous) was the missing Object Template family,
+now covered in [object-templates.md](../02-formats/object-templates.md).

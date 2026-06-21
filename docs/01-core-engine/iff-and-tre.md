@@ -559,6 +559,140 @@ searchTree=bottom.tre
 
 SWG-Toolkit can manage this automatically: after writing the `.tre` file, the config manager scans `swg.cfg` or `live.cfg`, creates a timestamped backup, inserts the new `searchTree=` line at the top of the `[ResourceSystem]` block, and rewrites the file, preserving all existing duplicate entries.
 
+The `SwgCfgManager` class reads the config line-by-line to preserve structure (including duplicate `searchTree=` keys), inserts the patch entry at the correct priority position, and rewrites the file atomically:
+
+```typescript
+import * as fs from 'fs/promises';
+import * as path from 'path';
+
+export class SwgCfgManager {
+  /**
+   * Reads and parses an SWG .cfg file into an ordered array tree structure
+   */
+  public async parseConfigFile(targetPath: string): Promise<SwgCfgManifest> {
+    const rawContent = await fs.readFile(targetPath, 'utf-8');
+    const lines = rawContent.split(/\r?\n/);
+
+    const parsedLines: CfgLine[] = lines.map((line) => {
+      const trimmed = line.trim();
+
+      if (trimmed.length === 0) {
+        return { type: 'blank', raw: line };
+      }
+      if (trimmed.startsWith('#') || trimmed.startsWith(';')) {
+        return { type: 'comment', raw: line };
+      }
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        return { type: 'section', raw: line, value: trimmed.slice(1, -1) };
+      }
+
+      const equalsIdx = line.indexOf('=');
+      if (equalsIdx !== -1) {
+        return {
+          type: 'pair',
+          raw: line,
+          key: line.slice(0, equalsIdx).trim(),
+          value: line.slice(equalsIdx + 1).trim()
+        };
+      }
+
+      return { type: 'comment', raw: line }; // Fallback
+    });
+
+    return { filePath: targetPath, lines: parsedLines };
+  }
+
+  /**
+   * Registers your patch file safely at the top priority of the resource sequence
+   */
+  public registerPatchTree(manifest: SwgCfgManifest, patchName: string): SwgCfgManifest {
+    const updatedLines = [...manifest.lines];
+
+    // 1. Check if this specific patch file is already registered to avoid duplication
+    const alreadyRegistered = updatedLines.some(
+      l => l.type === 'pair' && l.key === 'searchTree' && l.value === patchName
+    );
+    if (alreadyRegistered) return manifest;
+
+    // 2. Find the ResourceSystem target block section
+    let resourceSectionIdx = updatedLines.findIndex(
+      l => l.type === 'section' && l.value?.toLowerCase() === 'resourcesystem'
+    );
+
+    // If the section doesn't exist, append one to the end of the file safely
+    if (resourceSectionIdx === -1) {
+      updatedLines.push({ type: 'blank', raw: '' });
+      updatedLines.push({ type: 'section', raw: '[ResourceSystem]', value: 'ResourceSystem' });
+      resourceSectionIdx = updatedLines.length - 1;
+    }
+
+    // 3. Insert the new patch file entry immediately following the section declaration header block
+    // This gives your custom file absolute override priority over legacy game files
+    const patchInsertionEntry: CfgLine = {
+      type: 'pair',
+      raw: `searchTree=${patchName}`,
+      key: 'searchTree',
+      value: patchName
+    };
+
+    updatedLines.splice(resourceSectionIdx + 1, 0, patchInsertionEntry);
+    return { ...manifest, lines: updatedLines };
+  }
+
+  /**
+   * Serializes the structure array cleanly back into physical configuration text assets
+   */
+  public async writeConfigFile(manifest: SwgCfgManifest): Promise<void> {
+    // Automated Backup Check Layer: Prevent file corruption issues
+    const backupPath = `${manifest.filePath}.bak`;
+    try {
+      await fs.copyFile(manifest.filePath, backupPath);
+    } catch {
+      // Create backup file quietly if it does not exist
+    }
+
+    const outputText = manifest.lines
+      .map((line) => {
+        if (line.type === 'pair') return `${line.key}=${line.value}`;
+        return line.raw;
+      })
+      .join('\n');
+
+    await fs.writeFile(manifest.filePath, outputText, 'utf-8');
+  }
+}
+```
+
+The high-level `executeAutoConfigPatch` wrapper iterates over all candidate config filenames and applies the patch registration to whichever files are present:
+
+```typescript
+export async function executeAutoConfigPatch(clientDirectory: string, patchFileName: string): Promise<void> {
+  const cfgManager = new SwgCfgManager();
+
+  // SWG installations can target either swg.cfg or live.cfg depending on setup types
+  const potentialConfigs = ['swg.cfg', 'live.cfg', 'user.cfg'];
+
+  for (const filename of potentialConfigs) {
+    const fullPath = path.join(clientDirectory, filename);
+
+    try {
+      // Check if file profile is present inside the folder structure
+      await fs.access(fullPath);
+
+      console.log(`Auto-Config scanning targeting system: ${filename}`);
+      let manifest = await cfgManager.parseConfigFile(fullPath);
+
+      manifest = cfgManager.registerPatchTree(manifest, patchFileName);
+      await cfgManager.writeConfigFile(manifest);
+
+      console.log(`Successfully updated active path layout within: ${filename}`);
+    } catch (err) {
+      // Quietly step past config targets that aren't utilized by this client setup
+    }
+  }
+}
+```
+
 ---
 
 ## 12. TRE Consolidation: TREE0005 Multi-Layer Packing

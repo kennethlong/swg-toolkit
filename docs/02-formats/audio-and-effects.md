@@ -317,6 +317,12 @@ export const SwgAudioMixerPropertiesPanel: React.FC<{
 };
 ```
 
+### 1.7 World Audio Scripts (geo-triggered ambiance)
+
+The per-emitter `.snd` workflow described above covers sounds anchored to specific objects or hardpoints. SWG also supports a separate, region-scoped audio layer — **World Audio Scripts** — that binds geographic coordinate areas to environmental ambiance templates. Rather than attaching to an object, these bindings are keyed to boundary regions that reuse the same coordinate-space layer model as `.trn` terrain layer bounds: when a player's position crosses into a defined boundary, the engine crossfades to the associated ambiance template (e.g. a constant wind-loop sample when entering open desert, or a dense insect chorus inside a jungle canopy).
+
+This region-to-ambiance mapping lives within the world snapshot layer (`.ws`) rather than in individual `.snd` files. For the `.ws` structure and how coordinate boundaries are expressed, see [world-snapshots.md](./world-snapshots.md).
+
 ---
 
 ## 2. Particle and Effect Files (.prt / .eft)
@@ -833,7 +839,11 @@ export const SwgAnimationAudioSynchronizer: React.FC<SyncedAudioProps> = ({
 
 ### 3.5 Audio Dashboard UI Controls (React Overlay Sidebar)
 
-Master volume mixer panel for balancing hum volumes, toggling sound triggers, and monitoring active Web Audio voice channels.
+Master volume mixer panel for balancing hum volumes, toggling sound triggers, and monitoring active Web Audio voice channels. The `AudioMixerState` interface exposes three independent controls:
+
+- **`masterVolume`** — global scalar applied to all active `THREE.Audio` / `THREE.PositionalAudio` nodes in the workspace.
+- **`enableSndTriggers`** — gates whether the `SwgAnimationAudioTriggerRegistry` fires swing/impact sound events during animation playback. Disabling this is useful when scrubbing an animation silently.
+- **`muteHumLoop`** — mutes the constant lightsaber blade-hum loop (`saber_hum_loop.snd`) independently of swing and impact sounds. Because the hum runs as a separate persistent `THREE.Audio` node (see `startBladeHumLoop` in §3.4), it can be toggled without affecting the one-shot swing triggers.
 
 ```tsx
 import React, { useState } from 'react';
