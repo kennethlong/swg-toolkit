@@ -36,11 +36,13 @@ amber/blue/high-contrast). Components reference tokens, never hardcoded colors.
 
 ---
 
-## Spacing Scale
+## Spacing Scale — 3px DCC base grid (project grid exception)
 
-The project uses a **compact DCC scale** — not the standard 8-point grid. The sketch defines a
-3-pixel base unit (`--space-1: 3px`) to match Blender-style tight density. Use these tokens
-exclusively for intra-component and layout spacing. Do not use arbitrary pixel values.
+This project deliberately overrides the standard 4px web grid with a 3px DCC base unit to match
+Blender-style panel density (validated in sketch 001). All spacing tokens are multiples of the 3px
+project base unit, not 4px. This is a documented, intentional project-level exception.
+
+Use these tokens exclusively for intra-component and layout spacing. Do not use arbitrary pixel values.
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -63,7 +65,10 @@ exclusively for intra-component and layout spacing. Do not use arbitrary pixel v
 
 ## Typography
 
-Two font families, five declared sizes. Weights are 400 (regular) and 600 (semibold) only.
+Two font families, four declared sizes. Weights are 400 (regular) and 600 (semibold) only.
+
+<!-- 16px (heading/modal-title) is intentionally excluded from Phase 0 — no modal surfaces exist
+     in this phase. Add --text-lg when a modal or large pane header is introduced in a later phase. -->
 
 | Role | Token | Size | Weight | Line Height | Font Stack | Usage |
 |------|-------|------|--------|-------------|------------|-------|
@@ -71,7 +76,6 @@ Two font families, five declared sizes. Weights are 400 (regular) and 600 (semib
 | Label / tree | `--text-sm` | 12px | 400 | 1.4 | sans | Tree row labels, tab labels, menu items, chip labels, panel action buttons |
 | Body / field | `--text-base` | 13px | 400 | 1.5 | sans | Default body, field values (numbox), general panel copy |
 | Subheading / name | `--text-md` | 14px | 600 | 1.3 | sans | Inspector asset name, accordion head label, section headings |
-| Heading | `--text-lg` | 16px | 600 | 1.2 | sans | (reserved for modal titles or future pane headers — not used in Phase 0 shell) |
 
 **Rules:**
 - Accordion heads use `--text-sm` at weight 600 (the sketch uses `font-size: var(--text-sm); font-weight: 600`).
@@ -200,6 +204,35 @@ exceptions. The focus ring token differs between default and high-contrast theme
 - High-contrast theme: white (#fff) on #101012 — PASS AAA.
 - Accent `--color-accent-text` (#04201f) on `--color-accent` (#38bec9): contrast ratio ≈ 6.1:1 — PASS AA.
 
+### Rule 5: Every icon-only / glyph-only control must carry an accessible name
+
+Icon-only controls (panel action buttons, tab close, viewport tool chips, titlebar window controls)
+convey meaning exclusively through a glyph. Every such element MUST declare both:
+
+- `aria-label="<descriptive name>"` — read by screen readers
+- `title="<same descriptive name>"` — visible tooltip on hover
+
+Required labels for Phase 0 controls (exhaustive list — extend as new controls are added):
+
+| Control | Glyph | `aria-label` / `title` |
+|---------|-------|----------------------|
+| Panel split button | ⊟ | `"Split panel"` |
+| Panel collapse button (open) | ▾ | `"Collapse panel"` |
+| Panel collapse button (closed) | ▸ | `"Expand panel"` |
+| Panel maximize button | ⤢ | `"Maximize panel"` |
+| Panel close button | × | `"Close panel"` |
+| Tab close button | × | `"Close tab"` |
+| Titlebar minimize | ● (yellow) | `"Minimize window"` |
+| Titlebar maximize | ● (green) | `"Maximize window"` |
+| Titlebar close | ● (red) | `"Close window"` |
+| Viewport chip — Orbit | ⟲ | `"Orbit camera"` |
+| Viewport chip — Pan | ✥ | `"Pan camera"` |
+| Viewport chip — Frame | ⛶ | `"Frame selection"` |
+
+This requirement applies equally in all themes, including high-contrast. The planner must create
+a task for auditing every icon-only control for `aria-label` + `title` presence. See Panel Chrome
+section below for the implementation note.
+
 ---
 
 ## Layout Contract
@@ -247,6 +280,9 @@ Every panel is a flex column with:
 - Resting: `color: --color-text-faint; background: transparent`
 - Hover: `background: --color-widget; color: --color-text`
 - Focus-visible: `box-shadow: var(--focus-ring)`
+- **Accessibility (Rule 5):** Every action button and icon-only glyph control MUST render with
+  `aria-label` + `title` per the table in Rule 5 above. No icon-only button may be implemented
+  without both attributes in place.
 
 **Collapse behavior:** Clicking the collapse button (▾) hides `panel-body` and `panel-tabs`,
 leaving only the panel-head visible. Button changes to ▸. Click again to restore.
@@ -373,6 +409,7 @@ Or, if the Phase 0 proof has run, show the SAB round-trip result:
 - Hover (inactive): `color: --color-text; border-color: --color-accent-line`
 
 **Viewport overlay chips (top-right):** ⟲ Orbit | ✥ Pan | ⛶ Frame — same chip styling.
+Each chip that is glyph-only (no visible text label) must carry `aria-label` + `title` per Rule 5.
 
 **Viewport stats overlay (bottom-left):**
 `--font-mono; --text-xs; --color-text-faint`
