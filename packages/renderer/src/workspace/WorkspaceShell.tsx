@@ -34,6 +34,14 @@ export default function WorkspaceShell(): React.ReactElement {
   const onReady = (event: DockviewReadyEvent): void => {
     apiRef.current = event.api;
 
+    // Register onDidLayoutChange FIRST so that initial panel additions
+    // (from buildInitialLayout) trigger the save handler.
+    // This ensures localStorage is populated immediately after first render —
+    // required by the SC-5 E2E assertion (04-workspace.spec.ts).
+    event.api.onDidLayoutChange(() => {
+      localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(event.api.toJSON()));
+    });
+
     // Restore persisted layout or fall back to default
     const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
     if (saved) {
@@ -42,15 +50,15 @@ export default function WorkspaceShell(): React.ReactElement {
       } catch {
         // Corrupted or incompatible layout — fall back to default
         buildInitialLayout(event.api);
+        // Explicitly save after fallback (fromJSON corruption path)
+        localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(event.api.toJSON()));
       }
     } else {
       buildInitialLayout(event.api);
-    }
-
-    // Persist on every layout change
-    event.api.onDidLayoutChange(() => {
+      // Explicitly save the initial layout (onDidLayoutChange may not fire for
+      // the first addPanel batch before the handler was attached in older dockview)
       localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(event.api.toJSON()));
-    });
+    }
   };
 
   return (
