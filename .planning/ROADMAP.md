@@ -12,7 +12,7 @@ The journey runs from a proven cross-process pipeline to a complete, in-game-ver
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 0: Toolchain De-risk & App Shell** - Prove the full native->renderer pipeline, lock Electron security/isolation, ship the dark dockable shell
+- [x] **Phase 0: Toolchain De-risk & App Shell** - Prove the full native->renderer pipeline, lock Electron security/isolation, ship the dark dockable shell ✓ 2026-06-22 (Path B: native-in-renderer zero-copy)
 - [ ] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate
 - [ ] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export
 - [ ] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track)
@@ -48,7 +48,7 @@ Plans:
 - [x] 00-04-PLAN.md — Dark dockable workspace shell: DockviewReact (explicit panel sizing), 5 locked themes, StatusBar as single owner of SAB hooks + per-run-NONCE cross-write driver (shared/copy/timeout distinguished); runs after the 00-03 architecture gate
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 00-05-PLAN.md — E2E suite (SC-1..SC-5 incl. Object.keys allowlist + instanceof + NONCE cross-write + REAL close/relaunch restart against the real userData path + packaged file:// HARD gate via package:ci/PACKAGED_EXE_PATH, skip = fail) + independent Nyquist sign-off certifying only what was proven (FND-02 non-circular resolution + Electron-ABI packaged load — not a proxy)
+- [x] 00-05-PLAN.md — E2E suite (SC-1..SC-5 incl. Object.keys allowlist + instanceof + NONCE cross-write + REAL close/relaunch restart against the real userData path + packaged file:// HARD gate via package:ci/PACKAGED_EXE_PATH, skip = fail) + independent Nyquist sign-off certifying only what was proven (FND-02 non-circular resolution + Electron-ABI packaged load — not a proxy)
 **UI hint**: yes
 
 ### Phase 1: Core Engine — IFF + TRE + Verification Harness

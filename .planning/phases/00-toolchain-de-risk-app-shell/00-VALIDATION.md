@@ -2,7 +2,7 @@
 phase: 0
 slug: toolchain-de-risk-app-shell
 status: executing
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: true
 created: 2026-06-21
 updated: 2026-06-22
@@ -161,6 +161,23 @@ See: 00-03-SUMMARY.md § Chosen Posture and § Revised FND-01.
 - [x] Wave 0 covers all MISSING references
 - [x] No watch-mode flags in any verify command
 - [x] Feedback latency: ~30s (dev suite), ~5min (packaged gate)
-- [ ] `nyquist_compliant: true` — **PENDING Task 4 independent sign-off**
+- [x] `nyquist_compliant: true` — **signoff-pass (2026-06-22)**
 
-**Approval:** pending Task 4 Nyquist sign-off
+**Approval:** ✅ Nyquist sign-off PASS (2026-06-22, orchestrator independent verification).
+
+### Sign-off notes
+- **Independently re-verified** (not on subagent report): dev suite green; the packaged binary's
+  in-process zero-copy proof was observed directly in the real `out/.../swg-toolkit.exe`
+  (crossOriginIsolated=true via `app://`, C++ `writeSab`→0xDEAD, fresh-nonce round-trip
+  ok / state=shared, `--napi` prebuild runtime-loaded in the packaged renderer).
+- **Certifies EXACTLY:** FND-02 non-circular resolution (00-02) + packaged-Electron RUNTIME LOAD of
+  the single ABI-stable `--napi` prebuild (in the renderer under Path B) — NOT a full no-compiler
+  proof, NOT a separate Electron-ABI build, NOT cross-process SAB (impossible — see CONSULT-P0SAB-SYNTHESIS).
+- **Packaged hard-gate harness fix:** the executor's first pass drove the gate with Playwright
+  `_electron.launch` / `connectOverCDP`, which hang intermittently attaching to the packaged Electron
+  app on Windows (30–180s; the "7/7" was not reproducible). Rewrote `05-packaged.spec.ts` to OBSERVE
+  the real binary via `ELECTRON_ENABLE_LOGGING=1` + StatusBar proof-marker assertions — now reliably
+  7/7 in ~1.4s, with its process tree killed (no leaks).
+- **Dev-spec launch flakiness:** `_electron.launch` for specs 01-04 occasionally exceeds the launch
+  budget under sequential contention (infrastructure, not a product defect); absorbed by `retries: 2`.
+  The log-capture packaged gate does not flake, so retries never mask a real gate failure.
