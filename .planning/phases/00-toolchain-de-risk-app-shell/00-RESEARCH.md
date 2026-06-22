@@ -800,7 +800,7 @@ Step 2.6 triggered: SKIPPED — this is a greenfield phase (no app code exists y
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
 | `nan` (Native Abstractions for Node) | `node-addon-api` (ABI-stable N-API wrapper) | ~2017 | No recompile per Electron version; write once |
-| `postMessage` with `structuredClone` for SAB | `MessageChannelMain` + `SharedArrayBuffer` transferred | Electron 14+ | Zero-copy; no serialization |
+| `postMessage` with `structuredClone` for SAB | `MessageChannelMain` + **port** transferred (Electron 14+); cross-process `ArrayBuffer` is a **copy** (~450 MB/s, `sourceDetached=false`); cross-process `SharedArrayBuffer` **throws** (`An object could not be cloned`) — impossible by the agent-cluster spec. Zero-copy is available only via native-in-renderer (Path B). See [CONSULT-P0SAB-SYNTHESIS.md](../../research/CONSULT-P0SAB-SYNTHESIS.md). | Electron 14+ added `MessageChannelMain` for port transfer, NOT cross-process SAB | Copy (~450 MB/s) for ArrayBuffer; zero-copy only with Path B (native-in-renderer) |
 | `session.webRequest.onBeforeSendHeaders` for header injection | `session.webRequest.onHeadersReceived` for response headers | — | Correct intercept point for COOP/COEP (response, not request) |
 | Golden Layout | dockview | 2020+ | Zero deps, React-native, `toJSON`/`fromJSON` persistence, popout windows |
 | Tailwind v3 (PostCSS + `tailwind.config.js`) | Tailwind v4 (`@tailwindcss/vite` + CSS `@theme`) | 2024 | No PostCSS step; Rust "Oxide" engine; `@import "tailwindcss"` entry |
