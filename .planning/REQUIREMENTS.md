@@ -12,7 +12,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 
 ### Foundation & App Shell (FND)
 - [x] **FND-01**: App boots as an Electron desktop app with secure context isolation and a narrow, validated preload bridge (no Node in the renderer).
-- [ ] **FND-02**: The C++ Node-API addon builds via cmake-js (prebuildify distribution) and loads in the Electron **main/utility** process.
+- [x] **FND-02**: The C++ Node-API addon builds via cmake-js (prebuildify distribution) and loads in the Electron **main/utility** process.
 - [ ] **FND-03**: Cross-origin isolation (COOP/COEP) is enabled so `SharedArrayBuffer` is allocatable in the renderer.
 - [x] **FND-04**: A shared-types `contracts/` package defines the IPC, byte-offset, and opcode types used across native ↔ backend ↔ renderer.
 - [ ] **FND-05**: The app presents a dark, dockable, persistent multi-panel workspace (dockview) — sidebar / 3D canvas / data pane / inspector.
@@ -95,7 +95,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
 | FND-01 | Phase 0 | Complete |
-| FND-02 | Phase 0 | Pending |
+| FND-02 | Phase 0 | Complete |
 | FND-03 | Phase 0 | Pending |
 | FND-04 | Phase 0 | Complete |
 | FND-05 | Phase 0 | Pending |

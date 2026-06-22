@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 0 UI-SPEC approved
-last_updated: "2026-06-22T12:33:45.562Z"
+stopped_at: Completed 00-02-PLAN.md — cmake-js N-API addon + non-circular FND-02 proof
+last_updated: "2026-06-22T12:51:11.413Z"
 last_activity: 2026-06-22
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
-  percent: 20
+  completed_plans: 2
+  percent: 40
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-21)
 ## Current Position
 
 Phase: 00 (toolchain-de-risk-app-shell) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-06-22
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [██░░░░░░░░] 20%
 *Updated after each plan completion*
 | Phase 00-toolchain-de-risk-app-shell P01 | 45 | 3 tasks | 20 files |
 | Phase 00-toolchain-de-risk-app-shell P01 | 12 | 4 tasks | 25 files |
+| Phase 00-toolchain-de-risk-app-shell P02 | continuation | 5 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,10 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: Prevents Forge from pulling breaking v5+
 - [Phase ?]: TypeScript 6 deprecates paths-without-baseUrl; override silences it
 - [Phase ?]: check-prereqs.js emits WARN not error; FND-02 unblocked on Node 24
+- [Phase ?]: Single --napi prebuild is ABI-stable across Node AND Electron; no separate Electron-ABI build required
+- [Phase ?]: cmake-js generator pinned to 'Visual Studio 17 2022' + x64 to work around cmake-js 8.0.0 mis-detecting VS2026
+- [Phase ?]: FND-02 non-circular proof: build/ moved aside, __resolvedPath asserted; full no-compiler-machine proof deferred to CI runner
+- [Phase ?]: Built against Node v24.15.0 headers; compile-against-Electron-42-headers check deferred to Plan 05 packaged gate
 
 ### Pending Todos
 
@@ -92,6 +97,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T12:33:45.548Z
-Stopped at: Phase 0 UI-SPEC approved
+Last session: 2026-06-22T12:51:11.400Z
+Stopped at: Completed 00-02-PLAN.md — cmake-js N-API addon + non-circular FND-02 proof
 Resume file: None

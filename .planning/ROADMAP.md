@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 - [x] 00-01-PLAN.md — Monorepo scaffold, pnpm workspace, contracts/ shared types (cross-write SAB layout + correlation `id`), Vitest + Playwright harness, .nvmrc/engines, check-prereqs preflight, CI workflow (with the 05-packaged HARD gate: skip = fail), single source-of-truth Vite worker path
-- [ ] 00-02-PLAN.md — cmake-js native addon (hello + allocateSab, NAPI_EXPERIMENTAL + node-addon-api ^8.8.0) + prebuildify/node-gyp-build distribution (FND-02) proven NON-CIRCULARLY (build/ moved aside, load asserted from prebuilds/, Electron ABI), TDD RED->GREEN
+- [x] 00-02-PLAN.md — cmake-js native addon (hello + allocateSab, NAPI_EXPERIMENTAL + node-addon-api ^8.8.0) + prebuildify/node-gyp-build distribution (FND-02) proven NON-CIRCULARLY (build/ moved aside, load asserted from prebuilds/, Electron ABI), TDD RED->GREEN
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 00-03-PLAN.md — Electron security posture, COOP/COEP, utility-process IPC, SAB pipeline with same-memory NONCE cross-write proof (zero-copy, not a copy/echo); demuxed relay + reject-on-exit; autonomous:false architecture gate (utility→renderer SAB sharing is likely-negative — a failing cross-write BLOCKS the D-04 claim) + documented pivot contingency
@@ -163,7 +163,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Toolchain De-risk & App Shell | 1/5 | In Progress|  |
+| 0. Toolchain De-risk & App Shell | 2/5 | In Progress|  |
 | 1. Core Engine — IFF + TRE + Verification Harness | 0/TBD | Not started | - |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/TBD | Not started | - |
 | 3. Live-Injection Foundation | 0/TBD | Not started | - |
