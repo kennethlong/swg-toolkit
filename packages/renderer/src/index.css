@@ -1,0 +1,103 @@
+/**
+ * packages/renderer/src/index.css
+ * Global stylesheet entry point.
+ *
+ * Import order:
+ *   1. Tailwind v4 (utilities layer)
+ *   2. Dockview default CSS
+ *   3. Token base (default/cyan theme)
+ *   4. Theme overrides (data-theme attribute blocks)
+ *   5. Dockview dark-theme mapping (--dv-* → our tokens)
+ *   6. Global resets + accessibility rules
+ */
+
+@import "tailwindcss";
+@import "dockview-react/dist/styles/dockview.css";
+@import "./themes/default.css";
+
+/* ── Theme overrides (cyan has no overrides — default.css IS cyan) ─────────── */
+
+[data-theme="swg-green"] {
+  --color-accent:       #3cc24a;
+  --color-accent-hover: #5adb68;
+  --color-accent-text:  #0a1f0a;
+  --color-accent-dim:   rgba(60, 194, 74, 0.16);
+  --color-accent-line:  rgba(60, 194, 74, 0.45);
+}
+
+[data-theme="amber"] {
+  --color-accent:       #e0a13a;
+  --color-accent-hover: #f0b74d;
+  --color-accent-text:  #1a0f00;
+  --color-accent-dim:   rgba(224, 161, 58, 0.16);
+  --color-accent-line:  rgba(224, 161, 58, 0.45);
+}
+
+[data-theme="blue"] {
+  --color-accent:       #4a8cff;
+  --color-accent-hover: #6fa3ff;
+  --color-accent-text:  #00092e;
+  --color-accent-dim:   rgba(74, 140, 255, 0.16);
+  --color-accent-line:  rgba(74, 140, 255, 0.45);
+}
+
+[data-theme="high-contrast"] {
+  --color-bg:           #000000;
+  --color-surface:      #101012;
+  --color-border:       #7a7a82;
+  --color-border-soft:  #5a5a62;
+  --color-text:         #ffffff;
+  --color-text-muted:   #dcdce2;
+  --color-text-faint:   #aeaeb6;
+  --color-accent:       #4fe3f0;
+  --focus-ring:         0 0 0 2px #000, 0 0 0 4px var(--color-accent);
+}
+
+/* ── Dockview dark-theme token mapping ───────────────────────────────────── */
+/* Map dockview's --dv-* variables to our design tokens                       */
+
+.dockview-theme-dark {
+  --dv-background-color:                var(--color-bg);
+  --dv-tabs-and-actions-container-background-color: var(--color-header);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--color-surface);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-header-2);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-tab-divider-color:               var(--color-border);
+  --dv-active-sash-color:               var(--color-accent);
+  --dv-separator-border:                var(--color-border);
+  --dv-paneview-header-border-color:    var(--color-border-soft);
+  --dv-drag-over-background-color:      var(--drop-fill);
+  --dv-drag-over-border-color:          var(--drop-line);
+  --dv-group-view-background-color:     var(--color-surface);
+  --dv-tabs-container-scrollbar-color:  var(--color-border-soft);
+  --dv-icon-hover-background-color:     var(--color-widget-hover);
+  --dv-floating-box-shadow:             var(--shadow-panel);
+}
+
+/* ── HTML / body reset ───────────────────────────────────────────────────── */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Accessibility Rule 2: global focus ring ─────────────────────────────── */
+
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

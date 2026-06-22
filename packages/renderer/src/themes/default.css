@@ -1,0 +1,72 @@
+/**
+ * packages/renderer/src/themes/default.css
+ * Single source of truth for all CSS custom-property tokens.
+ * Cyan (default) theme — all other themes override only what changes.
+ *
+ * Values: 00-UI-SPEC.md §Color/§Spacing/§Typography (do not invent values here).
+ */
+
+:root {
+  /* ── Surfaces ────────────────────────────────────────────────────────────── */
+  --color-bg:            #181818;
+  --color-surface:       #242424;
+  --color-surface-2:     #2b2b2b;
+  --color-header:        #323232;
+  --color-header-2:      #3a3a3a;
+  --color-widget:        #3a3a3a;
+  --color-widget-hover:  #474747;
+  --color-border:        #121212;
+  --color-border-soft:   #3c3c3c;
+
+  /* ── Text ────────────────────────────────────────────────────────────────── */
+  --color-text:          #e6e6e6;
+  --color-text-muted:    #9a9a9a;
+  --color-text-faint:    #6f6f6f;
+
+  /* ── Accent (cyan default) ───────────────────────────────────────────────── */
+  --color-accent:        #38bec9;
+  --color-accent-hover:  #5ad6e0;
+  --color-accent-text:   #04201f;
+  --color-accent-dim:    rgba(56, 190, 201, 0.16);
+  --color-accent-line:   rgba(56, 190, 201, 0.45);
+
+  /* ── Semantic ────────────────────────────────────────────────────────────── */
+  --color-danger:        #e0584f;
+  --color-warn:          #e0a13a;
+  --color-info:          #4a8cff;
+
+  /* ── Spacing (3px DCC base grid) ─────────────────────────────────────────── */
+  --space-1:             3px;
+  --space-2:             6px;
+  --space-3:             9px;
+  --space-4:             12px;
+  --space-6:             18px;
+  --space-8:             24px;
+
+  /* ── Typography ──────────────────────────────────────────────────────────── */
+  --text-xs:             11px;
+  --text-sm:             12px;
+  --text-base:           13px;
+  --text-md:             14px;
+
+  --font-mono:           'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
+  --font-sans:           Inter, 'Segoe UI', system-ui, sans-serif;
+
+  /* ── Chrome dimensions ───────────────────────────────────────────────────── */
+  --titlebar-h:          30px;
+  --tabstrip-h:          30px;
+  --statusbar-h:         22px;
+  --activity-w:          46px;
+
+  /* ── Shape & shadow ──────────────────────────────────────────────────────── */
+  --radius-sm:           3px;
+  --radius-md:           6px;
+  --shadow-panel:        0 2px 8px rgba(0, 0, 0, 0.35);
+
+  /* ── Focus ring (2-layer: accent outline) ────────────────────────────────── */
+  --focus-ring:          0 0 0 1px var(--color-accent), 0 0 0 3px var(--color-accent-dim);
+
+  /* ── Docking drop-zone ───────────────────────────────────────────────────── */
+  --drop-fill:           rgba(56, 190, 201, 0.18);
+  --drop-line:           rgba(56, 190, 201, 0.85);
+}

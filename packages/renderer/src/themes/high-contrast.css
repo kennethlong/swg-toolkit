@@ -1,0 +1,13 @@
+/* High-Contrast theme — full accessibility overrides */
+[data-theme="high-contrast"] {
+  --color-bg:           #000000;
+  --color-surface:      #101012;
+  --color-border:       #7a7a82;
+  --color-border-soft:  #5a5a62;
+  --color-text:         #ffffff;
+  --color-text-muted:   #dcdce2;
+  --color-text-faint:   #aeaeb6;
+  --color-accent:       #4fe3f0;
+  /* Thicker focus ring for high-contrast (4px outer ring) */
+  --focus-ring:         0 0 0 2px #000, 0 0 0 4px var(--color-accent);
+}

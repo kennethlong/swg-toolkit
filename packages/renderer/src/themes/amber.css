@@ -1,0 +1,8 @@
+/* Amber theme — accent overrides only */
+[data-theme="amber"] {
+  --color-accent:       #e0a13a;
+  --color-accent-hover: #f0b74d;
+  --color-accent-text:  #1a0f00;
+  --color-accent-dim:   rgba(224, 161, 58, 0.16);
+  --color-accent-line:  rgba(224, 161, 58, 0.45);
+}

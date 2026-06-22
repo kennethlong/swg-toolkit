@@ -1,0 +1,8 @@
+/* SWG Green theme — accent overrides only */
+[data-theme="swg-green"] {
+  --color-accent:       #3cc24a;
+  --color-accent-hover: #5adb68;
+  --color-accent-text:  #0a1f0a;
+  --color-accent-dim:   rgba(60, 194, 74, 0.16);
+  --color-accent-line:  rgba(60, 194, 74, 0.45);
+}

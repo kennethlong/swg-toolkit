@@ -1,0 +1,8 @@
+/* IDE Blue theme — accent overrides only */
+[data-theme="blue"] {
+  --color-accent:       #4a8cff;
+  --color-accent-hover: #6fa3ff;
+  --color-accent-text:  #00092e;
+  --color-accent-dim:   rgba(74, 140, 255, 0.16);
+  --color-accent-line:  rgba(74, 140, 255, 0.45);
+}
