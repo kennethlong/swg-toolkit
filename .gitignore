@@ -1,13 +1,26 @@
-# Dependencies / build output
+# Dependencies / package manager output
 node_modules/
-dist/
-out/
+.pnpm-store/
+
+# TypeScript / Vite build outputs
+packages/*/dist/
+packages/*/tsconfig.tsbuildinfo
 *.tsbuildinfo
 
-# Native (N-API / node-gyp / cmake-js) addon build artifacts
-build/
-prebuilds/
+# Electron Forge output
+.vite/
+out/
+dist/
+
+# Native (N-API / cmake-js) addon build artifacts
+packages/native-core/build/
+packages/native-core/prebuilds/
 *.node
+
+# Test output
+playwright-report/
+test-results/
+.nyc_output/
 
 # OS / editor junk
 .DS_Store
@@ -22,3 +35,6 @@ Thumbs.db
 .planning/research/source-transcript.txt
 .planning/research/*.out
 .planning/research/*.utf8.txt
+
+# Large archives
+*.tgz

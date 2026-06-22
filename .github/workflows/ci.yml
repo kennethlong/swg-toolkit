@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+# Two jobs:
+#   A. lean — always-on, runs on every push/PR
+#   B. packaged-gate — HARD gate, GATED on 00-03 architecture-gate outcome
+#
+# The packaged-gate job is NOT pre-invested before the cross-write experiment survives.
+# Rationale: if the 00-03 architecture gate records a COPY/THROWS FINDING (utility->renderer
+# SAB sharing is not zero-copy), the packaged cross-write assertion would need to be
+# re-specified after the pivot. Only run the packaged gate once the architecture experiment
+# has confirmed the cross-write works. (round-3 Sonnet SON-C)
+#
+# Note: A Linux job WOULD need xvfb for headless Electron (install xvfb, wrap commands with
+# `xvfb-run`). windows-latest has a desktop session so no xvfb needed.
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB A: lean — ALWAYS-ON
+  # Runs: prereq check, install, contracts tsc, vitest, non-packaged Playwright
+  # Does NOT run `pnpm package` (the slow native rebuild; only the packaged-gate job builds it)
+  # ─────────────────────────────────────────────────────────────────────────────
+  lean:
+    name: Lean (always-on)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '11.8.0'
+
+      - name: Check prerequisites (cmake + MSVC + Node version)
+        run: node scripts/check-prereqs.js
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: contracts/ TypeScript check
+        run: pnpm --filter @swg/contracts exec tsc --noEmit
+
+      - name: Unit tests (vitest)
+        run: pnpm test
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      - name: E2E tests — non-packaged specs (headless Electron, --forbid-only)
+        # --forbid-only ensures nothing is silently focused or skipped. If any spec
+        # is marked .only, the run fails immediately. Plans 04/05 create these spec files.
+        run: |
+          pnpm playwright test --forbid-only \
+            e2e/01-boot.spec.ts \
+            e2e/02-isolation.spec.ts \
+            e2e/03-sab-roundtrip.spec.ts \
+            e2e/04-workspace.spec.ts
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB B: packaged-gate — HARD GATE
+  # GATED on the 00-03 architecture-gate outcome (see comment above).
+  # Runs `pnpm package:ci`, resolves the built exe, and exercises the packaged spec.
+  #
+  # Gate signal: repository variable ARCH_GATE_PASSED must be 'true'.
+  # This variable is set after Plan 00-03's architecture gate confirms the cross-write
+  # experiment succeeded (utility->renderer SAB sharing is genuinely zero-copy).
+  # If the 00-03 gate records a COPY/THROWS FINDING, ARCH_GATE_PASSED is NOT set and
+  # this job is skipped — the packaged spec would need to be re-specified after the pivot.
+  #
+  # packaged-gate is gated on the 00-03 architecture gate — do not pre-invest the packaged
+  # CI before the cross-write experiment survives (round-3 Sonnet SON-C).
+  # ─────────────────────────────────────────────────────────────────────────────
+  packaged-gate:
+    name: Packaged gate (HARD)
+    runs-on: windows-latest
+    needs: lean
+    # Only run if the architecture gate has confirmed the cross-write experiment survived.
+    # ARCH_GATE_PASSED is a repository variable set after Plan 00-03 passes its gate.
+    # Without this guard, we would pre-invest the packaged CI before proving the D-04 claim.
+    if: vars.ARCH_GATE_PASSED == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '11.8.0'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packaged app
+        run: pnpm package:ci
+
+      - name: Resolve packaged exe path
+        id: exe-path
+        shell: pwsh
+        run: |
+          # Electron Forge outputs to out/<platform>-<arch>/<AppName>.exe on Windows
+          $exePath = Get-ChildItem -Recurse -Path "out" -Filter "*.exe" |
+            Where-Object { $_.Name -notlike "*squirrel*" -and $_.Name -notlike "*update*" } |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exePath) {
+            Write-Error "Could not find packaged .exe in out/ — was the package step successful?"
+            exit 1
+          }
+          Write-Host "Found packaged exe: $exePath"
+          echo "PACKAGED_EXE_PATH=$exePath" >> $env:GITHUB_OUTPUT
+
+      - name: E2E packaged test — 05-packaged (HARD gate, --forbid-only)
+        # 05-packaged skipping in CI == build/headers regression == hard fail (review fix HIGH-2).
+        # --forbid-only is the standard guard: if the spec is focused (.only), or if
+        # PACKAGED_EXE_PATH is not set and the spec skips, the run fails immediately.
+        # This replaces the prior fragile "parse reporter for >= 3 assertions" guard
+        # (round-3 Sonnet SON-B: --forbid-only is sufficient, no assertion-count parsing).
+        env:
+          PACKAGED_EXE_PATH: ${{ steps.exe-path.outputs.PACKAGED_EXE_PATH }}
+        run: pnpm playwright test --forbid-only e2e/05-packaged.spec.ts
