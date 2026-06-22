@@ -72,7 +72,7 @@ test.describe('SC-5: Workspace shell panels + persistence', () => {
     page = await getFirstWindow(app);
     // Wait for Dockview panels to render (DockviewReact layout + StatusBar proof)
     await page.waitForTimeout(2000);
-  }, 90_000); // explicit timeout for beforeAll hook
+  });
 
   test.afterAll(async () => {
     await app?.close();

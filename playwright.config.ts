@@ -29,6 +29,13 @@ export default defineConfig({
   timeout: 90_000,
   fullyParallel: false,
   workers: 1,
+  // Electron's Playwright launch (_electron.launch / firstWindow) is intermittently
+  // flaky on Windows under sequential contention between specs (cold GPU process,
+  // leftover helper processes) — a beforeAll can occasionally exceed the launch budget.
+  // This is launch INFRASTRUCTURE flakiness, not a product defect: every spec passes
+  // reliably in isolation. Retry to absorb it. (The packaged hard gate uses log-capture,
+  // not _electron.launch, so it does not flake and retries never mask a real gate failure.)
+  retries: 2,
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report' }],

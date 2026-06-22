@@ -38,7 +38,7 @@ test.describe('SC-3: crossOriginIsolated + SharedArrayBuffer (COOP/COEP)', () =>
     });
     window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
-  }, 90_000); // explicit timeout for beforeAll hook
+  });
 
   test.afterAll(async () => {
     await electronApp?.close();

@@ -59,7 +59,7 @@ test.describe('SC-1: Path B security posture (AS-BUILT — 00-03 REPLAN DECISION
     });
     window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
-  }, 90_000); // explicit timeout for beforeAll hook
+  });
 
   test.afterAll(async () => {
     await electronApp?.close();
@@ -68,7 +68,7 @@ test.describe('SC-1: Path B security posture (AS-BUILT — 00-03 REPLAN DECISION
   test('webPreferences: contextIsolation === false (Path B fallback)', async () => {
     const prefs = await electronApp.evaluate(({ BrowserWindow }) =>
       // getWebPreferences() was renamed to getLastWebPreferences() in Electron 29+
-      BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()
+      (BrowserWindow.getAllWindows()[0].webContents as any).getLastWebPreferences()
     );
     // PATH B: contextIsolation is FALSE (not true). The preferred posture
     // (contextIsolation:true + contextBridge) was attempted and FAILED empirically:
@@ -80,7 +80,7 @@ test.describe('SC-1: Path B security posture (AS-BUILT — 00-03 REPLAN DECISION
   test('webPreferences: nodeIntegration === true (renderer has Node.js access)', async () => {
     const prefs = await electronApp.evaluate(({ BrowserWindow }) =>
       // getWebPreferences() was renamed to getLastWebPreferences() in Electron 29+
-      BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()
+      (BrowserWindow.getAllWindows()[0].webContents as any).getLastWebPreferences()
     );
     // PATH B: nodeIntegration is TRUE — the renderer main world requires('@swg/native-core')
     // directly, with no IPC relay. This is the deliberate Path B tradeoff.
@@ -90,7 +90,7 @@ test.describe('SC-1: Path B security posture (AS-BUILT — 00-03 REPLAN DECISION
   test('webPreferences: sandbox === false (required for Node.js in renderer)', async () => {
     const prefs = await electronApp.evaluate(({ BrowserWindow }) =>
       // getWebPreferences() was renamed to getLastWebPreferences() in Electron 29+
-      BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()
+      (BrowserWindow.getAllWindows()[0].webContents as any).getLastWebPreferences()
     );
     // PATH B: sandbox:false allows require() in the renderer. Required for the
     // in-process native addon model.
@@ -137,7 +137,7 @@ test.describe('SC-2: native hello round-trip (in-process, no relay)', () => {
     await window.waitForLoadState('domcontentloaded');
     // Wait for StatusBar to mount and run async proof
     await window.waitForTimeout(5000);
-  }, 90_000); // explicit timeout for beforeAll hook
+  });
 
   test.afterAll(async () => {
     await electronApp?.close();

@@ -80,7 +80,7 @@ test.describe('SC-4: In-process same-memory SAB proof (Path B)', () => {
     await window.waitForLoadState('domcontentloaded');
     // Wait for StatusBar's async proof to complete
     await waitForProofComplete(window);
-  }, 90_000); // explicit timeout for beforeAll hook
+  });
 
   test.afterAll(async () => {
     await electronApp?.close();
