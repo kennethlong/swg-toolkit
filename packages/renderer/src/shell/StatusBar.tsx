@@ -91,6 +91,7 @@ export default function StatusBar(): React.ReactElement {
         const helloRead = view[SAB_LAYOUT.HELLO_SENTINEL.offset / 4]; // expect 0xDEAD
         setSabValue(helloRead);
         setAddonStatus('native-core ✓');
+        console.log('[StatusBar] PASS: allocateSab + writeSab → view[0]=0x' + helloRead.toString(16).toUpperCase() + ' sabIsShared=' + isSharedBuf + ' crossOriginIsolated=' + self.crossOriginIsolated);
 
         // TEST HOOK (single owner) — window.__sabValue
         ;(window as Window).__sabValue = helloRead; // eslint-disable-line no-extra-semi
@@ -105,6 +106,7 @@ export default function StatusBar(): React.ReactElement {
           const ok = (observed === nonce);
           const state: CrossWriteState = ok ? 'shared' : 'copy';
           setCrossWriteState(state);
+          console.log('[StatusBar] nonce round-trip: nonce=' + nonce + ' observed=' + observed + ' ok=' + ok + ' state=' + state);
 
           // TEST HOOKS (single owner)
           ;(window as Window).__crossWriteOk    = ok;    // eslint-disable-line no-extra-semi
