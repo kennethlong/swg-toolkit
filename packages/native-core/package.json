@@ -4,9 +4,9 @@
   "description": "C++ Node-API addon — cmake-js build, prebuildify distribution",
   "main": "index.js",
   "scripts": {
-    "prebuild": "echo 'Plan 02 fills in the cmake-js prebuildify command'",
-    "build": "cmake-js compile",
-    "rebuild": "cmake-js rebuild"
+    "build": "cmake-js build --generator \"Visual Studio 17 2022\" --platform x64",
+    "rebuild": "cmake-js rebuild --generator \"Visual Studio 17 2022\" --platform x64",
+    "prebuild": "node scripts/prebuild.js"
   },
   "dependencies": {
     "node-addon-api": "^8.8.0",
@@ -21,5 +21,9 @@
     "index.js",
     "index.d.ts",
     "prebuilds"
-  ]
+  ],
+  "cmake-js": {
+    "generator": "Visual Studio 17 2022",
+    "platform": "x64"
+  }
 }
