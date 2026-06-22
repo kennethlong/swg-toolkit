@@ -4,9 +4,12 @@
  * These types match the exports registered in addon.cpp:
  *   exports.Set("hello",       ...) → hello(): string
  *   exports.Set("allocateSab", ...) → allocateSab(byteLength: number): SharedArrayBuffer
+ *   exports.Set("writeSab",    ...) → writeSab(sab, int32Index, value): void  [00-03 Path B]
+ *   exports.Set("readSab",     ...) → readSab(sab, int32Index): number        [00-03 Path B]
  *
  * Consumed by:
- *   - packages/backend/src/utility-worker.ts (via require('@swg/native-core'))
+ *   - packages/backend/src/preload.ts (Path B: preload requires addon, exposes via contextBridge)
+ *   - packages/renderer/src/ (Path B: renderer accesses writeSab/readSab through window.api)
  *   - Vitest unit tests in packages/native-core/test/hello.test.ts
  */
 
@@ -26,6 +29,34 @@ export function hello(): string;
  * experimental-gated in node-addon-api >= 8.6.0; see CMakeLists.txt).
  */
 export function allocateSab(byteLength: number): SharedArrayBuffer;
+
+/**
+ * Writes a 32-bit signed integer value into a SharedArrayBuffer at the given Int32 index.
+ * Used by the Path B bidirectional proof: C++ writes 0xDEAD into the SAB that the renderer
+ * can read directly (same memory, no IPC, no copy).
+ *
+ * @param sab        - The SharedArrayBuffer to write into.
+ * @param int32Index - Zero-based index of the Int32 slot (byte offset = int32Index * 4).
+ * @param value      - The 32-bit integer value to write.
+ * @throws RangeError if int32Index is out of bounds for the SAB's byteLength.
+ *
+ * Note: Requires NAPI_EXPERIMENTAL (uses Napi::SharedArrayBuffer).
+ */
+export function writeSab(sab: SharedArrayBuffer, int32Index: number, value: number): void;
+
+/**
+ * Reads and returns a 32-bit signed integer from a SharedArrayBuffer at the given Int32 index.
+ * Used by the Path B bidirectional proof: renderer writes a per-run nonce; C++ reads it back
+ * from the same memory (proves JS → C++ same-memory access, no IPC, no copy).
+ *
+ * @param sab        - The SharedArrayBuffer to read from.
+ * @param int32Index - Zero-based index of the Int32 slot (byte offset = int32Index * 4).
+ * @returns The 32-bit integer value at the given slot.
+ * @throws RangeError if int32Index is out of bounds for the SAB's byteLength.
+ *
+ * Note: Requires NAPI_EXPERIMENTAL (uses Napi::SharedArrayBuffer).
+ */
+export function readSab(sab: SharedArrayBuffer, int32Index: number): number;
 
 /**
  * Resolved path of the .node file that was loaded by node-gyp-build.

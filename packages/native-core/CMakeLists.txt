@@ -20,9 +20,15 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 )
 target_link_libraries(${PROJECT_NAME} ${CMAKE_JS_LIB})
 
-# node-addon-api: include the napi.h header from the local node_modules
+# node-addon-api: include the napi.h header.
+# In a pnpm workspace with nodeLinker:hoisted, node-addon-api is hoisted to the
+# workspace root (two levels above packages/native-core). We search both the
+# package-local node_modules (bare-npm / non-pnpm installs) and the workspace
+# root node_modules (pnpm hoisted layout). cmake-js sets CMAKE_SOURCE_DIR to
+# the directory containing this CMakeLists.txt (packages/native-core/).
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/node_modules/node-addon-api
+    ${CMAKE_SOURCE_DIR}/../../node_modules/node-addon-api
 )
 
 # Compile definitions (ALL THREE REQUIRED):
