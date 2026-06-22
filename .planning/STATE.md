@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 0 plans revised per cross-AI review (00-REVIEWS.md)
-last_updated: "2026-06-21T22:06:41.577Z"
-last_activity: 2026-06-21 -- Phase 00 plans replanned (--reviews): NAPI_EXPERIMENTAL fix, prebuildify, cross-write SAB proof, CI/hygiene
+stopped_at: Phase 0 UI-SPEC approved
+last_updated: "2026-06-22T12:07:25.243Z"
+last_activity: 2026-06-22
 progress:
   total_phases: 9
   completed_phases: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-21)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 0 — Toolchain De-risk & App Shell
+**Current focus:** Phase 00 — toolchain-de-risk-app-shell
 
 ## Current Position
 
-Phase: 0 of 8 (Toolchain De-risk & App Shell)
-Plan: 0 of TBD in current phase
+Phase: 00 (toolchain-de-risk-app-shell) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-06-21 -- Phase 00 plans replanned (--reviews)
+Last activity: 2026-06-22
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+| Phase 00-toolchain-de-risk-app-shell P01 | 45 | 3 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ Roadmap-shaping decisions affecting current work:
 - [Roadmap]: Live-injection (Phase 3) and Blender bridge (Phase 6) branch off EARLY and stay OFF the critical path — never serialize the differentiator behind the format tower.
 - [Roadmap]: The byte-exact verification harness is a Phase 1 keystone that recurs as a standing gate in every format phase (2, 5, 6, 7) — budget the round-trip tax per phase.
 - [Roadmap]: Electron security + COOP/COEP cross-origin isolation + `contracts/` are front-loaded into Phase 0 (cheap before features accrete, HIGH recovery cost after).
+- [Phase ?]: D-WORKSPACE: pnpm workspace with @electron/rebuild overridden to ^4.0.0 via pnpm-workspace.yaml overrides
+- [Phase ?]: D-TSCONFIG: tsconfig.base.json uses baseUrl+ignoreDeprecations:6.0 for TypeScript 6 path aliases
 
 ### Pending Todos
 
@@ -85,6 +88,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-21T21:31:14.002Z
+Last session: 2026-06-22T12:07:15.013Z
 Stopped at: Phase 0 UI-SPEC approved
-Resume file: .planning/phases/00-toolchain-de-risk-app-shell/00-UI-SPEC.md
+Resume file: None
