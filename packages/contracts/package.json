@@ -1,0 +1,14 @@
+{
+  "name": "@swg/contracts",
+  "version": "0.0.1",
+  "description": "Shared TypeScript types: IPC message shapes, byte offsets, opcodes",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "files": [
+    "dist"
+  ]
+}

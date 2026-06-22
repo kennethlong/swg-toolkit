@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@swg/contracts": ["packages/contracts/src/index.ts"],
+      "@swg/contracts/*": ["packages/contracts/src/*"],
+      "@swg/backend": ["packages/backend/src/index.ts"],
+      "@swg/backend/*": ["packages/backend/src/*"],
+      "@swg/native-core": ["packages/native-core/index.d.ts"]
+    }
+  },
+  "exclude": ["node_modules"]
+}

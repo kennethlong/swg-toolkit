@@ -1,0 +1,17 @@
+{
+  "name": "@swg/backend",
+  "version": "0.0.1",
+  "description": "Electron main + utility process host",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@swg/contracts": "workspace:*",
+    "@swg/native-core": "workspace:*"
+  },
+  "files": [
+    "dist"
+  ]
+}

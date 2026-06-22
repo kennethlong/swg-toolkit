@@ -1,0 +1,21 @@
+{
+  "name": "@swg/renderer",
+  "version": "0.0.1",
+  "description": "React 19 renderer app (sandboxed Electron renderer process)",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@swg/contracts": "workspace:*",
+    "dockview": "6.6.1",
+    "dockview-react": "6.6.1",
+    "react": "^19.2",
+    "react-dom": "^19.2",
+    "zustand": "5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "tailwindcss": "^4"
+  }
+}

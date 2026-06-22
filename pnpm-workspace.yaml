@@ -1,0 +1,15 @@
+packages:
+  - 'packages/*'
+# blender-plugin/ is intentionally NOT listed — Python, out of workspace
+
+# esbuild needs its binary install script to run (postinstall)
+allowBuilds:
+  esbuild: true
+
+# Override @electron/rebuild to 4.x which does NOT have a git dependency on @electron/node-gyp.
+# @electron-forge/core-utils@7.11.2 requires @electron/rebuild@^3.7.0, but 3.7.2 pulls in
+# @electron/node-gyp via git (triggering pnpm blockExoticSubdeps). @electron/rebuild@4.x uses
+# standard node-gyp@^12 from npm instead. N-API is ABI-stable so we do NOT need @electron/rebuild
+# for the FND-02 proof; this override silences the exotic-dep blocker (Rule 3: auto-fix).
+overrides:
+  '@electron/rebuild': '^4.0.0'

@@ -1,0 +1,41 @@
+{
+  "name": "swg-toolkit",
+  "version": "0.0.1",
+  "description": "Modern open-source SWG modding suite",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "preinstall": "node scripts/check-prereqs.js || true",
+    "prereqs": "node scripts/check-prereqs.js",
+    "start": "electron-forge start",
+    "build": "electron-forge make",
+    "package": "electron-forge package",
+    "package:ci": "electron-forge package",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "7.11.2",
+    "@electron-forge/plugin-vite": "7.11.2",
+    "@playwright/test": "1.61.0",
+    "@tailwindcss/vite": "4.3.1",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "electron": "42.4.1",
+    "tailwindcss": "4.3.1",
+    "typescript": "6.0.3",
+    "vite": "^6",
+    "vitest": "4.1.9"
+  },
+  "dependencies": {
+    "dockview": "6.6.1",
+    "dockview-react": "6.6.1",
+    "react": "^19.2",
+    "react-dom": "^19.2",
+    "zustand": "5.0.14"
+  }
+}

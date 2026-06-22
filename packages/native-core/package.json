@@ -1,0 +1,25 @@
+{
+  "name": "@swg/native-core",
+  "version": "0.0.1",
+  "description": "C++ Node-API addon — cmake-js build, prebuildify distribution",
+  "main": "index.js",
+  "scripts": {
+    "prebuild": "echo 'Plan 02 fills in the cmake-js prebuildify command'",
+    "build": "cmake-js compile",
+    "rebuild": "cmake-js rebuild"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.8.0",
+    "node-gyp-build": "^4"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4",
+    "cmake-js": "^8",
+    "prebuildify": "^6"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "prebuilds"
+  ]
+}
