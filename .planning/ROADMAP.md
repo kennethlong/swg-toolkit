@@ -45,7 +45,7 @@ Plans:
 - [x] 00-03-PLAN.md — Electron security posture, COOP/COEP, utility-process IPC, SAB pipeline with same-memory NONCE cross-write proof (zero-copy, not a copy/echo); demuxed relay + reject-on-exit; autonomous:false architecture gate (utility→renderer SAB sharing is likely-negative — a failing cross-write BLOCKS the D-04 claim) + documented pivot contingency
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 00-04-PLAN.md — Dark dockable workspace shell: DockviewReact (explicit panel sizing), 5 locked themes, StatusBar as single owner of SAB hooks + per-run-NONCE cross-write driver (shared/copy/timeout distinguished); runs after the 00-03 architecture gate
+- [x] 00-04-PLAN.md — Dark dockable workspace shell: DockviewReact (explicit panel sizing), 5 locked themes, StatusBar as single owner of SAB hooks + per-run-NONCE cross-write driver (shared/copy/timeout distinguished); runs after the 00-03 architecture gate
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 00-05-PLAN.md — E2E suite (SC-1..SC-5 incl. Object.keys allowlist + instanceof + NONCE cross-write + REAL close/relaunch restart against the real userData path + packaged file:// HARD gate via package:ci/PACKAGED_EXE_PATH, skip = fail) + independent Nyquist sign-off certifying only what was proven (FND-02 non-circular resolution + Electron-ABI packaged load — not a proxy)
@@ -163,7 +163,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Toolchain De-risk & App Shell | 2/5 | In Progress|  |
+| 0. Toolchain De-risk & App Shell | 4/5 | In Progress|  |
 | 1. Core Engine — IFF + TRE + Verification Harness | 0/TBD | Not started | - |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/TBD | Not started | - |
 | 3. Live-Injection Foundation | 0/TBD | Not started | - |

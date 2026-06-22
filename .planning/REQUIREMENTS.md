@@ -15,7 +15,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 - [x] **FND-02**: The C++ Node-API addon builds via cmake-js (prebuildify distribution) and loads **in the renderer process** (Path B — `sandbox:false`, `nodeIntegration:true`). The addon is never auto-loaded into an untrusted or sandboxed web context; the renderer is the trusted app shell. Original text said "main/utility process" — revised because the utility process is not on the data path under Path B (utility-worker.ts was removed in Plan 00-03). ABI-stable N-API ensures one `prebuilds/` artifact serves both bare Node (vitest) and Electron without a separate Electron ABI rebuild. Non-circularity proven in 00-02 (load from `prebuilds/`, not `build/`).
 - [x] **FND-03**: Cross-origin isolation (COOP/COEP) is enabled so `SharedArrayBuffer` is allocatable in the renderer.
 - [x] **FND-04**: A shared-types `contracts/` package defines the IPC, byte-offset, and opcode types used across native ↔ backend ↔ renderer.
-- [ ] **FND-05**: The app presents a dark, dockable, persistent multi-panel workspace (dockview) — sidebar / 3D canvas / data pane / inspector.
+- [x] **FND-05**: The app presents a dark, dockable, persistent multi-panel workspace (dockview) — sidebar / 3D canvas / data pane / inspector.
 
 ### Core Engine — IFF & TRE (CORE)
 - [ ] **CORE-01**: User can mount one or more `.tre` archives as a virtual filesystem with correct load-order/override resolution.
@@ -98,7 +98,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | FND-02 | Phase 0 | Complete |
 | FND-03 | Phase 0 | Complete |
 | FND-04 | Phase 0 | Complete |
-| FND-05 | Phase 0 | Pending |
+| FND-05 | Phase 0 | Complete |
 | CORE-01 | Phase 1 | Pending |
 | CORE-02 | Phase 1 | Pending |
 | CORE-03 | Phase 1 | Pending |

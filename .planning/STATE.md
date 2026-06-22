@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: verifying
 stopped_at: Completed 00-02-PLAN.md — cmake-js N-API addon + non-circular FND-02 proof
-last_updated: "2026-06-22T14:34:30.908Z"
+last_updated: "2026-06-22T14:59:57.018Z"
 last_activity: 2026-06-22
 progress:
   total_phases: 9
   completed_phases: 0
   total_plans: 5
-  completed_plans: 3
-  percent: 60
+  completed_plans: 4
+  percent: 80
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-06-21)
 
 Phase: 00 (toolchain-de-risk-app-shell) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-22
 
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████░░░░] 60%
 | Phase 00-toolchain-de-risk-app-shell P01 | 12 | 4 tasks | 25 files |
 | Phase 00-toolchain-de-risk-app-shell P02 | continuation | 5 tasks | 9 files |
 | Phase 00-toolchain-de-risk-app-shell P00-03 | 90 | 5 tasks | 13 files |
+| Phase 00 P04 | single-session | 3 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: cmake-js generator pinned to 'Visual Studio 17 2022' + x64 to work around cmake-js 8.0.0 mis-detecting VS2026
 - [Phase ?]: FND-02 non-circular proof: build/ moved aside, __resolvedPath asserted; full no-compiler-machine proof deferred to CI runner
 - [Phase ?]: Built against Node v24.15.0 headers; compile-against-Electron-42-headers check deferred to Plan 05 packaged gate
+- [Phase ?]: PATH B: StatusBar uses in-process native addon for SAB proof (no utility IPC)
+- [Phase ?]: Single owner: StatusBar sets window.__sabValue/__sabIsShared/__crossWriteOk/__zeroCopy
+- [Phase ?]: Aria labels: conditional JSX branches for grep-able Collapse/Expand panel labels
 
 ### Pending Todos
 
@@ -98,6 +102,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T14:34:30.895Z
+Last session: 2026-06-22T14:59:57.005Z
 Stopped at: Completed 00-02-PLAN.md — cmake-js N-API addon + non-circular FND-02 proof
 Resume file: None
