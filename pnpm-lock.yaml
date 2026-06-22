@@ -11,6 +11,9 @@ importers:
 
   .:
     dependencies:
+      '@swg/native-core':
+        specifier: workspace:*
+        version: link:packages/native-core
       dockview:
         specifier: 6.6.1
         version: 6.6.1(react@19.2.7)

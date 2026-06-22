@@ -6,6 +6,8 @@ packages:
 allowBuilds:
   esbuild: true
 
+nodeLinker: hoisted
+
 # Override @electron/rebuild to 4.x which does NOT have a git dependency on @electron/node-gyp.
 # @electron-forge/core-utils@7.11.2 requires @electron/rebuild@^3.7.0, but 3.7.2 pulls in
 # @electron/node-gyp via git (triggering pnpm blockExoticSubdeps). @electron/rebuild@4.x uses

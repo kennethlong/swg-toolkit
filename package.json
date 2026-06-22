@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "description": "Modern open-source SWG modding suite",
   "private": true,
+  "main": ".vite/build/main.js",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -32,6 +33,7 @@
     "vitest": "4.1.9"
   },
   "dependencies": {
+    "@swg/native-core": "workspace:*",
     "dockview": "6.6.1",
     "dockview-react": "6.6.1",
     "react": "^19.2",
