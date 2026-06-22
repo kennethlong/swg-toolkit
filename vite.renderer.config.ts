@@ -30,6 +30,13 @@ export default defineConfig({
     },
   },
   build: {
+    // Explicit outDir: put the renderer build at the PACKAGE ROOT's .vite/renderer/main_window/
+    // (not inside packages/renderer/.vite/). This matches what Electron Forge expects for the
+    // packaged build: app.getAppPath() + '/.vite/renderer/main_window/index.html'.
+    // Without this, Vite defaults to <root>/.vite/renderer/main_window/ which is
+    // packages/renderer/.vite/... — not included in the packaged ASAR.
+    outDir: '../../.vite/renderer/main_window',
+    emptyOutDir: true,
     rollupOptions: {
       // EXTERNALS: @swg/native-core is a native .node addon — resolved by node-gyp-build
       // at runtime; Rollup cannot bundle it. node-gyp-build itself is also external.

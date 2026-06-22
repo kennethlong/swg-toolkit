@@ -60,6 +60,10 @@ async function getFirstWindow(app: ElectronApplication): Promise<Page> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('SC-5: Workspace shell panels + persistence', () => {
+  // The beforeAll timeout must cover Windows GPU process cleanup from prior specs.
+  // After 5-6 prior Electron launches, a fresh launch can take up to 90s on Windows.
+  test.describe.configure({ timeout: 90_000 });
+
   let app: ElectronApplication;
   let page: Page;
 
@@ -68,7 +72,7 @@ test.describe('SC-5: Workspace shell panels + persistence', () => {
     page = await getFirstWindow(app);
     // Wait for Dockview panels to render (DockviewReact layout + StatusBar proof)
     await page.waitForTimeout(2000);
-  });
+  }, 90_000); // explicit timeout for beforeAll hook
 
   test.afterAll(async () => {
     await app?.close();
@@ -128,12 +132,15 @@ test.describe('SC-5: Workspace shell panels + persistence', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('SC-5 REAL RESTART: layout + theme survive a genuine close + relaunch', () => {
+  // Two full Electron launches + waits + 1.5s flush grace: needs 120s.
+  test.describe.configure({ timeout: 120_000 });
+
   test('layout and theme persist across a REAL app.close() + fresh electron.launch()', async () => {
     // ── LAUNCH 1: set layout + theme, capture userData path ─────────────────
     const app1 = await launchApp();
     const page1 = await getFirstWindow(app1);
     // Wait for Dockview to initialize and persist the layout
-    await page1.waitForTimeout(2500);
+    await page1.waitForTimeout(1500);
 
     // Capture the real userData path (NOT an injected dir — exercises app.getPath)
     const userData = await app1.evaluate(({ app: a }) => a.getPath('userData'));
@@ -160,6 +167,13 @@ test.describe('SC-5 REAL RESTART: layout + theme survive a genuine close + relau
     expect(savedTheme).toBe('amber');
 
     // ── FULLY CLOSE the first Electron instance ───────────────────────────
+    // Explicitly flush storage BEFORE closing — Chromium's localStorage uses LevelDB
+    // with async writes. Without an explicit flush, the write-ahead log may not be
+    // committed before the process exits, causing localStorage to appear empty on the
+    // next launch. session.flushStorageData() forces a synchronous LevelDB commit.
+    await app1.evaluate(({ session: ses }) => {
+      ses.defaultSession.flushStorageData();
+    });
     // app.close() terminates the main process — this is a genuine restart,
     // not a page.reload() that keeps the process alive.
     await app1.close();
@@ -171,7 +185,7 @@ test.describe('SC-5 REAL RESTART: layout + theme survive a genuine close + relau
     const app2 = await launchApp();
     const page2 = await getFirstWindow(app2);
     // Wait for app + Dockview to initialize, load persisted state
-    await page2.waitForTimeout(2500);
+    await page2.waitForTimeout(1500);
 
     // ── ASSERT: layout + theme survived the real restart ─────────────────────
     const restoredLayout = await page2.evaluate(() =>

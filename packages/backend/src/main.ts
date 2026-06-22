@@ -44,8 +44,61 @@
  *   All of the above belonged to the FALSIFIED utility-process SAB relay model.
  */
 
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, session, protocol } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
+
+// ---------------------------------------------------------------------------
+// SharedArrayBuffer availability — Chromium 92+ requires crossOriginIsolated
+// (COOP + COEP) to access SharedArrayBuffer. In the packaged renderer, serving
+// via app:// with COOP/COEP headers establishes crossOriginIsolated=true.
+//
+// The --enable-features=SharedArrayBuffer flag (legacy bypass) is intentionally
+// NOT used here because:
+//   a) It bypasses the COOP/COEP requirement, making crossOriginIsolated=false
+//      even when SAB is available — the 05-packaged E2E gate asserts COI=true.
+//   b) The app:// scheme with COOP/COEP headers is the correct production approach.
+//
+// If the app:// scheme fails to establish COI (e.g. custom-scheme + COOP
+// interaction bug in a future Electron), the preload's DOMContentLoaded log
+// will say "crossOriginIsolated=false" — visible in ELECTRON_ENABLE_LOGGING.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// PACKAGED FILE:// FALLBACK — app:// protocol scheme registration
+// (Fallback rung 2: onHeadersReceived does NOT fire for file:// in packaged builds)
+//
+// Problem: In a packaged Electron app, the renderer is served via file://.
+// Electron's webRequest.onHeadersReceived does NOT intercept file:// protocol
+// responses (file:// has no HTTP headers). Therefore COOP/COEP headers set via
+// onHeadersReceived take effect for the dev server (http://localhost:5173) but NOT
+// for the packaged file:// renderer.
+//
+// Solution: Register a privileged 'app://' scheme BEFORE app.ready. After ready,
+// handle 'app://' requests to serve the renderer's static files with COOP/COEP
+// headers injected. Use loadURL('app://swg-toolkit/...') in packaged mode instead
+// of loadFile(). The 'app://' scheme behaves like 'https://', so crossOriginIsolated
+// is honored.
+//
+// RESEARCH Pattern 2 / 00-05 plan file:// fallback priority ladder rung 2.
+// ---------------------------------------------------------------------------
+
+// MUST be called synchronously BEFORE app.whenReady() — Electron requires scheme
+// registration to happen before the app is ready.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: {
+      standard: true,           // enables same-origin policy + URL parsing
+      secure: true,             // treats the scheme as 'secure' (like https; required for COI)
+      supportFetchAPI: true,    // enables fetch()
+      corsEnabled: true,        // enables CORS for requests from this scheme
+      stream: true,             // enables streaming responses
+      allowServiceWorkers: true, // required for crossOriginIsolated in Electron 35+ (COI needs
+                                //  the scheme to be fully privileged including SW support)
+    },
+  },
+]);
 
 // ---------------------------------------------------------------------------
 // COOP/COEP — MUST be called synchronously BEFORE win.loadURL() is called.
@@ -78,7 +131,68 @@ function setupCrossOriginIsolation(): void {
 app.whenReady().then(() => {
   // ── STEP 1: COOP/COEP FIRST ──────────────────────────────────────────────
   // This must be the FIRST call in the whenReady callback (RESEARCH Pitfall 1).
+  // Handles dev server (http://localhost:5173) responses.
+  // For the packaged file:// renderer, COOP/COEP is delivered via the app:// handler below.
   setupCrossOriginIsolation();
+
+  // ── STEP 1b: app:// PROTOCOL HANDLER (packaged builds only) ──────────────
+  // Handles 'app://swg-toolkit/' requests in the packaged renderer (file:// fallback).
+  // Serves the renderer's static files with COOP/COEP headers injected.
+  // This is Fallback rung 2 (onHeadersReceived doesn't fire for file:// — see module comment).
+  //
+  // Implementation: uses the old callback-based registerBufferProtocol API (not the new
+  // protocol.handle + Response API). The new protocol.handle with Response objects does NOT
+  // properly trigger Chromium's COOP/COEP enforcement machinery for crossOriginIsolated —
+  // the response headers are set but crossOriginIsolated remains false. The old
+  // registerBufferProtocol API routes through Chromium's network stack which processes
+  // COOP/COEP headers correctly.
+  //
+  // In dev mode, MAIN_WINDOW_VITE_DEV_SERVER_URL is set so this handler is never called.
+  // In packaged mode, loadURL('app://swg-toolkit/...') triggers this handler.
+  session.defaultSession.protocol.registerBufferProtocol('app', (request, callback) => {
+    const url = new URL(request.url);
+    // Serve files from the packaged renderer dir (.vite/renderer/main_window/)
+    const rendererDir = path.join(app.getAppPath(), '.vite', 'renderer', MAIN_WINDOW_VITE_NAME);
+    // Strip the leading slash; default to index.html for SPA routing
+    const filePath = url.pathname === '/' || url.pathname === ''
+      ? path.join(rendererDir, 'index.html')
+      : path.join(rendererDir, url.pathname);
+
+    // Determine MIME type for common web assets
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      '.html': 'text/html',
+      '.js':   'application/javascript',
+      '.css':  'text/css',
+      '.png':  'image/png',
+      '.svg':  'image/svg+xml',
+      '.ico':  'image/x-icon',
+      '.woff2': 'font/woff2',
+      '.woff':  'font/woff',
+      '.ttf':   'font/ttf',
+    };
+    const mimeType = mimeTypes[ext] ?? 'application/octet-stream';
+
+    try {
+      const data = fs.readFileSync(filePath);
+      callback({
+        mimeType,
+        data,
+        // COOP/COEP injected — enables crossOriginIsolated in the packaged renderer.
+        // The old registerBufferProtocol API routes through Chromium's network stack
+        // which processes these headers correctly (protocol.handle + Response does NOT).
+        headers: {
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Resource-Policy': 'same-origin',
+        },
+      });
+    } catch {
+      console.error('[main] app:// handler: file not found:', filePath);
+      callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
+    }
+  });
+  console.log('[main] app:// protocol handler registered (packaged COOP/COEP fallback, registerBufferProtocol).');
 
   // ── STEP 2: BrowserWindow — Path B fallback posture ──────────────────────
   // FALLBACK POSTURE: sandbox:false + nodeIntegration:true + contextIsolation:false
@@ -116,8 +230,11 @@ app.whenReady().then(() => {
   //   2. The BrowserWindow (with sandbox:false) is created before the first navigation.
   // No utility process to fork — the addon lives in the renderer's process cluster.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    // Dev mode: use the Vite dev server (COOP/COEP via onHeadersReceived)
     win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path.join(app.getAppPath(), '.vite', 'renderer', MAIN_WINDOW_VITE_NAME, 'index.html'));
+    // Packaged mode: use app:// scheme (COOP/COEP via protocol.handle)
+    // This is fallback rung 2 replacing win.loadFile() which uses file:// (no COOP/COEP).
+    win.loadURL(`app://swg-toolkit/index.html`);
   }
 });

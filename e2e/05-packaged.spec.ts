@@ -119,9 +119,13 @@ const exePath: string | null = exeFromEnv ?? exeFromScan;
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('05-packaged: HARD gate — crossOriginIsolated + in-process cross-write in packaged binary', () => {
+  // Packaged binary cold-start may take up to 30s; allow extra time per test.
+  test.describe.configure({ timeout: 90_000 });
   let app: ElectronApplication | null = null;
   let window: Page | null = null;
 
+  // Packaged app beforeAll: exe launch + firstWindow + native addon cold-start.
+  // The webServer is no longer needed (app:// protocol serves bundled renderer).
   test.beforeAll(async () => {
     if (!exePath) {
       // Local dev: skip with an actionable message.
@@ -133,9 +137,9 @@ test.describe('05-packaged: HARD gate — crossOriginIsolated + in-process cross
     app = await electron.launch({ executablePath: exePath });
     window = await app.firstWindow();
     await window.waitForLoadState('domcontentloaded');
-    // Wait longer for the packaged app to fully initialize (native rebuild cold-start)
-    await window.waitForTimeout(3000);
-  });
+    // Wait longer for the packaged app to fully initialize (native addon cold-start)
+    await window.waitForTimeout(5000);
+  }, 90_000);
 
   test.afterAll(async () => {
     await app?.close();

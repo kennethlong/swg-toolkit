@@ -23,7 +23,10 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 60_000,
+  // 90s global timeout — the very first electron.launch() in a cold Playwright session
+  // on Windows (GPU process init) can take >60s. All E2E tests themselves run in <1s
+  // once Electron is running; the 90s budget is entirely for process startup.
+  timeout: 90_000,
   fullyParallel: false,
   workers: 1,
   reporter: [
@@ -34,12 +37,14 @@ export default defineConfig({
     // Electron specs manage their own app lifecycle via the electron-helpers fixture.
     // No default browser configuration needed.
   },
-  // Start the Vite renderer dev server before running dev-tree E2E specs.
-  // The compiled main.ts (in .vite/build/main.js) points to http://localhost:5173.
-  webServer: {
-    command: 'pnpm vite --config vite.renderer.config.ts --port 5173',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-  },
+  // NOTE: webServer is NOT configured here.
+  //
+  // The compiled main.ts (.vite/build/main.js) uses the app:// protocol to serve
+  // the production renderer bundle (.vite/renderer/main_window/) via
+  // session.protocol.registerBufferProtocol. This works in both dev and CI without
+  // needing a running Vite dev server. The renderer bundle is produced by
+  // `pnpm package:ci` and lives at .vite/renderer/main_window/ in the repo root.
+  //
+  // If you need the Vite HMR dev server (for live-reload during development), run
+  // `pnpm start` instead of using this playwright config for E2E testing.
 });

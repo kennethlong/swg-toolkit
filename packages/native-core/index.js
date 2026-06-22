@@ -20,25 +20,65 @@
  * The prebuilds/ layout is populated by the "prebuild" script in package.json (which copies
  * the cmake-js build output into the --napi named directory), not by prebuildify driving cmake-js
  * (round-3 / Cursor CUR-2: prebuildify drives node-gyp, not cmake-js — potential backend mismatch).
+ *
+ * PACKAGED BUILD (Forge Vite plugin):
+ *   In a packaged Electron app, this file is loaded from resources/native-core/ (extraResource).
+ *   node-gyp-build may not be resolvable there. We fall back to a direct require() of the
+ *   .node file using the known prebuilds/ path relative to __dirname.
  */
 
 'use strict';
 
-const nodeGypBuild = require('node-gyp-build');
+const path = require('node:path');
+const os = require('node:os');
 
-// Resolve the .node file path — node-gyp-build exposes a .resolve() method that
-// returns the chosen absolute path without actually loading the module.
-let resolvedPath;
-try {
-  resolvedPath = nodeGypBuild.resolve(__dirname);
-} catch (_e) {
-  resolvedPath = '<unresolved>';
+/**
+ * Direct prebuild loader — used when node-gyp-build is not available.
+ * Mirrors node-gyp-build's resolution: prebuilds/<platform>-<arch>/<scope>+<name>.node
+ * The --napi artifact uses the full package-name-as-filename convention:
+ *   @swg/native-core → @swg+native-core.node
+ */
+function loadDirect(dir) {
+  const platform = os.platform();    // 'win32', 'linux', 'darwin'
+  const arch = os.arch();            // 'x64', 'arm64', etc.
+  const prebuiltPath = path.join(dir, 'prebuilds', platform + '-' + arch, '@swg+native-core.node');
+  const addon = require(prebuiltPath);
+  addon.__resolvedPath = prebuiltPath;
+  return addon;
 }
 
-// Load the addon through the single resolver
-const addon = nodeGypBuild(__dirname);
+let addon;
 
-// Expose the resolved path for the non-circular proof test
-addon.__resolvedPath = resolvedPath;
+try {
+  const nodeGypBuild = require('node-gyp-build');
+
+  // Resolve the .node file path — node-gyp-build exposes a .resolve() method that
+  // returns the chosen absolute path without actually loading the module.
+  let resolvedPath;
+  try {
+    resolvedPath = nodeGypBuild.resolve(__dirname);
+  } catch (_e) {
+    resolvedPath = '<unresolved>';
+  }
+
+  // Load the addon through the single resolver
+  addon = nodeGypBuild(__dirname);
+
+  // Expose the resolved path for the non-circular proof test
+  addon.__resolvedPath = resolvedPath;
+} catch (_ngbErr) {
+  // node-gyp-build is not available (packaged build with extraResource).
+  // Fall back to direct prebuilds/ resolution.
+  try {
+    addon = loadDirect(__dirname);
+  } catch (directErr) {
+    throw new Error(
+      'Failed to load @swg/native-core:\n' +
+      '  node-gyp-build: not available (packaged extraResource)\n' +
+      '  direct prebuilds/ load: ' + directErr.message + '\n' +
+      '  __dirname: ' + __dirname
+    );
+  }
+}
 
 module.exports = addon;

@@ -31,9 +31,14 @@
  *         __crossWriteState === 'shared' — confirmed same-memory, NOT a copy or error
  *         contracts/ tsc --noEmit passes (FND-04)
  *         SAB_LAYOUT offsets: HELLO_SENTINEL.offset === 0, RENDERER_SENTINEL.offset === 4
+ *
+ * PERFORMANCE NOTE: A single shared Electron instance (beforeAll/afterAll) is used
+ * across all 5 window-based tests to avoid per-test Electron launches that cause
+ * Windows resource exhaustion when running the full suite.
  */
 
-import { test, expect } from './fixtures/electron-helpers';
+import { _electron as electron, test, expect } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 // Import SAB_LAYOUT directly in the test runner (not via require in the renderer).
@@ -43,13 +48,15 @@ import path from 'node:path';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { SAB_LAYOUT } = require('../packages/contracts/dist/sab-layout.js') as { SAB_LAYOUT: { HELLO_SENTINEL: { offset: number }; RENDERER_SENTINEL: { offset: number } } };
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const ELECTRON_BINARY = require('electron') as string;
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wait helper: StatusBar sets all hooks once the async proof completes (~1-2s)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function waitForProofComplete(window: import('@playwright/test').Page): Promise<void> {
+async function waitForProofComplete(window: Page): Promise<void> {
   // Wait for __crossWriteOk to be set (the LAST hook set in StatusBar's useEffect)
   await window.waitForFunction(
     () => typeof (window as any).__crossWriteOk === 'boolean',
@@ -58,11 +65,30 @@ async function waitForProofComplete(window: import('@playwright/test').Page): Pr
 }
 
 test.describe('SC-4: In-process same-memory SAB proof (Path B)', () => {
+  // Allow 90s for Electron launch + StatusBar async proof (15s waitForFunction included).
+  test.describe.configure({ timeout: 90_000 });
+
+  let electronApp: ElectronApplication;
+  let window: Page;
+
+  test.beforeAll(async () => {
+    electronApp = await electron.launch({
+      executablePath: ELECTRON_BINARY,
+      args: [REPO_ROOT, '--disable-gpu'],
+    });
+    window = await electronApp.firstWindow();
+    await window.waitForLoadState('domcontentloaded');
+    // Wait for StatusBar's async proof to complete
+    await waitForProofComplete(window);
+  }, 90_000); // explicit timeout for beforeAll hook
+
+  test.afterAll(async () => {
+    await electronApp?.close();
+  });
 
   // ── C++ wrote 0xDEAD; renderer read it ────────────────────────────────────
 
-  test('__sabValue === 57005 (0xDEAD — C++ wrote it, renderer read it)', async ({ window }) => {
-    await waitForProofComplete(window);
+  test('__sabValue === 57005 (0xDEAD — C++ wrote it, renderer read it)', async () => {
     const value = await window.evaluate(() => (window as any).__sabValue as number);
     // 0xDEAD = 57005. C++ called writeSab(sab, 0, 0xDEAD); renderer read Int32Array(sab)[0].
     // This proves the C++→JS direction of in-process same-memory access.
@@ -71,8 +97,7 @@ test.describe('SC-4: In-process same-memory SAB proof (Path B)', () => {
 
   // ── Arrived object is a real SharedArrayBuffer (instanceof check) ──────────
 
-  test('__sabIsShared === true (instanceof SharedArrayBuffer — in-process allocation)', async ({ window }) => {
-    await waitForProofComplete(window);
+  test('__sabIsShared === true (instanceof SharedArrayBuffer — in-process allocation)', async () => {
     const isShared = await window.evaluate(() => (window as any).__sabIsShared as boolean);
     // StatusBar sets __sabIsShared = (sab instanceof SharedArrayBuffer) AND then
     // overwrites it after the Worker reads the SAB (intra-cluster share confirmation).
@@ -82,8 +107,7 @@ test.describe('SC-4: In-process same-memory SAB proof (Path B)', () => {
 
   // ── Same-memory nonce cross-write (Path B in-process proof) ───────────────
 
-  test('__crossWriteOk === true (same-memory nonce round-trip — NOT a copy or echo)', async ({ window }) => {
-    await waitForProofComplete(window);
+  test('__crossWriteOk === true (same-memory nonce round-trip — NOT a copy or echo)', async () => {
     const crossWriteOk = await window.evaluate(() => (window as any).__crossWriteOk as boolean);
     const crossWriteState = await window.evaluate(() => (window as any).__crossWriteState as string);
 
@@ -106,8 +130,7 @@ test.describe('SC-4: In-process same-memory SAB proof (Path B)', () => {
     expect(crossWriteState).toBe('shared');
   });
 
-  test('__crossWriteState === "shared" (same-memory confirmed, NOT "copy" or "error")', async ({ window }) => {
-    await waitForProofComplete(window);
+  test('__crossWriteState === "shared" (same-memory confirmed, NOT "copy" or "error")', async () => {
     const state = await window.evaluate(() => (window as any).__crossWriteState as string);
     // 'shared' = nonce matched (same memory pointer)
     // 'copy'   = nonce mismatched (data was copied, not shared)
