@@ -101,6 +101,29 @@ The zero-copy data path from C++ to the renderer uses a **`MessageChannel` + tra
 2. The main process transfers one end of a `MessageChannel` port to the renderer via `webContents.postMessage`.
 3. The renderer receives the port, then reads the `SharedArrayBuffer` on every animation frame — no IPC round-trip per update.
 
+> ⚠ **UNVERIFIED — pending the Phase 0 cross-write experiment (2026-06-21).** The claim that a
+> `SharedArrayBuffer` allocated in a **dedicated utility process** is **shared zero-copy** with the
+> renderer (steps 1–3 above, when "main/utility" is the *utility* process) is **not confirmed by
+> primary sources** and a cross-AI primary-source review judged it **likely-negative**: HTML
+> structured-clone agent-cluster rules predict a `DataCloneError` (THROWS) or an independent **COPY**
+> across the utility→renderer boundary, because an Electron utility process is a separate OS child and
+> is **not** in the renderer's agent cluster; Node documents SAB sharing only **between threads of one
+> process**; Electron documents the IPC *shape* but **never** utility→renderer backing-store sharing.
+> `crossOriginIsolated === true` is a renderer *eligibility gate* for using SAB — it does **not** unify
+> the utility into the renderer's cluster. Per AGENTS.md this caveat stays until Phase 0's same-memory
+> **cross-write proof** passes in dev (00-03) **and** in the packaged binary (00-05).
+>
+> **Documented pivot contingency if the utility→renderer cross-write proves copy-only / throws**
+> (does NOT re-decide the locked CONTEXT.md D-02/D-04 — recorded as a risk/finding):
+> 1. **Main-owned SAB** — allocate/own the SAB in the **main** process (the documented main↔renderer
+>    zero-copy path); the utility communicates deltas to main, main shares the SAB to the renderer.
+> 2. **OS shared memory** — back the buffer with a named OS shared-memory segment both the utility and
+>    renderer map, bypassing the structured-clone agent-cluster restriction.
+> 3. **Drop the utility from the hot path** — keep crash isolation for parsing, run the 60 fps SAB owner
+>    in main (accept reduced isolation for the hot channel only).
+> The case where the SAB is allocated in the **main** process (not the utility) is the standard,
+> documented main↔renderer pattern and is **not** subject to this caveat.
+
 **Cross-origin isolation is mandatory.** `SharedArrayBuffer` requires `crossOriginIsolated === true` in the renderer. Enable it by setting the following headers on all Electron responses:
 
 ```

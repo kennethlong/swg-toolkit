@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 0 UI-SPEC approved
+stopped_at: Phase 0 plans revised per cross-AI review (00-REVIEWS.md)
 last_updated: "2026-06-21T22:06:41.577Z"
-last_activity: 2026-06-21 -- Phase 00 planning complete
+last_activity: 2026-06-21 -- Phase 00 plans replanned (--reviews): NAPI_EXPERIMENTAL fix, prebuildify, cross-write SAB proof, CI/hygiene
 progress:
   total_phases: 9
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-21)
 Phase: 0 of 8 (Toolchain De-risk & App Shell)
 Plan: 0 of TBD in current phase
 Status: Ready to execute
-Last activity: 2026-06-21 -- Phase 00 planning complete
+Last activity: 2026-06-21 -- Phase 00 plans replanned (--reviews)
 
 Progress: [░░░░░░░░░░] 0%
 

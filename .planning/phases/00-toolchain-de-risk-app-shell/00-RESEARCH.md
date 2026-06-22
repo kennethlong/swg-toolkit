@@ -38,7 +38,7 @@
 | ID | Description | Research Support |
 |----|-------------|------------------|
 | FND-01 | App boots as an Electron desktop app with secure context isolation and a narrow, validated preload bridge (no Node in the renderer). | Electron `contextIsolation: true`, `nodeIntegration: false`, `contextBridge` — fully documented; pattern verified. |
-| FND-02 | The C++ Node-API addon builds via cmake-js (prebuildify distribution) and loads in the Electron main/utility process. | cmake-js 8 + prebuildify 6 + `@electron/rebuild` 4 — all confirmed on npm; utility process pattern verified via Electron docs. swg-client-v2 is MSVC `.sln`, not CMake — cmake-js is still the right choice; implications documented. |
+| FND-02 | The C++ Node-API addon builds via cmake-js (prebuildify distribution) and loads in the Electron main/utility process. | cmake-js 8 builds the addon; the emitted `.node` is placed into a **`prebuilds/<platform>-<arch>/` layout that `node-gyp-build` 4 resolves** as the single source-of-truth resolution path (no-compiler distribution - one of the two things this phase de-risks). **N-API IS ABI-STABLE ACROSS NODE AND ELECTRON (`NODE_API_MODULE` + `NAPI_VERSION=8` + `--napi` prebuild): ONE `prebuilds/` artifact loads in both bare-Node/vitest AND Electron's utility process WITHOUT a separate Electron `MODULE_VERSION` build.** [round-3 de-anchoring correction / Cursor CUR-1 - the prior "rebuilds against the Electron 42 ABI" framing was a category error; that model applies only to NON-N-API ABI-tagged addons]. Non-circularity is proven by moving `build/` aside and asserting the load came from `prebuilds/` (00-02 Task 4); the packaged-Electron RUNTIME LOAD (same binary, not a distinct ABI artifact) is proven by the 00-05 packaged hard gate. `@electron/rebuild` is an OPTIONAL Forge/dev fallback only - NOT the FND-02 proof hinge. All confirmed on npm; utility-process pattern verified via Electron docs. Implemented in Plan 00-02 Task 3. |
 | FND-03 | Cross-origin isolation (COOP/COEP) is enabled so `SharedArrayBuffer` is allocatable in the renderer. | `session.webRequest.onHeadersReceived` + `app.commandLine.appendSwitch` both confirmed; `Napi::SharedArrayBuffer::New` confirmed in node-addon-api 8. |
 | FND-04 | A shared-types `contracts/` package defines the IPC, byte-offset, and opcode types used across native ↔ backend ↔ renderer. | pnpm workspace topology with a `contracts/` package importing from `@swg/contracts` is the standard pattern. |
 | FND-05 | The app presents a dark, dockable, persistent multi-panel workspace (dockview) — sidebar / 3D canvas / data pane / inspector. | `DockviewReact` with `api.toJSON()`/`api.fromJSON()` persistence confirmed via Context7 docs. |
@@ -85,11 +85,11 @@ The swg-client-v2 ground truth confirms the client uses pure MSVC `.sln`/`.vcxpr
 | `@electron-forge/cli` | `7.11.2` | Scaffold / build / package | Official Electron toolchain; confirmed on npm [VERIFIED: npm registry] |
 | `@electron-forge/plugin-vite` | `7.11.2` | Vite integration for Forge | Explicitly locked by D-01; confirmed on npm [VERIFIED: npm registry] |
 | `@electron-forge/plugin-auto-unpack-natives` | `7.11.2` | Unpacks `.node` from ASAR | Required for native addons inside ASAR; documented on electronforge.io [VERIFIED: npm registry + Context7 /websites/electronforge_io] |
-| `node-addon-api` | `8.8.0` | C++ N-API wrapper | ABI-stable; `Napi::SharedArrayBuffer::New` confirmed in docs [VERIFIED: npm registry + Context7 /nodejs/node-addon-api] |
+| `node-addon-api` | `^8.8.0` (pin minor - NOT bare `8`) | C++ N-API wrapper | ABI-stable; `Napi::SharedArrayBuffer` lands in **8.6.0** and needs `NAPI_EXPERIMENTAL` (Pitfall 4). 8.0-8.5 LACK the class - pin `^8.8.0` [VERIFIED: npm registry + node-addon-api 8.8.0 doc/shared_array_buffer.md] |
 | `cmake-js` | `8.0.0` | Builds C++ addon via CMake | Chosen for Phase 1 forward-compat; confirmed on npm; no postinstall risks [VERIFIED: npm registry] |
 | `prebuildify` | `6.0.1` | Bakes prebuilt binaries into package | End-users need no compiler; confirmed on npm [VERIFIED: npm registry] |
 | `node-gyp-build` | `4.8.4` | Runtime picks correct prebuilt | Companion to prebuildify; confirmed on npm [VERIFIED: npm registry] |
-| `@electron/rebuild` | `4.0.4` | Rebuilds addon against Electron ABI | Required after `npm install`; confirmed on npm [VERIFIED: npm registry] |
+| `@electron/rebuild` | `4.0.4` | OPTIONAL Forge/dev fallback (legacy ABI-tagged addons) | NOT required for this pure N-API addon - N-API is ABI-stable across Node + Electron, so one `--napi` prebuild serves both; demoted from the FND-02 proof hinge [round-3 / Cursor CUR-1]; confirmed on npm [VERIFIED: npm registry] |
 | `typescript` | `6.0.3` | Type safety | Pinned; confirmed on npm [VERIFIED: npm registry] |
 | `pnpm` | `11.8.0` | Workspace package manager | Locked by D-03; confirmed on npm [VERIFIED: npm registry] |
 
@@ -137,8 +137,8 @@ pnpm add react@^19.2 react-dom@^19.2 zustand@^5 dockview dockview-react
 pnpm add -D tailwindcss@^4 @tailwindcss/vite
 
 # Native addon toolchain
-pnpm add node-addon-api@^8 node-gyp-build@^4
-pnpm add -D cmake-js@^8 prebuildify@^6 @electron/rebuild
+pnpm add node-addon-api@^8.8.0 node-gyp-build@^4   # ^8.8.0 (NOT ^8) - SharedArrayBuffer class needs >= 8.6.0 + NAPI_EXPERIMENTAL
+pnpm add -D cmake-js@^8 prebuildify@^6 @electron/rebuild   # @electron/rebuild is an OPTIONAL fallback only (N-API is ABI-stable; one --napi prebuild serves Node + Electron) [round-3 / Cursor CUR-1]
 
 # Dev / test
 pnpm add -D typescript@^6 vitest@^4 @playwright/test
@@ -352,6 +352,26 @@ process.parentPort.on('message', (event) => {
 
 **Critical note:** The SAB transfer path above requires `crossOriginIsolated === true` in the renderer before the SAB is usable. The COOP/COEP headers must be set BEFORE the window is created or loaded.
 
+> **⚠ UNVERIFIED — utility→renderer SAB sharing (Round-2 cross-AI review, 2026-06-21).** Pattern 1 places
+> the addon in a **utility process** (D-02) and assumes the transferred `SharedArrayBuffer` is genuinely
+> **shared** with the renderer. A primary-source review judged this **likely-negative**: HTML
+> structured-clone agent-cluster rules predict `DataCloneError` (THROWS) or an independent **COPY** across
+> the utility→renderer boundary (a utility process is a separate OS child, outside the renderer's agent
+> cluster); Node documents SAB sharing only between threads of one process; Electron documents no
+> utility→renderer backing-store sharing. `crossOriginIsolated === true` gates the renderer's *use* of SAB;
+> it does not unify the utility into the renderer's cluster. **This is the Phase 0 de-risk experiment**
+> (Plan 00-03's same-memory **nonce cross-write proof**), not an API guarantee. If it proves copy-only /
+> throws:
+> - **Pivot contingency** (record as a FINDING; does NOT re-decide locked D-02/D-04):
+>   1. **Main-owned SAB** — allocate/own the SAB in the **main** process (the documented main↔renderer
+>      zero-copy path); utility sends deltas to main; main shares the SAB to the renderer.
+>   2. **OS shared memory** — back the buffer with a named OS shared-memory segment both processes map.
+>   3. **Drop the utility from the hot path** — run the 60 fps SAB owner in main (parsing keeps isolation).
+> - Per AGENTS.md, `docs/00-overview/architecture.md` (§SharedArrayBuffer data channel) and
+>   `docs/04-live-sync/live-memory-and-ipc.md` (review-corrections item 6) carry an **UNVERIFIED** caveat
+>   until the cross-write passes in dev (00-03) **and** packaged (00-05). A failing cross-write BLOCKS the
+>   "live-sync proven"/D-04 claim — it is a valid de-risk finding, not a soft pass.
+
 ### Pattern 2: COOP/COEP Header Injection — Dev vs. Packaged
 
 **What:** Two separate mechanisms, both required.
@@ -394,13 +414,14 @@ set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
 target_link_libraries(${PROJECT_NAME} ${CMAKE_JS_LIB})
 
 # node-addon-api: no exceptions variant (NAPI_DISABLE_CPP_EXCEPTIONS)
+# NAPI_EXPERIMENTAL is REQUIRED for Napi::SharedArrayBuffer (see Pitfall 4 - ground truth)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
-target_compile_definitions(${PROJECT_NAME} PRIVATE NAPI_DISABLE_CPP_EXCEPTIONS)
+target_compile_definitions(${PROJECT_NAME} PRIVATE NAPI_DISABLE_CPP_EXCEPTIONS NAPI_VERSION=8 NAPI_EXPERIMENTAL)
 ```
 
 ```cpp
 // packages/native-core/src/addon.cpp
-// [VERIFIED: node-addon-api 8 — Napi::SharedArrayBuffer::New]
+// [GROUND TRUTH: Napi::SharedArrayBuffer requires NAPI_EXPERIMENTAL + node-addon-api >= 8.6.0 - see Pitfall 4]
 // Source: Context7 /nodejs/node-addon-api
 
 #include <napi.h>
@@ -412,7 +433,7 @@ Napi::Value Hello(const Napi::CallbackInfo& info) {
 Napi::Value AllocateSab(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     size_t byteLength = info[0].As<Napi::Number>().Uint32Value();
-    // Napi::SharedArrayBuffer::New — confirmed in node-addon-api 8 docs
+    // Napi::SharedArrayBuffer::New - requires NAPI_EXPERIMENTAL compile def (node-addon-api >= 8.6.0)
     return Napi::SharedArrayBuffer::New(env, byteLength);
 }
 
@@ -635,15 +656,34 @@ export default defineConfig({
 
 **How to avoid:** Use Electron Forge's build constants (`MAIN_WINDOW_VITE_DEV_SERVER_URL`, `MAIN_WINDOW_VITE_NAME`) pattern for the main window; for the utility worker, compute the path via `path.join(app.getAppPath(), 'dist', 'utility-worker.js')` and ensure Forge bundles the worker file. Add the worker to the Vite `build.rollupOptions.input` so it's emitted as a separate file.
 
-### Pitfall 4: `Napi::SharedArrayBuffer::New` Requires `NAPI_EXPERIMENTAL` on Older Node-API Versions
+### Pitfall 4: `Napi::SharedArrayBuffer::New` Requires `NAPI_EXPERIMENTAL` AND node-addon-api >= 8.6.0 [GROUND TRUTH - CORRECTED]
 
-**What goes wrong:** On older node-addon-api releases, `Napi::SharedArrayBuffer` was behind a feature flag. node-addon-api 8 ships it by default, but the CMake build must define `NAPI_VERSION=8` or higher.
+> **CORRECTION (2026-06-21, cross-AI review de-anchoring result):** An earlier version of this pitfall
+> (and assumption A4) asserted that `Napi::SharedArrayBuffer::New` does **NOT** need `NAPI_EXPERIMENTAL`.
+> **That claim was FALSE** - an AI-distilled consensus artifact, exactly the project's #1 risk (see
+> `docs/00-overview/source-provenance.md`). It was falsified by primary sources and is corrected below.
+> Per AGENTS.md, when we verify/correct a fact we update the doc and drop the "AI-proposed" caveat -
+> this section is now **ground truth**, not a hypothesis.
 
-**How to avoid:**
+**Ground truth (primary sources):**
+- node-addon-api 8.8.0 `doc/shared_array_buffer.md`: *"The support for `Napi::SharedArrayBuffer` is
+  only available when using `NAPI_EXPERIMENTAL` and building against Node.js headers that support this
+  feature."* The class compiles only under `#ifdef NODE_API_EXPERIMENTAL_HAS_SHAREDARRAYBUFFER`.
+- The `Napi::SharedArrayBuffer` class is **absent** in node-addon-api 8.0-8.5; it landed in **8.6.0**.
+- The underlying C API `node_api_create_sharedarraybuffer` was added in **Node v24.9.0** and is
+  **experimental**.
+
+**What goes wrong if you build with `NAPI_VERSION=8` only:** `Napi::SharedArrayBuffer` is undefined;
+the addon either fails to compile or the symbol is silently absent -> `allocateSab` is a Phase 0
+**blocker**.
+
+**How to avoid (REQUIRED for Phase 0 `allocateSab`):**
 ```cmake
-target_compile_definitions(${PROJECT_NAME} PRIVATE NAPI_VERSION=8)
+target_compile_definitions(${PROJECT_NAME} PRIVATE NAPI_VERSION=8 NAPI_EXPERIMENTAL)
 ```
-Or use the cmake-js `node-gyp` Node.h variables — cmake-js 8 injects `NAPI_VERSION` automatically if the target ABI is correct.
+And pin the dependency at **`node-addon-api@^8.8.0`** (NOT bare `node-addon-api@8`, which can resolve
+to 8.0-8.5 where the class does not exist). If the target Electron's Node headers predate v24.9.0 the
+build fails loudly at compile time (acceptable - the de-risk surfaces the truth early).
 
 ### Pitfall 5: dockview `fromJSON` Requires All Component Types Registered
 
@@ -780,7 +820,7 @@ Step 2.6 triggered: SKIPPED — this is a greenfield phase (no app code exists y
 | A1 | MSVC v145 toolchain is installed on the build machine (required by cmake-js to compile the C++ addon on Windows) | Environment Availability | cmake-js build fails; install VS Build Tools 2022 with "Desktop development with C++" workload |
 | A2 | CMake ≥ 3.15 is installed on the build machine | Environment Availability | cmake-js cannot invoke CMake; install from cmake.org |
 | A3 | The Forge Vite plugin `session.webRequest.onHeadersReceived` correctly fires for the dev server's `http://localhost` responses (not just `file://`) | Pitfall 1 | crossOriginIsolated may be false in dev; fallback: add a custom Chromium flag via `app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')` or switch to `electron-vite` which has a known-good COOP/COEP integration path |
-| A4 | `Napi::SharedArrayBuffer::New` in node-addon-api 8 does not require `NAPI_EXPERIMENTAL` flag (confirmed in node-addon-api docs it is stable in NAPI 6+; NAPI 8 = Node 18+) | Pattern 3 | Build fails with undefined; fix: `target_compile_definitions(...NAPI_EXPERIMENTAL)` |
+| A4 | [CORRECTED - now GROUND TRUTH, not an assumption] `Napi::SharedArrayBuffer` **requires** `NAPI_EXPERIMENTAL` and **node-addon-api >= 8.6.0** (node-addon-api 8.8.0 `doc/shared_array_buffer.md`; class gated by `NODE_API_EXPERIMENTAL_HAS_SHAREDARRAYBUFFER`; underlying `node_api_create_sharedarraybuffer` added Node v24.9.0, experimental). The prior claim ("does not require NAPI_EXPERIMENTAL") was FALSE. | Pattern 3 / Pitfall 4 | Resolved: 00-02 CMake defs add `NAPI_EXPERIMENTAL` and pin `node-addon-api@^8.8.0`; build proves SAB compiles. |
 | A5 | All slopcheck verdicts above are `[ASSUMED OK]` due to cross-ecosystem tool confusion (PyPI vs npm); each package was independently verified via `npm view` | Package Legitimacy Audit | Low risk — all packages are well-known with multi-year histories and large download counts |
 
 ---

@@ -38,17 +38,17 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 5 plans
 Plans:
 **Wave 1**
-- [ ] 00-01-PLAN.md — Monorepo scaffold, pnpm workspace, contracts/ shared types, Vitest + Playwright test harness
-- [ ] 00-02-PLAN.md — cmake-js native addon (hello + allocateSab C++ stub, TDD RED->GREEN)
+- [ ] 00-01-PLAN.md — Monorepo scaffold, pnpm workspace, contracts/ shared types (cross-write SAB layout + correlation `id`), Vitest + Playwright harness, .nvmrc/engines, check-prereqs preflight, CI workflow (with the 05-packaged HARD gate: skip = fail), single source-of-truth Vite worker path
+- [ ] 00-02-PLAN.md — cmake-js native addon (hello + allocateSab, NAPI_EXPERIMENTAL + node-addon-api ^8.8.0) + prebuildify/node-gyp-build distribution (FND-02) proven NON-CIRCULARLY (build/ moved aside, load asserted from prebuilds/, Electron ABI), TDD RED->GREEN
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 00-03-PLAN.md — Electron security posture, COOP/COEP, utility process IPC, SAB round-trip pipeline
+- [ ] 00-03-PLAN.md — Electron security posture, COOP/COEP, utility-process IPC, SAB pipeline with same-memory NONCE cross-write proof (zero-copy, not a copy/echo); demuxed relay + reject-on-exit; autonomous:false architecture gate (utility→renderer SAB sharing is likely-negative — a failing cross-write BLOCKS the D-04 claim) + documented pivot contingency
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 00-04-PLAN.md — Dark dockable workspace shell: DockviewReact, 4 panels, theme system, StatusBar
+- [ ] 00-04-PLAN.md — Dark dockable workspace shell: DockviewReact (explicit panel sizing), 5 locked themes, StatusBar as single owner of SAB hooks + per-run-NONCE cross-write driver (shared/copy/timeout distinguished); runs after the 00-03 architecture gate
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 00-05-PLAN.md — E2E test suite (Playwright specs SC-1 through SC-5) + VALIDATION.md sign-off
+- [ ] 00-05-PLAN.md — E2E suite (SC-1..SC-5 incl. Object.keys allowlist + instanceof + NONCE cross-write + REAL close/relaunch restart against the real userData path + packaged file:// HARD gate via package:ci/PACKAGED_EXE_PATH, skip = fail) + independent Nyquist sign-off certifying only what was proven (FND-02 non-circular resolution + Electron-ABI packaged load — not a proxy)
 **UI hint**: yes
 
 ### Phase 1: Core Engine — IFF + TRE + Verification Harness
