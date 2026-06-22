@@ -42,7 +42,7 @@ Plans:
 - [x] 00-02-PLAN.md — cmake-js native addon (hello + allocateSab, NAPI_EXPERIMENTAL + node-addon-api ^8.8.0) + prebuildify/node-gyp-build distribution (FND-02) proven NON-CIRCULARLY (build/ moved aside, load asserted from prebuilds/, Electron ABI), TDD RED->GREEN
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 00-03-PLAN.md — Electron security posture, COOP/COEP, utility-process IPC, SAB pipeline with same-memory NONCE cross-write proof (zero-copy, not a copy/echo); demuxed relay + reject-on-exit; autonomous:false architecture gate (utility→renderer SAB sharing is likely-negative — a failing cross-write BLOCKS the D-04 claim) + documented pivot contingency
+- [x] 00-03-PLAN.md — Electron security posture, COOP/COEP, utility-process IPC, SAB pipeline with same-memory NONCE cross-write proof (zero-copy, not a copy/echo); demuxed relay + reject-on-exit; autonomous:false architecture gate (utility→renderer SAB sharing is likely-negative — a failing cross-write BLOCKS the D-04 claim) + documented pivot contingency
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 00-04-PLAN.md — Dark dockable workspace shell: DockviewReact (explicit panel sizing), 5 locked themes, StatusBar as single owner of SAB hooks + per-run-NONCE cross-write driver (shared/copy/timeout distinguished); runs after the 00-03 architecture gate
