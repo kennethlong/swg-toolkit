@@ -1,16 +1,22 @@
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 
-// vite.renderer.config.ts — React renderer (sandboxed Electron renderer process)
+// vite.renderer.config.ts — Electron renderer process (Path B, native-in-renderer)
 //
-// The renderer is sandboxed (no Node.js access). All native functionality is exposed
-// via the contextBridge in the preload script. Do NOT add Node externals here.
+// PATH B (native-in-renderer, 00-03 REPLAN):
+//   The renderer is NOT sandboxed (sandbox:false + nodeIntegration:true, fallback posture).
+//   The renderer main world can require('@swg/native-core') directly — no preload bridge.
+//   @swg/native-core MUST be external to prevent Vite/Rollup from trying to bundle the
+//   native .node binary (which would break dlopen at runtime).
+//
+//   For Plan 00-04 (React shell), this config stays intact — the React app will also
+//   have access to @swg/native-core via require() in the renderer context.
 //
 // Root is packages/renderer so that Vite resolves index.html from there.
-// Plan 04 creates the React app source under packages/renderer/src/.
+// Plan 04 replaces the minimal proof entry (index.html + src/main.tsx) with the React shell.
 
 export default defineConfig({
-  // Renderer root is the packages/renderer directory where index.html will live (Plan 04).
+  // Renderer root is the packages/renderer directory where index.html lives.
   // Forge's Vite plugin serves this as the main window content.
   root: 'packages/renderer',
   plugins: [
@@ -23,5 +29,11 @@ export default defineConfig({
       '@swg/contracts': new URL('./packages/contracts/src/index.ts', import.meta.url).pathname,
     },
   },
-  // No externals — renderer is sandboxed. All Node imports must go through the preload bridge.
+  build: {
+    rollupOptions: {
+      // EXTERNALS: @swg/native-core is a native .node addon — resolved by node-gyp-build
+      // at runtime; Rollup cannot bundle it. node-gyp-build itself is also external.
+      external: ['@swg/native-core', 'node-gyp-build'],
+    },
+  },
 });

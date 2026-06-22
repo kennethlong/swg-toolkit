@@ -2,10 +2,15 @@
  * packages/renderer/src/main.tsx
  * Phase 0 Plan 03 — minimal proof entry for Path B (native-in-renderer zero-copy).
  *
- * NOTE: This is the Phase-0 proof entry ONLY. Plan 00-04 (dark dockable shell) will
- * replace this with the real React app shell. See packages/renderer/index.html for
- * the corresponding HTML entry. The window.__* hooks set here are consumed by
- * 00-05's E2E spec (03-sab-roundtrip.spec.ts).
+ * POSTURE (fallback B — nodeIntegration:true, contextIsolation:false):
+ *   The preferred posture (contextBridge) failed: contextBridge cannot transfer a C++
+ *   SharedArrayBuffer across isolated-world boundaries (structured-clone throws). In the
+ *   fallback posture, the renderer has Node and requires the addon directly — no IPC,
+ *   no bridge, no clone. The SAB is allocated in the renderer's own process cluster.
+ *
+ * NOTE: This is the Phase-0 proof entry ONLY. Plan 00-04 (dark dockable React shell)
+ * will replace this with the real React app shell. The window.__* hooks set here are
+ * consumed by 00-05's E2E spec (03-sab-roundtrip.spec.ts).
  *
  * PROOF SEQUENCE (bidirectional same-memory):
  *   1. allocateSab(8)            → assert instanceof SharedArrayBuffer (in-process alloc)
@@ -20,29 +25,22 @@
  *   window.__sabIsShared      = true  (set after worker confirms it reads the same value)
  *   window.__sabValue         = 0xDEAD (the C++-written sentinel value)
  *   window.__crossWriteOk     = true  (C++ readSab saw the renderer-written nonce)
+ *   window.__posture          = 'fallback: nodeIntegration=true, contextIsolation=false'
  */
 
-// Extend Window type for test hooks
-declare global {
-  interface Window {
-    api: {
-      allocateSab: (byteLength: number) => SharedArrayBuffer;
-      writeSab: (sab: SharedArrayBuffer, int32Index: number, value: number) => void;
-      readSab: (sab: SharedArrayBuffer, int32Index: number) => number;
-      hello: () => string;
-    };
-    __transport: string;
-    __zeroCopy: boolean;
-    __sabIsShared: boolean;
-    __sabValue: number;
-    __crossWriteOk: boolean;
-    __proofLog: string[];
-  }
-}
+// With nodeIntegration:true the renderer has Node — require the addon directly.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nativeCore = require('@swg/native-core') as {
+  hello: () => string;
+  allocateSab: (byteLength: number) => SharedArrayBuffer;
+  writeSab: (sab: SharedArrayBuffer, int32Index: number, value: number) => void;
+  readSab: (sab: SharedArrayBuffer, int32Index: number) => number;
+};
 
-// Set transport marker immediately (before proof runs)
+// Set transport marker immediately
 window.__transport = 'B-native-in-renderer';
 window.__zeroCopy = true;
+window.__posture = 'fallback: nodeIntegration=true, contextIsolation=false';
 window.__proofLog = [];
 
 function log(msg: string): void {
@@ -57,9 +55,19 @@ function log(msg: string): void {
 async function runProof(): Promise<void> {
   log('--- Path B bidirectional same-memory proof ---');
   log('crossOriginIsolated=' + self.crossOriginIsolated);
+  log('posture=' + window.__posture);
+
+  // ── STEP 0: hello() round-trip ─────────────────────────────────────────────
+  const helloResult = nativeCore.hello();
+  if (helloResult === 'pong') {
+    log('PASS: nativeCore.hello()=' + JSON.stringify(helloResult));
+  } else {
+    log('FAIL: nativeCore.hello() returned ' + JSON.stringify(helloResult));
+    return;
+  }
 
   // ── STEP 1: allocateSab ────────────────────────────────────────────────────
-  const sab = window.api.allocateSab(8);
+  const sab = nativeCore.allocateSab(8);
   if (!(sab instanceof SharedArrayBuffer)) {
     log('FAIL: allocateSab did not return a SharedArrayBuffer (got ' + typeof sab + ')');
     return;
@@ -69,10 +77,10 @@ async function runProof(): Promise<void> {
   const view = new Int32Array(sab);
 
   // ── STEP 2: C++ writes 0xDEAD → renderer reads it (C++ → JS direction) ───
-  window.api.writeSab(sab, 0, 0xDEAD);
+  nativeCore.writeSab(sab, 0, 0xDEAD);
   const readBack = view[0];
   if (readBack === 0xDEAD) {
-    log('PASS: C++ writeSab(sab,0,0xDEAD) → Int32Array(sab)[0]=' + readBack.toString(16).toUpperCase() + ' (C++ → JS same memory)');
+    log('PASS: C++ writeSab(sab,0,0xDEAD) → Int32Array(sab)[0]=0x' + readBack.toString(16).toUpperCase() + ' (C++ → JS same memory)');
     window.__sabValue = readBack;
   } else {
     log('FAIL: C++ writeSab wrote 0xDEAD but renderer sees ' + readBack);
@@ -82,7 +90,7 @@ async function runProof(): Promise<void> {
   // ── STEP 3: Renderer writes nonce → C++ reads it back (JS → C++ direction) ─
   const nonce = Math.floor(Math.random() * 0x7FFFFFFF) + 1;
   view[1] = nonce;
-  const observed = window.api.readSab(sab, 1);
+  const observed = nativeCore.readSab(sab, 1);
   if (observed === nonce) {
     log('PASS: Renderer wrote nonce=' + nonce + ' → C++ readSab(sab,1)=' + observed + ' (JS → C++ same memory)');
     window.__crossWriteOk = true;
@@ -137,6 +145,7 @@ async function runProof(): Promise<void> {
     log('sabValue=0x' + window.__sabValue.toString(16));
     log('crossWriteOk=' + window.__crossWriteOk);
     log('sabIsShared=' + window.__sabIsShared);
+    log('posture=' + window.__posture);
   } else {
     log('=== ONE OR MORE ASSERTIONS FAILED — see above ===');
   }
@@ -154,4 +163,17 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => void runProof());
 } else {
   void runProof();
+}
+
+// Type declarations for window test hooks
+declare global {
+  interface Window {
+    __transport: string;
+    __zeroCopy: boolean;
+    __sabIsShared: boolean;
+    __sabValue: number;
+    __crossWriteOk: boolean;
+    __posture: string;
+    __proofLog: string[];
+  }
 }
