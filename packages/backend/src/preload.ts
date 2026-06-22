@@ -1,70 +1,105 @@
 /**
  * packages/backend/src/preload.ts
- * Narrow contextBridge surface: hello() + onSabPort() + crossWriteSab() ONLY.
+ * Path B preload — requires the native addon and exposes a narrow contextBridge API.
  *
- * SECURITY INVARIANTS (threat model):
- *   T-00-07: contextBridge bridge is exposed EXACTLY ONCE below via a strict three-property
- *            allowlist. No require, no process, no __dirname, no arbitrary ipcRenderer
- *            passthrough.
- *   T-00-08: crossOriginIsolated check is LOG-ONLY (console.error) — does NOT throw,
- *            so the renderer shell still loads and the devtools probe in Task 3 is runnable.
+ * TRANSPORT DECISION (00-03 REPLAN § DECISION 2026-06-22 — Path B):
+ *   The native addon is loaded HERE in the preload script. The preload runs with Node
+ *   because sandbox:false, so require('@swg/native-core') succeeds. The SAB is
+ *   allocated in-process and lives in the renderer's process cluster — no IPC, no copy.
  *
- * NONCE INVARIANT (review fix MEDIUM-4 / Opus):
- *   crossWriteSab() takes NO argument. The renderer writes its per-run nonce directly into
- *   Int32Array(sab)[1] and NEVER sends the nonce over IPC. This is the only design that
- *   distinguishes genuine same-memory sharing from a copy that echoes an IPC arg.
+ * SECURITY POSTURE (preferred B posture — verified empirically, see 00-03-SUMMARY.md):
+ *   sandbox:false + contextIsolation:true + nodeIntegration:false
+ *   - The preload (Node context) requires the addon and allocates the SAB.
+ *   - contextBridge.exposeInMainWorld() exposes a NARROW API to the isolated main world.
+ *   - The main world CANNOT call require() — it accesses the addon only via window.api.
+ *   - The key empirical question: does a C++ SharedArrayBuffer survive contextBridge?
+ *     If yes: preferred posture is in effect (this file).
+ *     If no: fallback to nodeIntegration:true + contextIsolation:false (documented in SUMMARY).
+ *
+ * WINDOW.API SURFACE (narrow allowlist — revised for Path B):
+ *   allocateSab(byteLength)           — C++ allocates a SAB, returns it to renderer
+ *   writeSab(sab, int32Index, value)  — C++ writes Int32 into SAB (C++ → renderer proof)
+ *   readSab(sab, int32Index)          — C++ reads Int32 from SAB (renderer → C++ proof)
+ *   hello()                           — round-trip to C++ hello(), returns 'pong'
+ *
+ * REMOVED from old preload.ts (utility-relay model):
+ *   - ipcRenderer.invoke('hello') relay — hello() now calls nativeCore.hello() directly
+ *   - onSabPort() — no longer needed (no SAB relay over MessagePort)
+ *   - crossWriteSab() — no longer needed (no cross-process write check)
+ *
+ * COOP/COEP CHECK:
+ *   If crossOriginIsolated is false after DOMContentLoaded, SharedArrayBuffer is
+ *   unavailable. Log a clear error (do NOT throw — the window still loads for debugging).
  */
 
-import { contextBridge, ipcRenderer } from 'electron';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nativeCore = require('@swg/native-core') as {
+  hello: () => string;
+  allocateSab: (byteLength: number) => SharedArrayBuffer;
+  writeSab: (sab: SharedArrayBuffer, int32Index: number, value: number) => void;
+  readSab: (sab: SharedArrayBuffer, int32Index: number) => number;
+};
+
+import { contextBridge } from 'electron';
 
 // ---------------------------------------------------------------------------
-// crossOriginIsolated guard — LOG-ONLY, not a throw.
-// Runs after DOMContentLoaded so self is available. Plan 05 E2E asserts the
-// positive case (crossOriginIsolated === true); this log surfaces the negative
-// case in the architecture-gate devtools console during Task 3.
+// crossOriginIsolated guard — LOG-ONLY (do NOT throw; window still loads).
+// Runs after DOMContentLoaded so self.crossOriginIsolated is available.
+// crossOriginIsolated === true is required for SharedArrayBuffer; it comes
+// from the COOP/COEP headers registered in main.ts (independent of sandbox:false).
 // ---------------------------------------------------------------------------
 window.addEventListener('DOMContentLoaded', () => {
   if (!self.crossOriginIsolated) {
     console.error(
-      'COOP/COEP not active — SharedArrayBuffer unavailable. Restart the app.'
+      '[preload] COOP/COEP not active — crossOriginIsolated=false. SharedArrayBuffer may be unavailable. ' +
+      'Check that COOP/COEP headers are set (main.ts onHeadersReceived). Restart the app.'
     );
+  } else {
+    console.log('[preload] crossOriginIsolated=true — SharedArrayBuffer is available.');
   }
 });
 
 // ---------------------------------------------------------------------------
-// Narrow API surface — THREE methods, nothing else.
-// Strict allowlist; no generic ipcRenderer passthrough; no Node APIs exposed.
+// Narrow contextBridge API — FOUR methods, nothing else.
+// The renderer main world accesses the native addon ONLY through this surface.
+// No require, no process, no __dirname, no arbitrary Node API exposed.
+//
+// T-00-07: Only the explicitly listed methods are reachable from the renderer.
 // ---------------------------------------------------------------------------
 contextBridge.exposeInMainWorld('api', {
   /**
-   * Sends a hello request to the main process, which relays it to the utility
-   * worker via the demux. Returns 'pong' (the value nativeCore.hello() returns).
+   * Allocates a SharedArrayBuffer of the given byteLength in C++ and returns it
+   * to the renderer main world via the contextBridge.
+   *
+   * PATH B KEY QUESTION: Does the C++ SAB survive the contextBridge boundary?
+   * If contextBridge can carry the SAB, the renderer receives a real
+   * SharedArrayBuffer in-process (same memory, no IPC). This is verified
+   * empirically at runtime — see 00-03-SUMMARY.md proof evidence.
+   *
+   * @param byteLength Number of bytes to allocate (Phase 0: 8).
    */
-  hello: (): Promise<string> => ipcRenderer.invoke('hello') as Promise<string>,
+  allocateSab: (byteLength: number): SharedArrayBuffer => nativeCore.allocateSab(byteLength),
 
   /**
-   * Registers a callback that is called when the utility worker posts the
-   * SharedArrayBuffer via the 'sab-port' IPC channel.
-   * The callback receives the SAB; renderer asserts instanceof SharedArrayBuffer.
+   * C++ writes a 32-bit integer value into the SAB at the given Int32 index.
+   * Used by the bidirectional same-memory proof:
+   *   C++ writes 0xDEAD → renderer reads Int32Array(sab)[0] (C++ → renderer direction).
    */
-  onSabPort: (cb: (sab: SharedArrayBuffer) => void): void => {
-    ipcRenderer.on('sab-port', (_event, payload: { sab: SharedArrayBuffer }) => {
-      cb(payload.sab);
-    });
-  },
+  writeSab: (sab: SharedArrayBuffer, int32Index: number, value: number): void =>
+    nativeCore.writeSab(sab, int32Index, value),
 
   /**
-   * Asks the utility worker to re-read view[1] from the held SharedArrayBuffer
-   * and ack the value back over IPC.
-   *
-   * NONCE INVARIANT: NO argument is passed here. The renderer has already written
-   * its per-run nonce into Int32Array(sab)[1] BEFORE calling this method. The utility
-   * re-reads that slot directly from the shared buffer. If the buffer is genuinely
-   * shared (zero-copy), the utility sees the nonce. If it is only a copy, the utility
-   * sees 0 (the initial value). Either outcome is a valid de-risk finding.
-   *
-   * (review fix MEDIUM-4 / Opus — no value arg prevents a copy-only utility from
-   *  echoing the IPC arg and false-passing the cross-write proof)
+   * C++ reads and returns a 32-bit integer from the SAB at the given Int32 index.
+   * Used by the bidirectional same-memory proof:
+   *   renderer writes nonce → C++ reads it back (renderer → C++ direction).
    */
-  crossWriteSab: (): Promise<number> => ipcRenderer.invoke('cross-write-sab') as Promise<number>,
+  readSab: (sab: SharedArrayBuffer, int32Index: number): number =>
+    nativeCore.readSab(sab, int32Index),
+
+  /**
+   * Round-trip to the C++ hello() export. Returns 'pong'.
+   * Proves the preload-to-addon call chain works end-to-end.
+   * Synchronous — no IPC hop (addon is in-process).
+   */
+  hello: (): string => nativeCore.hello(),
 });

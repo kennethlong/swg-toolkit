@@ -2,11 +2,14 @@ import { defineConfig } from 'vite';
 
 // vite.preload.config.ts — Electron preload script build config
 //
-// The preload script is a bridge between the sandboxed renderer and the main process.
-// It runs in a Node context but is loaded by the renderer window. Only 'electron'
-// is external (it must resolve from the Electron binary, not be bundled).
+// PATH B (native-in-renderer, 00-03 REPLAN):
+//   The preload script (sandbox:false) requires '@swg/native-core' at runtime.
+//   @swg/native-core MUST be external — it is a native .node file resolved by
+//   node-gyp-build at runtime from prebuilds/. Bundling it would break the
+//   dlopen path (the Rollup bundler cannot include a .node binary).
 //
-// Plan 03 creates: packages/backend/src/preload.ts
+//   The preload also imports from 'electron' (contextBridge) — also external.
+//   Both must be resolved at runtime from the Electron binary's node_modules.
 
 export default defineConfig({
   build: {
@@ -14,7 +17,9 @@ export default defineConfig({
       input: {
         preload: 'packages/backend/src/preload.ts',
       },
-      external: ['electron'],
+      // EXTERNALS: electron (Electron built-in) + @swg/native-core (native .node addon).
+      // Both are resolved at runtime; neither can be bundled by Rollup.
+      external: ['electron', '@swg/native-core', 'node-gyp-build'],
       output: {
         // Forge expects a single preload JS file; emit to .vite/build/preload.js
         entryFileNames: '[name].js',
