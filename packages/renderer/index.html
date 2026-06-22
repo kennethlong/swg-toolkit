@@ -1,62 +1,31 @@
 <!DOCTYPE html>
 <!--
   packages/renderer/index.html
-  Phase 0 Plan 03 — minimal proof entry for Path B (native-in-renderer zero-copy).
+  React renderer entry — dark dockable workspace shell (Plan 00-04).
 
-  NOTE: This is the Phase-0 proof entry ONLY. Plan 00-04 (dark dockable React shell)
-  will replace this with the real React app shell. When Plan 00-04 is executed, this
-  file should be rewritten to load the React entry point (src/main.tsx with React 19 +
-  Vite). The window.__* hooks set by src/main.tsx are consumed by 00-05 E2E spec.
+  PATH B (native-in-renderer, sandbox:false + nodeIntegration:true + contextIsolation:false):
+    The renderer has full Node.js access and requires @swg/native-core directly.
+    COOP/COEP headers are set by the Electron main process (before loadURL).
+    crossOriginIsolated=true ensures SharedArrayBuffer is available.
 
-  The proof script (src/main.tsx) runs the bidirectional same-memory proof:
-    1. allocateSab(8) → instanceof SharedArrayBuffer check
-    2. writeSab(sab, 0, 0xDEAD) → renderer reads 0xDEAD (C++ → JS same memory)
-    3. renderer writes nonce → readSab(sab, 1) === nonce (JS → C++ same memory)
-    4. new Worker() → worker reads 0xDEAD from same SAB (intra-cluster share)
+  The proof hooks (window.__*) are set by StatusBar (single owner).
+  Consumed by 00-05 E2E spec (03-sab-roundtrip.spec.ts).
 -->
-<html lang="en">
+<html lang="en" data-theme="cyan">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SWG-Toolkit — Phase 0 Path B Proof</title>
+    <!--
+      background set immediately to avoid white flash before React hydrates.
+      Must match --color-bg (#181818).
+    -->
     <style>
-      body {
-        background: #1a1a2e;
-        color: #e0e0e0;
-        font-family: 'Courier New', Courier, monospace;
-        padding: 24px;
-        margin: 0;
-      }
-      h1 { color: #00ccff; font-size: 1.2em; }
-      h2 { color: #88aaff; font-size: 1em; margin-top: 20px; }
-      #proof-result {
-        font-size: 2em;
-        font-weight: bold;
-        margin: 16px 0;
-      }
-      #proof-log {
-        background: #0d0d1a;
-        border: 1px solid #333;
-        padding: 12px;
-        white-space: pre;
-        font-size: 0.85em;
-        min-height: 120px;
-        color: #88ff88;
-      }
-      .note { color: #888; font-size: 0.8em; margin-top: 20px; }
+      html, body { background: #181818; margin: 0; padding: 0; height: 100%; overflow: hidden; }
     </style>
+    <title>SWG Toolkit</title>
   </head>
   <body>
-    <h1>SWG-Toolkit — Phase 0 Plan 03: Path B Zero-Copy Proof</h1>
-    <h2>Proof Result:</h2>
-    <div id="proof-result" style="color: #888;">Running...</div>
-    <h2>Proof Log:</h2>
-    <pre id="proof-log"></pre>
-    <p class="note">
-      Transport: B-native-in-renderer (sandbox:false + contextIsolation:true + nodeIntegration:false)<br/>
-      This entry is replaced by Plan 00-04 (real React shell). Window.__* hooks consumed by 00-05 E2E.
-    </p>
-    <!-- Proof script — replaced by React app in Plan 00-04 -->
+    <div id="root"></div>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

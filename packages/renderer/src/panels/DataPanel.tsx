@@ -107,15 +107,26 @@ export default function DataPanel(_props: IDockviewPanelProps): React.ReactEleme
 
         <div style={{ flex: 1 }} />
 
-        {/* Collapse button */}
-        <button
-          aria-label={collapsed ? 'Expand panel' : 'Collapse panel'}
-          title={collapsed ? 'Expand panel' : 'Collapse panel'}
-          style={actionBtnStyle}
-          onClick={() => setCollapsed(c => !c)}
-        >
-          {collapsed ? '▸' : '▾'}
-        </button>
+        {/* Collapse button — Accessibility Rule 5: both labels for each state */}
+        {collapsed ? (
+          <button
+            aria-label="Expand panel"
+            title="Expand panel"
+            style={actionBtnStyle}
+            onClick={() => setCollapsed(false)}
+          >
+            ▸
+          </button>
+        ) : (
+          <button
+            aria-label="Collapse panel"
+            title="Collapse panel"
+            style={actionBtnStyle}
+            onClick={() => setCollapsed(true)}
+          >
+            ▾
+          </button>
+        )}
       </div>
 
       {/* Panel body */}

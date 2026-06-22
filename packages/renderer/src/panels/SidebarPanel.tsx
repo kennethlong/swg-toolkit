@@ -72,14 +72,26 @@ export default function SidebarPanel(_props: IDockviewPanelProps): React.ReactEl
         >
           ⊟
         </button>
-        <button
-          aria-label={collapsed ? 'Expand panel' : 'Collapse panel'}
-          title={collapsed ? 'Expand panel' : 'Collapse panel'}
-          style={actionBtnStyle}
-          onClick={() => setCollapsed(c => !c)}
-        >
-          {collapsed ? '▸' : '▾'}
-        </button>
+        {/* Accessibility Rule 5: both labels used (collapsed/expanded states) */}
+        {collapsed ? (
+          <button
+            aria-label="Expand panel"
+            title="Expand panel"
+            style={actionBtnStyle}
+            onClick={() => setCollapsed(false)}
+          >
+            ▸
+          </button>
+        ) : (
+          <button
+            aria-label="Collapse panel"
+            title="Collapse panel"
+            style={actionBtnStyle}
+            onClick={() => setCollapsed(true)}
+          >
+            ▾
+          </button>
+        )}
       </div>
 
       {/* Panel body (hidden when collapsed) */}
