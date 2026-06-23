@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md (TRE read core + harness + fixtures + binding)
-last_updated: "2026-06-23T01:22:07.435Z"
-last_activity: 2026-06-23
+stopped_at: "Completed 01-02-PLAN.md Tasks 1-2 (TreMount + VFS Browser); Task 3 awaiting human-verify"
+last_updated: "2026-06-22T00:00:00.000Z"
+last_activity: 2026-06-22
 progress:
   total_phases: 9
   completed_phases: 1
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-21)
 ## Current Position
 
 Phase: 01 (core-engine-iff-tre-verification-harness) — EXECUTING
-Plan: 2 of 4
-Status: Ready to execute
-Last activity: 2026-06-23
+Plan: 2 of 4 — Tasks 1-2 complete; Task 3 awaiting human-verify
+Status: Checkpoint — awaiting visual verification of TRE VFS Browser UI
+Last activity: 2026-06-22
 
 Progress: [██████░░░░] 56%
 
@@ -58,6 +58,7 @@ Progress: [██████░░░░] 56%
 | Phase 00-toolchain-de-risk-app-shell P00-03 | 90 | 5 tasks | 13 files |
 | Phase 00 P04 | single-session | 3 tasks | 21 files |
 | Phase 01 P01-01 | 90 | 3 tasks | 40 files |
+| Phase 01 P01-02 | ~4h (2 sessions) | 2 tasks (Task 3 pending) | 20 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,11 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 01]: D-09: TRE fixtures synthesized from Utinni byte recipes — never copy Utinni .expected.json goldens
 - [Phase 01]: D-10: Real TRE archives gitignored; copy-real-fixtures.js is read-only and never mutates originals
 - [Phase 01]: D-12: Field-order arbiter test (tre-fieldorder-arbiter) is CI-BLOCKING — MUST be green before Plan 01 is done
+- [Phase 01, Plan 02]: Same-priority tie-break: SECOND-mounted equal-priority archive wins (verified by test from TreeFile.cpp:294-296 code-vs-comment ambiguity)
+- [Phase 01, Plan 02]: resolveChain is OUR algorithm — client doesn't expose chains; invariant: chain.winner === resolve.winner for non-tombstone
+- [Phase 01, Plan 02]: v6000 enumerate-only (encrypted); v0006 is readable — warn chip ONLY on v6000 rows, NOT v0006
+- [Phase 01, Plan 02]: Search returns matched indices only (T-01-06 mitigation — never ship full name list per keystroke)
+- [Phase 01, Plan 02]: TreVfsBrowser archive.version and isEnumerateOnly default to 'v0005'/false — needs native version accessor in minor follow-up
 
 ### Pending Todos
 
@@ -107,6 +113,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-23T01:22:07.409Z
-Stopped at: Completed 01-01-PLAN.md (TRE read core + harness + fixtures + binding)
-Resume file: None
+Last session: 2026-06-22T00:00:00.000Z
+Stopped at: "Completed 01-02-PLAN.md Tasks 1-2; CHECKPOINT at Task 3 (human-verify TRE VFS Browser)"
+Resume file: None — continuation agent spawned from checkpoint message
