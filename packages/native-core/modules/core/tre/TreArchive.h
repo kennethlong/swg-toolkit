@@ -88,6 +88,16 @@ public:
      */
     std::vector<uint8_t> extractEntry(int idx, IInputStream& stream) const;
 
+    /**
+     * Resolve a path including tombstone entries — returns the TOC entry index even
+     * if length==0 (tombstone). Used by TreMount::resolveChain to identify the
+     * tombstone archive entry index without a separate lookup.
+     *
+     * @param normalizedName  Already-normalized file name.
+     * @returns               TOC entry index (including tombstones), or -1 if not found.
+     */
+    int resolveTombstoneIndex(const std::string& normalizedName) const;
+
     // Accessors
     TreVersion                 version()     const { return m_version; }
     int                        entryCount()  const { return static_cast<int>(m_entries.size()); }

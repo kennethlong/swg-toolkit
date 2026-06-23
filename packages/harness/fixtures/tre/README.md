@@ -39,6 +39,19 @@ Every fixture MUST have a `loaderSource` entry in the `fixtureRegistry.ts` citin
 (`swg-client-v2`, `Utinni`, or `tre_reader.py`) `file:line` that validates its byte layout.
 The CORE-05 sweep test enforces this — missing citation = CI failure.
 
+## Plan 01-02 Fixture Notes
+
+The Plan 01-02 tests (`tre-override.test.ts`, `tre-async-zerocopy.test.ts`) generate their
+own synthesized fixtures at runtime via the temp directory (`os.tmpdir()/swg-override-test/`
+and `swg-async-test/`). These are NOT committed — they are synthesized from known-good byte
+recipes and are reproducible on every CI run without disk state.
+
+- **Override/tombstone fixtures**: synthesized v0005 archives with 1–3 entries
+  each, sorted by CRC-32 (required for binary-search correctness).
+  Field order: size-first, 24-byte stride (per Utinni TreFile.cs:302-310 for v0005).
+  CRC: IEEE polynomial, init=0xFFFFFFFF, finalXOR=0xFFFFFFFF (per swg-client-v2 Crc.cpp).
+- **100k-entry latency fixture**: synthesized in the search-latency test, written to temp.
+
 ## Asset Safety (D-10)
 
 These committed fixtures are **synthesized** (regenerated from Utinni's public byte recipes, NOT

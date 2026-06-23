@@ -8,6 +8,21 @@
  *   writeSab(sab, int32Index, value) — C++ writes an Int32 into the SAB (C++ → JS proof)
  *   readSab(sab, int32Index)         — C++ reads an Int32 from the SAB  (JS → C++ proof)
  *
+ * Phase 1 Plan 01-01 TRE exports:
+ *   mountArchive(paths)             — synchronous mount (Plan 01-01)
+ *   listEntries(archiveIdx)         — list TOC entries
+ *   readEntry(archiveIdx, entryIdx) — extract payload as ArrayBuffer
+ *
+ * Phase 1 Plan 01-02 TreMount exports (CORE-01, CORE-02, CORE-06):
+ *   mountTreMount(paths, priorities)    — priority-based virtual filesystem mount
+ *   resolveEntry(handle, name)          — first-match-wins override resolution
+ *   resolveChain(handle, name)          — full shadow chain (OUR algorithm)
+ *   searchMount(handle, query)          — case-insensitive substring/glob search (CORE-02)
+ *   readMountEntry(handle, ai, ei)      — extract entry payload as ArrayBuffer
+ *   disposeTreMount(handle)             — release mount resources
+ *   mountArchiveAsync(path, priority)   — off-thread Napi::AsyncWorker mount (CORE-06)
+ *   mountSearchableAsync(paths, prios)  — off-thread multi-archive mount (CORE-06)
+ *
  * Source: RESEARCH.md Pattern 3 (corrected); node-addon-api ^8.8.0.
  */
 
@@ -20,22 +35,48 @@ Napi::Value WriteSab(const Napi::CallbackInfo& info);
 Napi::Value ReadSab(const Napi::CallbackInfo& info);
 
 // Forward declarations for Phase 1 TRE binding (implemented in tre_binding.cpp)
+// Plan 01-01 (synchronous):
 // Source: swg-client-v2 TreeFile_SearchNode.cpp:226-408 (logic in modules/core/tre/);
 //         PATTERNS.md § "src/addon.cpp (MODIFY — binding registry)"
 Napi::Value MountArchive(const Napi::CallbackInfo& info);
 Napi::Value ListEntries(const Napi::CallbackInfo& info);
 Napi::Value ReadEntry(const Napi::CallbackInfo& info);
 
+// Plan 01-02 (TreMount priority resolver + AsyncWorker):
+// Source: swg-client-v2 TreeFile.cpp:285-461 (priority list + first-match-wins);
+//         RESEARCH.md § "Async Worker Model" (Napi::AsyncWorker, CORE-06).
+Napi::Value MountTreMount(const Napi::CallbackInfo& info);
+Napi::Value ResolveEntry(const Napi::CallbackInfo& info);
+Napi::Value ResolveChain(const Napi::CallbackInfo& info);
+Napi::Value SearchMount(const Napi::CallbackInfo& info);
+Napi::Value ReadMountEntry(const Napi::CallbackInfo& info);
+Napi::Value DisposeTreMount(const Napi::CallbackInfo& info);
+Napi::Value MountArchiveAsyncFixed(const Napi::CallbackInfo& info);
+Napi::Value MountSearchableAsync(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
+    // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
     exports.Set("allocateSab", Napi::Function::New(env, AllocateSab));
     // Path B bidirectional proof exports (00-03):
     exports.Set("writeSab",    Napi::Function::New(env, WriteSab));
     exports.Set("readSab",     Napi::Function::New(env, ReadSab));
-    // Phase 1 TRE exports (Plan 01-01):
+
+    // Phase 1 Plan 01-01 TRE exports (synchronous):
     exports.Set("mountArchive", Napi::Function::New(env, MountArchive));
     exports.Set("listEntries",  Napi::Function::New(env, ListEntries));
     exports.Set("readEntry",    Napi::Function::New(env, ReadEntry));
+
+    // Phase 1 Plan 01-02 TreMount exports (priority resolver + AsyncWorker):
+    exports.Set("mountTreMount",       Napi::Function::New(env, MountTreMount));
+    exports.Set("resolveEntry",        Napi::Function::New(env, ResolveEntry));
+    exports.Set("resolveChain",        Napi::Function::New(env, ResolveChain));
+    exports.Set("searchMount",         Napi::Function::New(env, SearchMount));
+    exports.Set("readMountEntry",      Napi::Function::New(env, ReadMountEntry));
+    exports.Set("disposeTreMount",     Napi::Function::New(env, DisposeTreMount));
+    exports.Set("mountArchiveAsync",   Napi::Function::New(env, MountArchiveAsyncFixed));
+    exports.Set("mountSearchableAsync",Napi::Function::New(env, MountSearchableAsync));
+
     return exports;
 }
 

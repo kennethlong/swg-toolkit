@@ -333,6 +333,41 @@ std::vector<uint8_t> TreArchive::extractEntry(int idx, IInputStream& stream) con
                       static_cast<size_t>(e.length));
 }
 
+// ─── resolveTombstoneIndex ────────────────────────────────────────────────────
+
+int TreArchive::resolveTombstoneIndex(const std::string& normalizedName) const {
+    if (m_entries.empty()) return -1;
+
+    const uint32_t targetCrc = crcCalculate(normalizedName.c_str());
+    int left  = 0;
+    int right = static_cast<int>(m_entries.size()) - 1;
+    int mid   = 0;
+    bool found = false;
+
+    while (!found && left <= right) {
+        mid = (left + right) / 2;
+        const uint32_t midCrc = m_entries[mid].crc;
+
+        if (midCrc < targetCrc)
+            left = mid + 1;
+        else if (midCrc > targetCrc)
+            right = mid - 1;
+        else {
+            const char* entryName = m_nameBlock.c_str() + m_entries[mid].fileNameOffset;
+            const int res = SWG_STRICMP(entryName, normalizedName.c_str());
+            if (res < 0)
+                left = mid + 1;
+            else if (res > 0)
+                right = mid - 1;
+            else
+                found = true;
+        }
+    }
+
+    return found ? mid : -1;
+    // Returns the index even if entry is a tombstone (length==0).
+}
+
 // ─── nameAt ──────────────────────────────────────────────────────────────────
 
 const std::string& TreArchive::nameAt(int fileNameOffset) const {

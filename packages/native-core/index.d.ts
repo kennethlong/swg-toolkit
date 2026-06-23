@@ -119,3 +119,160 @@ export function listEntries(archiveIdx: number): NativeTreEntry[];
  * Source: TreArchive.cpp extractEntry(); Zlib.cpp treInflate().
  */
 export function readEntry(archiveIdx: number, entryIdx: number): ArrayBuffer;
+
+// ─── Phase 1 Plan 01-02: TreMount priority resolver + AsyncWorker ─────────────
+
+/**
+ * Result of resolving a path against the priority-ordered virtual mount.
+ *
+ * Source: swg-client-v2 TreeFile.cpp:437-461 (first-match-wins).
+ */
+export interface TreMountResolveResult {
+  /** Path of the winning archive, or null if not found. */
+  winner: string | null;
+  /** True if the winning entry is a tombstone (file is deleted). */
+  tombstone: boolean;
+  /** Index of the winning archive in the priority list (-1 if not found). */
+  archiveIndex: number;
+  /** TOC entry index in the winning archive (-1 if not found). */
+  entryIndex: number;
+}
+
+/**
+ * Full shadow chain for a path across all mounted archives.
+ *
+ * Source: OUR algorithm — the client does not report shadow chains.
+ * See TreMount.h resolveChain() for the invariant.
+ */
+export interface TreShadowChainNative {
+  /** Path of the winning (highest-priority) archive. */
+  winner: string;
+  /** Paths of lower-priority archives containing the same file, highest-first. */
+  shadows: string[];
+  /** True if the winning entry is a tombstone. */
+  tombstone: boolean;
+  /** Index of the winning archive in the priority list. */
+  winnerArchiveIndex: number;
+  /** TOC entry index in the winning archive. */
+  winnerEntryIndex: number;
+}
+
+/**
+ * A search hit — entry index + archive index in the mount list.
+ * Source: RESEARCH.md § "TRE Search Semantics"; T-01-06 disposition.
+ */
+export interface NativeTreSearchHit {
+  /** Index into the archive's entry list. */
+  entryIndex: number;
+  /** Index of the archive in the priority list. */
+  archiveIndex: number;
+}
+
+/**
+ * Result of an async archive mount.
+ */
+export interface AsyncMountResult {
+  archiveIndex: number;
+  entryCount: number;
+  path: string;
+  version: string;
+  handle: string;
+}
+
+/**
+ * Create a priority-ordered virtual filesystem mount from the given archives.
+ *
+ * Archives are inserted using std::lower_bound with the strict priority > predicate
+ * (mirroring swg-client-v2 TreeFile.cpp:304). For equal priorities, the most
+ * recently added archive wins (inserts before existing same-priority archives).
+ *
+ * @param paths       Array of absolute filesystem paths to .tre archives.
+ * @param priorities  Parallel array of integer priorities (higher = higher precedence).
+ * @returns           Opaque mount handle string for subsequent calls.
+ *
+ * Source: swg-client-v2 TreeFile.cpp:285-308 (priority list management).
+ */
+export function mountTreMount(paths: string[], priorities: number[]): string;
+
+/**
+ * Resolve a path against the priority-ordered mount (first-match-wins).
+ *
+ * @param handle  Mount handle from mountTreMount().
+ * @param name    File path to resolve (normalized internally).
+ * @returns       TreMountResolveResult with winner/tombstone/indices.
+ *
+ * Source: swg-client-v2 TreeFile.cpp:437-461 (find()).
+ */
+export function resolveEntry(handle: string, name: string): TreMountResolveResult;
+
+/**
+ * Build the full shadow chain for a path.
+ *
+ * Invariant: for the non-tombstone case, chain.winner === resolveEntry(handle, name).winner.
+ *
+ * @param handle  Mount handle from mountTreMount().
+ * @param name    File path to resolve.
+ * @returns       TreShadowChainNative with winner + shadows + tombstone flag.
+ *
+ * Source: OUR algorithm — see TreMount.cpp resolveChain().
+ */
+export function resolveChain(handle: string, name: string): TreShadowChainNative;
+
+/**
+ * Search the mounted archives for entries matching the query.
+ *
+ * Returns matched INDICES only — never the full name list (T-01-06 mitigation).
+ *
+ * @param handle  Mount handle from mountTreMount().
+ * @param query   { text: string; mode: 'substring' | 'glob' }
+ * @returns       Array of { entryIndex, archiveIndex } hits.
+ *
+ * Source: RESEARCH.md § "TRE Search Semantics"; T-01-06 disposition.
+ */
+export function searchMount(handle: string, query: { text: string; mode: 'substring' | 'glob' }): NativeTreSearchHit[];
+
+/**
+ * Extract a payload from a specific archive in the mount.
+ *
+ * Binary stays binary — returns ArrayBuffer, never JSON (AGENTS.md).
+ * Throws for v6000 enumerate-only archives (T-01-20).
+ *
+ * @param handle        Mount handle from mountTreMount().
+ * @param archiveIndex  Archive index in the priority list.
+ * @param entryIndex    TOC entry index in that archive.
+ * @returns             Decompressed payload bytes as ArrayBuffer.
+ *
+ * Source: TreArchive.cpp extractEntry().
+ */
+export function readMountEntry(handle: string, archiveIndex: number, entryIndex: number): ArrayBuffer;
+
+/**
+ * Release a mounted TreMount and free all associated resources.
+ *
+ * @param handle  Mount handle from mountTreMount().
+ */
+export function disposeTreMount(handle: string): void;
+
+/**
+ * Parse a single TRE archive off-main-thread via Napi::AsyncWorker (CORE-06).
+ *
+ * The heavy TreArchive::parse() runs on the libuv threadpool. Returns a Promise
+ * that resolves when parsing completes. The resolver event loop stays responsive
+ * during the mount (instrumented wall-clock gate in tre-async-zerocopy.test.ts).
+ *
+ * @param path      Absolute filesystem path to the .tre archive.
+ * @param priority  Mount priority for this archive.
+ * @returns         Promise resolving to AsyncMountResult (includes handle for subsequent ops).
+ *
+ * Source: RESEARCH.md § "Async Worker Model"; T-01-08 mitigation.
+ */
+export function mountArchiveAsync(path: string, priority: number): Promise<AsyncMountResult>;
+
+/**
+ * Parse and mount multiple archives off-main-thread (CORE-06).
+ *
+ * @param paths       Array of absolute filesystem paths to .tre archives.
+ * @param priorities  Parallel array of priorities.
+ * @returns           Promise resolving to a mount handle string.
+ */
+export function mountSearchableAsync(paths: string[], priorities: number[]): Promise<string>;

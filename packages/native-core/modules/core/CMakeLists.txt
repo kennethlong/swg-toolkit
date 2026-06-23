@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CORE_SOURCES
     compress/Zlib.cpp
     tre/TreArchive.cpp
+    tre/TreMount.cpp
 )
 
 # ── Static library ────────────────────────────────────────────────────────────
