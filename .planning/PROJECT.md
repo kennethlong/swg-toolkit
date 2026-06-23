@@ -20,13 +20,12 @@ If everything else is cut, this must work: open SWG assets, edit them with live 
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — greenfield; ship to validate.)
+- ✓ **Core engine** — Phase 1: mount `.tre` archives as a priority-resolved virtual filesystem (override/shadow chains, v6000 enumerate-only), parse/serialize SWG's IFF chunk format byte-exact, zero-copy binary bridge (C++ → N-API → TS), TRE builder/repacker with raw-slice identity. Byte-exact round-trip gate (CORE-05) verified on **real assets** (61/61 IFF, TOC crc-first 200/200); 91/91 harness tests; UAT 10/10; security SECURED (21/21 threats). See `docs/01-core-engine/`.
 
 ### Active
 
 <!-- Hypotheses we're building toward. Detailed specs live in docs/. -->
 
-- [ ] **Core engine**: mount `.tre` archives as a virtual filesystem; parse/serialize SWG's IFF chunk format; zero-copy binary bridge (C++ → N-API → TS). See `docs/01-core-engine/`.
 - [ ] **3D asset viewer**: render meshes, composite appearances, skeletons & animations in a Three.js/R3F viewport. See `docs/02-formats/meshes-and-appearances.md`, `skeletons-and-animation.md`.
 - [ ] **Format editors**: terrain (`.trn`), flora (`.fld`), world snapshots (`.ws`), datatables (DTII), strings (`.stf`), audio (`.snd`), particles/effects (`.prt`/`.eft`), collision/portals (`.cdf`/`.pob`/`.floc`), UI (`.ui`), properties/config/environment. See `docs/02-formats/`.
 - [ ] **Live in-game sync**: attach to a running client, push transforms/edits to live memory, packet inspection. See `docs/04-live-sync/`.
@@ -67,7 +66,11 @@ If everything else is cut, this must work: open SWG assets, edit them with live 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | React/TS/Node-API/C++ over WinForms/C# (rebuild, not extend Utinni) | Flexible hot-reloadable UI + reuse of native client parsing; clean decoupled architecture | — Pending |
-| Electron Forge over Tauri | Built-in Node.js runtime executes the C++ addon directly; Tauri needs a Rust bridge | — Pending |
+| Electron Forge over Tauri | Built-in Node.js runtime executes the C++ addon directly; Tauri needs a Rust bridge | ✓ Validated (Phase 0/1) — addon loads & runs in the Electron renderer; one --napi prebuild ABI-stable across Node + Electron |
+| TRE TOC layout: crc-first (all versions) + forward CRC-32 (poly 0x04C11DB7) | AI-distilled docs proposed size-first/reflected CRC; real client source + hexdump disagreed | ✓ Verified byte-exact on real archives (Phase 1) — resolve() correct 808/808 & 334/334; arbiter 200/200 |
+| v6000 archives are encrypted → enumerate-only (no extract/build/repack); v0006 fully readable | Settled the 0006-vs-6000 oracle disagreement against real Restoration archives | ✓ Verified (Phase 1) — version tag literally "6000"; extraction refused with clean error |
+| Vendor zlib 1.2.3 statically (no host-zlib symbols) | Borrowing node.exe's zlib exports crashes the Electron renderer (0xC06D007F) | ✓ Validated (Phase 1) — dumpbin shows zero host-zlib imports; renderer stable |
+| Incremental (lazy) zlib inflate, capped at 256MB | Eager malloc(declaredUncomp) is an attacker-controlled memory-DoS on untrusted .tre bytes | ✓ Fixed & re-audited SECURED (Phase 1, T-01-03) |
 | Three.js/R3F instead of native DirectX-into-HWND (replace JodelEngine.dll) | In-canvas WebGL rendering, no native window injection | — Pending |
 | Bridge to Blender vs. rebuild 3D editing | Don't reinvent mesh/rig/UV/animation tooling | — Pending |
 | Treat AI-distilled formats as drafts to verify | Source is Gemini-generated; layouts may be fabricated | — Pending |
@@ -91,4 +94,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-21 after initialization*
+*Last updated: 2026-06-23 after Phase 1 (Core Engine — IFF + TRE + Verification Harness)*
