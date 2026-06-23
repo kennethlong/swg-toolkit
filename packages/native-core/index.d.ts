@@ -64,3 +64,58 @@ export function readSab(sab: SharedArrayBuffer, int32Index: number): number;
  * Used by resolve-prebuild.test.ts to assert non-circular FND-02 proof.
  */
 export const __resolvedPath: string;
+
+// ─── Phase 1 TRE types (Plan 01-01) ──────────────────────────────────────────
+
+/** Result of a successful archive mount for one file. */
+export interface MountResult {
+  archiveIndex: number;
+  entryCount: number;
+  path: string;
+}
+
+/** One TOC entry from a parsed TRE archive. */
+export interface NativeTreEntry {
+  path: string;
+  crc: number;
+  uncompressedSize: number;
+  compressedSize: number;
+  offset: number;
+  compressor: 0 | 1 | 2;
+  archiveIndex: number;
+}
+
+/**
+ * Parse one or more TRE archives and add them to the global mount list.
+ *
+ * @param paths  Array of absolute filesystem paths to .tre archives.
+ * @returns      Array of { archiveIndex, entryCount, path } for each archive.
+ *
+ * Note: synchronous in Plan 01; AsyncWorker wrapping added in Plan 02.
+ * Source: swg-client-v2 TreeFile.cpp:285-308, TreArchive.cpp parse().
+ */
+export function mountArchive(paths: string[]): MountResult[];
+
+/**
+ * List all TOC entries for a mounted archive.
+ *
+ * @param archiveIdx  Index returned by mountArchive().
+ * @returns           Array of NativeTreEntry objects (metadata only; no payload bytes).
+ *
+ * Source: TreArchive.cpp entries().
+ */
+export function listEntries(archiveIdx: number): NativeTreEntry[];
+
+/**
+ * Extract and return the decompressed payload for one TOC entry.
+ *
+ * Binary payload crosses as ArrayBuffer — NEVER JSON (AGENTS.md zero-copy rule).
+ * Throws for v6000 enumerate-only archives (T-01-05).
+ *
+ * @param archiveIdx  Index returned by mountArchive().
+ * @param entryIdx    Index into the archive's entry list.
+ * @returns           Decompressed payload bytes.
+ *
+ * Source: TreArchive.cpp extractEntry(); Zlib.cpp treInflate().
+ */
+export function readEntry(archiveIdx: number, entryIdx: number): ArrayBuffer;

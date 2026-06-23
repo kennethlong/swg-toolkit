@@ -9,5 +9,11 @@
 export const enum NativeOpcode {
   Hello = 0,
   AllocSab = 1,
-  // Phase 1 will add TRE/IFF opcodes here
+  // Phase 1 TRE opcodes (added in Plan 01-01):
+  MountArchive = 2,
+  ListEntries = 3,
+  ReadEntry = 4,
+  // Phase 1 IFF opcodes (added in Plan 01-01+):
+  ParseIff = 5,
+  SerializeIff = 6,
 }

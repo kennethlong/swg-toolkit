@@ -38,3 +38,7 @@ Thumbs.db
 
 # Large archives
 *.tgz
+
+# Real TRE archives (local SWG install copies — never committed, see D-10)
+packages/harness/fixtures-real/*.tre
+packages/harness/fixtures-real/*.TRE

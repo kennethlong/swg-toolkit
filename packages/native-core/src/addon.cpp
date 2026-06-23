@@ -19,12 +19,23 @@ Napi::Value AllocateSab(const Napi::CallbackInfo& info);
 Napi::Value WriteSab(const Napi::CallbackInfo& info);
 Napi::Value ReadSab(const Napi::CallbackInfo& info);
 
+// Forward declarations for Phase 1 TRE binding (implemented in tre_binding.cpp)
+// Source: swg-client-v2 TreeFile_SearchNode.cpp:226-408 (logic in modules/core/tre/);
+//         PATTERNS.md § "src/addon.cpp (MODIFY — binding registry)"
+Napi::Value MountArchive(const Napi::CallbackInfo& info);
+Napi::Value ListEntries(const Napi::CallbackInfo& info);
+Napi::Value ReadEntry(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("hello",       Napi::Function::New(env, Hello));
     exports.Set("allocateSab", Napi::Function::New(env, AllocateSab));
     // Path B bidirectional proof exports (00-03):
     exports.Set("writeSab",    Napi::Function::New(env, WriteSab));
     exports.Set("readSab",     Napi::Function::New(env, ReadSab));
+    // Phase 1 TRE exports (Plan 01-01):
+    exports.Set("mountArchive", Napi::Function::New(env, MountArchive));
+    exports.Set("listEntries",  Napi::Function::New(env, ListEntries));
+    exports.Set("readEntry",    Napi::Function::New(env, ReadEntry));
     return exports;
 }
 

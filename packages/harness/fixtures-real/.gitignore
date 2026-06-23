@@ -1,0 +1,7 @@
+# fixtures-real/ — Real TRE archives copied from local SWG installs.
+# These are NEVER committed to the repository (see D-10 asset safety).
+# Populate via: node scripts/copy-real-fixtures.js
+#
+# Source docs: D-10 (asset safety), D-12 (field-order arbiter must be run)
+*.tre
+*.TRE
