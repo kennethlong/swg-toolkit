@@ -67,13 +67,13 @@ decisions:
   - "v6000 is enumerate-only (encrypted); v0006 is fully readable — warn chip appears ONLY on v6000 rows"
   - "Search returns matched indices only, never full name list (T-01-06 mitigation)"
   - "fixUpFileName: lowercase, backslash→slash, collapse repeated slashes, strip ./ and ../ (ported from TreeFile.cpp:511-601)"
-  - "CRC-32: IEEE 0xEDB88320, init=0xFFFFFFFF, finalXOR=0xFFFFFFFF (matches Crc.cpp)"
-  - "Test fixtures synthesized in-memory at runtime (not committed to disk)"
+  - "CRC-32: FORWARD/MSB-first poly 0x04C11DB7, init=0xFFFFFFFF, finalXOR=0xFFFFFFFF (matches Crc.cpp; corrected post-checkpoint — was wrongly reflected 0xEDB88320)"
+  - "TOC layout: crc-first for ALL versions (corrected post-checkpoint; verified byte-exact)"
   - "Path B addon access: require('@swg/native-core') directly in renderer (nodeIntegration:true)"
 metrics:
-  duration: "~4h (across two sessions, second resumed from context summary)"
-  completed: "2026-06-22"
-  tasks_completed: 2
+  duration: "~4h impl + checkpoint-driven fixes (2026-06-23)"
+  completed: "2026-06-23"
+  tasks_completed: 3
   tasks_total: 3
   files_created: 11
   files_modified: 9
@@ -89,7 +89,7 @@ metrics:
 |------|-------------|--------|
 | 1 | TreMount override resolver + AsyncWorker binding + harness tests (CORE-01, CORE-02, CORE-06) | `61de191` |
 | 2 | TRE VFS Browser UI wired to native pipeline (D-06) | `b4e1e2d` |
-| 3 | Human-verify checkpoint | PENDING — see checkpoint below |
+| 3 | Human-verify checkpoint | ✅ VERIFIED 2026-06-23 (see "Checkpoint Verification" below) |
 
 ## Task 1: TreMount Override Resolver + AsyncWorker (CORE-01, CORE-02, CORE-06)
 
@@ -171,13 +171,22 @@ The code-vs-comment ambiguity in TreeFile.cpp:294-296 is resolved: **second-moun
 
 ## Known Stubs
 
-| Location | Stub | Reason | Future plan |
-|----------|------|---------|-------------|
-| `TreVfsBrowser.tsx:handleMountClick` | `version: 'v0005'` hardcoded | Native binding doesn't yet expose per-archive version string | Phase 1 minor: expose `TreArchive::version()` in N-API |
-| `TreVfsBrowser.tsx:handleMountClick` | `isEnumerateOnly: false` hardcoded | Same as above — needs native version to set | Same |
-| `VfsTree.tsx:buildChain` | Returns `null` (single-click chain) | Full chain delegated to TreVfsBrowser.handleSelectEntry | Already wired on click |
+| Location | Stub | Status |
+|----------|------|--------|
+| `TreVfsBrowser.tsx:handleMountClick` | `version: 'v0005'` hardcoded | ✅ FIXED post-checkpoint — `getMountArchives()` returns real per-archive version |
+| `TreVfsBrowser.tsx:handleMountClick` | `isEnumerateOnly: false` hardcoded | ✅ FIXED post-checkpoint — `getMountArchives().enumerateOnly` drives the chip + 🔒 glyph |
+| `VfsTree.tsx:buildChain` | Returns `null` (single-click chain) | Unchanged — full chain shown on click via `resolveChain()` |
 
-These stubs do NOT prevent the plan goal (D-06 TRE VFS browser): the tree renders, search works, shadow chains show on selection, v6000 extraction refusal is enforced in the native layer. Version chip display and enumerate-only warn chip will be corrected when the native version accessor is added.
+## Checkpoint Verification (2026-06-23)
+
+Human-verify of Task 3 surfaced **four real defects** (three in Plan 01-01's core, caught exactly where AGENTS.md predicts — real bytes ≠ AI-distilled docs). All fixed and re-verified on real archives before sign-off:
+
+1. **File picker returned bare filenames** (used uninstalled `@electron/remote` → fell back to a hidden `<input>` whose `File.path` Electron 32+ removed). → native `dialog.showOpenDialog` via an `ipcMain('tre:pick-archives')` handler. Commit `e31b0f4`.
+2. **Renderer white-screen crash** — addon imported plain zlib symbols from `node.exe` (absent in Electron → `ERROR_PROC_NOT_FOUND`, exit `0xC06D007F`). → vendored zlib 1.2.3 statically (`dumpbin /imports` shows zero host zlib). **Plan 01-01 correction**, commit `c50d991`. See [[electron-native-addon-no-host-zlib]].
+3. **`resolve()` returned null for every file** — reflected CRC + size-first TOC layout were both wrong. → forward CRC-32 + crc-first layout, **byte-verified 808/808 & 334/334** on real archives. **Plan 01-01 correction**, commit `9d815ed`. Resolves D-12. See [[tre-version-oracles-and-v6000-encryption]].
+4. **Override (⧉) and enumerate-only (🔒/amber) glyphs never appeared** — UI's `archiveIndex` space (file-order `listEntries`) didn't match `searchMount`/`resolveChain` (priority-order), and version/enumerate were stubbed. → new mount-handle accessors `getMountArchives()` + `listMountEntries()` (shadow-resolved VFS computed in C++); renderer rewired; brittle index-juggling deleted. Commit `e31b0f4`.
+
+Verified working: override glyph + shadow chain (`mtg_planets.tre` + `mtg_patch_019.tre`, `loveday_vendor.stf`), v6000 enumerate-only chip + 🔒 + accurate `v5000`/`v6000` version chips (Restoration), live search. All native+harness tests green (55/55).
 
 ## Threat Surface Scan
 

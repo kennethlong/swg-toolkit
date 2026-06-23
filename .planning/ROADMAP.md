@@ -68,7 +68,7 @@ Plans:
 - [x] 01-01-PLAN.md — Verification harness mechanism (CORE-05 standing gate) + engine-free C++20 TRE read core (EERT/36-byte header, CRC-first TOC, zlib) + contracts/tre.ts + committed fixtures + OPEN-1 real-asset field-order arbiter ✓ 2026-06-22
 
 **Wave 2** *(blocked on 01-01)*
-- [ ] 01-02-PLAN.md — TRE mount/override resolver (priority shadow + tombstones) + AsyncWorker zero-copy binding + TRE VFS browser UI (Surface 1): mount, search, shadow chain, v0006 enumerate-only chip
+- [x] 01-02-PLAN.md — TRE mount/override resolver (priority shadow + tombstones) + AsyncWorker zero-copy binding + TRE VFS browser UI (Surface 1): mount, search, shadow chain, v0006 enumerate-only chip
   - Tasks 1-2 COMPLETE (commits 61de191, b4e1e2d); Task 3 awaiting human-verify checkpoint
 
 **Wave 3** *(blocked on 01-02)*

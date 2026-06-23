@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-02-PLAN.md Tasks 1-2 (TreMount + VFS Browser); Task 3 awaiting human-verify"
-last_updated: "2026-06-22T00:00:00.000Z"
-last_activity: 2026-06-22
+stopped_at: "01-02 verified + committed (incl. 01-01 zlib + CRC/layout corrections); starting Wave 3 (01-03 IFF)"
+last_updated: "2026-06-23T16:00:00.000Z"
+last_activity: 2026-06-23 -- Phase 01 Wave 2 (Plan 01-02) verified & committed
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
-  percent: 56
+  completed_plans: 7
+  percent: 78
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-21)
 ## Current Position
 
 Phase: 01 (core-engine-iff-tre-verification-harness) — EXECUTING
-Plan: 2 of 4 — Tasks 1-2 complete; Task 3 awaiting human-verify
-Status: Checkpoint — awaiting visual verification of TRE VFS Browser UI
-Last activity: 2026-06-22
+Plan: 2 of 4 complete (01-01, 01-02 verified); starting 3 of 4 (01-03 IFF read/write)
+Status: Wave 2 complete & committed; beginning Wave 3
+Last activity: 2026-06-23
 
 Progress: [██████░░░░] 56%
 
