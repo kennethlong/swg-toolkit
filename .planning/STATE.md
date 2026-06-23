@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-06-22T23:59:28.606Z"
-last_activity: 2026-06-22 -- Phase 01 planning complete
+stopped_at: Completed 01-01-PLAN.md (TRE read core + harness + fixtures + binding)
+last_updated: "2026-06-23T01:22:07.435Z"
+last_activity: 2026-06-23
 progress:
   total_phases: 9
   completed_phases: 1
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-21)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 00 — toolchain-de-risk-app-shell
+**Current focus:** Phase 01 — core-engine-iff-tre-verification-harness
 
 ## Current Position
 
-Phase: 1
-Plan: Not started
+Phase: 01 (core-engine-iff-tre-verification-harness) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-06-22 -- Phase 01 planning complete
+Last activity: 2026-06-23
 
-Progress: [████████░░] 80%
+Progress: [██████░░░░] 56%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [████████░░] 80%
 | Phase 00-toolchain-de-risk-app-shell P02 | continuation | 5 tasks | 9 files |
 | Phase 00-toolchain-de-risk-app-shell P00-03 | 90 | 5 tasks | 13 files |
 | Phase 00 P04 | single-session | 3 tasks | 21 files |
+| Phase 01 P01-01 | 90 | 3 tasks | 40 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,10 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: PATH B: StatusBar uses in-process native addon for SAB proof (no utility IPC)
 - [Phase ?]: Single owner: StatusBar sets window.__sabValue/__sabIsShared/__crossWriteOk/__zeroCopy
 - [Phase ?]: Aria labels: conditional JSX branches for grep-able Collapse/Expand panel labels
+- [Phase 01]: D-02: C++20 unified across swg_core static lib and native addon binding
+- [Phase 01]: D-09: TRE fixtures synthesized from Utinni byte recipes — never copy Utinni .expected.json goldens
+- [Phase 01]: D-10: Real TRE archives gitignored; copy-real-fixtures.js is read-only and never mutates originals
+- [Phase 01]: D-12: Field-order arbiter test (tre-fieldorder-arbiter) is CI-BLOCKING — MUST be green before Plan 01 is done
 
 ### Pending Todos
 
@@ -102,6 +107,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T23:23:54.702Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: .planning/phases/01-core-engine-iff-tre-verification-harness/01-UI-SPEC.md
+Last session: 2026-06-23T01:22:07.409Z
+Stopped at: Completed 01-01-PLAN.md (TRE read core + harness + fixtures + binding)
+Resume file: None

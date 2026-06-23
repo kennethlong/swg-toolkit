@@ -176,7 +176,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Toolchain De-risk & App Shell | 4/5 | In Progress|  |
-| 1. Core Engine — IFF + TRE + Verification Harness | 0/4 | Planned | - |
+| 1. Core Engine — IFF + TRE + Verification Harness | 0/4 | Planned    |  |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/TBD | Not started | - |
 | 3. Live-Injection Foundation | 0/TBD | Not started | - |
 | 4. Edit & Deploy Loop | 0/TBD | Not started | - |

@@ -18,11 +18,11 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 - [x] **FND-05**: The app presents a dark, dockable, persistent multi-panel workspace (dockview) — sidebar / 3D canvas / data pane / inspector.
 
 ### Core Engine — IFF & TRE (CORE)
-- [ ] **CORE-01**: User can mount one or more `.tre` archives as a virtual filesystem with correct load-order/override resolution.
+- [x] **CORE-01**: User can mount one or more `.tre` archives as a virtual filesystem with correct load-order/override resolution.
 - [ ] **CORE-02**: User can browse and search the mounted virtual filesystem by path/name.
 - [ ] **CORE-03**: System parses an arbitrary IFF (FORM/chunk) file into a navigable tree the UI can display.
 - [ ] **CORE-04**: System serializes an edited IFF structure back to a byte-exact file/archive.
-- [ ] **CORE-05**: A reusable format-verification harness round-trips real extracted assets byte-for-byte (fixtures + assertion), and is wired into every format's tests.
+- [x] **CORE-05**: A reusable format-verification harness round-trips real extracted assets byte-for-byte (fixtures + assertion), and is wired into every format's tests.
 - [ ] **CORE-06**: Binary payloads (geometry, textures, audio, terrain) cross the N-API bridge zero-copy and parse on async worker threads (UI never blocks).
 
 ### 3D Viewer (VIEW)
@@ -99,11 +99,11 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | FND-03 | Phase 0 | Complete |
 | FND-04 | Phase 0 | Complete |
 | FND-05 | Phase 0 | Complete |
-| CORE-01 | Phase 1 | Pending |
+| CORE-01 | Phase 1 | Complete |
 | CORE-02 | Phase 1 | Pending |
 | CORE-03 | Phase 1 | Pending |
 | CORE-04 | Phase 1 | Pending |
-| CORE-05 | Phase 1 | Pending |
+| CORE-05 | Phase 1 | Complete |
 | CORE-06 | Phase 1 | Pending |
 | VIEW-01 | Phase 2 | Pending |
 | VIEW-02 | Phase 2 | Pending |
