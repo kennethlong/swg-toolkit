@@ -96,6 +96,40 @@ struct TreSearchHitNative {
 };
 
 /**
+ * Per-archive metadata for the mount, in the SAME priority-sorted index space as
+ * search()/resolve()/resolveChain() (archiveIndex = position in the node list).
+ *
+ * Source: OUR design — exposes TreArchive::version() / isEnumerateOnly() to the UI
+ * in the mount-handle index space (the fix for the index-space mismatch in
+ * 01-02-PLAN.md: the renderer must NOT join against mountArchive()'s file-ordered state).
+ */
+struct TreMountArchiveInfo {
+    std::string path;
+    std::string version;        ///< Version string: "v0004"/"v0005"/"v0006"/"v5000"/"v6000"
+    bool        enumerateOnly;  ///< True only for v6000 (encrypted, payloads not extractable)
+    int         entryCount;
+    int         priority;
+    int         archiveIndex;   ///< Position in the priority-sorted node list
+};
+
+/**
+ * One deduplicated, shadow-resolved VFS entry for the whole mount.
+ *
+ * winnerArchiveIndex is in the SAME priority space as TreMountArchiveInfo::archiveIndex,
+ * so the UI can join the two. isOverride == (shadowCount > 0).
+ *
+ * Source: OUR design — resolveChain logic done once over the mount (01-02-PLAN.md).
+ */
+struct TreMountVfsEntry {
+    std::string path;               ///< Normalized path (lowercase, forward-slash)
+    std::string winnerArchivePath;  ///< Path of the winning (highest-priority) archive
+    int         winnerArchiveIndex; ///< Priority-list index of the winner
+    int         shadowCount;        ///< Number of lower-priority archives also containing the path
+    bool        isOverride;         ///< shadowCount > 0
+    bool        isTombstone;        ///< True if the winner entry is a tombstone
+};
+
+/**
  * TreMount — priority-ordered list of mounted TRE archives.
  *
  * Ported from swg-client-v2 TreeFile.cpp:285-308 (priority list management)
@@ -176,6 +210,28 @@ public:
      * @returns     Vector of { entryIndex, archiveIndex } hits.
      */
     std::vector<TreSearchHitNative> search(const std::string& text, bool glob) const;
+
+    /**
+     * Per-archive metadata in priority-sorted index space (archiveIndex matches
+     * search()/resolve() hits). One entry per mounted archive, highest-priority first.
+     *
+     * Source: OUR design — exposes version/enumerateOnly to the UI in the mount handle
+     * index space (01-02-PLAN.md index-space-mismatch fix).
+     */
+    std::vector<TreMountArchiveInfo> archiveInfos() const;
+
+    /**
+     * The deduplicated, shadow-resolved VFS for the whole mount.
+     *
+     * For every unique normalized path across all archives, compute the winner
+     * (first match in priority order) + how many lower-priority archives also contain
+     * it (shadowCount) + tombstone. This is resolveChain logic done once in C++,
+     * O(total entries). Returned sorted by path.
+     *
+     * Source: OUR design — REPLACES the renderer's broken JS index-juggling
+     * (01-02-PLAN.md). Does NOT depend on the file-ordered mountArchive() state.
+     */
+    std::vector<TreMountVfsEntry> vfsEntries() const;
 
     /** Number of mounted archives. */
     int archiveCount() const { return static_cast<int>(m_nodes.size()); }

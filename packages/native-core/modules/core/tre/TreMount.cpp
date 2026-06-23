@@ -14,8 +14,23 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <unordered_map>
 
 namespace swg {
+
+// ─── version string helper ──────────────────────────────────────────────────────
+
+/** Map a TreVersion enum to its canonical "vNNNN" string (matches index.d.ts). */
+static std::string versionToString(TreVersion v) {
+    switch (v) {
+        case TreVersion::V0004: return "v0004";
+        case TreVersion::V0005: return "v0005";
+        case TreVersion::V0006: return "v0006";
+        case TreVersion::V5000: return "v5000";
+        case TreVersion::V6000: return "v6000";
+    }
+    return "unknown";
+}
 
 // ─── addArchive ───────────────────────────────────────────────────────────────
 
@@ -308,6 +323,101 @@ std::vector<TreSearchHitNative> TreMount::search(const std::string& text, bool g
     }
 
     return hits;
+}
+
+// ─── archiveInfos ───────────────────────────────────────────────────────────────
+
+std::vector<TreMountArchiveInfo> TreMount::archiveInfos() const
+{
+    /**
+     * One entry per mounted archive, in priority-sorted order (archiveIndex = node
+     * list position — the SAME space as search()/resolve()/resolveChain() hits).
+     *
+     * Source: OUR design — 01-02-PLAN.md index-space-mismatch fix.
+     */
+    std::vector<TreMountArchiveInfo> infos;
+    infos.reserve(m_nodes.size());
+
+    for (int i = 0; i < static_cast<int>(m_nodes.size()); ++i) {
+        const TreMountNode& node = m_nodes[i];
+        const TreVersion ver = node.archive->version();
+
+        TreMountArchiveInfo info;
+        info.path          = node.path;
+        info.version       = versionToString(ver);
+        info.enumerateOnly = isEnumerateOnly(ver);
+        info.entryCount    = node.archive->entryCount();
+        info.priority      = node.priority;
+        info.archiveIndex  = i;
+        infos.push_back(std::move(info));
+    }
+
+    return infos;
+}
+
+// ─── vfsEntries ─────────────────────────────────────────────────────────────────
+
+std::vector<TreMountVfsEntry> TreMount::vfsEntries() const
+{
+    /**
+     * Deduplicated, shadow-resolved VFS for the whole mount. For every unique
+     * normalized path, the winner is the first (highest-priority) archive in node
+     * order; lower-priority archives containing the same path add to shadowCount.
+     *
+     * Archive names are already normalized (lowercase, forward-slash) by TreArchive,
+     * so we can dedup directly on the stored name. Because we walk nodes in priority
+     * order (m_nodes[0] = highest), the FIRST node we see a path in is the winner.
+     * This is exactly resolveChain() done once over the mount — O(total entries).
+     *
+     * Source: OUR design — REPLACES the renderer's broken JS index-juggling
+     * (01-02-PLAN.md). Does NOT touch the file-ordered mountArchive() state.
+     */
+    std::unordered_map<std::string, size_t> indexByPath; // path -> position in result
+    std::vector<TreMountVfsEntry> entries;
+
+    for (int ai = 0; ai < static_cast<int>(m_nodes.size()); ++ai) {
+        const TreMountNode& node = m_nodes[ai];
+        const auto& nodeEntries = node.archive->entries();
+
+        for (int ei = 0; ei < static_cast<int>(nodeEntries.size()); ++ei) {
+            const char* namePtr = nullptr;
+            try {
+                namePtr = node.archive->nameAt(nodeEntries[ei].fileNameOffset).c_str();
+            } catch (...) {
+                continue; // defensive — skip corrupt name block entries
+            }
+            if (!namePtr || namePtr[0] == '\0') continue;
+
+            const std::string path(namePtr);
+            const bool isTombstone = (nodeEntries[ei].length == 0);
+
+            auto it = indexByPath.find(path);
+            if (it == indexByPath.end()) {
+                // First (highest-priority) archive containing this path → winner.
+                TreMountVfsEntry e;
+                e.path               = path;
+                e.winnerArchivePath  = node.path;
+                e.winnerArchiveIndex = ai;
+                e.shadowCount        = 0;
+                e.isOverride         = false;
+                e.isTombstone        = isTombstone;
+                indexByPath.emplace(path, entries.size());
+                entries.push_back(std::move(e));
+            } else {
+                // Lower-priority archive also contains this path → a shadow.
+                TreMountVfsEntry& winner = entries[it->second];
+                winner.shadowCount += 1;
+                winner.isOverride   = true;
+            }
+        }
+    }
+
+    std::sort(entries.begin(), entries.end(),
+              [](const TreMountVfsEntry& a, const TreMountVfsEntry& b) {
+                  return a.path < b.path;
+              });
+
+    return entries;
 }
 
 } // namespace swg

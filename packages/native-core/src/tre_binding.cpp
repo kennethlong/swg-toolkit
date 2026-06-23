@@ -366,6 +366,93 @@ Napi::Value SearchMount(const Napi::CallbackInfo& info) {
 }
 
 /**
+ * getMountArchives(handle: string) -> { path, version, enumerateOnly, entryCount, priority, archiveIndex }[]
+ *
+ * Per-archive metadata in the mount's priority-sorted index space (archiveIndex
+ * matches search()/resolve()/resolveChain() hits). Exposes the native truth for
+ * version + enumerate-only status so the UI no longer hardcodes them.
+ *
+ * Source: OUR design — 01-02-PLAN.md index-space-mismatch + version/enumerate fix.
+ */
+Napi::Value GetMountArchives(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "getMountArchives: expected (handle: string)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::string handle = info[0].As<Napi::String>().Utf8Value();
+
+    auto it = g_mounts.find(handle);
+    if (it == g_mounts.end()) {
+        Napi::RangeError::New(env, "getMountArchives: unknown mount handle").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::vector<swg::TreMountArchiveInfo> infos = it->second->archiveInfos();
+
+    Napi::Array result = Napi::Array::New(env, infos.size());
+    for (size_t i = 0; i < infos.size(); ++i) {
+        const swg::TreMountArchiveInfo& a = infos[i];
+        Napi::Object obj = Napi::Object::New(env);
+        obj.Set("path",          Napi::String::New(env, a.path));
+        obj.Set("version",       Napi::String::New(env, a.version));
+        obj.Set("enumerateOnly", Napi::Boolean::New(env, a.enumerateOnly));
+        obj.Set("entryCount",    Napi::Number::New(env, a.entryCount));
+        obj.Set("priority",      Napi::Number::New(env, a.priority));
+        obj.Set("archiveIndex",  Napi::Number::New(env, a.archiveIndex));
+        result.Set(static_cast<uint32_t>(i), obj);
+    }
+    return result;
+}
+
+/**
+ * listMountEntries(handle: string) -> { path, winnerArchivePath, winnerArchiveIndex,
+ *                                        shadowCount, isOverride, isTombstone }[]
+ *
+ * The deduplicated, shadow-resolved VFS for the whole mount. Computed ONCE in C++
+ * (resolveChain logic over every unique path). winnerArchiveIndex is in the same
+ * priority space as getMountArchives' archiveIndex. REPLACES the renderer's broken
+ * JS index-juggling. Does NOT depend on the file-ordered mountArchive() state.
+ *
+ * Source: OUR design — 01-02-PLAN.md override-detection fix; T-01-06 intent
+ * (full path list returned once at mount time, not per keystroke).
+ */
+Napi::Value ListMountEntries(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "listMountEntries: expected (handle: string)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::string handle = info[0].As<Napi::String>().Utf8Value();
+
+    auto it = g_mounts.find(handle);
+    if (it == g_mounts.end()) {
+        Napi::RangeError::New(env, "listMountEntries: unknown mount handle").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::vector<swg::TreMountVfsEntry> entries = it->second->vfsEntries();
+
+    Napi::Array result = Napi::Array::New(env, entries.size());
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const swg::TreMountVfsEntry& e = entries[i];
+        Napi::Object obj = Napi::Object::New(env);
+        obj.Set("path",               Napi::String::New(env, e.path));
+        obj.Set("winnerArchivePath",  Napi::String::New(env, e.winnerArchivePath));
+        obj.Set("winnerArchiveIndex", Napi::Number::New(env, e.winnerArchiveIndex));
+        obj.Set("shadowCount",        Napi::Number::New(env, e.shadowCount));
+        obj.Set("isOverride",         Napi::Boolean::New(env, e.isOverride));
+        obj.Set("isTombstone",        Napi::Boolean::New(env, e.isTombstone));
+        result.Set(static_cast<uint32_t>(i), obj);
+    }
+    return result;
+}
+
+/**
  * readMountEntry(handle: string, archiveIndex: number, entryIndex: number) -> ArrayBuffer
  *
  * Extract a payload from a specific archive in the mount by index.

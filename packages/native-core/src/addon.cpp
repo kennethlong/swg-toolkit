@@ -49,6 +49,8 @@ Napi::Value MountTreMount(const Napi::CallbackInfo& info);
 Napi::Value ResolveEntry(const Napi::CallbackInfo& info);
 Napi::Value ResolveChain(const Napi::CallbackInfo& info);
 Napi::Value SearchMount(const Napi::CallbackInfo& info);
+Napi::Value GetMountArchives(const Napi::CallbackInfo& info);
+Napi::Value ListMountEntries(const Napi::CallbackInfo& info);
 Napi::Value ReadMountEntry(const Napi::CallbackInfo& info);
 Napi::Value DisposeTreMount(const Napi::CallbackInfo& info);
 Napi::Value MountArchiveAsyncFixed(const Napi::CallbackInfo& info);
@@ -72,6 +74,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("resolveEntry",        Napi::Function::New(env, ResolveEntry));
     exports.Set("resolveChain",        Napi::Function::New(env, ResolveChain));
     exports.Set("searchMount",         Napi::Function::New(env, SearchMount));
+    exports.Set("getMountArchives",    Napi::Function::New(env, GetMountArchives));
+    exports.Set("listMountEntries",    Napi::Function::New(env, ListMountEntries));
     exports.Set("readMountEntry",      Napi::Function::New(env, ReadMountEntry));
     exports.Set("disposeTreMount",     Napi::Function::New(env, DisposeTreMount));
     exports.Set("mountArchiveAsync",   Napi::Function::New(env, MountArchiveAsyncFixed));

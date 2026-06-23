@@ -39,13 +39,6 @@ import AsyncProgress from '../../shared/AsyncProgress.tsx';
 // Source: packages/renderer/src/shell/StatusBar.tsx:34-41.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const nativeCore = require('@swg/native-core') as {
-  mountTreMount: (paths: string[], priorities: number[]) => string;
-  resolveEntry: (handle: string, name: string) => {
-    winner: string | null;
-    tombstone: boolean;
-    archiveIndex: number;
-    entryIndex: number;
-  };
   resolveChain: (handle: string, name: string) => {
     winner: string;
     shadows: string[];
@@ -53,36 +46,34 @@ const nativeCore = require('@swg/native-core') as {
     winnerArchiveIndex: number;
     winnerEntryIndex: number;
   };
-  searchMount: (handle: string, query: { text: string; mode: 'substring' | 'glob' }) => Array<{
-    entryIndex: number;
-    archiveIndex: number;
-  }>;
   readMountEntry: (handle: string, archiveIndex: number, entryIndex: number) => ArrayBuffer;
   disposeTreMount: (handle: string) => void;
   mountSearchableAsync: (paths: string[], priorities: number[]) => Promise<string>;
-  listEntries: (archiveIdx: number) => Array<{
+  getMountArchives: (handle: string) => Array<{
     path: string;
-    crc: number;
-    uncompressedSize: number;
-    compressedSize: number;
-    offset: number;
-    compressor: number;
+    version: string;
+    enumerateOnly: boolean;
+    entryCount: number;
+    priority: number;
     archiveIndex: number;
   }>;
-  mountArchive: (paths: string[]) => Array<{
-    archiveIndex: number;
-    entryCount: number;
+  listMountEntries: (handle: string) => Array<{
     path: string;
+    winnerArchivePath: string;
+    winnerArchiveIndex: number;
+    shadowCount: number;
+    isOverride: boolean;
+    isTombstone: boolean;
   }>;
 };
 
-// Version string helpers
+// Version string helper: map the native version string onto the TreVersion union.
 function parseVersion(versionStr: string): TreVersion {
-  // The native layer returns version strings like "v0005", "v0006", "v6000"
+  // The native layer returns version strings like "v0005", "v0006", "v6000".
   if (['v0004', 'v0005', 'v0006', 'v5000', 'v6000'].includes(versionStr as TreVersion)) {
     return versionStr as TreVersion;
   }
-  return 'v0005'; // fallback
+  return 'v0005'; // fallback (should not happen — native always returns a known string)
 }
 
 export default function TreVfsBrowser(): React.ReactElement {
@@ -91,22 +82,21 @@ export default function TreVfsBrowser(): React.ReactElement {
   // ── Mount handler ───────────────────────────────────────────────────────────
 
   const handleMountClick = useCallback(async () => {
-    // Open OS file picker for .tre files (Electron's dialog API)
-    // In Electron with nodeIntegration=true, we can use the dialog module
+    // Open the native OS file picker for .tre files via the main process.
+    // Path B (nodeIntegration:true) lets the renderer require('electron') directly,
+    // but `dialog` is main-process-only — we invoke an ipcMain handler instead of
+    // pulling in @electron/remote (forbidden new dependency this phase, T-01-SC).
+    // The hidden-<input> fallback can only return real paths via File.path, which
+    // Electron 32+ removed, so the native dialog is the only reliable path source.
     let filePaths: string[] = [];
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { dialog } = require('@electron/remote') as {
-        dialog: { showOpenDialogSync: (opts: unknown) => string[] | undefined }
+      const { ipcRenderer } = require('electron') as {
+        ipcRenderer: { invoke: (channel: string) => Promise<string[]> }
       };
-      const result = dialog.showOpenDialogSync({
-        title: 'Mount Archive…',
-        filters: [{ name: 'TRE Archives', extensions: ['tre'] }],
-        properties: ['openFile', 'multiSelections'],
-      });
-      filePaths = result ?? [];
+      filePaths = await ipcRenderer.invoke('tre:pick-archives');
     } catch {
-      // Fallback: use a hidden file input (works in web context / without @electron/remote)
+      // Last-resort fallback (e.g. plain web context with no Electron): hidden input.
       filePaths = await pickFilesViaInput();
     }
 
@@ -118,31 +108,38 @@ export default function TreVfsBrowser(): React.ReactElement {
     store.beginMount(filePaths, priorities);
 
     try {
-      // Mount the archives asynchronously (off-main-thread via AsyncWorker)
+      // Mount the archives asynchronously (off-main-thread via AsyncWorker).
       const handle = await nativeCore.mountSearchableAsync(filePaths, priorities);
 
-      // Build the MountedArchive display list using the synchronous mountArchive for metadata
-      // (mountSearchableAsync returns the handle; we use mountArchive for per-archive metadata)
-      const mountResults = nativeCore.mountArchive(filePaths);
-      const archives: MountedArchive[] = filePaths.map((path, i) => {
-        const mountRes = mountResults.find((r) => r.path === path);
-        const version = 'v0005' as TreVersion; // Default; will be updated from native version field
+      // Build the MountedArchive list from native truth, in the mount's priority-sorted
+      // index space (getMountArchives returns highest-priority first — same space as
+      // resolveChain hits). version + enumerateOnly come straight from the native layer.
+      const archives: MountedArchive[] = nativeCore.getMountArchives(handle).map((a) => ({
+        path: a.path,
+        filename: basename(a.path),
+        version: parseVersion(a.version),
+        entryCount: a.entryCount,
+        priority: a.priority,
+        isEnumerateOnly: a.enumerateOnly,
+        archiveIndex: a.archiveIndex,
+      }));
+
+      // Build the VFS entry list from the native shadow-resolved mount: one entry per
+      // unique path with the correct winner / shadowCount / override / tombstone.
+      const vfsEntries: VfsEntry[] = nativeCore.listMountEntries(handle).map((e) => {
+        const segments = e.path.split('/');
         return {
-          path,
-          filename: basename(path),
-          version,
-          entryCount: mountRes?.entryCount ?? 0,
-          priority: priorities[i],
-          isEnumerateOnly: false, // Will be set properly below
-          archiveIndex: priorities[i] - 1, // In the native priority list
+          path: e.path,
+          name: segments[segments.length - 1] ?? e.path,
+          segments,
+          winnerArchivePath: e.winnerArchivePath,
+          winnerArchiveFilename: basename(e.winnerArchivePath),
+          isOverride: e.isOverride,
+          isTombstone: e.isTombstone,
+          shadowCount: e.shadowCount,
+          winnerArchiveIndex: e.winnerArchiveIndex,
         };
-      }).reverse(); // Highest priority first (last in array = highest priority)
-
-      // Collect all VFS entries via search (empty query = all entries)
-      const allHits = nativeCore.searchMount(handle, { text: '', mode: 'substring' });
-
-      // Build VfsEntry list
-      const vfsEntries: VfsEntry[] = buildVfsEntries(handle, allHits, archives);
+      });
 
       store.mountComplete(handle, archives, vfsEntries);
     } catch (err) {
@@ -164,12 +161,15 @@ export default function TreVfsBrowser(): React.ReactElement {
         return;
       }
 
-      const hits = nativeCore.searchMount(mountHandle, { text, mode });
-      const hitSet = new Set(hits.map((h) => `${h.archiveIndex}:${h.entryIndex}`));
-
-      const filtered = vfsEntries.filter((entry) =>
-        hitSet.has(`${entry.archiveIndex}:${entry.entryIndex}`)
-      );
+      // Filter the already-loaded VFS entries in JS (case-insensitive over the path).
+      // We no longer call searchMount: its archive/entry index space does not match the
+      // shadow-resolved VFS, and the full path list is already in memory after mount.
+      const lower = text.toLowerCase();
+      const matcher = mode === 'glob' ? makeGlobMatcher(lower) : null;
+      const filtered = vfsEntries.filter((entry) => {
+        const p = entry.path.toLowerCase();
+        return matcher ? matcher(p) : p.includes(lower);
+      });
 
       store.setSearch({ text, mode }, filtered);
     },
@@ -461,104 +461,21 @@ export default function TreVfsBrowser(): React.ReactElement {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Build VfsEntry list from native search hits.
- * Each hit has {entryIndex, archiveIndex}; we look up paths from the mount.
+ * Build a glob matcher for the VFS search (* = any sequence, ? = single char).
+ * Operates on the lowercased path; the pattern is already lowercased by the caller.
+ * Mirrors the native globMatch semantics (TreMount.cpp) for parity.
  */
-function buildVfsEntries(
-  handle: string,
-  hits: Array<{ entryIndex: number; archiveIndex: number }>,
-  archives: MountedArchive[],
-): VfsEntry[] {
-  const entries: VfsEntry[] = [];
-  const pathToShadowCount = new Map<string, number>();
-
-  // First pass: count shadows per path
-  const pathToArchives = new Map<string, string[]>();
-  for (const hit of hits) {
-    try {
-      const resolved = nativeCore.resolveEntry(handle, getPathFromHit(handle, hit));
-      if (resolved.winner) {
-        const path = getPathFromHit(handle, hit);
-        if (!pathToArchives.has(path)) pathToArchives.set(path, []);
-        pathToArchives.get(path)!.push(resolved.winner);
-      }
-    } catch {
-      // skip
-    }
-  }
-
-  // Second pass: build entries (de-duplicated by path, taking the winner)
-  const seenPaths = new Set<string>();
-
-  for (const hit of hits) {
-    const entryPath = getPathFromHit(handle, hit);
-    if (!entryPath || seenPaths.has(entryPath)) continue;
-    seenPaths.add(entryPath);
-
-    let resolved: { winner: string | null; tombstone: boolean; archiveIndex: number; entryIndex: number };
-    try {
-      resolved = nativeCore.resolveEntry(handle, entryPath);
-    } catch {
-      continue;
-    }
-
-    if (!resolved.winner && !resolved.tombstone) continue;
-
-    const winnerArc = archives.find((a) => a.path === resolved.winner);
-    const arcList = pathToArchives.get(entryPath) ?? [];
-    const shadowCount = Math.max(0, arcList.length - 1);
-    pathToShadowCount.set(entryPath, shadowCount);
-
-    const segments = entryPath.split('/');
-    const name = segments[segments.length - 1] ?? entryPath;
-
-    entries.push({
-      path: entryPath,
-      name,
-      segments,
-      winnerArchivePath: resolved.winner ?? '',
-      winnerArchiveFilename: resolved.winner ? basename(resolved.winner) : '',
-      isOverride: shadowCount > 0,
-      isTombstone: resolved.tombstone,
-      shadowCount,
-      archiveIndex: resolved.archiveIndex,
-      entryIndex: resolved.entryIndex,
-    });
-  }
-
-  return entries.sort((a, b) => a.path.localeCompare(b.path));
-}
-
-/**
- * Get the file path for a search hit.
- * We need to list entries for the archive to get the path.
- * This is a helper that uses listEntries from the synchronous Plan-01-01 binding.
- */
-const _pathCache = new Map<string, string>();
-
-function getPathFromHit(
-  _handle: string,
-  hit: { entryIndex: number; archiveIndex: number },
-): string {
-  const cacheKey = `${hit.archiveIndex}:${hit.entryIndex}`;
-  if (_pathCache.has(cacheKey)) return _pathCache.get(cacheKey)!;
-
-  try {
-    const entries = nativeCore.listEntries(hit.archiveIndex);
-    if (entries[hit.entryIndex]) {
-      const path = entries[hit.entryIndex].path;
-      _pathCache.set(cacheKey, path);
-      return path;
-    }
-  } catch {
-    // fallback
-  }
-  return '';
+function makeGlobMatcher(pattern: string): (text: string) => boolean {
+  // Escape regex metachars except * and ?, then translate the glob wildcards.
+  const re = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+  const compiled = new RegExp(`^${re}$`);
+  return (text: string) => compiled.test(text);
 }
 
 /**
  * Fallback file picker using a hidden input element.
- * Used when @electron/remote is not available.
+ * Last-resort fallback for a non-Electron (plain web) context where the
+ * 'tre:pick-archives' IPC channel and a real OS dialog are unavailable.
  */
 function pickFilesViaInput(): Promise<string[]> {
   return new Promise((resolve) => {

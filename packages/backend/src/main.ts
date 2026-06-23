@@ -44,7 +44,7 @@
  *   All of the above belonged to the FALSIFIED utility-process SAB relay model.
  */
 
-import { app, BrowserWindow, session, protocol } from 'electron';
+import { app, BrowserWindow, session, protocol, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -222,6 +222,22 @@ app.whenReady().then(() => {
       contextIsolation: false,
       preload: preloadPath,
     },
+  });
+
+  // ── IPC: native OS file picker for .tre archives ─────────────────────────
+  // The renderer has nodeIntegration (Path B) but `dialog` is a main-process-only
+  // module. We expose it via ipcMain.handle rather than pulling in @electron/remote
+  // — adding a new registry dependency is explicitly forbidden this phase (threat
+  // T-01-SC). Note also that File.path was removed in Electron 32+, so a hidden
+  // <input type=file> can no longer return a real filesystem path; the native OS
+  // dialog is the correct source of truth for archive paths.
+  ipcMain.handle('tre:pick-archives', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Mount Archive…',
+      filters: [{ name: 'TRE Archives', extensions: ['tre'] }],
+      properties: ['openFile', 'multiSelections'],
+    });
+    return result.canceled ? [] : result.filePaths;
   });
 
   // ── STEP 3: loadURL LAST ──────────────────────────────────────────────────

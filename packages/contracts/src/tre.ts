@@ -6,8 +6,8 @@
  * renderer/backend. Binary payload bytes are NOT included (those cross as
  * Napi::ArrayBuffer — binary stays binary per AGENTS.md).
  *
- * Field set mirrors the verified 6-field TOC record (size-first or crc-first
- * depending on version; both normalize to this canonical shape after parse).
+ * Field set mirrors the verified 6-field TOC record (CRC-FIRST for all versions;
+ * normalized to this canonical shape after parse).
  *
  * Source: Utinni TreRecord.cs / TreHeader.cs (field names and semantics);
  *         swg-client-v2 TreeFile_SearchNode.h:189-197 (TableOfContentsEntry);
@@ -102,6 +102,57 @@ export interface TreSearchHit {
   entryIndex: number;
   /** Index of the archive in the mount list. */
   archiveIndex: number;
+}
+
+// ─── Mount handle accessors (priority-sorted index space) ──────────────────────
+
+/**
+ * Per-archive metadata for a mount, in the priority-sorted index space.
+ *
+ * `archiveIndex` matches the index space of resolveEntry/resolveChain/searchMount
+ * hits (position in the priority-sorted node list; index 0 = highest priority).
+ * `version` and `enumerateOnly` are the native truth (TreArchive::version() /
+ * isEnumerateOnly()) — the UI must NOT hardcode them.
+ *
+ * Source: OUR design — 01-02-PLAN.md index-space-mismatch + version/enumerate fix.
+ */
+export interface MountArchiveInfo {
+  /** Absolute filesystem path to the .tre archive. */
+  path: string;
+  /** TRE format version (e.g. 'v0005', 'v6000'). */
+  version: TreVersion;
+  /** True only for v6000 (encrypted, enumerate-only — payloads not extractable). */
+  enumerateOnly: boolean;
+  /** Total number of TOC entries. */
+  entryCount: number;
+  /** Mount priority (higher = higher precedence). */
+  priority: number;
+  /** Position in the priority-sorted node list (0 = highest priority). */
+  archiveIndex: number;
+}
+
+/**
+ * One deduplicated, shadow-resolved VFS entry for the whole mount.
+ *
+ * Computed once natively over every unique path. `winnerArchiveIndex` is in the
+ * same priority space as MountArchiveInfo.archiveIndex, so the UI can join them.
+ * `isOverride === shadowCount > 0`.
+ *
+ * Source: OUR design — 01-02-PLAN.md override-detection fix.
+ */
+export interface MountVfsEntry {
+  /** Normalized path (lowercase, forward-slash). */
+  path: string;
+  /** Path of the winning (highest-priority) archive. */
+  winnerArchivePath: string;
+  /** Priority-list index of the winning archive. */
+  winnerArchiveIndex: number;
+  /** Number of lower-priority archives also containing this path. */
+  shadowCount: number;
+  /** True if this entry overrides one or more lower-priority archives. */
+  isOverride: boolean;
+  /** True if the winning entry is a tombstone (file deleted). */
+  isTombstone: boolean;
 }
 
 // ─── Shadow chain ─────────────────────────────────────────────────────────────

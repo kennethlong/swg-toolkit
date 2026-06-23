@@ -56,10 +56,8 @@ export interface VfsEntry {
   isTombstone: boolean;
   /** Number of lower-priority archives shadowed. */
   shadowCount: number;
-  /** Archive index in the native mount list. */
-  archiveIndex: number;
-  /** Entry index in that archive. */
-  entryIndex: number;
+  /** Index of the winning archive in the priority-sorted mount list. */
+  winnerArchiveIndex: number;
 }
 
 /** Shadow chain detail for a selected file. */

@@ -232,6 +232,78 @@ export function resolveChain(handle: string, name: string): TreShadowChainNative
 export function searchMount(handle: string, query: { text: string; mode: 'substring' | 'glob' }): NativeTreSearchHit[];
 
 /**
+ * Per-archive metadata for a mount, in the priority-sorted index space
+ * (archiveIndex matches resolveEntry/resolveChain/searchMount hits).
+ *
+ * Source: OUR design — exposes version/enumerateOnly to the UI in the mount handle
+ * index space (01-02-PLAN.md index-space-mismatch fix).
+ */
+export interface NativeMountArchiveInfo {
+  /** Absolute filesystem path to the .tre archive. */
+  path: string;
+  /** Version string: 'v0004' | 'v0005' | 'v0006' | 'v5000' | 'v6000'. */
+  version: string;
+  /** True only for v6000 (encrypted, payloads not extractable). */
+  enumerateOnly: boolean;
+  /** Total number of TOC entries. */
+  entryCount: number;
+  /** Mount priority (higher = higher precedence). */
+  priority: number;
+  /** Position in the priority-sorted node list. */
+  archiveIndex: number;
+}
+
+/**
+ * One deduplicated, shadow-resolved VFS entry for the whole mount.
+ *
+ * winnerArchiveIndex is in the SAME priority space as NativeMountArchiveInfo.archiveIndex.
+ * isOverride === (shadowCount > 0).
+ *
+ * Source: OUR design — 01-02-PLAN.md override-detection fix.
+ */
+export interface NativeMountVfsEntry {
+  /** Normalized path (lowercase, forward-slash). */
+  path: string;
+  /** Path of the winning (highest-priority) archive. */
+  winnerArchivePath: string;
+  /** Priority-list index of the winning archive. */
+  winnerArchiveIndex: number;
+  /** Number of lower-priority archives also containing this path. */
+  shadowCount: number;
+  /** True if this entry overrides one or more lower-priority archives. */
+  isOverride: boolean;
+  /** True if the winning entry is a tombstone (file deleted). */
+  isTombstone: boolean;
+}
+
+/**
+ * Per-archive metadata for a mount, in priority-sorted index space.
+ *
+ * Use this (NOT mountArchive()'s file-ordered result) to populate the Mounted
+ * Archives list — version and enumerateOnly are the native truth here.
+ *
+ * @param handle  Mount handle from mountTreMount()/mountSearchableAsync().
+ * @returns       One NativeMountArchiveInfo per archive, highest-priority first.
+ *
+ * Source: OUR design — 01-02-PLAN.md index-space-mismatch fix.
+ */
+export function getMountArchives(handle: string): NativeMountArchiveInfo[];
+
+/**
+ * The deduplicated, shadow-resolved VFS for the whole mount.
+ *
+ * Computed once in C++ over every unique path (resolveChain logic). Returns the
+ * correct winner / shadowCount / override / tombstone per path. REPLACES the
+ * renderer's broken JS index-juggling.
+ *
+ * @param handle  Mount handle from mountTreMount()/mountSearchableAsync().
+ * @returns       One NativeMountVfsEntry per unique path, sorted by path.
+ *
+ * Source: OUR design — 01-02-PLAN.md override-detection fix; T-01-06 intent.
+ */
+export function listMountEntries(handle: string): NativeMountVfsEntry[];
+
+/**
  * Extract a payload from a specific archive in the mount.
  *
  * Binary stays binary — returns ArrayBuffer, never JSON (AGENTS.md).
