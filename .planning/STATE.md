@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-03-PLAN.md Tasks 1-2; CHECKPOINT at Task 3 (human-verify IFF Structure Tree + Hex Inspector)"
+stopped_at: "01-03 verified & committed; starting Wave 4 (01-04 TRE writer/repacker — autonomous, closes phase)"
 last_updated: "2026-06-23T15:35:36.851Z"
 last_activity: 2026-06-23
 progress:
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-21)
 ## Current Position
 
 Phase: 01 (core-engine-iff-tre-verification-harness) — EXECUTING
-Plan: 3 of 4 complete (01-01, 01-02 verified); starting 3 of 4 (01-03 IFF read/write)
-Status: Ready to execute
+Plan: 3 of 4 complete (01-01, 01-02, 01-03 verified); starting 4 of 4 (01-04 TRE writer/repacker)
+Status: Wave 3 complete & committed; beginning Wave 4 (autonomous, closes phase)
 Last activity: 2026-06-23
 
 Progress: [█████████░] 89%

@@ -85,7 +85,7 @@ completed: 2026-06-23
 - **Duration:** ~2 sessions (2026-06-22 to 2026-06-23)
 - **Started:** 2026-06-22
 - **Completed:** 2026-06-23
-- **Tasks:** 2 of 3 complete (Task 3 is a blocking human-verify checkpoint)
+- **Tasks:** 3 of 3 complete (Task 3 human-verify passed 2026-06-23)
 - **Files modified:** 17
 
 ## Accomplishments
@@ -100,7 +100,7 @@ completed: 2026-06-23
 1. **Task 1: Engine-free C++20 IFF parse + byte-exact serialize + binding + contracts** - `1c882b9` (feat)
 2. **Task 2: IFF structure tree + virtualized hex inspector + DataPanel tabs** - `bbb33dc` (feat)
 
-**Task 3:** Blocking checkpoint — PENDING human verify (not committed)
+**Task 3:** ✅ VERIFIED 2026-06-23. Human confirmed the Structure tree + Hex inspector on real SWG `.iff` assets. Orchestrator independently round-tripped **61/61 real `.iff` files byte-exact** (extracted from real `.tre`s across 4 archives) through native `parseIff` before handoff — the byte-exact gate (CORE-04) holds on real assets, not just synthetic fixtures. One cosmetic fix during verify: removed a doubled footer checkmark (commit `6a3a617`).
 
 ## Files Created/Modified
 
