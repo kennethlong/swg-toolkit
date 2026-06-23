@@ -30,6 +30,8 @@ import React, { useCallback } from 'react';
 import { useTreStore, basename } from '../../state/treStore.ts';
 import type { MountedArchive, VfsEntry, ShadowChainDisplay } from '../../state/treStore.ts';
 import type { TreVersion } from '@swg/contracts';
+import { useIffStore } from '../../state/iffStore.ts';
+import type { IffParseResult } from '../../state/iffStore.ts';
 import MountedArchivesList from './MountedArchivesList.tsx';
 import VfsSearchField from './VfsSearchField.tsx';
 import VfsTree from './VfsTree.tsx';
@@ -65,6 +67,11 @@ const nativeCore = require('@swg/native-core') as {
     isOverride: boolean;
     isTombstone: boolean;
   }>;
+  parseIff: (bytes: ArrayBuffer | Uint8Array) => {
+    roots: unknown[];
+    trailingBytes: { offset: number; count: number } | null;
+    roundTrip: { passed: boolean; failOffset?: number };
+  };
 };
 
 // Version string helper: map the native version string onto the TreVersion union.
@@ -78,6 +85,7 @@ function parseVersion(versionStr: string): TreVersion {
 
 export default function TreVfsBrowser(): React.ReactElement {
   const store = useTreStore();
+  const iffStore = useIffStore();
 
   // ── Mount handler ───────────────────────────────────────────────────────────
 
@@ -209,8 +217,49 @@ export default function TreVfsBrowser(): React.ReactElement {
       }
 
       store.selectEntry(entry.path, chain);
+
+      // Attempt to extract and parse the selected file as IFF.
+      // If extraction succeeds and the file has an IFF FORM header, parse it.
+      // (D-08: read-only; the write path is proven by the harness, not the UI.)
+      // Note: mountHandle is already destructured above and verified non-null.
+      if (mountHandle) {
+        const winnerResult = nativeCore.resolveChain(mountHandle, entry.path);
+        if (winnerResult.winner && !winnerResult.tombstone &&
+            winnerResult.winnerArchiveIndex >= 0 && winnerResult.winnerEntryIndex >= 0) {
+          const filename = entry.name;
+          iffStore.beginParse(filename);
+          try {
+            const bytes = nativeCore.readMountEntry(
+              mountHandle,
+              winnerResult.winnerArchiveIndex,
+              winnerResult.winnerEntryIndex,
+            );
+            // Try to parse as IFF — if it fails, show a clean parse error.
+            try {
+              const raw = nativeCore.parseIff(bytes);
+              // Convert from native types to contract types.
+              const result: IffParseResult = {
+                roots: raw.roots as IffParseResult['roots'],
+                trailingBytes: raw.trailingBytes,
+                roundTrip: raw.roundTrip,
+              };
+              iffStore.parseComplete(filename, result, bytes);
+            } catch (iffErr) {
+              const reason = iffErr instanceof Error ? iffErr.message : String(iffErr);
+              // Extract offset from "@ 0x..." in the error message if present.
+              const m = /0x([0-9A-Fa-f]+)/.exec(reason);
+              const offset = m ? parseInt(m[1], 16) : undefined;
+              iffStore.parseError(filename, reason, offset);
+            }
+          } catch (readErr) {
+            const reason = readErr instanceof Error ? readErr.message : String(readErr);
+            iffStore.parseError(filename, `could not read file — ${reason}`);
+          }
+        }
+      }
     },
-    [store],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [store, iffStore],
   );
 
   // ── Render ──────────────────────────────────────────────────────────────────
