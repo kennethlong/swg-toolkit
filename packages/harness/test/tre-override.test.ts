@@ -56,37 +56,35 @@ mkdirSync(TMPDIR, { recursive: true });
 /**
  * Build a minimal v0005 TRE archive in memory for override tests.
  *
- * v0005 layout (size-first, 24-byte stride):
+ * v0005 layout (CRC-FIRST, 24-byte stride):
  *   Header 36 bytes (LE uint32): magic "EERT", version "0005", numberOfFiles,
  *     tocOffset, tocCompressor, sizeOfTOC, blockCompressor, sizeOfNameBlock, uncompSizeOfNameBlock
- *   TOC records (24 bytes each, size-first):
- *     [0]  length (int32 LE)         — uncompressed size; 0 = tombstone
- *     [4]  offset (int32 LE)         — byte offset of payload
- *     [8]  compressor (int32 LE)     — 0=none
- *     [12] compressedLength (int32 LE)
- *     [16] crc (uint32 LE)
+ *   TOC records (24 bytes each, crc-first):
+ *     [0]  crc (uint32 LE)           — FORWARD CRC-32 of normalized name
+ *     [4]  length (int32 LE)         — uncompressed size; 0 = tombstone
+ *     [8]  offset (int32 LE)         — byte offset of payload
+ *     [12] compressor (int32 LE)     — 0=none
+ *     [16] compressedLength (int32 LE)
  *     [20] fileNameOffset (int32 LE)
  *
- * Source: Utinni TreFile.cs:302-310 (size-first layout for v0005);
- *         swg-client-v2 TreeFile_SearchNode.h:189-197 (field names).
+ * GROUND TRUTH: swg-client-v2 TreeFile_SearchNode.h:189 (crc-first struct);
+ *               Crc.cpp Crc::calculate (forward CRC-32). Verified byte-exact vs real archives.
  */
 
 function crc32(name: string): number {
-  // CRC-32 matching swg-client-v2 Crc.cpp (IEEE polynomial 0xEDB88320).
+  // FORWARD CRC-32 matching swg-client-v2 Crc.cpp (polynomial 0x04C11DB7, MSB-first).
   // Must match TreArchive.cpp's crcCalculate(): init=0xFFFFFFFF, finalXOR=0xFFFFFFFF.
-  // Source: swg-client-v2 TreeFile_SearchNode.cpp:364 (Crc::calculate(fileName)).
-  const poly = 0xEDB88320;
-  // Build table
+  // Source: swg-client-v2 Crc.cpp (Crc::calculate).
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) c = (c & 1) ? (c >>> 1) ^ poly : c >>> 1;
-    table[i] = c;
+    let c = (i << 24) >>> 0;
+    for (let j = 0; j < 8; j++) c = (c & 0x80000000) ? (((c << 1) ^ 0x04C11DB7) >>> 0) : ((c << 1) >>> 0);
+    table[i] = c >>> 0;
   }
   let crc = 0xFFFFFFFF;
   for (let i = 0; i < name.length; i++) {
     const byte = name.charCodeAt(i) & 0xff;
-    crc = (crc >>> 8) ^ (table[(crc ^ byte) & 0xFF] >>> 0);
+    crc = (table[((crc >>> 24) ^ byte) & 0xFF] ^ (crc << 8)) >>> 0;
   }
   return (crc ^ 0xFFFFFFFF) >>> 0; // ensure unsigned
 }
@@ -169,7 +167,8 @@ function buildV0005Archive(entries: TreFileEntry[]): Buffer {
     }
   }
 
-  // Write TOC records (size-first, 24 bytes each)
+  // Write TOC records (crc-first, 24 bytes each)
+  // Source: swg-client-v2 TreeFile_SearchNode.h:189.
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     const baseOff = tocOffset + i * stride;
@@ -178,11 +177,11 @@ function buildV0005Archive(entries: TreFileEntry[]): Buffer {
     const crcVal  = crc32(entry.name);
     const fnOff   = nameOffsets[i];
 
-    buf.writeInt32LE(length,    baseOff + 0);   // [0]  length
-    buf.writeInt32LE(payloadOffsets[i], baseOff + 4);  // [4]  offset
-    buf.writeInt32LE(0,         baseOff + 8);   // [8]  compressor=none
-    buf.writeInt32LE(compLen,   baseOff + 12);  // [12] compressedLength
-    buf.writeUInt32LE(crcVal,   baseOff + 16);  // [16] crc
+    buf.writeUInt32LE(crcVal,   baseOff + 0);   // [0]  crc
+    buf.writeInt32LE(length,    baseOff + 4);   // [4]  length
+    buf.writeInt32LE(payloadOffsets[i], baseOff + 8);  // [8]  offset
+    buf.writeInt32LE(0,         baseOff + 12);  // [12] compressor=none
+    buf.writeInt32LE(compLen,   baseOff + 16);  // [16] compressedLength
     buf.writeInt32LE(fnOff,     baseOff + 20);  // [20] fileNameOffset
   }
 

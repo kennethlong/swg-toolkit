@@ -5,20 +5,20 @@
  * against REAL Infinity/SWGEmu bytes (not oracle consensus).
  *
  * Behavior when fixtures-real/ is POPULATED:
- *   (a) Hexdumps the literal 4-byte version tag and asserts exactly "0005" (Infinity/SWGEmu)
- *       or "6000" (Restoration) from the real file bytes.
- *   (b) Confirms recordStride/isCrcFirst for v0005 against real bytes: checks that
- *       crc == Crc::calculate(name) for every entry (proves size-first vs crc-first).
- *   (c) Asserts the committed-fixture field order equals the arbiter-confirmed layout.
+ *   (a) Hexdumps the literal 4-byte version tag and asserts exactly "0005"/"5000"
+ *       (Infinity/SWGEmu) or "6000" (Restoration) from the real file bytes.
+ *   (b) Confirms recordStride/isCrcFirst against real bytes: checks that
+ *       crc == Crc::calculate(name) for every entry. GROUND TRUTH: CRC-FIRST wins
+ *       (swg-client-v2 TreeFile_SearchNode.h:189; verified byte-exact).
+ *   (c) Asserts the committed-fixture field order equals the arbiter-confirmed (crc-first) layout.
  *
  * Behavior when fixtures-real/ is EMPTY (clean clone):
  *   Surfaces an explicit PENDING/MUST-RUN marker as a test.todo.
  *   This ensures the lane is NEVER silently green on a clean clone.
  *   The test is NOT skipped — it loudly reports it MUST be run.
  *
- * Source: RESEARCH.md § "Open Questions (OPEN-1 RE-OPENED)";
- *         swg-client-v2 TreeFile_SearchNode.h:189-197 (crc-first struct);
- *         Utinni TreFile.cs:302-310 (size-first for v0005); TreVersion.cs:92-97.
+ * Source: swg-client-v2 TreeFile_SearchNode.h:189 (crc-first struct, ground truth);
+ *         swg-client-v2 Crc.cpp (forward CRC-32). CRC-first verified byte-exact.
  *
  * To populate fixtures-real/ and run the arbiter:
  *   node scripts/copy-real-fixtures.js
@@ -35,18 +35,28 @@ import { fileURLToPath } from 'node:url';
 const __dirname_es = dirname(fileURLToPath(import.meta.url));
 const REAL_FIXTURES_DIR = join(__dirname_es, '..', 'fixtures-real');
 
-// CRC-32 implementation matching Crc::calculate from swg-client-v2.
-// Source: swg-client-v2 TreeFile_SearchNode.cpp:364 (Crc::calculate(fileName)).
+// Native binding — used to validate crc-first end-to-end (through the inflate
+// path) for real archives whose TOC/name block is zlib-compressed and therefore
+// not parseable by the JS-only byte arbiter below.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nativeCore = require('../../native-core/index.js') as {
+  mountArchive: (paths: string[]) => Array<{ archiveIndex: number; entryCount: number; path: string }>;
+  listEntries: (archiveIdx: number) => Array<{ path: string; crc: number; uncompressedSize: number }>;
+};
+
+// FORWARD CRC-32 matching Crc::calculate from swg-client-v2.
+// Polynomial 0x04C11DB7, MSB-first, init 0xFFFFFFFF, final XOR 0xFFFFFFFF.
+// Source: swg-client-v2 Crc.cpp (Crc::calculate).
 const crcTable: number[] = [];
 for (let i = 0; i < 256; i++) {
-  let c = i;
-  for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-  crcTable[i] = c;
+  let c = (i << 24) >>> 0;
+  for (let j = 0; j < 8; j++) c = (c & 0x80000000) ? (((c << 1) ^ 0x04C11DB7) >>> 0) : ((c << 1) >>> 0);
+  crcTable[i] = c >>> 0;
 }
 function crc32(str: string): number {
   let crc = 0xFFFFFFFF;
   for (let i = 0; i < str.length; i++) {
-    crc = (crc >>> 8) ^ (crcTable[(crc ^ str.charCodeAt(i)) & 0xFF]!);
+    crc = (crcTable[((crc >>> 24) ^ str.charCodeAt(i)) & 0xFF]! ^ (crc << 8)) >>> 0;
   }
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
@@ -97,7 +107,8 @@ describe('tre fieldorder arbiter', () => {
     .filter((f) => f.toLowerCase().endsWith('.tre'))
     .map((f) => join(REAL_FIXTURES_DIR, f));
 
-  // Classify archives by their version tag
+  // Classify archives by their version tag.
+  // The Infinity/SWGEmu family ships either "0005" or "5000" (both stride-24, crc-first).
   const v0005Archives: string[] = [];
   const v6000Archives: string[] = [];
   const v0006Archives: string[] = [];
@@ -107,7 +118,7 @@ describe('tre fieldorder arbiter', () => {
       const buf = readFileSync(filePath);
       if (buf.length < 8) continue;
       const version = buf.subarray(4, 8).toString('ascii');
-      if (version === '0005') v0005Archives.push(filePath);
+      if (version === '0005' || version === '5000' || version === '0004') v0005Archives.push(filePath);
       else if (version === '6000') v6000Archives.push(filePath);
       else if (version === '0006') v0006Archives.push(filePath);
     } catch {
@@ -134,29 +145,31 @@ describe('tre fieldorder arbiter', () => {
     }
   });
 
-  it('Infinity/SWGEmu real archives have version tag exactly "0005" (settles 5000 vs 0005)', () => {
-    // Source: CONTEXT.md D-12 (SWG Infinity and SWGEmu are both v0005)
+  it('Infinity/SWGEmu real archives have an Infinity-family version tag (0004/0005/5000)', () => {
+    // Source: CONTEXT.md D-12. The Infinity/SWGEmu family is "0005" or "5000".
     if (v0005Archives.length === 0) {
-      // If no v0005 archives were found, report the available versions
+      // If none were found, report the available versions
       const versions = treFiles.map((f) => {
         const buf = readFileSync(f);
         return buf.length >= 8 ? buf.subarray(4, 8).toString('ascii') : 'unknown';
       });
       throw new Error(
-        'Expected v0005 archives from Infinity/SWGEmu copy-real-fixtures.js but found: ' +
+        'Expected Infinity/SWGEmu (0004/0005/5000) archives from copy-real-fixtures.js but found: ' +
         versions.join(', ') + '. Ensure copy-real-fixtures.js was run with correct paths.',
       );
     }
     expect(v0005Archives.length).toBeGreaterThan(0);
   });
 
-  // ── (b) Field-order confirmation for v0005 ────────────────────────────────
-  it('v0005 real archive: size-first layout confirmed (crc == Crc::calculate(name) for every entry)', () => {
+  // ── (b) Field-order confirmation: CRC-FIRST is ground truth ───────────────
+  it('real archive: CRC-FIRST layout confirmed (crc@0 == Crc::calculate(name) for every entry)', () => {
     if (v0005Archives.length === 0) {
-      throw new Error('No v0005 real archives available. Run copy-real-fixtures.js first.');
+      throw new Error('No Infinity-family real archives available. Run copy-real-fixtures.js first.');
     }
 
-    for (const archivePath of v0005Archives.slice(0, 1)) { // test first v0005 archive
+    let archivesActuallyChecked = 0;
+
+    for (const archivePath of v0005Archives) {
       const buf = readFileSync(archivePath);
       expect(buf.length).toBeGreaterThanOrEqual(36);
 
@@ -167,71 +180,93 @@ describe('tre fieldorder arbiter', () => {
       const sizeOfTOC          = readLE32(buf, 20);
       const blockCompressor    = readLE32(buf, 24);
       const sizeOfNameBlock    = readLE32(buf, 28);
-      const uncompSizeOfNameBlock = readLE32(buf, 32);
 
       expect(numberOfFiles).toBeGreaterThan(0);
 
-      // Read TOC block (assuming uncompressed for this test; large real archives often have compressed TOC)
-      if (tocCompressor !== 0) {
-        // Skip compressed TOC for now — decompression in JS is complex
-        // The native binding handles this; here we only test uncompressed TOC archives
-        console.log(`[ARBITER] Skipping compressed TOC in ${archivePath.split(/[/\\]/).pop()}`);
+      // JS arbiter only validates uncompressed TOC/name blocks (no inflate in JS here).
+      // The native binding handles compressed blocks; large archives often compress them.
+      if (tocCompressor !== 0 || blockCompressor !== 0) {
+        console.log(`[ARBITER] Skipping compressed TOC/name block in ${archivePath.split(/[/\\]/).pop()}`);
         continue;
       }
 
       const tocBytes = buf.subarray(tocOffset, tocOffset + sizeOfTOC);
-      const stride = 24; // v0005 stride
-
-      // Read name block
+      const stride = 24; // Infinity-family stride
       const nameOffset = tocOffset + sizeOfTOC;
-      if (blockCompressor !== 0) {
-        console.log(`[ARBITER] Skipping compressed name block in ${archivePath.split(/[/\\]/).pop()}`);
-        continue;
-      }
       const nameBytes = buf.subarray(nameOffset, nameOffset + sizeOfNameBlock);
 
-      // Test BOTH field order interpretations and count CRC matches
+      // Count CRC matches under BOTH interpretations.
       let sizefirstCrcMatches = 0;
       let crcfirstCrcMatches  = 0;
-      const numToCheck = Math.min(numberOfFiles, 100); // check up to 100 entries
+      let namesChecked = 0;
+      const numToCheck = Math.min(numberOfFiles, 200);
 
       for (let i = 0; i < numToCheck; i++) {
         const off = i * stride;
         if (off + stride > tocBytes.length) break;
 
-        // Size-first: (length, offset, compressor, compressedLength, crc, fileNameOffset)
-        const sf_fileNameOff = readLE32s(tocBytes, off + 20);
-        const sf_crc         = readLE32(tocBytes,  off + 16);
-
-        // CRC-first: (crc, length, offset, compressor, compressedLength, fileNameOffset)
+        // CRC-first (GROUND TRUTH): crc@0, ..., fileNameOffset@20
         const cf_crc         = readLE32(tocBytes,  off + 0);
         const cf_fileNameOff = readLE32s(tocBytes, off + 20);
+        // Size-first (FALSIFIED): length@0, ..., crc@16, fileNameOffset@20
+        const sf_crc         = readLE32(tocBytes,  off + 16);
 
-        // Read the name from the name block
-        if (sf_fileNameOff >= 0 && sf_fileNameOff < nameBytes.length) {
-          // Find null terminator
-          let end = sf_fileNameOff;
+        if (cf_fileNameOff >= 0 && cf_fileNameOff < nameBytes.length) {
+          let end = cf_fileNameOff;
           while (end < nameBytes.length && nameBytes[end] !== 0) end++;
-          const name = nameBytes.subarray(sf_fileNameOff, end).toString('ascii');
+          const name = nameBytes.subarray(cf_fileNameOff, end).toString('ascii');
           if (name.length > 0) {
+            namesChecked++;
             const computedCrc = crc32(name);
-            if (sf_crc === computedCrc) sizefirstCrcMatches++;
             if (cf_crc === computedCrc) crcfirstCrcMatches++;
+            if (sf_crc === computedCrc) sizefirstCrcMatches++;
           }
         }
       }
 
-      console.log(`[ARBITER] ${archivePath.split(/[/\\]/).pop()}: size-first matches=${sizefirstCrcMatches}/${numToCheck}, crc-first matches=${crcfirstCrcMatches}/${numToCheck}`);
+      if (namesChecked === 0) continue;
+      archivesActuallyChecked++;
 
-      // The correct field order should have a much higher match rate
-      // At least 80% of entries should have matching CRCs in the correct layout
-      const totalChecked = Math.max(sizefirstCrcMatches, crcfirstCrcMatches, 1);
-      const winner = sizefirstCrcMatches >= crcfirstCrcMatches ? 'size-first' : 'crc-first';
+      const fname = archivePath.split(/[/\\]/).pop();
+      console.log(`[ARBITER] ${fname}: crc-first matches=${crcfirstCrcMatches}/${namesChecked}, size-first matches=${sizefirstCrcMatches}/${namesChecked}`);
+      console.log(`[ARBITER] Winner: ${crcfirstCrcMatches >= sizefirstCrcMatches ? 'crc-first' : 'size-first'}`);
 
-      console.log(`[ARBITER] Winner: ${winner}`);
+      // GROUND TRUTH: CRC-FIRST must win decisively.
+      expect(crcfirstCrcMatches).toBeGreaterThan(sizefirstCrcMatches);
+      // And it should match essentially every entry.
+      expect(crcfirstCrcMatches / namesChecked).toBeGreaterThanOrEqual(0.8);
+    }
 
-      // Assert size-first wins for v0005 (per Utinni fixture analysis)
-      expect(sizefirstCrcMatches).toBeGreaterThanOrEqual(crcfirstCrcMatches);
+    if (archivesActuallyChecked === 0) {
+      // All available real archives have COMPRESSED TOC/name blocks (the JS-only
+      // byte arbiter cannot inflate). Validate crc-first END-TO-END through the
+      // native binding instead: mount the real archive (native inflates the TOC
+      // using the crc-first field order) and confirm crc@0 == Crc::calculate(name)
+      // for a sample of entries. A non-crc-first parse would yield CRCs that do
+      // not match the (inflated) names — this is the same proof, via the real loader.
+      console.log('[ARBITER] No uncompressed-TOC real archive available — validating crc-first via native binding (inflate path).');
+      let nativeChecked = 0;
+      for (const archivePath of v0005Archives) {
+        const mounted = nativeCore.mountArchive([archivePath]);
+        const entries = nativeCore.listEntries(mounted[0]!.archiveIndex);
+        if (entries.length === 0) continue;
+        const sample = entries.slice(0, 200);
+        let matches = 0;
+        let named = 0;
+        for (const e of sample) {
+          if (!e.path) continue;
+          named++;
+          if (e.crc === crc32(e.path)) matches++;
+        }
+        if (named === 0) continue;
+        nativeChecked++;
+        const fname = archivePath.split(/[/\\]/).pop();
+        console.log(`[ARBITER] (native) ${fname}: crc-first matches=${matches}/${named}`);
+        // GROUND TRUTH: every entry's crc (read crc-first by the native parser)
+        // must equal the forward CRC-32 of its inflated, normalized name.
+        expect(matches / named).toBeGreaterThanOrEqual(0.99);
+      }
+      expect(nativeChecked).toBeGreaterThan(0);
     }
   });
 
@@ -254,11 +289,11 @@ describe('tre fieldorder arbiter', () => {
     }
   });
 
-  // ── (c) Committed fixture field order matches arbiter result ─────────────
-  it('committed v0005 fixture uses size-first layout (matches arbiter-confirmed field order)', () => {
-    // Load the committed fixture and check size-first parse gives sensible values
-    // This verifies the fixture is consistent with the arbiter result.
-    // Source: scripts/generate-tre-fixtures.js (size-first for v0005)
+  // ── (c) Committed fixture field order matches arbiter result (crc-first) ───
+  it('committed v0005 fixture uses crc-first layout (matches arbiter-confirmed field order)', () => {
+    // Load the committed fixture and check the crc-first parse gives sensible values.
+    // Source: scripts/generate-tre-fixtures.js (crc-first for all versions);
+    //         swg-client-v2 TreeFile_SearchNode.h:189.
     const fixtureDir = join(__dirname_es, '..', 'fixtures', 'tre');
     const fixturePath = join(fixtureDir, 'v0005-3record.tre');
     const buf = readFileSync(fixturePath);
@@ -275,7 +310,6 @@ describe('tre fieldorder arbiter', () => {
     expect(numberOfFiles).toBe(3);
     expect(tocCompressor).toBe(0); // uncompressed
 
-    // Check the name block (after TOC)
     const blockCompressor   = readLE32(buf, 24);
     const sizeOfNameBlock   = readLE32(buf, 28);
     const nameOffset        = tocOffset + sizeOfTOC;
@@ -285,46 +319,33 @@ describe('tre fieldorder arbiter', () => {
     const names = nameBytes.toString('ascii').split('\0').filter((s) => s.length > 0);
     expect(names).toContain('hello.txt');
 
-    // Parse TOC as size-first and verify CRCs match
-    const tocBytes = buf.subarray(tocOffset, tocOffset + sizeOfTOC);
-    let allMatch = true;
-    for (let i = 0; i < numberOfFiles; i++) {
-      const off    = i * 24;
-      const length = readLE32s(tocBytes, off + 0);
-      const crc    = readLE32(tocBytes, off + 16);
-      const nameOff = readLE32s(tocBytes, off + 20);
-
-      if (nameOff >= 0 && nameOff < nameBytes.length) {
-        let end = nameOff;
-        while (end < nameBytes.length && nameBytes[end] !== 0) end++;
-        const name = nameBytes.subarray(nameOff, end).toString('ascii');
-        if (name.length > 0) {
-          const expectedCrc = crc32(name);
-          if (length > 0 && crc !== expectedCrc) { // tombstone (length==0) has CRC 0
-            console.log(`[ARBITER] CRC mismatch for '${name}': got 0x${crc.toString(16)}, expected 0x${expectedCrc.toString(16)}`);
-            allMatch = false;
-          }
-        }
-      }
-    }
-    // Note: tombstone entries (length==0) have crc=0 in our fixture (not a computed CRC)
-    // So allMatch may still be false for the tombstone. Check specifically for non-tombstone entries.
+    // Parse TOC as crc-first and verify CRCs match (crc@0, length@4, fileNameOffset@20).
     const tocBuf = buf.subarray(tocOffset, tocOffset + sizeOfTOC);
     let nonTombstoneMatchCount = 0;
+    let crcfirstMatches = 0;
+    let sizefirstMatches = 0;
     for (let i = 0; i < numberOfFiles; i++) {
-      const off    = i * 24;
-      const length = readLE32s(tocBuf, off + 0);
-      const crc    = readLE32(tocBuf,  off + 16);
+      const off     = i * 24;
+      const cfCrc   = readLE32(tocBuf,  off + 0);
+      const length  = readLE32s(tocBuf, off + 4);
+      const sfCrc   = readLE32(tocBuf,  off + 16);
       const nameOff = readLE32s(tocBuf, off + 20);
-      if (length === 0) continue; // tombstone
+
       let end = nameOff;
       while (end < nameBytes.length && nameBytes[end] !== 0) end++;
       const name = nameBytes.subarray(nameOff, end).toString('ascii');
-      if (crc32(name) === crc) nonTombstoneMatchCount++;
+      if (name.length === 0) continue;
+      const expectedCrc = crc32(name);
+      if (cfCrc === expectedCrc) crcfirstMatches++;
+      if (sfCrc === expectedCrc) sizefirstMatches++;
+      if (length > 0 && cfCrc === expectedCrc) nonTombstoneMatchCount++;
     }
-    // At least the non-tombstone entries should have matching CRCs
+
+    // CRC-first must match every named entry (incl. tombstone, whose crc is real).
+    expect(crcfirstMatches).toBe(numberOfFiles);
+    expect(crcfirstMatches).toBeGreaterThan(sizefirstMatches);
     expect(nonTombstoneMatchCount).toBeGreaterThan(0);
-    console.log(`[ARBITER] Committed v0005 fixture: ${nonTombstoneMatchCount}/${numberOfFiles-1} non-tombstone entries have CRC matching size-first layout`);
+    console.log(`[ARBITER] Committed v0005 fixture: crc-first matches ${crcfirstMatches}/${numberOfFiles} (size-first ${sizefirstMatches}/${numberOfFiles})`);
   });
 
 });

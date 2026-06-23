@@ -33,12 +33,13 @@
  *   [32] uncompSizeOfNameBlock
  *   Verified: swg-client-v2 TreeFile_SearchNode.h:174-185, tre_reader.py:33-34.
  *
- * TOC field order (RUNTIME-DISPATCHED via isCrcFirst()):
- *   Oracles DISAGREE — see TreVersion.h for the full oracle disagreement matrix.
- *   Do NOT assume one layout. Read recordStride() bytes per entry; branch on isCrcFirst().
- *   Current encoding from Utinni + fixture analysis (PROVISIONAL — Task-3 arbiter confirms):
- *     v0004/v0005/v0006/v5000 = size-first, 24 bytes
- *     v6000                   = crc-first,  32 bytes
+ * TOC field order (CRC-FIRST for ALL versions — VERIFIED byte-exact):
+ *   crc@0, length@4, offset@8, compressor@12, compressedLength@16, fileNameOffset@20.
+ *   GROUND TRUTH: swg-client-v2 TreeFile_SearchNode.h:189 (TableOfContentsEntry).
+ *   Proven against real archives (bottom.tre "5000" stride 24; SwgRestoration_00.tre
+ *   "6000" stride 32). The TOC is sorted ascending by crc (binary-search precondition).
+ *     v0004/v0005/v0006/v5000 = crc-first, 24 bytes
+ *     v6000                   = crc-first, 32 bytes (+8 pad)
  *
  * Security:
  *   T-01-01: count cap BEFORE alloc — division form: recordCount > ZLIB_MAX_BLOCK / stride
@@ -64,34 +65,44 @@
 
 namespace swg {
 
-// ─── CRC-32 (Crc::calculate equivalent) ─────────────────────────────────────
-// Ported from swg-client-v2 Crc.cpp — standard Ethernet/IEEE CRC-32.
-// Source: swg-client-v2 TreeFile_SearchNode.cpp:364 (crc = Crc::calculate(fileName))
+// ─── CRC-32 (Crc::calculate — FORWARD / MSB-first) ──────────────────────────
+// GROUND TRUTH: swg-client-v2 .../sharedFile/src/shared/Crc.cpp Crc::calculate.
+// This is the FORWARD (non-reflected) CRC-32: polynomial 0x04C11DB7,
+// init 0xFFFFFFFF, final XOR 0xFFFFFFFF, MSB-first.
+//   for (crc=0xFFFFFFFF; *s; ++s)
+//       crc = table[((crc>>24) ^ (uint8)*s) & 0xFF] ^ (crc<<8);
+//   return crc ^ 0xFFFFFFFF;
+// Forward table: c = i<<24; repeat 8: c = (c&0x80000000)?((c<<1)^0x04C11DB7):(c<<1).
+// VERIFIED byte-exact: forwardCRC32(lowercase(
+//   "appearance/mesh/thm_tato_imprv_building_s09_r0_mesh_l4.msh")) == 3830594,
+//   matching crc@offset0 of bottom.tre entry 0.
+// NOTE: the incoming name is already lowercased/normalized by resolve()
+//   (fixUpFileName). Crc::calculate does NOT lowercase — neither do we here.
 
-// Full 256-entry CRC-32 table (IEEE polynomial 0xEDB88320)
+// Full 256-entry FORWARD CRC-32 table (polynomial 0x04C11DB7)
 static uint32_t crcTable[256];
 static bool     crcTableInitialized = false;
 
 static void initCrcTable() {
     if (crcTableInitialized) return;
     for (uint32_t i = 0; i < 256; ++i) {
-        uint32_t c = i;
+        uint32_t c = i << 24;
         for (int j = 0; j < 8; ++j)
-            c = (c >> 1) ^ (0xEDB88320u & -(c & 1u));
+            c = (c & 0x80000000u) ? ((c << 1) ^ 0x04C11DB7u) : (c << 1);
         crcTable[i] = c;
     }
     crcTableInitialized = true;
 }
 
 /**
- * Compute the CRC-32 of a normalized filename.
- * Source: swg-client-v2 TreeFile_SearchNode.cpp:364 (Crc::calculate(fileName))
+ * Compute the FORWARD CRC-32 of a normalized filename.
+ * Source: swg-client-v2 Crc.cpp Crc::calculate.
  */
 static uint32_t crcCalculate(const char* str) {
     initCrcTable();
     uint32_t crc = 0xFFFFFFFFu;
     while (*str) {
-        crc = (crc >> 8) ^ crcTable[(crc ^ static_cast<uint8_t>(*str)) & 0xFF];
+        crc = crcTable[((crc >> 24) ^ static_cast<uint8_t>(*str)) & 0xFF] ^ (crc << 8);
         ++str;
     }
     return crc ^ 0xFFFFFFFFu;
@@ -208,38 +219,31 @@ TreArchive TreArchive::parse(IInputStream& stream) {
     arc.m_nameBlock.assign(reinterpret_cast<const char*>(nameData.data()), nameData.size());
 
     // ── Unpack TOC entries ────────────────────────────────────────────────
-    // Field order depends on isCrcFirst(version) — RUNTIME DISPATCH.
-    // Source: TreVersion.h (isCrcFirst / recordStride runtime functions);
-    //         swg-client-v2 TreeFile_SearchNode.h:189-197 (crc-first 6-field entry);
-    //         Utinni TreFile.cs:284-310 (size-first vs crc-first dispatch).
-    const bool crcFirst = isCrcFirst(arc.m_version);
+    // The on-disk TOC record is CRC-FIRST for ALL versions. This was proven
+    // byte-exact against real archives (bottom.tre ver "5000" stride 24;
+    // SwgRestoration_00.tre ver "6000" stride 32) AND matches the client's
+    // own on-disk struct.
+    // GROUND TRUTH: swg-client-v2 .../sharedFile/src/shared/TreeFile_SearchNode.h:189
+    //   (TableOfContentsEntry: crc, length, offset, compressor, compressedLength,
+    //    fileNameOffset). V6000 adds 8 bytes of padding at [24..31] (stride 32).
+    // The old "size-first" layout (length@0 … crc@16) for v0004/0005/0006/5000 was
+    // fabricated/incorrect for real archives and has been removed.
     arc.m_entries.resize(numberOfFiles);
 
     for (uint32_t i = 0; i < numberOfFiles; ++i) {
         const uint8_t* r = tocData.data() + static_cast<size_t>(i) * stride;
         TreEntry& e = arc.m_entries[i];
 
-        if (crcFirst) {
-            // CRC-first layout (v6000): crc, length, offset, compressor, compressedLength, fileNameOffset [, pad, pad]
-            // Source: Utinni TreFile.cs:284-298; swg-client-v2 TreeFile_SearchNode.h:189-197.
-            e.crc            = readLE32(r);
-            e.length         = readLE32s(r + 4);
-            e.offset         = readLE32s(r + 8);
-            e.compressor     = readLE32s(r + 12);
-            e.compressedLength = readLE32s(r + 16);
-            e.fileNameOffset = readLE32s(r + 20);
-            // stride-32 has 8 bytes of padding at [24..31] — ignored
-        } else {
-            // Size-first layout (v0004/v0005/v0006/v5000):
-            // length, offset, compressor, compressedLength, crc, fileNameOffset
-            // Source: Utinni TreFile.cs:302-310.
-            e.length         = readLE32s(r);
-            e.offset         = readLE32s(r + 4);
-            e.compressor     = readLE32s(r + 8);
-            e.compressedLength = readLE32s(r + 12);
-            e.crc            = readLE32(r + 16);
-            e.fileNameOffset = readLE32s(r + 20);
-        }
+        // CRC-first layout (ALL versions): crc, length, offset, compressor,
+        // compressedLength, fileNameOffset [, pad, pad].
+        // Source: swg-client-v2 TreeFile_SearchNode.h:189.
+        e.crc            = readLE32(r);
+        e.length         = readLE32s(r + 4);
+        e.offset         = readLE32s(r + 8);
+        e.compressor     = readLE32s(r + 12);
+        e.compressedLength = readLE32s(r + 16);
+        e.fileNameOffset = readLE32s(r + 20);
+        // stride-32 (V6000) has 8 bytes of padding at [24..31] — ignored
     }
 
     return arc;

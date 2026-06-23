@@ -2,44 +2,22 @@
  * TreVersion.h — TRE archive version enum + per-version runtime dispatch functions.
  *
  * ============================================================
- * ORACLE DISAGREEMENT — DO NOT HARDCODE A SINGLE LAYOUT
+ * TOC LAYOUT — CRC-FIRST FOR ALL VERSIONS (VERIFIED BYTE-EXACT)
  * ============================================================
  *
- * Three oracles disagree on TOC field order and stride per version:
+ * The on-disk TOC record is CRC-FIRST for every version:
+ *   crc@0, length@4, offset@8, compressor@12, compressedLength@16, fileNameOffset@20
+ *   (V6000 adds 8 bytes of padding → stride 32; all others stride 24).
  *
- * 1. swg-client-v2 TreeFile_SearchNode.cpp:276-348:
- *    - Implements ONLY TAG_0004 / TAG_0005. Default-case FATALs on all else (:336-347).
- *    - Its TableOfContentsEntry (TreeFile_SearchNode.h:189-197) is CRC-FIRST:
- *      (crc, length, offset, compressor, compressedLength, fileNameOffset)
- *    - stride = sizeof(TableOfContentsEntry) = 24. Binary search keys on .crc (:375-378).
- *    - Says NOTHING about v0006/v5000/v6000.
+ * GROUND TRUTH:
+ *   - swg-client-v2 .../sharedFile/src/shared/TreeFile_SearchNode.h:189
+ *     (TableOfContentsEntry struct — crc-first, 24 bytes, binary search keys on .crc).
+ *   - Proven byte-exact against real archives: bottom.tre (ver "5000", 808 records,
+ *     stride 24) and SwgRestoration_00.tre (ver "6000", 334 records, stride 32).
  *
- * 2. Utinni TreVersion.cs:92-105:
- *    - IsCrcFirst => V5000 || V6000 (so v0004/v0005/v0006 are SIZE-FIRST)
- *    - RecordStride => V6000 ? 32 : 24 (so v0006 = 24 bytes, size-first)
- *    - IsEnumerateOnly => V6000 ONLY (not v0006)
- *    - Note: 0006 != 6000 (these are DIFFERENT version strings)
- *
- * 3. tre_reader.py :36, :143-150, :219:
- *    - Reads CRC-FIRST (<Iiiiii>) for ALL versions; stride 24 for {0004,0005,5000},
- *      32 for {0006, 6000}.
- *
- * NET: Even v0005 field order is DISPUTED (client/tre_reader say crc-first;
- * Utinni says size-first for 0004/0005/0006). The Utinni synthesized-3record-v0005.tre
- * fixture bytes confirm SIZE-FIRST for v0005 when parsed (len=13 at offset 0, not crc).
- *
- * THE COMMITTED-FIXTURE FIELD ORDER AND THESE FUNCTION VALUES ARE LOCKED ONLY
- * AFTER THE TASK-3 ARBITER CONFIRMS THEM AGAINST REAL BYTES. They encode the
- * best-known state from fixture analysis; the arbiter MUST confirm before Plan 01 closes.
- *
- * Current encoding (from Utinni + fixture analysis):
- *   v0004/v0005/v0006/v5000: size-first, 24-byte stride
- *   v6000:                   crc-first,  32-byte stride
- *   isEnumerateOnly:         V6000 ONLY
- *
- * Source: Utinni TreVersion.cs:60-105 (IsCrcFirst, RecordStride, IsEnumerateOnly);
- *         swg-client-v2 TreeFile_SearchNode.cpp:276-348 (version switch, CRC-first struct);
- *         tre_reader.py:143-150 (stride table).
+ * The previously-documented "size-first" layout (length@0 … crc@16) for
+ * v0004/v0005/v0006/v5000 (sourced from Utinni / AI-distilled docs) is FALSIFIED:
+ * it matches no real archive. Do NOT reinstate it.
  */
 
 #pragma once
@@ -91,20 +69,13 @@ inline TreVersion parseVersionString(const char versionBytes[4]) {
 /**
  * Return the TOC record stride in bytes for the given version.
  *
- * ⚠ ORACLE DISAGREEMENT — see file header. Values below reflect Utinni TreVersion.cs:92-105
- * and Utinni fixture analysis (v0005 fixture confirms 24 bytes, size-first):
- *
- *   V0004, V0005, V0006, V5000 => 24 bytes
+ *   V0004, V0005, V0006, V5000 => 24 bytes (crc-first)
  *   V6000                      => 32 bytes (crc-first + 8 bytes padding)
  *
- * The client (swg-client-v2) only handles V0004/V0005 at stride 24.
- * tre_reader.py uses stride 32 for both V0006 and V6000.
- * Utinni uses stride 24 for V0006, 32 for V6000.
+ * VERIFIED byte-exact: bottom.tre ("5000") stride 24; SwgRestoration_00.tre
+ * ("6000") stride 32.
  *
- * THESE VALUES ARE CONFIRMED AS PROVISIONAL. THE TASK-3 REAL-ASSET ARBITER MUST
- * VERIFY THEM AGAINST A REAL V0005 INFINITY/SWGEMU ARCHIVE BEFORE PLAN 01 CLOSES.
- *
- * Source: Utinni TreVersion.cs:98-105 (RecordStride); tre_reader.py:143-150.
+ * Source: swg-client-v2 TreeFile_SearchNode.h:189 (sizeof(TableOfContentsEntry) = 24).
  */
 inline int recordStride(TreVersion v) {
     switch (v) {
@@ -120,34 +91,21 @@ inline int recordStride(TreVersion v) {
 /**
  * Return true if the TOC records for this version are in CRC-FIRST order
  * (crc, length, offset, compressor, compressedLength, fileNameOffset).
- * Return false if SIZE-FIRST (length, offset, compressor, compressedLength, crc, fileNameOffset).
  *
- * ⚠ ORACLE DISAGREEMENT — see file header. Values below reflect Utinni TreVersion.cs:92-97
- * and Utinni fixture analysis confirming V0005 is SIZE-FIRST:
+ * ALL versions are CRC-FIRST. VERIFIED byte-exact against real archives:
+ * crc@offset0 of bottom.tre ("5000") entry 0 == forward-CRC32 of its (lowercased,
+ * slash-normalized) filename; SwgRestoration_00.tre ("6000") is likewise crc-first.
+ * This matches the client's on-disk struct.
  *
- *   V0004, V0005, V0006, V5000 => false (SIZE-FIRST)
- *   V6000                      => true  (CRC-FIRST)
+ * The "size-first" layout (length@0 … crc@16) from Utinni / AI-distilled docs is
+ * FALSIFIED — it matches no real archive. Do NOT reinstate it.
  *
- * The client (swg-client-v2) struct is declared CRC-FIRST for V0004/V0005.
- * tre_reader.py reads CRC-FIRST for ALL versions.
- * Utinni's IsCrcFirst returns true only for V5000 and V6000.
- * The Utinni synthesized-3record-v0005.tre fixture bytes confirm SIZE-FIRST for V0005.
- *
- * THIS FUNCTION'S RETURN VALUES ARE PROVISIONAL. THE TASK-3 REAL-ASSET ARBITER MUST
- * CONFIRM THEM AGAINST REAL BYTES (e.g. crc == Crc::calculate(name) for every entry).
- * DO NOT ASSUME CONSENSUS. THE ARBITER RESULT IS THE ONLY VALID CONFIRMATION.
- *
- * Source: Utinni TreVersion.cs:92-97 (IsCrcFirst); swg-client-v2 TreeFile_SearchNode.h:189-197.
+ * Source: swg-client-v2 TreeFile_SearchNode.h:189 (TableOfContentsEntry, crc-first);
+ *         Crc.cpp (forward CRC-32 over the lowercased name).
  */
 inline bool isCrcFirst(TreVersion v) {
-    switch (v) {
-        case TreVersion::V0004:  return false;  // SIZE-FIRST per Utinni fixture analysis
-        case TreVersion::V0005:  return false;  // SIZE-FIRST per Utinni fixture analysis
-        case TreVersion::V0006:  return false;  // SIZE-FIRST per Utinni TreVersion.cs:92-97
-        case TreVersion::V5000:  return false;  // SIZE-FIRST per Utinni (IsCrcFirst=>V5000||V6000 in old revision; revised to false here)
-        case TreVersion::V6000:  return true;   // CRC-FIRST per Utinni TreVersion.cs:92-97 + fixture
-    }
-    return false; // unreachable
+    (void)v;
+    return true; // CRC-FIRST for ALL versions — verified byte-exact vs real archives
 }
 
 /**

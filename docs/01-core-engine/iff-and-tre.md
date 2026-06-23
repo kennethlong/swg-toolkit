@@ -294,34 +294,78 @@ In practice this means: serialize each child chunk into a temporary `IffBinaryWr
 
 A `.tre` (Tree Archive) file is SWG's proprietary packed container. Unlike `.zip`, it is optimized for rapid block-indexed streaming. The game client mounts `.tre` files in a declared priority order: files in a higher-ranked archive (e.g., a custom patch `.tre`) silently override identical paths in lower-ranked archives.
 
-### TREE0005 Binary Layout
+> **VERIFIED — byte-exact ground truth (not AI-proposed).** The layout below was
+> proven byte-exact against real archives (`bottom.tre` ver "5000", 808 records,
+> stride 24; `SwgRestoration_00.tre` ver "6000", 334 records, stride 32) and against
+> the client's own on-disk struct. Sources: `swg-client-v2 .../sharedFile/src/shared/TreeFile_SearchNode.h:189`
+> (`TableOfContentsEntry`) and `.../sharedFile/src/shared/Crc.cpp` (`Crc::calculate`).
+> The provenance caveat at the top of this document does **not** apply to this section.
+
+### TRE Binary Layout
+
+The on-disk magic is the 4 bytes `45 45 52 54` = `"EERT"` (the little-endian dump of
+the tag `'TREE'`), **not** `"TREE"` forward. The version field is 4 ASCII bytes read
+forward: `"0004"`, `"0005"`, `"0006"`, `"5000"`, or `"6000"`. The header is **36 bytes**:
 
 ```
 +-------------------------------------------------------------+
-| MAGIC HEADER (12 bytes)                                     |
-|   "TREE" (4 bytes) + "0005" (4 bytes) + FileCount (uint32) |
+| HEADER (36 bytes, all uint32 LE)                            |
+|   [0]  token              "EERT"  (LE dump of 'TREE')       |
+|   [4]  version            "0004"/"0005"/"0006"/"5000"/"6000"|
+|   [8]  numberOfFiles                                        |
+|   [12] tocOffset                                            |
+|   [16] tocCompressor      (0 = none, else zlib code)        |
+|   [20] sizeOfTOC          (on-disk, possibly compressed)    |
+|   [24] blockCompressor    (name block compressor)           |
+|   [28] sizeOfNameBlock    (on-disk)                         |
+|   [32] uncompSizeOfNameBlock                                |
 +-------------------------------------------------------------+
-| INDEX BLOCK (Table of Contents)                             |
-|   FileCount × 20-byte TreIndexEntry structs                 |
+| TOC BLOCK (at tocOffset, may be zlib-compressed)            |
+|   numberOfFiles × CRC-FIRST records (24 or 32 bytes each)   |
+|   sorted ascending by crc (binary-search precondition)      |
 +-------------------------------------------------------------+
-| NAME BLOCK                                                  |
-|   Flat, null-terminated virtual file path strings           |
+| NAME BLOCK (at tocOffset + sizeOfTOC, may be compressed)    |
+|   Flat, null-terminated, lowercased, '/'-normalized paths   |
 +-------------------------------------------------------------+
 | DATA BLOCK                                                  |
-|   Raw or zlib-compressed file payloads                      |
+|   Raw or zlib-compressed file payloads (at per-entry offset)|
 +-------------------------------------------------------------+
 ```
 
-### TreIndexEntry struct (20 bytes per file)
+### TableOfContentsEntry (CRC-FIRST, 24 bytes per file — ALL versions)
+
+The TOC record is **CRC-FIRST for every version** (the "size-first" layout in older
+docs/Utinni is **falsified** — it matches no real archive). V6000 appends 8 bytes of
+padding for a 32-byte stride; all other versions use 24 bytes.
 
 ```cpp
-struct TreIndexEntry {
-    uint32_t nameOffset;        // Byte offset within the Name Block
-    uint32_t compressedSize;    // Size of this file's data on disk
-    uint32_t uncompressedSize;  // Original file size before compression
-    uint32_t dataOffset;        // Absolute byte offset within the full .tre file
-    uint32_t compressionType;   // 0 = uncompressed, 2 = zlib
+// swg-client-v2 TreeFile_SearchNode.h:189
+struct TableOfContentsEntry {
+    uint32_t crc;               // [0]  forward CRC-32 of the lowercased, '/'-normalized name
+    int32_t  length;            // [4]  uncompressed size; 0 = tombstone (deleted)
+    int32_t  offset;            // [8]  absolute byte offset of the payload in the .tre
+    int32_t  compressor;        // [12] 0 = uncompressed, else zlib code
+    int32_t  compressedLength;  // [16] on-disk payload size
+    int32_t  fileNameOffset;    // [20] byte offset within the Name Block
+    // V6000 only: + 8 bytes padding → stride 32
 };
+```
+
+### Filename CRC — forward (MSB-first) CRC-32
+
+Lookups binary-search the CRC-sorted TOC, then tie-break by case-insensitive name
+compare. The CRC is the **forward / MSB-first** CRC-32 (polynomial `0x04C11DB7`,
+init `0xFFFFFFFF`, final XOR `0xFFFFFFFF`) over the **lowercased, forward-slash-normalized**
+name — **not** the reflected/Ethernet CRC (`0xEDB88320`).
+
+```cpp
+// swg-client-v2 Crc.cpp — Crc::calculate. Table: c = i<<24; ×8: c = (c&0x80000000)?((c<<1)^0x04C11DB7):(c<<1).
+uint32_t crc = 0xFFFFFFFF;
+for (const char* s = name; *s; ++s)
+    crc = table[((crc >> 24) ^ (uint8_t)*s) & 0xFF] ^ (crc << 8);
+return crc ^ 0xFFFFFFFF;
+// VERIFIED: Crc::calculate("appearance/mesh/thm_tato_imprv_building_s09_r0_mesh_l4.msh") == 3830594
+//           == crc@offset0 of bottom.tre entry 0.
 ```
 
 Virtual file descriptor passed from TypeScript to the packer:

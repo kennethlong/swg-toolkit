@@ -47,19 +47,19 @@ mkdirSync(TMPDIR, { recursive: true });
 
 // ─── CRC helper (must match TreArchive's Crc::calculate) ─────────────────────
 function crc32(name: string): number {
-  // Must match TreArchive.cpp's crcCalculate(): init=0xFFFFFFFF, finalXOR=0xFFFFFFFF.
-  // Source: swg-client-v2 Crc.cpp (IEEE polynomial 0xEDB88320).
-  const poly = 0xEDB88320;
+  // FORWARD CRC-32 matching TreArchive.cpp's crcCalculate(): polynomial 0x04C11DB7,
+  // MSB-first, init=0xFFFFFFFF, finalXOR=0xFFFFFFFF.
+  // Source: swg-client-v2 Crc.cpp (Crc::calculate).
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) c = (c & 1) ? (c >>> 1) ^ poly : c >>> 1;
-    table[i] = c;
+    let c = (i << 24) >>> 0;
+    for (let j = 0; j < 8; j++) c = (c & 0x80000000) ? (((c << 1) ^ 0x04C11DB7) >>> 0) : ((c << 1) >>> 0);
+    table[i] = c >>> 0;
   }
   let crc = 0xFFFFFFFF;
   for (let i = 0; i < name.length; i++) {
     const byte = name.charCodeAt(i) & 0xff;
-    crc = (crc >>> 8) ^ (table[(crc ^ byte) & 0xFF] >>> 0);
+    crc = (table[((crc >>> 24) ^ byte) & 0xFF] ^ (crc << 8)) >>> 0;
   }
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
@@ -114,15 +114,16 @@ function buildV0005Archive(entries: TreEntry[]): Buffer {
     if (!e.tombstone && e.payload.length > 0) e.payload.copy(buf, payloadOffsets[i]);
   }
 
+  // CRC-first records (24 bytes each). Source: swg-client-v2 TreeFile_SearchNode.h:189.
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
     const base = tocOffset + i * stride;
     const length = e.tombstone ? 0 : e.payload.length;
-    buf.writeInt32LE(length,              base + 0);
-    buf.writeInt32LE(payloadOffsets[i],   base + 4);
-    buf.writeInt32LE(0,                   base + 8);
-    buf.writeInt32LE(length,              base + 12);
-    buf.writeUInt32LE(crc32(e.name),      base + 16);
+    buf.writeUInt32LE(crc32(e.name),      base + 0);
+    buf.writeInt32LE(length,              base + 4);
+    buf.writeInt32LE(payloadOffsets[i],   base + 8);
+    buf.writeInt32LE(0,                   base + 12);
+    buf.writeInt32LE(length,              base + 16);
     buf.writeInt32LE(nameOffsets[i],      base + 20);
   }
 

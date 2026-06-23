@@ -15,23 +15,24 @@ Per `01-CONTEXT.md` decision D-09, fixtures are layered:
 
 | File | Version | Purpose | Field Order | Provenance |
 |------|---------|---------|-------------|-----------|
-| `v0005-3record.tre` | v0005 | Primary byte-exact round-trip target (3 entries: stored, deflate, tombstone) | size-first, 24-byte | Regenerated from Utinni `synthesized-3record-v0005.tre` byte recipe; validated against `Utinni TreFile.cs:302-310` |
-| `v0006-2record.tre` | v0006 | Readable v0006 (NOT encrypted, NOT enumerate-only) | size-first, 24-byte | Regenerated from Utinni `synthesized-2record-v0006.tre`; validated against `Utinni TreVersion.cs:92-105` |
-| `v6000-2record.tre` | v6000 | Enumerate-only / encrypted payload | crc-first, 32-byte | Regenerated from Utinni `synthetic-v6000-2record.tre`; `isEnumerateOnly = true` (Utinni `TreVersion.cs:79-86`) |
-| `malformed-magic.tre` | — | Rejects bad magic bytes cleanly | — | Regenerated from Utinni `malformed-magic.tre` |
-| `truncated.tre` | — | Rejects truncated header cleanly | — | Regenerated from Utinni `truncated.tre` |
-| `unsupported-version.tre` | — | Rejects unknown version string | — | Regenerated from Utinni `unsupported-version.tre` |
-| `malformed-bad-adler.tre` | v0005 | Rejects bad zlib RFC1950 Adler checksum | size-first, 24-byte | Synthesized per Utinni `TreFile.cs:660-679` (T-01-04) |
-| `crc-collision.tre` | v0005 | Proves collision-safe scan for equal-CRC entries | size-first, 24-byte | Synthesized per `TreeFile_SearchNode.cpp:382` (T-01-19) |
+| `v0005-3record.tre` | v0005 | Primary byte-exact round-trip target (3 entries: stored, deflate, tombstone) | crc-first, 24-byte | Synthesized; validated against `swg-client-v2 TreeFile_SearchNode.h:189` |
+| `v0006-2record.tre` | v0006 | Readable v0006 (NOT encrypted, NOT enumerate-only) | crc-first, 24-byte | Synthesized; validated against `swg-client-v2 TreeFile_SearchNode.h:189` |
+| `v6000-2record.tre` | v6000 | Enumerate-only / encrypted payload | crc-first, 32-byte | Synthesized; `isEnumerateOnly = true` (Utinni `TreVersion.cs:79-86`) |
+| `malformed-magic.tre` | — | Rejects bad magic bytes cleanly | — | Synthesized |
+| `truncated.tre` | — | Rejects truncated header cleanly | — | Synthesized |
+| `unsupported-version.tre` | — | Rejects unknown version string | — | Synthesized |
+| `malformed-bad-adler.tre` | v0005 | Rejects bad zlib RFC1950 Adler checksum | crc-first, 24-byte | Synthesized (T-01-04) |
+| `crc-collision.tre` | v0005 | Proves collision-safe scan for equal-CRC entries | crc-first, 24-byte | Synthesized per `TreeFile_SearchNode.cpp:382` (T-01-19) |
 
 ## Fixture Field Order Lock
 
-**The committed fixtures' TOC field order is provisional until the `tre-fieldorder-arbiter.test.ts`
-arbiter confirms it against real bytes.**
+**LOCKED — verified byte-exact against real archives** (`bottom.tre` ver "5000";
+`SwgRestoration_00.tre` ver "6000") and against the client's on-disk struct.
 
-- Fixtures for v0005 use **size-first layout** (length, offset, compressor, compressedLength, crc, fileNameOffset) per Utinni `TreFile.cs:302-310` and the Utinni `synthesized-3record-v0005.tre` fixture bytes.
-- Fixtures for v6000 use **crc-first layout, 32-byte stride** (crc, length, offset, compressor, compressedLength, fileNameOffset, pad, pad) per Utinni `TreFile.cs:284-298` and `TreVersion.cs:92-105`.
-- The arbiter (`tre-fieldorder-arbiter.test.ts`) MUST be run locally with real Infinity/SWGEmu archives before Plan 01 is considered done. On a clean clone it emits a PENDING/MUST-RUN marker.
+- ALL versions use **crc-first layout** (crc, length, offset, compressor, compressedLength, fileNameOffset) per `swg-client-v2 TreeFile_SearchNode.h:189`. Stride 24 for v0004/v0005/v0006/v5000; **32** (crc-first + 8 pad) for v6000.
+- The CRC is the **forward (MSB-first) CRC-32** (polynomial `0x04C11DB7`, init `0xFFFFFFFF`, final XOR `0xFFFFFFFF`) over the lowercased name, per `swg-client-v2 Crc.cpp`.
+- The previously-documented "size-first" layout (length@0 … crc@16) from Utinni / AI-distilled docs is **FALSIFIED** — it matches no real archive.
+- The arbiter (`tre-fieldorder-arbiter.test.ts`) confirms crc-first against real Infinity/SWGEmu bytes. On a clean clone it emits a PENDING/MUST-RUN marker.
 
 ## Citation Rule (D-03)
 
@@ -48,8 +49,8 @@ recipes and are reproducible on every CI run without disk state.
 
 - **Override/tombstone fixtures**: synthesized v0005 archives with 1–3 entries
   each, sorted by CRC-32 (required for binary-search correctness).
-  Field order: size-first, 24-byte stride (per Utinni TreFile.cs:302-310 for v0005).
-  CRC: IEEE polynomial, init=0xFFFFFFFF, finalXOR=0xFFFFFFFF (per swg-client-v2 Crc.cpp).
+  Field order: crc-first, 24-byte stride (per swg-client-v2 TreeFile_SearchNode.h:189).
+  CRC: forward CRC-32, polynomial 0x04C11DB7, init=0xFFFFFFFF, finalXOR=0xFFFFFFFF (per swg-client-v2 Crc.cpp).
 - **100k-entry latency fixture**: synthesized in the search-latency test, written to temp.
 
 ## Asset Safety (D-10)
