@@ -1,13 +1,19 @@
 /**
  * packages/renderer/src/panels/SidebarPanel.tsx
- * LEFT — Assets panel.
- * Phase 0 seed state: "No archive mounted".
+ * LEFT — Assets panel (Phase 1: TRE VFS Browser).
+ *
+ * Phase 0 seed body ("No archive mounted") is replaced by <TreVfsBrowser/>.
+ * The panel header chrome (drag handle, collapse, split) is preserved.
+ *
+ * Source: 01-02-PLAN.md Task 2 (replace seed body with TreVfsBrowser);
+ *         01-UI-SPEC.md § "Surface 1 — TRE Virtual-Filesystem Browser".
  *
  * Accessibility Rule 5: aria-label + title on all icon-only controls.
  */
 
 import React, { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
+import TreVfsBrowser from './tre/TreVfsBrowser.tsx';
 
 export default function SidebarPanel(_props: IDockviewPanelProps): React.ReactElement {
   const [collapsed, setCollapsed] = useState(false);
@@ -94,28 +100,10 @@ export default function SidebarPanel(_props: IDockviewPanelProps): React.ReactEl
         )}
       </div>
 
-      {/* Panel body (hidden when collapsed) */}
+      {/* Panel body (hidden when collapsed): Phase 1 TRE VFS Browser */}
       {!collapsed && (
-        <div
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 'var(--space-4)',
-            gap: 'var(--space-2)',
-            color: 'var(--color-text-muted)',
-            fontSize: 'var(--text-sm)',
-            textAlign: 'center',
-          }}
-        >
-          <span>No archive mounted</span>
-          <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>
-            File → Open Archive to browse assets
-          </span>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <TreVfsBrowser />
         </div>
       )}
     </div>

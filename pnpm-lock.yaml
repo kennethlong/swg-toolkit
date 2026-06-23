@@ -81,6 +81,8 @@ importers:
 
   packages/contracts: {}
 
+  packages/harness: {}
+
   packages/native-core:
     dependencies:
       node-addon-api:

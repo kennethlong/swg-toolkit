@@ -30,6 +30,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { SAB_LAYOUT } from '@swg/contracts';
+import { useTreStore } from '../state/treStore.ts';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -62,6 +63,11 @@ export default function StatusBar(): React.ReactElement {
   const [crossWriteState,     setCrossWriteState]     = useState<CrossWriteState>(null);
   const [addonStatus,         setAddonStatus]         = useState<string>('loading…');
   const [helloValue,          setHelloValue]          = useState<string | null>(null);
+
+  // TRE VFS mount status from Zustand store (Plan 01-02 additions)
+  const treArchives    = useTreStore((s) => s.archives);
+  const treVfsEntries  = useTreStore((s) => s.vfsEntries);
+  const treMountStatus = useTreStore((s) => s.mountStatus);
 
   useEffect(() => {
     // ── Read crossOriginIsolated immediately ───────────────────────────────
@@ -224,6 +230,31 @@ export default function StatusBar(): React.ReactElement {
         zero-copy:{' '}
         <span style={{ color: cwColor }}>{cwText}</span>
       </span>
+      <Dot />
+
+      {/* TRE VFS mount status (Plan 01-02) */}
+      <span>
+        mount:{' '}
+        <span style={{ color: treArchives.length > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
+          {treArchives.length} {treArchives.length === 1 ? 'archive' : 'archives'}
+        </span>
+      </span>
+      <Dot />
+      <span>
+        vfs:{' '}
+        <span style={{ color: treVfsEntries.length > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
+          {treVfsEntries.length.toLocaleString()} files
+        </span>
+      </span>
+      {/* Mounting progress indicator */}
+      {treMountStatus.kind === 'mounting' && (
+        <>
+          <Dot />
+          <span style={{ color: 'var(--color-warn)' }}>
+            ⟳ mounting {treMountStatus.filename} {treMountStatus.pct}%
+          </span>
+        </>
+      )}
 
       {/* Right-aligned */}
       <div style={{ flex: 1 }} />
