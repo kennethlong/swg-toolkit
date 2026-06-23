@@ -224,12 +224,15 @@ const HexRow = React.memo(function HexRow({
                 textAlign: 'center',
                 flexShrink: 0,
                 color: isPresent ? 'var(--color-text)' : 'transparent',
-                background: sel
-                  ? 'var(--color-accent-dim)'
-                  : hov
-                    ? 'var(--color-surface-2)'
-                    : undefined,
-                transition: 'background 0.1s ease',
+                // Selection = accent-dim fill only. Hover = same fill PLUS an accent
+                // outline. The translucent cyan fill (accent-dim) is visible on BOTH
+                // even/odd row shades — unlike the old opaque --color-surface-2 tint
+                // (which matched the odd-row bg) and unlike a bare outline (too thin to
+                // read on the 10px-wide ASCII cells). Hover's outline keeps it distinct
+                // from a plain selection.
+                background: sel || hov ? 'var(--color-accent-dim)' : undefined,
+                boxShadow: hov ? 'inset 0 0 0 1px var(--color-accent)' : undefined,
+                transition: 'background 0.1s ease, box-shadow 0.1s ease',
                 cursor: 'default',
               }}
             >
@@ -266,12 +269,12 @@ const HexRow = React.memo(function HexRow({
                   ? 'var(--color-text)'
                   : 'var(--color-text-faint)'
                 : 'transparent',
-              background: sel
-                ? 'var(--color-accent-dim)'
-                : hov
-                  ? 'var(--color-surface-2)'
-                  : undefined,
-              transition: 'background 0.1s ease',
+              // Mirror of the hex cell: accent-dim fill for selection, fill + accent
+              // outline for hover. The translucent fill is what makes the cross-highlight
+              // readable on these narrow 10px ASCII cells (a bare outline was too thin).
+              background: sel || hov ? 'var(--color-accent-dim)' : undefined,
+              boxShadow: hov ? 'inset 0 0 0 1px var(--color-accent)' : undefined,
+              transition: 'background 0.1s ease, box-shadow 0.1s ease',
               cursor: 'default',
             }}
           >
@@ -318,21 +321,11 @@ export default function HexInspector({
     [onHoverByte],
   );
 
-  if (!bytes || bytes.length === 0) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
-        }}
-      >
-        <EmptyState />
-      </div>
-    );
-  }
-
-  const totalRows     = Math.ceil(bytes.length / BYTES_PER_ROW);
+  // Row math — computed unconditionally (handles null bytes) so the useMemo below
+  // is never skipped by an early return. Hoisting these above the empty-state guard
+  // keeps the hook count stable when `bytes` toggles null <-> non-null (Rules of Hooks).
+  const byteLength    = bytes?.length ?? 0;
+  const totalRows     = Math.ceil(byteLength / BYTES_PER_ROW);
   const totalHeight   = totalRows * ROW_HEIGHT;
 
   // Visible rows + overscan
@@ -351,6 +344,20 @@ export default function HexInspector({
     }
     return rows;
   }, [startRow, endRow]);
+
+  if (!bytes || bytes.length === 0) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        }}
+      >
+        <EmptyState />
+      </div>
+    );
+  }
 
   return (
     <div
