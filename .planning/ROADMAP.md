@@ -13,7 +13,7 @@ The journey runs from a proven cross-process pipeline to a complete, in-game-ver
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 0: Toolchain De-risk & App Shell** - Prove the full native->renderer pipeline, lock Electron security/isolation, ship the dark dockable shell ✓ 2026-06-22 (Path B: native-in-renderer zero-copy)
-- [ ] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate
+- [x] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate (completed 2026-06-23)
 - [ ] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export
 - [ ] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track)
 - [ ] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs
@@ -75,7 +75,7 @@ Plans:
 - [x] 01-03-PLAN.md — Engine-free IFF parse + byte-exact serialize (BE, no-pad, hybrid-DOM, trailing-bytes) + IFF Structure tree + Hex/ASCII inspector UI (Surfaces 2/3, read-only D-08)
 
 **Wave 4** *(blocked on 01-03)*
-- [ ] 01-04-PLAN.md — TRE builder/repacker (byte-identical self-built: MD5 trailer, response-file order, zlib L6; retail per-record slice identity) + standing-gate registration + AI-distilled docs correction
+- [x] 01-04-PLAN.md — TRE builder/repacker (byte-identical self-built: MD5 trailer, response-file order, zlib L6; retail per-record slice identity) + standing-gate registration + AI-distilled docs correction
 
 ### Phase 2: 3D Mesh Viewport (MVP Proof)
 **Goal**: Validate the zero-copy contract end-to-end by rendering a real SWG mesh in the Three.js/R3F viewport with textures, palette customization, skeletons, and animation — and let the user extract and export it. This is the moment the tool beats TRE Explorer on viewing.
@@ -177,7 +177,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Toolchain De-risk & App Shell | 4/5 | In Progress|  |
-| 1. Core Engine — IFF + TRE + Verification Harness | 0/4 | Planned    |  |
+| 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/TBD | Not started | - |
 | 3. Live-Injection Foundation | 0/TBD | Not started | - |
 | 4. Edit & Deploy Loop | 0/TBD | Not started | - |
