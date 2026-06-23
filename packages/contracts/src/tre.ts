@@ -155,6 +155,56 @@ export interface MountVfsEntry {
   isTombstone: boolean;
 }
 
+// ─── Builder / repacker types (Plan 01-04, D-04) ─────────────────────────────
+
+/**
+ * One entry for the TRE builder.
+ *
+ * Source: swg-client-v2 TreeFileBuilder.cpp:558-597 (writeFile);
+ *         TreBuilder.h TreBuilderEntry.
+ */
+export interface TreBuildEntry {
+  /** Normalized file path (lowercase, forward-slash). */
+  path: string;
+  /** Raw (uncompressed) payload bytes. Required unless tombstone is true. */
+  data?: Uint8Array;
+  /** True if this is a tombstone (deleted) entry. */
+  tombstone?: boolean;
+}
+
+/**
+ * One edit for the TRE repacker.
+ *
+ * Untouched entries (not in the edits list) are copied VERBATIM (raw-slice identity
+ * contract — TreWriter.cs:166-174). Only edited entries are recompressed (zlib level 6).
+ *
+ * Source: Utinni TreWriter.cs:166-174 (per-record raw-slice identity contract).
+ */
+export interface TreRepackEdit {
+  /** Zero-based TOC entry index to replace. */
+  index: number;
+  /** New raw (uncompressed) payload bytes. */
+  data: Uint8Array;
+}
+
+/**
+ * Result of a buildTre or repackTre operation.
+ *
+ * The archive bytes are returned as binary (ArrayBuffer) — binary stays binary (AGENTS.md).
+ * The metadata fields describe the written archive for logging / display.
+ *
+ * Source: swg-client-v2 TreeFileBuilder.cpp:773-833 (write() block order);
+ *         TreBuilder.h TreBuilder::build() / ::repack().
+ */
+export interface TreBuildResult {
+  /** Total number of TOC entries written. */
+  entryCount: number;
+  /** Archive version string written (e.g. '0005'). */
+  version: string;
+  /** Total size of the output archive in bytes. */
+  byteLength: number;
+}
+
 // ─── Shadow chain ─────────────────────────────────────────────────────────────
 
 /**

@@ -457,3 +457,91 @@ export function getChunkBytes(
   srcBytes: ArrayBuffer | Uint8Array,
   nodeIndex: number,
 ): ArrayBuffer;
+
+// ─── Phase 1 Plan 01-04: TRE builder (D-04 builder primitive) ─────────────────
+
+/**
+ * One entry supplied to buildTre().
+ *
+ * Either `data` holds the raw (uncompressed) payload bytes, or `tombstone` marks
+ * a deleted entry (length==0 in TOC). The path must be normalized (lowercase, forward-slash).
+ *
+ * Source: modules/core/tre/TreBuilder.h TreBuilderEntry;
+ *         swg-client-v2 TreeFileBuilder.cpp:558-597 (writeFile).
+ */
+export interface TreBuilderEntryNative {
+  /** Normalized file path within the archive (e.g. "appearance/player.apt"). */
+  path: string;
+  /** Raw (uncompressed) payload bytes. Required unless tombstone === true. */
+  data?: ArrayBuffer | Uint8Array;
+  /** True if this is a tombstone entry (file is deleted, length == 0 in TOC). */
+  tombstone?: boolean;
+}
+
+/**
+ * One edit entry for repackTre().
+ */
+export interface TreRepackEditNative {
+  /** TOC entry index (0-based) to replace. */
+  index: number;
+  /** New raw (uncompressed) payload bytes. */
+  data: ArrayBuffer | Uint8Array;
+}
+
+/**
+ * Build a fresh TRE archive from an array of entries.
+ *
+ * Block write order (LOCKED — TreeFileBuilder.cpp:773-833):
+ *   (1) 36-byte header stub → (2) payloads in entry order → (3) TOC → (4) names →
+ *   (5) MD5 block → (6) seek-back header re-write.
+ *
+ * Compression: zlib RFC1950 (code 2), level Z_DEFAULT_COMPRESSION (6), only when
+ * strictly smaller AND input > 1024 bytes (ZlibCompressor.cpp:169 + TreeFileBuilder.cpp:682).
+ * FORBIDDEN on write path: miniz — cannot reproduce zlib's bitstream.
+ *
+ * Building the same entries twice produces BYTE-IDENTICAL output (regression guard).
+ * This is self-determinism, NOT a claim of matching retail archives.
+ *
+ * Throws for v6000 (enumerate-only, T-01-17).
+ *
+ * @param entries  Array of entries (path + data + optional tombstone flag).
+ * @param version  Version string to embed: '0005' | '5000' | '0004' | '0006' (default '0005').
+ *                 '6000' (v6000) is refused — throws Error.
+ * @returns        Complete .tre archive bytes as ArrayBuffer.
+ *
+ * Source: modules/core/tre/TreBuilder.h TreBuilder::build();
+ *         swg-client-v2 TreeFileBuilder.cpp:773-833.
+ */
+export function buildTre(
+  entries: TreBuilderEntryNative[],
+  version?: string,
+): ArrayBuffer;
+
+/**
+ * Repack an existing TRE archive: copy untouched entries verbatim, recompress only edits.
+ *
+ * RAW-SLICE IDENTITY CONTRACT (Utinni TreWriter.cs:166-174):
+ *   For every untouched entry, the raw compressed bytes are copied verbatim from the source
+ *   archive. NEVER decompressed + recompressed (deflate is NOT bit-stable across zlib builds).
+ *   Only edited entries are recompressed (zlib level 6 only).
+ *
+ * This is the real retail-fidelity property — unedited entries in the rebuilt archive are
+ * bit-for-bit identical to the original compressed slices.
+ *
+ * Throws for v6000 (enumerate-only, T-01-17).
+ *
+ * @param sourcePath  Absolute filesystem path to the source .tre archive.
+ * @param edits       Optional array of { index, data } edits (entries to replace).
+ *                    Entries NOT in edits are copied verbatim (raw-slice identity).
+ * @param version     Version for the output archive (default: same as source / '0005').
+ * @returns           Complete repacked .tre archive bytes as ArrayBuffer.
+ *
+ * Source: modules/core/tre/TreBuilder.h TreBuilder::repack();
+ *         Utinni TreWriter.cs:166-174 (per-record raw-slice identity);
+ *         swg-client-v2 TreeFileBuilder.cpp:773-833 (block order).
+ */
+export function repackTre(
+  sourcePath: string,
+  edits?: TreRepackEditNative[],
+  version?: string,
+): ArrayBuffer;

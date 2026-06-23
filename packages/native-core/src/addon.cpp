@@ -28,6 +28,10 @@
  *   serializeIff(parseResult, srcBytes) — byte-exact serialize back to ArrayBuffer
  *   getChunkBytes(parseResult, srcBytes, nodeIndex) — zero-copy chunk bytes
  *
+ * Phase 1 Plan 01-04 TRE builder exports (D-04, CORE-04 write side):
+ *   buildTre(entries, version?)         — build a fresh .tre archive (ArrayBuffer)
+ *   repackTre(sourcePath, edits?, v?)   — repack an archive, untouched entries verbatim
+ *
  * Source: RESEARCH.md Pattern 3 (corrected); node-addon-api ^8.8.0.
  */
 
@@ -69,6 +73,14 @@ Napi::Value ParseIff(const Napi::CallbackInfo& info);
 Napi::Value SerializeIff(const Napi::CallbackInfo& info);
 Napi::Value GetChunkBytes(const Napi::CallbackInfo& info);
 
+// Phase 1 Plan 01-04 TRE builder exports (implemented in tre_binding.cpp):
+// Source: modules/core/tre/TreBuilder.h TreBuilder::build() / ::repack()
+//         swg-client-v2 TreeFileBuilder.cpp:773-833 (block order + double header write)
+//         Utinni TreWriter.cs:166-174 (repack raw-slice identity)
+//         ZlibCompressor.cpp:169 (zlib level 6, no miniz on write path)
+Napi::Value BuildTre(const Napi::CallbackInfo& info);
+Napi::Value RepackTre(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -98,6 +110,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("parseIff",       Napi::Function::New(env, ParseIff));
     exports.Set("serializeIff",   Napi::Function::New(env, SerializeIff));
     exports.Set("getChunkBytes",  Napi::Function::New(env, GetChunkBytes));
+
+    // Phase 1 Plan 01-04 TRE builder exports (D-04, CORE-04 write side):
+    exports.Set("buildTre",   Napi::Function::New(env, BuildTre));
+    exports.Set("repackTre",  Napi::Function::New(env, RepackTre));
 
     return exports;
 }

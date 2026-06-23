@@ -34,6 +34,7 @@
 #include <napi.h>
 #include "../modules/core/tre/TreArchive.h"
 #include "../modules/core/tre/TreMount.h"
+#include "../modules/core/tre/TreBuilder.h"
 #include "../modules/core/io/FileInputStream.h"
 #include "../modules/core/io/MemoryInputStream.h"
 #include <string>
@@ -723,4 +724,183 @@ Napi::Value MountSearchableAsync(const Napi::CallbackInfo& info) {
     worker->Queue();
 
     return promise;
+}
+
+// ─── Plan 01-04 exports: TreBuilder (D-04 builder primitive) ─────────────────
+
+/**
+ * BuildTre — N-API binding for TreBuilder::build().
+ *
+ * buildTre(entries: {path: string, data: Uint8Array, tombstone?: boolean}[], version?: string)
+ *   -> ArrayBuffer  (complete .tre archive bytes)
+ *
+ * Zero-copy contract: result returns as Napi::ArrayBuffer (binary stays binary — AGENTS.md).
+ * v6000 throws (enumerate-only, T-01-17).
+ *
+ * Source: modules/core/tre/TreBuilder.h TreBuilder::build();
+ *         RESEARCH.md § "TRE Builder (D-04)".
+ */
+Napi::Value BuildTre(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray()) {
+        Napi::TypeError::New(env, "buildTre: expected (entries: {path, data, tombstone?}[], version?: string)")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array arr = info[0].As<Napi::Array>();
+
+    // Optional version string (default V0005)
+    swg::TreVersion version = swg::TreVersion::V0005;
+    if (info.Length() >= 2 && info[1].IsString()) {
+        const std::string vstr = info[1].As<Napi::String>().Utf8Value();
+        try { version = swg::parseVersionString(vstr.c_str()); } catch (...) {}
+    }
+
+    std::vector<swg::TreBuilderEntry> entries;
+    entries.reserve(arr.Length());
+
+    for (uint32_t i = 0; i < arr.Length(); ++i) {
+        Napi::Value v = arr.Get(i);
+        if (!v.IsObject()) {
+            Napi::TypeError::New(env, "buildTre: each entry must be an object").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        Napi::Object obj = v.As<Napi::Object>();
+
+        if (!obj.Has("path") || !obj.Get("path").IsString()) {
+            Napi::TypeError::New(env, "buildTre: entry.path must be a string").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        swg::TreBuilderEntry e;
+        e.path = obj.Get("path").As<Napi::String>().Utf8Value();
+
+        if (obj.Has("tombstone") && obj.Get("tombstone").IsBoolean()) {
+            e.tombstone = obj.Get("tombstone").As<Napi::Boolean>().Value();
+        }
+
+        if (!e.tombstone) {
+            if (!obj.Has("data")) {
+                Napi::TypeError::New(env, "buildTre: non-tombstone entry must have data").ThrowAsJavaScriptException();
+                return env.Undefined();
+            }
+            Napi::Value dataVal = obj.Get("data");
+            if (dataVal.IsArrayBuffer()) {
+                Napi::ArrayBuffer ab = dataVal.As<Napi::ArrayBuffer>();
+                const uint8_t* ptr = reinterpret_cast<const uint8_t*>(ab.Data());
+                e.data.assign(ptr, ptr + ab.ByteLength());
+            } else if (dataVal.IsTypedArray()) {
+                Napi::TypedArray ta = dataVal.As<Napi::TypedArray>();
+                Napi::ArrayBuffer ab = ta.ArrayBuffer();
+                const uint8_t* ptr = reinterpret_cast<const uint8_t*>(ab.Data()) + ta.ByteOffset();
+                e.data.assign(ptr, ptr + ta.ByteLength());
+            } else {
+                Napi::TypeError::New(env, "buildTre: entry.data must be ArrayBuffer or TypedArray").ThrowAsJavaScriptException();
+                return env.Undefined();
+            }
+        }
+
+        entries.push_back(std::move(e));
+    }
+
+    try {
+        std::vector<uint8_t> bytes = swg::TreBuilder::build(entries, version);
+        const size_t byteLen = bytes.size();
+        Napi::ArrayBuffer buf = Napi::ArrayBuffer::New(env, byteLen);
+        if (byteLen > 0) {
+            std::memcpy(buf.Data(), bytes.data(), byteLen);
+        }
+        return buf;
+    } catch (const std::exception& ex) {
+        Napi::Error::New(env, std::string("buildTre: ") + ex.what()).ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+}
+
+/**
+ * RepackTre — N-API binding for TreBuilder::repack().
+ *
+ * repackTre(sourcePath: string, edits: {index: number, data: Uint8Array}[], version?: string)
+ *   -> ArrayBuffer  (complete repacked .tre archive bytes)
+ *
+ * Untouched entries are copied verbatim (raw-slice identity contract, TreWriter.cs:166-174).
+ * Only edited entries are recompressed (zlib level 6, no miniz).
+ * v6000 throws (enumerate-only, T-01-17).
+ *
+ * Source: modules/core/tre/TreBuilder.h TreBuilder::repack();
+ *         Utinni TreWriter.cs:166-174 (per-record raw-slice identity);
+ *         RESEARCH.md § "TRE Builder (D-04)".
+ */
+Napi::Value RepackTre(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "repackTre: expected (sourcePath: string, edits?, version?)")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::string sourcePath = info[0].As<Napi::String>().Utf8Value();
+
+    // Optional edits array [{index, data}]
+    std::vector<int> editedIndices;
+    std::vector<std::vector<uint8_t>> editedData;
+
+    if (info.Length() >= 2 && info[1].IsArray()) {
+        Napi::Array editsArr = info[1].As<Napi::Array>();
+        for (uint32_t i = 0; i < editsArr.Length(); ++i) {
+            Napi::Value ev = editsArr.Get(i);
+            if (!ev.IsObject()) continue;
+            Napi::Object eobj = ev.As<Napi::Object>();
+
+            if (!eobj.Has("index") || !eobj.Get("index").IsNumber()) continue;
+            const int idx = eobj.Get("index").As<Napi::Number>().Int32Value();
+
+            std::vector<uint8_t> data;
+            if (eobj.Has("data")) {
+                Napi::Value dv = eobj.Get("data");
+                if (dv.IsArrayBuffer()) {
+                    Napi::ArrayBuffer ab = dv.As<Napi::ArrayBuffer>();
+                    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(ab.Data());
+                    data.assign(ptr, ptr + ab.ByteLength());
+                } else if (dv.IsTypedArray()) {
+                    Napi::TypedArray ta = dv.As<Napi::TypedArray>();
+                    Napi::ArrayBuffer ab = ta.ArrayBuffer();
+                    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(ab.Data()) + ta.ByteOffset();
+                    data.assign(ptr, ptr + ta.ByteLength());
+                }
+            }
+            editedIndices.push_back(idx);
+            editedData.push_back(std::move(data));
+        }
+    }
+
+    // Optional version string
+    swg::TreVersion version = swg::TreVersion::V0005;
+    if (info.Length() >= 3 && info[2].IsString()) {
+        const std::string vstr = info[2].As<Napi::String>().Utf8Value();
+        try { version = swg::parseVersionString(vstr.c_str()); } catch (...) {}
+    }
+
+    try {
+        swg::FileInputStream stream(sourcePath);
+        swg::TreArchive arc = swg::TreArchive::parse(stream);
+
+        // Re-open for repack (repack reads raw payload slices)
+        swg::FileInputStream stream2(sourcePath);
+        std::vector<uint8_t> bytes = swg::TreBuilder::repack(
+            arc, stream2, editedIndices, editedData, version);
+
+        const size_t byteLen = bytes.size();
+        Napi::ArrayBuffer buf = Napi::ArrayBuffer::New(env, byteLen);
+        if (byteLen > 0) {
+            std::memcpy(buf.Data(), bytes.data(), byteLen);
+        }
+        return buf;
+    } catch (const std::exception& ex) {
+        Napi::Error::New(env, std::string("repackTre: ") + ex.what()).ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
 }
