@@ -512,10 +512,14 @@ The planner should schedule a docs-update task (or flag for the maintainer) for 
 
 **These assumptions need user/planner confirmation before becoming locked decisions** — especially A1 (affects what "byte-identical repack" can promise) and A2.
 
-## Open Questions (RESOLVED)
+## Open Questions (OPEN-1 RE-OPENED 2026-06-22 — see ⚠ below)
 
-> **All four resolved** — the authoritative answers live in the `Ground-Truth Reconciliation` section below (post-consult correction); the plans inherited the reconciled values. Summary:
-> - **OPEN-1 — RESOLVED:** TRE record layout is **CRC-first for ALL versions** (stride 24 for 0004/0005/5000, 32 for 0006/6000). The Wave-0 real-Infinity/SWGEmu byte check below is retained as the *confirming gate*, not an open decision.
+> ⚠ **CORRECTION (2026-06-22 plan-review crew):** an earlier edit marked OPEN-1 "RESOLVED — CRC-first for all versions (3 oracles agree)." **Codex + Cursor independently verified that the `Ground-Truth Reconciliation` OVERSTATED the consensus** — it is FALSIFIED. The oracles genuinely DISAGREE on TOC field order/stride per version:
+> - `swg-client-v2` C++ constructor switch implements **only TAG_0004/TAG_0005** (CRC-first); does NOT handle 0006/5000/6000.
+> - Utinni `TreVersion.cs`: `IsCrcFirst => V6000||V5000`; **0004/0005/0006 are size-first**; `RecordStride(V6000)?32:24`; `IsEnumerateOnly` true ONLY for V6000.
+> - `tre_reader.py`: treats 0006/5000/6000 as extended 32-byte crc-first (a third layout).
+> - **`0006` ≠ `6000`:** encrypted/enumerate-only/32B belongs to **`6000`** (Restoration); Utinni's `0006` is a distinct readable 24B size-first version.
+> **OPEN-1/OPEN-4 are NOT analytically resolved.** Resolution per CLAUDE.md de-anchoring: encode a runtime `isCrcFirst(v)`+`recordStride(v)` dispatch and LOCK the disputed facts from a real-asset hexdump — Wave-0 arbiter on real Infinity/SWGEmu v0005 + a real Restoration archive (confirm the literal 4-byte tag), promoted to a **CI-blocking measurement**, not skip-on-clean. (OPEN-2/OPEN-3 below remain validly resolved.) Tracked in `01-REVIEWS.md`.
 > - **OPEN-2 — RESOLVED:** self-built `.tre` is byte-identical; retail repack preserves untouched entries' raw compressed slices verbatim and recompresses only edits (see Reconciliation + Plan 01-04).
 > - **OPEN-3 — RESOLVED:** treat `{FORM, LIST, CAT }` as containers, PROP as leaf (Plan 01-03).
 > - **OPEN-4 — RESOLVED:** subsumed by CRC-first-for-all — v5000 is crc-first, stride 24.

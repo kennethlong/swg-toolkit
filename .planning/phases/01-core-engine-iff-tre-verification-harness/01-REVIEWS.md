@@ -199,3 +199,27 @@ concentrated in the **TRE cross-version format matrix**, the **byte-identity pro
 protocol targets. These should be corrected **before execution**, and the disputed format facts should
 be **locked from a real asset hexdump (Wave-0 arbiter as a CI-blocking measurement), not from oracle
 consensus.**
+
+---
+
+## Convergence Outcome — cycle 2 (2026-06-22)
+
+The plans were revised (de-anchored, not re-anchored on a single oracle) and re-reviewed.
+
+**Cycle-1 HIGH cluster → all RESOLVED:**
+- TRE version/field-order matrix — de-locked to runtime `isCrcFirst(v)`/`recordStride(v)`/`isEnumerateOnly(v)` dispatch with an oracle-disagreement note; "CRC-first for all versions" marked FALSIFIED & BANNED; Wave-0 arbiter promoted to a CI-blocking real-asset measurement (hexdump the literal version tag, 0005 vs 6000).
+- `0006` ≠ `6000` — enumerate-only/encrypted/32B/warn-chip scoped to `6000` only; `0006` readable; per-entry encrypted UX defined.
+- TRE byte-identity — split into self-build determinism vs retail raw-slice identity; "freshly-compressed matches retail" dropped; miniz forbidden on the write path; zlib level cited correctly (`ZlibCompressor.cpp:169`).
+- IFF trailing-bytes node + pad — relabelled toolkit-invention; "no pad ever" → "write none, read tolerates detected 0x00"; clean-container-emits-full-span guarantee + gapped-FORM fixture.
+- CORE-06 "UI never blocks" — instrumented wall-clock acceptance gate added (not only the human checkpoint).
+- MEDIUMs (resolveChain invariant, CRC-collision secondary sort, bomb-cap over-expansion detection + lazy growth + global budget + 64-bit widening, 100k search latency) — resolved with dedicated fixtures/tests.
+
+**Cycle-2 verdicts (independent, on the revised plans):**
+- Codex (citation): `CITATION_HIGHS_REMAINING: 0` — every cycle-1 HIGH resolved; two minor citation-range overclaims found and since corrected (`IffReader.cs:174-195`→`:149-158` for FourCC reject in 01-03; `TreFile.cs:649-679`→`:649-700` for the read-one-past in 01-01).
+- Opus (spec/structure): `SPEC_HIGHS_REMAINING: 0` — all resolved with grep-able acceptance criteria; no new HIGH introduced.
+
+**Orchestrator ground-truth fact-check (de-anchoring):** the load-bearing new citations were verified directly against real source — `Utinni/TreVersion.cs` (`IsEnumerateOnly=>V6000`, `RecordStride=>V6000?32:24`, `IsCrcFirst=>V6000||V5000`, V0006≠V6000) and `ZlibCompressor.cpp:169` (`deflateInit(&z, Z_DEFAULT_COMPRESSION)`) — both confirmed real, not replan-injected.
+
+**Result: CONVERGED in 2 cycles. 0 HIGH concerns remaining.** Gates re-verified: requirements 6/6, decisions 12/12, all 4 plans structurally valid.
+
+**Residual (LOW, non-blocking, accepted):** Plan-01 width + IFF-behind-TRE serialization (3/4 reviewers acceptable-as-cohesive); some self-vs-self "byte-identical" wording in 01-04 (internally consistent); the **v0006 field order remains arbiter-pending** (no real `0006` asset on hand — only Restoration `6000`) and is honestly routed to the Wave-0 real-asset gate rather than locked.
