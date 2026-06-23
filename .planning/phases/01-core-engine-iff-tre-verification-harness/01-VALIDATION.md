@@ -1,10 +1,11 @@
 ---
 phase: 1
 slug: core-engine-iff-tre-verification-harness
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-06-22
+reviewed_at: 2026-06-22
 ---
 
 # Phase 1 — Validation Strategy

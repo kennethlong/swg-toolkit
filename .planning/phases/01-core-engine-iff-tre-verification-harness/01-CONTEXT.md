@@ -2,6 +2,7 @@
 
 **Gathered:** 2026-06-22
 **Status:** Ready for planning
+**Updated:** 2026-06-22 — post-research ground-truth corrections (verified against real client bytes + `tre-compare`/`swg-blender-plugin` readers; see `01-RESEARCH.md` § "Ground-Truth Reconciliation"). Touches D-04/D-05/D-12 scope + canonical_refs paths.
 
 <domain>
 ## Phase Boundary
@@ -22,12 +23,12 @@ Delivers CORE-01..CORE-06. This is the read-the-world + edit-IFF foundation; the
 
 ### Native C++ reuse strategy
 - **D-01:** **Port to clean, modern C++** — re-author the IFF/TRE logic as fresh, dependency-light C++ using `swg-client-v2` as the line-by-line spec. Do **not** compile `swg-client-v2`'s `TreeFile.cpp`/`Iff` `.cpp` as-is (it drags in a sizable SOE engine subset — `sharedFoundation` ConfigFile/ExitChain/Os/Production, `sharedSynchronization/Mutex`, `sharedDebug`, `FileStreamer`, `FileManifest`). Do **not** write docs-first (docs are AI-distilled and frequently fabricated — see source-provenance).
-- **D-02:** Structure the port as a **standalone, engine-free C++ static library** — no globals, injectable IO/streams, RAII, C++20-ish. The N-API addon is a **thin binding layer** over it. The verification harness links the lib **headless**; the lib is reusable later by the MCP server / CLI tools.
+- **D-02:** Structure the port as a **standalone, engine-free C++ static library** — no globals, injectable IO/streams, RAII, C++20-ish. The N-API addon is a **thin binding layer** over it. The verification harness links the lib **headless**; the lib is reusable later by the MCP server / CLI tools. **Unify the native package on a single C++ standard = C++20** (decided 2026-06-22): raise the Phase-0 addon targets (`packages/native-core` binding + `sab`/`sab-rw`) from `CMAKE_CXX_STANDARD 17` → `20` so the addon and the new core lib share one standard rather than a 17/20 split. Acceptance: the existing Phase-0 addon + SAB targets still build and pass their vitest gates under C++20.
 - **D-03:** **Two ground truths.** Primary spec = `swg-client-v2` `TreeFile.cpp` (+ `TreeFile_SearchNode`) and the IFF loader; cross-check binary layouts against **Utinni's C# `Formats/{Iff,Tre}`** when a detail is ambiguous (two independent ground truths beat one). Every parser/serializer must cite its `swg-client-v2` loader source (standing gate).
 
 ### TRE/IFF read+write scope
-- **D-04:** **Full read + write for BOTH TRE and IFF in Phase 1.** IFF byte-exact serialize is already CORE-04; the user chose to also build the **TRE builder/repacker** now so the full archive round-trip (read → write → byte-identical `.tre`) is proven immediately. **⚠ Roadmap overlap:** this pulls the `.tre` patch-packaging work forward from **DEPLOY-01 (Phase 4)** — flag for the planner to dedupe Phase 4 scope later. This deepens the CORE round-trip capability (not a new capability), so it stays in Phase 1 scope.
-- **D-05:** **Support ALL TRE format variants** (e.g. v0005/v0006 and all compressors), not just one client's flavor.
+- **D-04:** **Full read + write for BOTH TRE and IFF in Phase 1.** IFF byte-exact serialize is already CORE-04; the user chose to also build the **TRE builder/repacker** now so the full archive round-trip (read → write → byte-identical `.tre`) is proven immediately. **⚠ Roadmap overlap:** this pulls the `.tre` patch-packaging work forward from **DEPLOY-01 (Phase 4)** — flag for the planner to dedupe Phase 4 scope later. This deepens the CORE round-trip capability (not a new capability), so it stays in Phase 1 scope. **⚠ Byte-exact scope (verified):** byte-identical `.tre` repack is provable for **v0005** payloads only; **v0006 (Restoration) payloads are proprietary-encrypted** (see D-05) so byte-exact *payload* round-trip is impossible there — v0006 gets a **structural/enumeration** round-trip (header+TOC+name block) only. A byte-identical v0005 repack must also reproduce the writer's **MD5 trailer block** (reader ignores it) and the **CRC-primary TOC/name ordering** + zlib-level-6 choice (`TreeFileBuilder.cpp`).
+- **D-05:** **Support ALL TRE format variants** (verified scope). On-disk magic is byte-reversed: `EERT` = `'TREE'` (LE), version reads forward. **v0005** (`EERT5000`; 24-byte CRC-first TOC records) = Infinity / SWGEmu / Stardust → full read + write + byte-exact payload round-trip. **v0006** (`EERT6000`; 32-byte TOC records) = SWG Restoration → **parse + enumerate only** (payloads proprietary-encrypted; tre-compare + the blender plugin detect-and-flag, never decrypt). Compressor codes: `0` none, `1` raw-deflate (handle, don't crash — C++ fatals here but Utinni inflates), `2` zlib. Two master-index formats also exist: **SearchTOC** (retail) and **COT2000** (Restoration).
 
 ### Phase 1 UI surface
 - **D-06:** Ship a **functional, read-focused UI** wired into the Phase-0 dockview shell: a **TRE virtual-filesystem browser** (mount archives, see override/shadow order, search by path/name) + a **generic IFF FORM/chunk tree viewer**. No 3D (that's Phase 2).
@@ -40,7 +41,7 @@ Delivers CORE-01..CORE-06. This is the read-the-world + edit-IFF foundation; the
 - **D-11:** Seed the harness from Utinni fixtures **and** `swg-client-v2`'s `tre-compare` verify configs (it already has SWGEmu/Infinity/Stardust/etc. configs — a ready-made byte-exact asset).
 
 ### Target client & format scope
-- **D-12:** **Multi-client gate from the start** — gate the mount + real-asset round-trip + override-resolution matrix against **SWG Infinity AND SWGEmu equally**. (Combines with D-05: all TRE variants parse; these two installs drive the local-real fixtures and the shadow/override test.)
+- **D-12:** **Multi-client gate from the start** — gate the mount + real-asset round-trip + override-resolution matrix against **SWG Infinity, SWGEmu, AND Stardust** (all **v0005**) for the byte-exact *payload* round-trip, plus **SWG Restoration** (**v0006**) for the structural/enumeration round-trip (its payloads are encrypted — D-05). (Combines with D-05: all variants parse + enumerate; the three v0005 installs drive the byte-exact local-real fixtures and the shadow/override test; Restoration is the v0006 oracle.) **Note:** Infinity + SWGEmu alone are BOTH v0005 — they do not exercise the v0006 path, which is why Restoration is required in the matrix.
 
 ### Claude's Discretion
 - **Harness enforcement mechanism** (D-09 area): user said "you decide." Requirement is only that it be **reusable + coverage-enforced + cites the loader source per fixture** — e.g. a reusable `assertRoundTrip(parse, serialize, fixture)` + fixture registry whose sweep test fails CI if a registered format lacks a round-trip case, or a custom Vitest matcher with a separate coverage check. Planner picks the exact shape.
@@ -60,12 +61,15 @@ Delivers CORE-01..CORE-06. This is the read-the-world + edit-IFF foundation; the
 - `../swg-client-v2/src/engine/shared/application/{TreeFileBuilder,TreeFileExtractor}` — standalone TRE build/extract apps; reference for the writer/repacker (D-04).
 - `../swg-client-v2/.../sharedFile/` IFF loader sources — the IFF FORM/chunk parse/serialize spec (CORE-03/04).
 - `../swg-client-v2/tools/tre-compare/` — standalone TRE diff tool (Python/uv) with multi-server verify configs (`verify-swgemu.cfg`, Infinity, Stardust, SWGSource) — **ready-made byte-exact verification asset** + fixture seed (D-11).
+- `../swg-client-v2/tools/tre-compare/src/tre_compare/parser/{tre_reader,tre_decrypt}.py` (vendored from `../swg-blender-plugin/swg_pipeline/`) — **the pragmatic ALL-VERSION TRE oracle**: handles v0004/0005/**0006** + the `SearchTOC`/`COT2000` master indexes that swg-client-v2's C++ loader does NOT. Confirms CRC-first TOC, 24/32-byte strides, and the v6000 encrypted-payload (enumerate-only) constraint. **Port multi-version + master-index logic from here; port the writer/MD5/byte-exact-repack from swg-client-v2 C++.**
 - `../Utinni/UtinniCoreDotNet/Formats/{Iff,Tre}` — **working C# IFF/TRE impls** — second ground truth for cross-checking ambiguous layouts (D-03).
 - `../Utinni/Utinni.Cli.Tests/Fixtures/{iff,tre}` and `../Utinni/UtinniCoreDotNet.Tests/FormatsTests/{Iff,Tre}` — real format **test fixtures** (synthesized v0005/v0006 + malformed cases) to seed the committed-fixture layer (D-09).
 
 ### Real asset sources (for the gitignored local-real gate — copy, don't mutate, D-10/D-12)
-- `D:\SWG Infinity\…` — installed SWG Infinity client `.tre` (primary equal target).
-- `D:\SWGEmu Client\SWGEmu\…` — installed SWGEmu client `.tre` (primary equal target).
+- `D:\SWG Infinity\SWG Infinity\Live\…` — installed SWG Infinity client `.tre` (**v0005**; primary byte-exact target).
+- `D:\SWGEmu-Client\…` (also `\SWGEmu\`) — installed SWGEmu client `.tre` (**v0005**; primary byte-exact target). *(Path corrected — was `D:\SWGEmu Client\SWGEmu` which does not exist.)*
+- `D:\Stardust TREs\…` — Stardust client `.tre` (**v0005**; third byte-exact target / fixture seed).
+- `D:\SWG Restoration\…` — SWG Restoration client `.tre` (**v0006**, `EERT6000`; **enumeration/structural target only — payloads encrypted**, the v0006 variant oracle for D-05).
 
 ### Project design docs (this repo — starting design, verify against source above)
 - `docs/01-core-engine/iff-and-tre.md` — IFF/TRE/N-API design (AI-distilled; verify every layout against `swg-client-v2`).

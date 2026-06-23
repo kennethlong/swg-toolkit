@@ -62,7 +62,19 @@ Plans:
   3. The system parses an arbitrary real IFF (FORM/chunk) file into a navigable tree with zero unexplained trailing bytes, and serializes an edited structure back **byte-exact** (round-trip gate, verified against a cited `swg-client-v2` loader).
   4. The reusable format-verification harness round-trips a real extracted asset byte-for-byte from fixtures and is wired in as a standing gate every later format inherits.
   5. Mounting/decompressing a multi-GB archive and parsing a large IFF run on async worker threads — the UI stays responsive (no main-thread freeze) throughout.
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1**
+- [ ] 01-01-PLAN.md — Verification harness mechanism (CORE-05 standing gate) + engine-free C++20 TRE read core (EERT/36-byte header, CRC-first TOC, zlib) + contracts/tre.ts + committed fixtures + OPEN-1 real-asset field-order arbiter
+
+**Wave 2** *(blocked on 01-01)*
+- [ ] 01-02-PLAN.md — TRE mount/override resolver (priority shadow + tombstones) + AsyncWorker zero-copy binding + TRE VFS browser UI (Surface 1): mount, search, shadow chain, v0006 enumerate-only chip
+
+**Wave 3** *(blocked on 01-02)*
+- [ ] 01-03-PLAN.md — Engine-free IFF parse + byte-exact serialize (BE, no-pad, hybrid-DOM, trailing-bytes) + IFF Structure tree + Hex/ASCII inspector UI (Surfaces 2/3, read-only D-08)
+
+**Wave 4** *(blocked on 01-03)*
+- [ ] 01-04-PLAN.md — TRE builder/repacker (byte-identical self-built: MD5 trailer, response-file order, zlib L6; retail per-record slice identity) + standing-gate registration + AI-distilled docs correction
 
 ### Phase 2: 3D Mesh Viewport (MVP Proof)
 **Goal**: Validate the zero-copy contract end-to-end by rendering a real SWG mesh in the Three.js/R3F viewport with textures, palette customization, skeletons, and animation — and let the user extract and export it. This is the moment the tool beats TRE Explorer on viewing.
@@ -164,7 +176,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Toolchain De-risk & App Shell | 4/5 | In Progress|  |
-| 1. Core Engine — IFF + TRE + Verification Harness | 0/TBD | Not started | - |
+| 1. Core Engine — IFF + TRE + Verification Harness | 0/4 | Planned | - |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/TBD | Not started | - |
 | 3. Live-Injection Foundation | 0/TBD | Not started | - |
 | 4. Edit & Deploy Loop | 0/TBD | Not started | - |
