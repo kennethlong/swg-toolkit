@@ -1,0 +1,14 @@
+{
+  "name": "@swg/harness",
+  "version": "0.0.1",
+  "description": "Byte-exact round-trip verification harness for SWG format parsers (CORE-05)",
+  "type": "module",
+  "exports": {
+    "./assertRoundTrip": "./assertRoundTrip.ts",
+    "./fixtureRegistry": "./fixtureRegistry.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {}
+}

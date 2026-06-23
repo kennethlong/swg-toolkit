@@ -25,6 +25,7 @@ export default defineConfig({
     alias: {
       '@swg/contracts': path.resolve(__dirname, 'packages/contracts/src/index.ts'),
       '@swg/native-core': path.resolve(__dirname, 'packages/native-core/index.d.ts'),
+      '@swg/harness': path.resolve(__dirname, 'packages/harness'),
     },
   },
 });
