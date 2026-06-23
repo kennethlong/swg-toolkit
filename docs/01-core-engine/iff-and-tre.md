@@ -2,7 +2,11 @@
 
 > Covers: IFF chunk format, binary read/write helpers, TRE archives & TREE0005, client .cfg loader. Source: research doc lines 137–205, 1037–1125, 1914–1971, 2776–3024, 14035–14291.
 
-> **Provenance caveat:** Format-level details — exact tags, offsets, TREE0005 layout — are AI-proposed and must be validated against the real `swg-client-v2`/`Core3` source and community tools before treating them as authoritative. See [source provenance](../00-overview/source-provenance.md).
+> **Provenance status (updated Plan 01-04):** §§7–8 (TRE archive format and packing engine) are now VERIFIED
+> ground truth — proven byte-exact against real archives and `swg-client-v2` source.
+> §2 (IFF chunk format) is corrected per Plan 01-03 (big-endian tags/sizes confirmed).
+> §§1, 3–6, 9–13 contain AI-proposed code examples; treat as design sketches, not authoritative format specs.
+> See [source provenance](../00-overview/source-provenance.md) for the full verification status.
 
 ---
 
@@ -71,13 +75,19 @@ Key structural rules:
 - The tag is followed by a **32-bit size field** representing the byte count of the block's payload (not including the tag+size header itself).
 - `FORM` blocks are **container nodes** — they hold nested chunks and begin with a 4-character sub-type tag immediately after the size (so a FORM header is 12 bytes: 4 tag + 4 size + 4 sub-type).
 - Leaf blocks (`DATA`, `VERT`, etc.) contain raw binary payload.
-- **Size fields are big-endian in the classic IFF spec but SWG's modified variant uses little-endian** — the reader helpers below use `std::memcpy` (host byte order), which is correct for a little-endian host.
+- **Tags and size fields are BIG-ENDIAN** — SWG uses the classic IFF convention (network byte order) for both
+  the 4-byte tag and the 4-byte size. The earlier statement that SWG uses little-endian for sizes was incorrect.
+  Source: `swg-client-v2 Iff.cpp:508-555` (parse: `((uint8_t*)&len)[0]` is the most-significant byte).
+
+> **VERIFIED:** The IFF tags/sizes are big-endian per `swg-client-v2/src/engine/client/library/clientObject/src/shared/graphics/Iff.cpp`
+> and confirmed by byte-exact round-trip tests in `packages/harness/test/iff-roundtrip.test.ts` (Plan 01-03).
+> Corrected from AI-proposed "little-endian" claim.
 
 Chunk layout for a leaf block:
 
 ```
-[ 4 bytes: tag  ] e.g. "DATA"
-[ 4 bytes: size ] payload byte count (little-endian uint32)
+[ 4 bytes: tag  ] e.g. "DATA"   (ASCII, BIG-ENDIAN read as uint32)
+[ 4 bytes: size ] payload byte count (BIG-ENDIAN uint32)
 [ N bytes: data ] raw binary payload
 ```
 
@@ -381,103 +391,82 @@ struct VirtualFileToPack {
 
 ## 8. TRE Packing Engine (C++)
 
-`SwgTrePacker::PackageAssetsToTre` builds a complete TREE0005 binary stream from an array of `VirtualFileToPack` entries. It handles per-file zlib compression, offset calculation, and final assembly.
+> **VERIFIED — ground truth from Plan 01-04 (D-04 builder).** This section replaces the
+> earlier AI-proposed `SwgTrePacker` which had multiple format errors. The implementation
+> below matches the LOCKED ground truth from `swg-client-v2 TreeFileBuilder.cpp:773-833`
+> and `ZlibCompressor.cpp:169`. Key corrections from the prior AI-proposed doc:
+>
+> 1. **Block write order** (the prior doc had: header → TOC → names → data all in one pass).
+>    The real builder uses: header stub → file payloads → TOC → name block → **MD5 block** → header rewrite (double-write).
+> 2. **TOC field order**: CRC-FIRST (crc, length, offset, compressor, compressedLength, fileNameOffset — 24 bytes,
+>    not 20). The prior doc had a 5-field 20-byte layout — FALSIFIED.
+> 3. **Header size**: 36 bytes (9 × uint32), not 12 bytes. The prior doc wrote "TREE"/"0005"/count only (12 bytes) — FALSIFIED.
+> 4. **Compression gate**: only when `input > 1024 bytes` AND strictly smaller result. Prior doc used `compress()` unconditionally.
+> 5. **MD5 block**: `numberOfFiles × 16 bytes`, always uncompressed, written after the name block. Prior doc omitted it entirely.
+> 6. **Double header write**: the real builder writes a stub header first (tocOffset=0, sizes=0), writes all blocks, then seeks back and rewrites the header with real offsets.
+>
+> **IMPLEMENTED in** `packages/native-core/modules/core/tre/TreBuilder.{h,cpp}` (Plan 01-04, D-04).
 
-```cpp
-#include <napi.h>
-#include <vector>
-#include <string>
-#include <cstring>
-#include <zlib.h>  // Link zlib-dev in your build configuration
+### TRE Builder — VERIFIED Block Write Order
 
-class SwgTrePacker {
-public:
-    static std::vector<uint8_t> PackageAssetsToTre(const std::vector<VirtualFileToPack>& filePool) {
-        std::vector<uint8_t> outBuffer;
-        uint32_t fileCount = static_cast<uint32_t>(filePool.size());
+Source: `swg-client-v2 TreeFileBuilder.cpp:773-833` (write() method).
 
-        // --- 1. Pre-allocate segment blocks ---
-        std::vector<TreIndexEntry> indexBlock(fileCount);
-        std::vector<uint8_t> nameBlock;
-        std::vector<uint8_t> dataBlock;
+```
+BLOCK WRITE ORDER (LOCKED):
+  (1)  36-byte header stub    [all fields 0 except magic/version/numberOfFiles]
+  (2)  File payloads          [in response-file/entry order]
+       → For each: try zlib compression (code 2, level 6, only if >1024B and strictly smaller)
+       → Store code 0 (raw) if compression not beneficial
+  (3)  TOC block              [numberOfFiles × 24 bytes (v0004/0005/0006/5000) or 32 bytes (v6000)]
+       → CRC-FIRST records: crc | length | offset | compressor | compressedLength | fileNameOffset
+       → Sorted ASCENDING by crc (binary-search precondition; tie-break by name)
+       → The entire TOC block may itself be zlib-compressed (stores compressed or raw)
+  (4)  Name block             [null-terminated paths in TOC sort order, may be compressed]
+  (5)  MD5 block              [numberOfFiles × 16 bytes; ALWAYS UNCOMPRESSED]
+  (6)  Seek to offset 0       → Rewrite the 36-byte header with real tocOffset/sizes/compressors
+```
 
-        uint32_t currentNameOffset = 0;
+### Compression policy (LOCKED — ZlibCompressor.cpp:169)
 
-        // --- 2. Compile individual file entries ---
-        for (uint32_t i = 0; i < fileCount; ++i) {
-            const auto& virtualFile = filePool[i];
+```
+zlib RFC1950 framing (compressor code 2) ONLY:
+  deflateInit(&z, Z_DEFAULT_COMPRESSION)  ← level 6, wbits 15, memLevel 8
+  Only compress when: input.size() > 1024 AND compressed < input (strict)
+  compressedLength field is 0 in the TOC when compressor==0 (uncompressed)
 
-            // Append null-terminated path into the Name Block
-            nameBlock.insert(nameBlock.end(),
-                             virtualFile.internalPath.begin(),
-                             virtualFile.internalPath.end());
-            nameBlock.push_back(0);
+FORBIDDEN on write path: miniz / mz_deflate / tdefl
+  miniz cannot reproduce zlib's RFC1950 bitstream.
+  Read path may use miniz for decompression; write path NEVER does.
+```
 
-            // Attempt zlib compression
-            std::vector<uint8_t> compressedData(virtualFile.rawBuffer.size() + 12);
-            uLongf compressedSize = compressedData.size();
-            int zStatus = compress(compressedData.data(), &compressedSize,
-                                   virtualFile.rawBuffer.data(),
-                                   virtualFile.rawBuffer.size());
+### MD5 Block (LOCKED — TreeFileBuilder.cpp:658-672)
 
-            indexBlock[i].nameOffset       = currentNameOffset;
-            indexBlock[i].uncompressedSize = static_cast<uint32_t>(virtualFile.rawBuffer.size());
-            currentNameOffset += static_cast<uint32_t>(virtualFile.internalPath.length() + 1);
+```
+After the name block:
+  numberOfFiles × 16 bytes (one Md5::Value per entry, in TOC sort order)
+  ALWAYS written uncompressed (disableCompression=true)
+  The reader (TreeFile_SearchNode) ignores the MD5 block entirely.
+  The builder must include it to produce a self-deterministic archive.
+```
 
-            if (zStatus == Z_OK && compressedSize < virtualFile.rawBuffer.size()) {
-                // Compression reduced size — store compressed
-                compressedData.resize(compressedSize);
-                indexBlock[i].compressedSize  = static_cast<uint32_t>(compressedSize);
-                indexBlock[i].compressionType = 2;  // zlib flag
-                indexBlock[i].dataOffset      = static_cast<uint32_t>(dataBlock.size());
-                dataBlock.insert(dataBlock.end(), compressedData.begin(), compressedData.end());
-            } else {
-                // File too small or incompressible — store raw
-                indexBlock[i].compressedSize  = indexBlock[i].uncompressedSize;
-                indexBlock[i].compressionType = 0;  // uncompressed flag
-                indexBlock[i].dataOffset      = static_cast<uint32_t>(dataBlock.size());
-                dataBlock.insert(dataBlock.end(),
-                                 virtualFile.rawBuffer.begin(),
-                                 virtualFile.rawBuffer.end());
-            }
-        }
+### Repack raw-slice identity contract (Utinni TreWriter.cs:166-174)
 
-        // --- 3. Compute absolute byte offsets ---
-        uint32_t headerSize        = 12;               // "TREE"(4) + "0005"(4) + count(4)
-        uint32_t indexSize         = fileCount * 20;   // 20 bytes per TreIndexEntry
-        uint32_t nameBlockStart    = headerSize + indexSize;
-        uint32_t dataBlockStart    = nameBlockStart + static_cast<uint32_t>(nameBlock.size());
+```
+For a REPACK operation (modifying an existing archive):
+  Untouched entries → copy raw compressed slice VERBATIM from source (NO recompression)
+  Edited entries    → recompress from new payload (zlib level 6 only)
 
-        for (uint32_t i = 0; i < fileCount; ++i) {
-            indexBlock[i].dataOffset += dataBlockStart;
-        }
+Rationale: zlib deflate is NOT bit-stable across builds (same input → different compressed bytes).
+Recompressing untouched entries would break byte identity with the retail archive's compressed slices.
+TreBuilder::repack() enforces this contract.
+```
 
-        // --- 4. Assemble master byte stream ---
-        // Magic header
-        outBuffer.insert(outBuffer.end(), {'T', 'R', 'E', 'E'});
-        outBuffer.insert(outBuffer.end(), {'0', '0', '0', '5'});
-        uint8_t countBytes[4];
-        std::memcpy(countBytes, &fileCount, 4);
-        outBuffer.insert(outBuffer.end(), countBytes, countBytes + 4);
+### Self-determinism guarantee
 
-        // Table of Contents
-        for (const auto& entry : indexBlock) {
-            uint8_t buf[20];
-            std::memcpy(buf,      &entry.nameOffset,       4);
-            std::memcpy(buf + 4,  &entry.compressedSize,   4);
-            std::memcpy(buf + 8,  &entry.uncompressedSize, 4);
-            std::memcpy(buf + 12, &entry.dataOffset,       4);
-            std::memcpy(buf + 16, &entry.compressionType,  4);
-            outBuffer.insert(outBuffer.end(), buf, buf + 20);
-        }
-
-        // Name and Data segments
-        outBuffer.insert(outBuffer.end(), nameBlock.begin(), nameBlock.end());
-        outBuffer.insert(outBuffer.end(), dataBlock.begin(), dataBlock.end());
-
-        return outBuffer;
-    }
-};
+```
+Building the same entry set TWICE with TreBuilder::build() produces BYTE-IDENTICAL output.
+This is a regression guard ("build-twice-identical"), NOT a claim of matching retail archives.
+Requires: consistent entry order + CRC-sorted TOC + pinned zlib level/wbits + deterministic MD5 block.
 ```
 
 ---
