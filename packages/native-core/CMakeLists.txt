@@ -1,8 +1,11 @@
 cmake_minimum_required(VERSION 3.15)
 project(swg_native_core)
 
-# Require C++17 for node-addon-api 8 (uses std::string_view in napi-inl.h)
-set(CMAKE_CXX_STANDARD 17)
+# C++20: unifies the addon (hello/sab/sab-rw), the new modules/core lib, and all bindings
+# under ONE standard per Decision D-02 (decided 2026-06-22). The previous C++17 was for
+# node-addon-api 8 (std::string_view); node-addon-api 8.x is fully C++20-compatible.
+# Acceptance: Phase-0 hello/SAB vitest gates must still pass after this bump.
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -46,6 +49,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     NAPI_EXPERIMENTAL
 )
 
-# Phase 1 seed:
-# add_subdirectory(modules/core) when TRE/IFF C++ lands
-# (do NOT add an actual add_subdirectory here — no CMakeLists.txt in modules/ yet)
+# Phase 1 modules/core engine-free static lib (Decision D-02).
+# Provides: IInputStream, MemoryInputStream, FileInputStream, TreVersion, TreArchive, Zlib.
+add_subdirectory(modules/core)
+target_link_libraries(${PROJECT_NAME} swg_core)
+# zlib symbols come from node.lib (already linked via ${CMAKE_JS_LIB} above) when using
+# the Node.js bundled zlib path (modules/core CMakeLists.txt SWG_ZLIB_FROM_NODE=1).
