@@ -18,10 +18,13 @@
  *       Strip the 2-byte header and 4-byte trailer before inflating (TreFile.cs:649-679).
  *
  * Security (T-01-03):
- *   - Output is capped at min(declaredUncomp, ZLIB_MAX_BLOCK=256MB).
- *   - LAZY output growth: initial alloc = declaredUncomp (or ZLIB_MAX_BLOCK whichever
- *     is smaller); if inflate exceeds that, throw "decompression bomb" (TreFile.cs:695).
- *   - No eager malloc(declaredUncomp) when declaredUncomp is 0 or untrusted.
+ *   - Output is capped at min(declaredUncomp, ZLIB_MAX_BLOCK=256MB) (the `ceiling`);
+ *     0-declared falls back to ZLIB_MAX_BLOCK so it stays bounded.
+ *   - TRUE lazy output growth: the buffer starts at min(ceiling, 64KiB) and DOUBLES on
+ *     demand up to `ceiling` — it is NEVER eagerly sized to declaredUncomp. This defeats
+ *     the "tiny block declares 256MB" amplified-allocation DoS (declaredUncomp is an
+ *     attacker-controlled int32 from the TOC).
+ *   - If inflate would exceed `ceiling`, throw "decompression bomb" (TreFile.cs:695).
  *
  * Security (T-01-04):
  *   - For code 2, validate the RFC1950 0x78XX header (magic byte).
@@ -97,13 +100,23 @@ std::vector<uint8_t> treInflate(
         windowBits = -MAX_WBITS; // raw deflate
     }
 
-    // ── Inflate ──────────────────────────────────────────────────────────────
-    // LAZY output growth: pre-allocate cap (or a modest guess), grow only if needed,
-    // but throw if inflate wants more than cap (decompression bomb).
+    // ── Inflate (incremental, T-01-03) ───────────────────────────────────────
+    // TRUE lazy output growth: start small and double up to the cap, instead of
+    // eagerly allocating the full cap. `declaredUncomp` is an attacker-controlled
+    // int32 from the TOC, so a tiny compressed block can declare length=256MB and
+    // force a 256MB zero-fill per inflate — an amplifiable memory DoS. Growing on
+    // demand keeps the allocation proportional to what is *actually* produced, while
+    // the over-expansion throw at the cap preserves bomb detection.
     // Source: Utinni TreFile.cs:695 (over-expansion detection).
+    //
+    // `ceiling` is the hard upper bound. When `declaredUncomp` is 0 (size unknown),
+    // fall back to the global ZLIB_MAX_BLOCK ceiling rather than a tiny guess — still
+    // bounded, but lets a 0-declared entry inflate up to the same hard limit.
+    const size_t ceiling   = (cap > 0) ? cap : ZLIB_MAX_BLOCK;
+    const size_t kGrowStep = 65536u; // 64 KiB seed / minimum grow step
+
     std::vector<uint8_t> output;
-    output.reserve(cap > 0 ? cap : 4096u);
-    output.resize(cap > 0 ? cap : 4096u);
+    output.resize(std::min(ceiling, kGrowStep));
 
     z_stream zs{};
     zs.next_in   = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(inflateInput));
@@ -118,39 +131,56 @@ std::vector<uint8_t> treInflate(
         );
     }
 
-    // Single-shot inflate attempt
-    ret = inflate(&zs, Z_FINISH);
-    const size_t produced = zs.total_out;
-    inflateEnd(&zs);
+    for (;;) {
+        ret = inflate(&zs, Z_NO_FLUSH);
 
-    if (ret == Z_STREAM_END) {
-        // Success
-        output.resize(produced);
-        return output;
-    }
+        if (ret == Z_STREAM_END) {
+            break; // success — total_out holds the real produced size
+        }
 
-    if (ret == Z_BUF_ERROR && produced == 0) {
-        throw std::runtime_error("Zlib::treInflate: inflate produced no output (Z_BUF_ERROR)");
-    }
+        if ((ret == Z_OK || ret == Z_BUF_ERROR) && zs.avail_out == 0) {
+            // Output buffer is full but the stream isn't done — grow on demand,
+            // bounded by `ceiling`. Hitting the ceiling = decompression bomb.
+            const size_t oldSize = output.size();
+            if (oldSize >= ceiling) {
+                inflateEnd(&zs);
+                throw std::runtime_error(
+                    "Zlib::treInflate: decompression bomb detected — inflate output exceeded cap"
+                );
+            }
+            const size_t newSize = (oldSize <= ceiling / 2) ? (oldSize * 2) : ceiling;
+            output.resize(newSize);
+            zs.next_out  = reinterpret_cast<Bytef*>(output.data() + oldSize);
+            zs.avail_out = static_cast<uInt>(newSize - oldSize);
+            continue;
+        }
 
-    if (ret == Z_BUF_ERROR) {
-        // Output buffer was full but inflate didn't finish — over-expansion detection (T-01-03)
-        // Source: Utinni TreFile.cs:695.
-        throw std::runtime_error(
-            "Zlib::treInflate: decompression bomb detected — inflate output exceeded cap"
-        );
-    }
+        // Not finished and output space remains → truncated/incomplete input
+        // (Z_BUF_ERROR = no progress possible; Z_OK with all input consumed = same),
+        // or a hard decode error (Z_DATA_ERROR / Z_MEM_ERROR) → clean throw (T-01-04).
+        const size_t producedSoFar = zs.total_out;
+        if (ret == Z_BUF_ERROR || ret == Z_OK) {
+            inflateEnd(&zs);
+            if (producedSoFar == 0) {
+                throw std::runtime_error(
+                    "Zlib::treInflate: inflate produced no output (truncated input)");
+            }
+            throw std::runtime_error(
+                "Zlib::treInflate: incomplete deflate stream (truncated input)");
+        }
 
-    if (ret != Z_OK) {
-        char errBuf[128];
+        char errBuf[160];
         std::snprintf(errBuf, sizeof(errBuf),
             "Zlib::treInflate: inflate failed (code %d): %s",
             ret, (zs.msg ? zs.msg : "unknown error"));
+        inflateEnd(&zs);
         throw std::runtime_error(errBuf);
     }
 
-    // Z_OK but didn't finish — this shouldn't happen with Z_FINISH; treat as error
-    throw std::runtime_error("Zlib::treInflate: inflate returned Z_OK without Z_STREAM_END");
+    const size_t produced = zs.total_out;
+    inflateEnd(&zs);
+    output.resize(produced);
+    return output;
 }
 
 } // namespace swg
