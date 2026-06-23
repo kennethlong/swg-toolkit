@@ -23,6 +23,11 @@
  *   mountArchiveAsync(path, priority)   — off-thread Napi::AsyncWorker mount (CORE-06)
  *   mountSearchableAsync(paths, prios)  — off-thread multi-archive mount (CORE-06)
  *
+ * Phase 1 Plan 01-03 IFF exports (CORE-03, CORE-04):
+ *   parseIff(bytes)                     — parse IFF buffer -> { roots, trailingBytes, roundTrip }
+ *   serializeIff(parseResult, srcBytes) — byte-exact serialize back to ArrayBuffer
+ *   getChunkBytes(parseResult, srcBytes, nodeIndex) — zero-copy chunk bytes
+ *
  * Source: RESEARCH.md Pattern 3 (corrected); node-addon-api ^8.8.0.
  */
 
@@ -56,6 +61,14 @@ Napi::Value DisposeTreMount(const Napi::CallbackInfo& info);
 Napi::Value MountArchiveAsyncFixed(const Napi::CallbackInfo& info);
 Napi::Value MountSearchableAsync(const Napi::CallbackInfo& info);
 
+// Phase 1 Plan 01-03 IFF binding (implemented in iff_binding.cpp):
+// Source: modules/core/iff/Iff.h parseIff/serializeIff/getNodeBytes
+//         swg-client-v2 Iff.cpp:508-555 (parse), :419-429 (verbatim write)
+//         Utinni IffReader.cs, IffWriter.cs (hybrid-DOM + pad handling)
+Napi::Value ParseIff(const Napi::CallbackInfo& info);
+Napi::Value SerializeIff(const Napi::CallbackInfo& info);
+Napi::Value GetChunkBytes(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -80,6 +93,11 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("disposeTreMount",     Napi::Function::New(env, DisposeTreMount));
     exports.Set("mountArchiveAsync",   Napi::Function::New(env, MountArchiveAsyncFixed));
     exports.Set("mountSearchableAsync",Napi::Function::New(env, MountSearchableAsync));
+
+    // Phase 1 Plan 01-03 IFF exports (CORE-03, CORE-04):
+    exports.Set("parseIff",       Napi::Function::New(env, ParseIff));
+    exports.Set("serializeIff",   Napi::Function::New(env, SerializeIff));
+    exports.Set("getChunkBytes",  Napi::Function::New(env, GetChunkBytes));
 
     return exports;
 }

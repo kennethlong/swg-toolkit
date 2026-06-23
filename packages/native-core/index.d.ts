@@ -348,3 +348,112 @@ export function mountArchiveAsync(path: string, priority: number): Promise<Async
  * @returns           Promise resolving to a mount handle string.
  */
 export function mountSearchableAsync(paths: string[], priorities: number[]): Promise<string>;
+
+// ─── Phase 1 Plan 01-03: IFF FORM/chunk parser + byte-exact serializer ────────
+
+/**
+ * One node in the parsed IFF FORM/chunk tree.
+ * Crosses the N-API boundary as typed JSON (structure only — binary stays ArrayBuffer).
+ *
+ * Source: swg-client-v2 Iff.cpp:1132-1310 (enterForm/enterChunk walk).
+ * Cross-check: Utinni IffReader.cs:140-210.
+ */
+export interface IffNodeNative {
+  /** 4-character ASCII tag (e.g. 'FORM', 'DERV', 'CAT ', '0001'). */
+  tag: string;
+  /**
+   * Declared payload length.
+   * FORM/LIST/CAT: innerLen INCLUDING the 4-byte subType tag (Iff.cpp:643).
+   * Leaf: payload byte count (excluding the 8-byte header).
+   */
+  length: number;
+  /** Absolute byte offset of this block's 8-byte header in the source buffer. */
+  byteOffset: number;
+  /** 'form' for FORM/LIST/CAT containers; 'leaf' for all other chunks. */
+  kind: 'form' | 'leaf';
+  /** FORM sub-type tag (e.g. 'SLOD', 'DERV'); present only when kind === 'form'. */
+  subType?: string;
+  /** Child nodes; present only when kind === 'form'. */
+  children?: IffNodeNative[];
+}
+
+/** Trailing bytes info (NEW TOOLKIT BEHAVIOR — client silently ignores trailing bytes). */
+export interface IffTrailingBytesNative {
+  /** Absolute offset of the first trailing byte. */
+  offset: number;
+  /** Number of trailing bytes. */
+  count: number;
+}
+
+/** Byte-exact round-trip gate result (CORE-04). */
+export interface IffRoundTripNative {
+  /** True if serialize(parse(bytes)) === bytes byte-for-byte. */
+  passed: boolean;
+  /** If passed === false, the absolute offset of the first differing byte. */
+  failOffset?: number;
+}
+
+/** Full result of parseIff(). */
+export interface IffParseResultNative {
+  roots: IffNodeNative[];
+  trailingBytes: IffTrailingBytesNative | null;
+  roundTrip: IffRoundTripNative;
+}
+
+/**
+ * Parse an IFF buffer (FORM/chunk format) into a navigable tree.
+ *
+ * Returns structure as typed JSON; binary payloads are NOT included
+ * (use getChunkBytes() to fetch a specific chunk's raw bytes zero-copy).
+ *
+ * Throws a JavaScript Error on malformed input (non-printable FourCC,
+ * oversized chunk, child-end > parent-end, truncated) — never crashes
+ * the renderer (security caps T-01-10/T-01-11/T-01-12).
+ *
+ * Also performs the CORE-04 byte-exact round-trip check inline; the
+ * result is in IffParseResultNative.roundTrip.
+ *
+ * @param bytes  IFF file bytes as ArrayBuffer or Uint8Array.
+ * @returns      IffParseResultNative with roots + trailingBytes + roundTrip.
+ *
+ * Source: modules/core/iff/Iff.h parseIff(); swg-client-v2 Iff.cpp:508-555,1076-1095,1132-1310.
+ * Cross-check: Utinni IffReader.cs:140-327.
+ */
+export function parseIff(bytes: ArrayBuffer | Uint8Array): IffParseResultNative;
+
+/**
+ * Serialize a (possibly modified) IFF tree back to bytes, byte-exact.
+ *
+ * Hybrid-DOM verbatim re-emit: a clean node writes its captured source slice
+ * verbatim (preserving interior gaps in the declared length); only a dirty node
+ * reserializes. NO pad byte is emitted (SWG no-pad quirk, IffWriter.cs:141).
+ *
+ * @param parseResult  The parsed IFF result object from parseIff().
+ * @param srcBytes     The original source bytes (needed to re-populate captured slices).
+ * @returns            Serialized bytes as ArrayBuffer.
+ *
+ * Source: modules/core/iff/Iff.h serializeIff(); Utinni IffWriter.cs:98-187.
+ */
+export function serializeIff(
+  parseResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): ArrayBuffer;
+
+/**
+ * Return the raw bytes of a specific IFF node as an ArrayBuffer (zero-copy).
+ *
+ * The node is identified by its pre-order index in the tree (index 0 = first root).
+ * Used by HexInspector to show the selected chunk's bytes.
+ *
+ * @param parseResult  The parsed IFF result object from parseIff().
+ * @param srcBytes     The original source bytes.
+ * @param nodeIndex    Pre-order index of the desired node (0-based).
+ * @returns            The node's captured byte slice as ArrayBuffer.
+ *
+ * Source: modules/core/iff/Iff.h getNodeBytes().
+ */
+export function getChunkBytes(
+  parseResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+  nodeIndex: number,
+): ArrayBuffer;

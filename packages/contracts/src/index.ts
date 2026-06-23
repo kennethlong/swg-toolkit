@@ -6,3 +6,4 @@ export * from './ipc.js';
 export * from './sab-layout.js';
 export * from './opcodes.js';
 export * from './tre.js';
+export * from './iff.js';

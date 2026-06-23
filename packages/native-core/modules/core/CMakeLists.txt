@@ -12,6 +12,7 @@ set(CORE_SOURCES
     compress/Zlib.cpp
     tre/TreArchive.cpp
     tre/TreMount.cpp
+    iff/Iff.cpp
 )
 
 # ── Vendored zlib 1.2.3 (static) ───────────────────────────────────────────────
