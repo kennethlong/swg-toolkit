@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "01-02 verified + committed (incl. 01-01 zlib + CRC/layout corrections); starting Wave 3 (01-03 IFF)"
-last_updated: "2026-06-23T16:00:00.000Z"
-last_activity: 2026-06-23 -- Phase 01 Wave 2 (Plan 01-02) verified & committed
+stopped_at: "Completed 01-03-PLAN.md Tasks 1-2; CHECKPOINT at Task 3 (human-verify IFF Structure Tree + Hex Inspector)"
+last_updated: "2026-06-23T15:35:36.851Z"
+last_activity: 2026-06-23
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 9
-  completed_plans: 7
-  percent: 78
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-21)
 ## Current Position
 
 Phase: 01 (core-engine-iff-tre-verification-harness) — EXECUTING
-Plan: 2 of 4 complete (01-01, 01-02 verified); starting 3 of 4 (01-03 IFF read/write)
-Status: Wave 2 complete & committed; beginning Wave 3
+Plan: 3 of 4 complete (01-01, 01-02 verified); starting 3 of 4 (01-03 IFF read/write)
+Status: Ready to execute
 Last activity: 2026-06-23
 
-Progress: [██████░░░░] 56%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [██████░░░░] 56%
 | Phase 00 P04 | single-session | 3 tasks | 21 files |
 | Phase 01 P01-01 | 90 | 3 tasks | 40 files |
 | Phase 01 P01-02 | ~4h (2 sessions) | 2 tasks (Task 3 pending) | 20 files |
+| Phase 01-core-engine-iff-tre-verification-harness P03 | 2sessions | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,11 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 01, Plan 02]: v6000 enumerate-only (encrypted); v0006 is readable — warn chip ONLY on v6000 rows, NOT v0006
 - [Phase 01, Plan 02]: Search returns matched indices only (T-01-06 mitigation — never ship full name list per keystroke)
 - [Phase 01, Plan 02]: TreVfsBrowser archive.version and isEnumerateOnly default to 'v0005'/false — needs native version accessor in minor follow-up
+- [Phase 01, Plan 03]: Gapped-FORM round-trips verbatim via clean-span-verbatim guarantee; capturedSlice spans full declared length (proven by gapped-form fixture)
+- [Phase 01, Plan 03]: IFF trailing-bytes node is toolkit invention (NOT ported from client); client calculateRawDataSize assumes trailing data is zeroed
+- [Phase 01, Plan 03]: IFF pad rule: write NO pad (IffWriter.cs:141); read DETECTS/TOLERATES a single 0x00 only when actually present (IffReader.cs:307-327)
+- [Phase 01, Plan 03]: HexInspector fully virtualized — ResizeObserver + manual scrollTop state + OVERSCAN=5; only visible rows in DOM
+- [Phase 01, Plan 03]: OPEN-3 RESOLVED — LIST and CAT  (trailing space) are containers; PROP is leaf (confirmed vs. swg-client-v2 Iff.cpp + Utinni IffReader)
 
 ### Pending Todos
 
@@ -113,6 +119,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T00:00:00.000Z
+Last session: 2026-06-23T15:35:36.833Z
 Stopped at: "Completed 01-02-PLAN.md Tasks 1-2; CHECKPOINT at Task 3 (human-verify TRE VFS Browser)"
-Resume file: None — continuation agent spawned from checkpoint message
+Resume file: None

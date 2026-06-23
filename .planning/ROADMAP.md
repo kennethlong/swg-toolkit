@@ -72,7 +72,7 @@ Plans:
   - Tasks 1-2 COMPLETE (commits 61de191, b4e1e2d); Task 3 awaiting human-verify checkpoint
 
 **Wave 3** *(blocked on 01-02)*
-- [ ] 01-03-PLAN.md — Engine-free IFF parse + byte-exact serialize (BE, no-pad, hybrid-DOM, trailing-bytes) + IFF Structure tree + Hex/ASCII inspector UI (Surfaces 2/3, read-only D-08)
+- [x] 01-03-PLAN.md — Engine-free IFF parse + byte-exact serialize (BE, no-pad, hybrid-DOM, trailing-bytes) + IFF Structure tree + Hex/ASCII inspector UI (Surfaces 2/3, read-only D-08)
 
 **Wave 4** *(blocked on 01-03)*
 - [ ] 01-04-PLAN.md — TRE builder/repacker (byte-identical self-built: MD5 trailer, response-file order, zlib L6; retail per-record slice identity) + standing-gate registration + AI-distilled docs correction
