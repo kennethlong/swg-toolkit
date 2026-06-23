@@ -664,7 +664,7 @@ export default function IffStructureTree({
         {!trailingBytes ? (
           <VerificationStatus
             variant="pass"
-            caption="0 trailing bytes ✓"
+            caption="0 trailing bytes"
           />
         ) : (
           <VerificationStatus
@@ -676,7 +676,7 @@ export default function IffStructureTree({
 
         {/* Round-trip status — UI-SPEC Copywriting Contract */}
         {roundTrip.passed ? (
-          <VerificationStatus variant="pass" caption="byte-exact ✓" />
+          <VerificationStatus variant="pass" caption="byte-exact" />
         ) : (
           <VerificationStatus
             variant="fail"
