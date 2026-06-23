@@ -14,6 +14,46 @@ set(CORE_SOURCES
     tre/TreMount.cpp
 )
 
+# ── Vendored zlib 1.2.3 (static) ───────────────────────────────────────────────
+# Strategy: compile the SWG client's own zlib 1.2.3 (vendored under compress/zlib/)
+# directly into a static lib. This makes the addon HOST-INDEPENDENT: it carries its
+# own inflate/deflate and no longer resolves zlib symbols from the host executable's
+# exports.
+#
+# WHY (defect being fixed): the previous SWG_ZLIB_FROM_NODE strategy relied on the
+# host process exporting plain `inflate`/`inflateInit2_`/`inflateEnd`. node.exe does
+# export those, but electron.exe prefixes them `Cr_z_*` and exports no plain names —
+# so the addon hard-crashed the Electron renderer with ERROR_PROC_NOT_FOUND
+# (0xC06D007F) on the first inflate call. Vendoring zlib statically fixes this.
+#
+# Ground truth: zlib 1.2.3 is the SAME zlib the original SWG client shipped, vendored
+# from ../swg-client-v2/src/external/3rd/library/zlib-1.2.3/.
+set(SWG_ZLIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/compress/zlib)
+set(SWG_ZLIB_SOURCES
+    ${SWG_ZLIB_DIR}/adler32.c
+    ${SWG_ZLIB_DIR}/crc32.c
+    ${SWG_ZLIB_DIR}/inflate.c
+    ${SWG_ZLIB_DIR}/inftrees.c
+    ${SWG_ZLIB_DIR}/inffast.c
+    ${SWG_ZLIB_DIR}/zutil.c
+    ${SWG_ZLIB_DIR}/deflate.c
+    ${SWG_ZLIB_DIR}/trees.c
+    ${SWG_ZLIB_DIR}/compress.c
+    ${SWG_ZLIB_DIR}/uncompr.c
+)
+
+add_library(swg_zlib STATIC ${SWG_ZLIB_SOURCES})
+target_include_directories(swg_zlib PUBLIC ${SWG_ZLIB_DIR})
+
+# MSVC: zlib 1.2.3 emits deprecation / possible-loss-of-data warnings. Silence them
+# for the vendored translation units ONLY (do not weaken warnings for swg_core proper).
+if(MSVC)
+    target_compile_options(swg_zlib PRIVATE /W0)
+    target_compile_definitions(swg_zlib PRIVATE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+else()
+    target_compile_options(swg_zlib PRIVATE -w)
+endif()
+
 # ── Static library ────────────────────────────────────────────────────────────
 add_library(swg_core STATIC ${CORE_SOURCES})
 
@@ -23,26 +63,12 @@ target_include_directories(swg_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# ── zlib ─────────────────────────────────────────────────────────────────────
-# Strategy: use Node.js's bundled zlib headers (from CMAKE_JS_INC) and link
-# against node.lib (CMAKE_JS_LIB) which exports zlib inflate/deflate symbols
-# since Node.js embeds zlib internally.
-#
-# CMAKE_JS_INC is set by cmake-js to the Node.js headers directory (contains zlib.h).
-# cmake-js sets this globally in the parent CMakeLists.txt; propagate it here.
-#
-# Fallback: find_package(ZLIB) for non-cmake-js builds (e.g. CI runners with system zlib).
-if(DEFINED CMAKE_JS_INC)
-    target_include_directories(swg_core PUBLIC ${CMAKE_JS_INC})
-    # zlib symbols come from node.lib (linked by the addon target that uses this lib)
-    # No separate target_link_libraries needed for the static lib itself.
-    target_compile_definitions(swg_core PRIVATE SWG_ZLIB_FROM_NODE=1)
-    message(STATUS "swg_core: using Node.js bundled zlib from ${CMAKE_JS_INC}")
-else()
-    find_package(ZLIB REQUIRED)
-    target_link_libraries(swg_core PUBLIC ZLIB::ZLIB)
-    message(STATUS "swg_core: using system zlib")
-endif()
+# ── zlib link ──────────────────────────────────────────────────────────────────
+# Link the vendored static zlib. PRIVATE BEFORE so the vendored zlib 1.2.3 header
+# wins over Node's bundled zlib.h (1.3.1) that is also on the include path via
+# CMAKE_JS_INC — #include <zlib.h> in compress/Zlib.cpp MUST resolve to 1.2.3.
+target_link_libraries(swg_core PRIVATE swg_zlib)
+target_include_directories(swg_core BEFORE PRIVATE ${SWG_ZLIB_DIR})
 
 # Compile definitions — safety + clarity
 target_compile_definitions(swg_core PRIVATE

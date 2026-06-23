@@ -29,7 +29,12 @@
  */
 
 #include "Zlib.h"
-#include <zlib.h>    // From CMAKE_JS_INC (Node.js bundled zlib 1.3.1)
+#include <zlib.h>    // Vendored zlib 1.2.3 (compress/zlib/) — placed BEFORE CMAKE_JS_INC
+                     // on swg_core's include path so this resolves to the static, host-
+                     // independent copy, NOT Node's bundled zlib.h (1.3.1).
+#if !defined(ZLIB_VERNUM) || ZLIB_VERNUM != 0x1230
+#  error "Zlib.cpp must compile against the vendored zlib 1.2.3 (compress/zlib/zlib.h); got a different zlib.h on the include path"
+#endif
 #include <cstring>
 #include <cstdio>
 #include <algorithm>

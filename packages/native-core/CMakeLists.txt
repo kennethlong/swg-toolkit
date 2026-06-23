@@ -53,5 +53,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # Provides: IInputStream, MemoryInputStream, FileInputStream, TreVersion, TreArchive, Zlib.
 add_subdirectory(modules/core)
 target_link_libraries(${PROJECT_NAME} swg_core)
-# zlib symbols come from node.lib (already linked via ${CMAKE_JS_LIB} above) when using
-# the Node.js bundled zlib path (modules/core CMakeLists.txt SWG_ZLIB_FROM_NODE=1).
+# zlib is vendored statically (zlib 1.2.3) and compiled into swg_zlib, which swg_core
+# links. The addon carries its own inflate/deflate and is host-independent — it does NOT
+# import zlib symbols from node.exe/electron.exe (fixes the Electron ERROR_PROC_NOT_FOUND
+# crash where electron.exe exports only Cr_z_* prefixed zlib names).
