@@ -399,7 +399,7 @@ async function resolveMeshMaterials(
   const materials: ResolvedMaterial[] = [];
   for (const group of resolvedMesh.parseResult.shaderGroups) {
     const mat = await resolveShader(mountHandle, group.shaderName, missing);
-    materials.push(mat ?? { shaderResult: createPlaceholderShader(group.shaderName), slotBytes: {} });
+    materials.push(mat ?? { shaderResult: createPlaceholderShader(group.shaderName), slotBytes: {}, effectResult: null });
   }
   return materials;
 }
