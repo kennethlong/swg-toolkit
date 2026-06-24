@@ -507,7 +507,7 @@ describe('Microsoft DDS (.dds) — texture', () => {
 //   SMAT: swg-client-v2 SkeletalAppearanceTemplate.cpp:786-1136 (v0001/v0002/v0003)
 //   APT:  swg-client-v2 AppearanceTemplateList.cpp:513-540 (NAME chunk redirect)
 
-// Extend nativeCore type to include Phase 02-02 parsers
+// Extend nativeCore type to include Phase 02-02 parsers + gap-closure DTLA
 const nc = nativeCore as typeof nativeCore & {
   parseSkeletalMesh: (
     iffResult: unknown,
@@ -517,6 +517,7 @@ const nc = nativeCore as typeof nativeCore & {
   parseSkeleton: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => SkeletonResult;
   parseSkeletalAppearance: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => SkeletalAppearanceResult;
   parseStaticAppearance: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => StaticAppearanceResult;
+  parseDetailAppearance: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => DetailAppearanceResult;
 };
 
 interface SkeletalMeshResult {
@@ -562,6 +563,20 @@ interface SkeletalAppearanceResult {
 interface StaticAppearanceResult {
   formatTag: string;
   redirectTarget: string;
+}
+
+interface DetailAppearanceLevel {
+  id: number;
+  near: number;
+  far: number;
+  childPath: string;
+}
+
+interface DetailAppearanceResult {
+  formatTag: string;
+  versionTag: string;
+  lodFlags: number;
+  levels: DetailAppearanceLevel[];
 }
 
 // ─── CORE-05 registerFormat gate for Phase 02-02 parsers ────────────────────
@@ -640,6 +655,26 @@ beforeAll(() => {
         loaderSource: 'swg-client-v2 AppearanceTemplateList.cpp:513-540 (NAME chunk redirect)',
       }],
       loaderSource: 'swg-client-v2 AppearanceTemplateList.cpp:513-540',
+    });
+  }
+
+  // DTLA: swg-client-v2 DetailAppearanceTemplate.cpp:556-658 (load()) + :343-417 (loadEntries())
+  // Real fixture: wb_02_09e_00000000000000000000.lod (362 bytes, version 0007)
+  // Verified 2026-06-24 against real bytes from infinity_custom_01.tre
+  const dtlaBytes = loadFixture('lod/wb_02_09e_00000000000000000000.lod');
+  if (dtlaBytes) {
+    registerFormat('appearance-dtla', {
+      parse: (bytes: Uint8Array) => {
+        const iff = (nativeCore as unknown as typeof nc).parseIff(bytes);
+        return (nativeCore as unknown as typeof nc).parseDetailAppearance(iff, bytes);
+      },
+      serialize: (_parsed: unknown) => dtlaBytes, // IFF round-trip handled separately
+      fixtures: [{
+        name: 'wb_02_09e_00000000000000000000.lod (DTLA v0007)',
+        bytes: dtlaBytes,
+        loaderSource: 'swg-client-v2 DetailAppearanceTemplate.cpp:556-658 (load()) + :343-417 (loadEntries())',
+      }],
+      loaderSource: 'swg-client-v2 DetailAppearanceTemplate.cpp:556-658',
     });
   }
 });
@@ -906,5 +941,167 @@ describe('FORM APT (.apt) — static appearance redirector', () => {
 
     const iff = nc.parseIff(u8);
     expect(() => nc.parseStaticAppearance(iff, u8)).toThrow(/circular|\.apt/i);
+  });
+});
+
+// ─── FORM DTLA (.lod) — detail LOD appearance (gap-closure) ──────────────────
+//
+// CORE-05 gate: byte-exact round-trip for the dominant static-object LOD path.
+// Ground truth: swg-client-v2 DetailAppearanceTemplate.cpp:556-658 (load()) + :343-417 (loadEntries())
+// Real fixture: wb_02_09e_00000000000000000000.lod (362 bytes, version 0007, from infinity_custom_01.tre)
+// Verified 2026-06-24 against real bytes + client source.
+
+describe('FORM DTLA (.lod) — detail LOD appearance (gap-closure)', () => {
+  // loaderSource: swg-client-v2 DetailAppearanceTemplate.cpp:556-658 + :343-417
+
+  it('CORE-05 gate: generic-IFF round-trip — wb_02_09e_00000000000000000000.lod (362 bytes)', () => {
+    // Real fixture (gitignored — extracted from infinity_custom_01.tre, 2026-06-24)
+    const bytes = loadFixture('lod/wb_02_09e_00000000000000000000.lod');
+    if (!bytes) {
+      console.log('  SKIP: wb_02_09e_00000000000000000000.lod not present (real fixture, gitignored)');
+      return;
+    }
+    // The CORE-05 gate: IFF round-trip must be byte-exact
+    assertIffRoundTrip(bytes, 'wb_02_09e_00000000000000000000.lod IFF round-trip');
+    expect(bytes.length).toBe(362);
+  });
+
+  it('parseDetailAppearance: wb_02_09e_*.lod — formatTag=DTLA, versionTag=0007, 1 level', () => {
+    const bytes = loadFixture('lod/wb_02_09e_00000000000000000000.lod');
+    if (!bytes) {
+      console.log('  SKIP: wb_02_09e_00000000000000000000.lod not present (real fixture)');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseDetailAppearance(iff, bytes);
+
+    expect(result.formatTag).toBe('DTLA');
+    expect(result.versionTag).toBe('0007');
+    expect(typeof result.lodFlags).toBe('number');
+    // version 7: PIVT present; lodFlags = 0 in this file
+    expect(result.lodFlags).toBe(0);
+    expect(result.levels).toHaveLength(1);
+
+    // Verify the one LOD level
+    const lv = result.levels[0]!;
+    expect(lv.id).toBe(0);
+    expect(lv.near).toBeCloseTo(0.0, 3);
+    expect(lv.far).toBeCloseTo(1000.0, 1);
+    // childPath is the raw name from CHLD — caller must prepend "appearance/"
+    expect(lv.childPath).toBe('mesh/wb_02_09e_00000000000000000000.msh');
+  });
+
+  it('parseDetailAppearance: childPath must NOT start with appearance/ (raw name from CHLD)', () => {
+    // The CHLD name is relative to the appearance/ tree; resolver MUST prepend appearance/.
+    // The parser returns the raw value so the caller handles the prepend.
+    const bytes = loadFixture('lod/wb_02_09e_00000000000000000000.lod');
+    if (!bytes) {
+      console.log('  SKIP: wb_02_09e_00000000000000000000.lod not present');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseDetailAppearance(iff, bytes);
+    for (const lv of result.levels) {
+      // Raw childPath must NOT already have appearance/ prefix
+      // (the resolver adds it; duplicate prefix would produce appearance/appearance/...)
+      expect(lv.childPath).not.toMatch(/^appearance\//i);
+    }
+  });
+
+  it('parseDetailAppearance: synthetic multi-level DTLA v0001 (committed fixture)', () => {
+    // Synthetic DTLA v0001: 2 levels, no APPR/PIVT/RADR/TEST/WRIT (version < 2).
+    // Hand-crafted to prove parser handles the minimal pre-version-2 case.
+    //
+    // FORM DTLA (outerBodyLen)
+    //   FORM 0001 (verBodyLen)
+    //     INFO chunk (24 bytes: 2 × {i32,f32,f32})
+    //     FORM DATA (dataBodyLen)
+    //       CHLD chunk (child 0: id=0, "mesh/high.msh\0")
+    //       CHLD chunk (child 1: id=1, "mesh/low.msh\0")
+
+    const name0 = 'mesh/high.msh';
+    const name1 = 'mesh/low.msh';
+    // CHLD payload = 4 (id) + name+NUL
+    const chld0PayLen = 4 + name0.length + 1;
+    const chld1PayLen = 4 + name1.length + 1;
+    // Each CHLD = 8 (header) + payLen
+    const chld0Len = 8 + chld0PayLen;
+    const chld1Len = 8 + chld1PayLen;
+    // INFO payload = 2 × 12 = 24
+    const infoPayLen = 24;
+    const infoChunkLen = 8 + infoPayLen;
+    // DATA body = 4 (subType) + chld0Len + chld1Len
+    const dataBodyLen = 4 + chld0Len + chld1Len;
+    const dataFormLen = 8 + dataBodyLen;
+    // ver 0001 body = 4 (subType) + infoChunkLen + dataFormLen
+    const verBodyLen = 4 + infoChunkLen + dataFormLen;
+    const verFormLen = 8 + verBodyLen;
+    // DTLA body = 4 (subType) + verFormLen
+    const dtlaBodyLen = 4 + verFormLen;
+    const total = 8 + dtlaBodyLen;
+
+    const ab = new ArrayBuffer(total);
+    const dv = new DataView(ab);
+    const u8 = new Uint8Array(ab);
+
+    function writeTag(off: number, tag: string): number {
+      for (let i = 0; i < 4; i++) u8[off + i] = tag.charCodeAt(i);
+      return off + 4;
+    }
+    function writeU32BE(off: number, v: number): number {
+      dv.setUint32(off, v, false); return off + 4;
+    }
+    function writeI32LE(off: number, v: number): number {
+      dv.setInt32(off, v, true); return off + 4;
+    }
+    function writeF32LE(off: number, v: number): number {
+      dv.setFloat32(off, v, true); return off + 4;
+    }
+    function writeStr(off: number, s: string): number {
+      for (let i = 0; i < s.length; i++) u8[off + i] = s.charCodeAt(i);
+      u8[off + s.length] = 0;
+      return off + s.length + 1;
+    }
+
+    let p = 0;
+    // FORM DTLA
+    p = writeTag(p, 'FORM'); p = writeU32BE(p, dtlaBodyLen); p = writeTag(p, 'DTLA');
+    // FORM 0001
+    p = writeTag(p, 'FORM'); p = writeU32BE(p, verBodyLen); p = writeTag(p, '0001');
+    // INFO chunk: 2 entries { id, near, far }
+    // Entry 0: id=0, near=0, far=500  (high LOD)
+    // Entry 1: id=1, near=0, far=1000 (low LOD)
+    p = writeTag(p, 'INFO'); p = writeU32BE(p, infoPayLen);
+    p = writeI32LE(p, 0); p = writeF32LE(p, 0.0); p = writeF32LE(p, 500.0);
+    p = writeI32LE(p, 1); p = writeF32LE(p, 0.0); p = writeF32LE(p, 1000.0);
+    // FORM DATA
+    p = writeTag(p, 'FORM'); p = writeU32BE(p, dataBodyLen); p = writeTag(p, 'DATA');
+    // CHLD 0
+    p = writeTag(p, 'CHLD'); p = writeU32BE(p, chld0PayLen);
+    p = writeI32LE(p, 0); p = writeStr(p, name0);
+    // CHLD 1
+    p = writeTag(p, 'CHLD'); p = writeU32BE(p, chld1PayLen);
+    p = writeI32LE(p, 1); p = writeStr(p, name1);
+
+    expect(p).toBe(total); // sanity: wrote exactly total bytes
+
+    const iff = nc.parseIff(u8);
+    // IFF round-trip must be byte-exact
+    const rt = nativeCore.serializeIff(iff, u8);
+    const rtU8 = new Uint8Array(rt);
+    assertBytesEqual(u8, rtU8, 'synthetic DTLA v0001 IFF round-trip');
+
+    // Parse
+    const result = nc.parseDetailAppearance(iff, u8);
+    expect(result.formatTag).toBe('DTLA');
+    expect(result.versionTag).toBe('0001');
+    expect(result.lodFlags).toBe(0); // version < 6, no PIVT
+    expect(result.levels).toHaveLength(2);
+
+    // After sorting by far desc: [far=1000 (id=1), far=500 (id=0)]
+    expect(result.levels[0]!.far).toBeCloseTo(1000.0, 3);
+    expect(result.levels[0]!.childPath).toBe('mesh/low.msh');
+    expect(result.levels[1]!.far).toBeCloseTo(500.0, 3);
+    expect(result.levels[1]!.childPath).toBe('mesh/high.msh');
   });
 });

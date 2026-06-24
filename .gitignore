@@ -46,6 +46,12 @@ packages/harness/fixtures-real/*.TRE
 # Real geometry / texture / shader assets extracted from client TREs (not synthetic)
 packages/harness/fixtures-real/mesh/*.msh
 packages/harness/fixtures-real/mesh/*.lmg
+packages/harness/fixtures-real/mesh/*.mgn
 packages/harness/fixtures-real/texture/*.dds
 packages/harness/fixtures-real/shader/*.sht
 packages/harness/fixtures-real/shader/*.cshd
+# Real appearance assets (LOD, appearance templates, skeletons)
+packages/harness/fixtures-real/lod/*.lod
+packages/harness/fixtures-real/appearance/*.apt
+packages/harness/fixtures-real/appearance/*.sat
+packages/harness/fixtures-real/skeleton/*.skt
