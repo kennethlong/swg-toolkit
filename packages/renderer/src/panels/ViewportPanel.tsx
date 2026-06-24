@@ -1,44 +1,63 @@
 /**
- * packages/renderer/src/viewport/ViewportPanel.tsx
+ * packages/renderer/src/panels/ViewportPanel.tsx
  * CENTER — Viewport panel.
- * Phase 0 seed state: proof status overlay + gizmo.
+ * Phase 2 wiring: mounts R3F Viewport into the panel body.
  *
- * DISPLAY-ONLY for wiring status: this component reads window.__zeroCopy and
- * window.__crossWriteOk to show proof results. It does NOT own or set any
- * window.__ test hook — StatusBar is the single owner of all proof hooks.
- * See packages/renderer/src/shell/StatusBar.tsx.
+ * Chrome is PRESERVED from Phase 0 — header, chips, stats overlay, gizmo.
+ * The R3F Canvas is mounted below the overlay chips (position:absolute; inset:0; z-index:1).
+ * Chips and overlay live at z-index 2+.
+ *
+ * Stats badge reads 'binary' (NOT 'zero-copy' — the binding memcpys into a JS-heap buffer;
+ * the property is that geometry never crosses as JSON, not that it's literally zero-copy).
  *
  * Accessibility Rule 5: aria-label + title on all icon-only controls.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
+import { useViewportStore } from '../state/viewportStore.js';
+import Viewport from './viewport/Viewport.js';
+import LodPicker from './viewport/LodPicker.js';
+import AppearancePanel from './viewport/AppearancePanel.js';
+import type { FrameStats } from './viewport/Viewport.js';
 
 type RenderMode = 'solid' | 'wire' | 'textured';
 type CameraMode = 'orbit' | 'pan' | 'frame';
 
-/** Read the wiring proof status set by StatusBar (single owner of proof hooks). */
-function readWiringStatus(): boolean {
-  const w = window as Window & typeof globalThis & Record<string, unknown>;
-  return w['__zeroCopy'] === true && w['__crossWriteOk'] === true;
-}
-
 export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactElement {
-  const [renderMode, setRenderMode] = useState<RenderMode>('solid');
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
-  const [wiringProven, setWiringProven] = useState(false);
+  const [stats, setStats] = useState<FrameStats>({ verts: 0, tris: 0, draws: 0 });
+  const [showSidePanels, setShowSidePanels] = useState(false);
 
-  // Poll window.__ status set by StatusBar (single owner of all proof hooks)
-  useEffect(() => {
-    const check = (): void => {
-      if (readWiringStatus()) setWiringProven(true);
-    };
-    check();
-    const id = setInterval(check, 500);
-    return () => clearInterval(id);
-  }, []);
+  const { renderMode, setRenderMode, selectedLod, setSelectedLod, resolution, loadStatus } = useViewportStore();
 
   const dims = '1280×800'; // Phase 0 placeholder
+
+  const handleStats = useCallback((s: FrameStats) => setStats(s), []);
+
+  // FPS counter (approximate from frame stats update rate)
+  const fpsRef = useRef<number>(0);
+  const lastFpsUpdateRef = useRef<number>(0);
+  const [fps, setFps] = useState<number>(0);
+  const handleStatsWithFps = useCallback((s: FrameStats) => {
+    setStats(s);
+    const now = performance.now();
+    if (now - lastFpsUpdateRef.current > 1000) {
+      const elapsed = (now - lastFpsUpdateRef.current) / 1000;
+      const newFps = fpsRef.current > 0 ? Math.round(fpsRef.current / elapsed) : 0;
+      setFps(newFps);
+      fpsRef.current = 0;
+      lastFpsUpdateRef.current = now;
+    }
+    fpsRef.current++;
+  }, []);
+
+  const isLoading = loadStatus.kind === 'loading';
+  const isError   = loadStatus.kind === 'error';
+  const isDone    = loadStatus.kind === 'done';
+  const isEmpty   = loadStatus.kind === 'idle';
+
+  const lodLevels = resolution?.lodLevels ?? null;
 
   return (
     <div
@@ -51,7 +70,7 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
         overflow: 'hidden',
       }}
     >
-      {/* 28x28 dot grid overlay */}
+      {/* 28×28 dot grid overlay */}
       <div
         style={{
           position: 'absolute',
@@ -64,7 +83,7 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
         }}
       />
 
-      {/* Panel header — custom tab with close + maximize */}
+      {/* Panel header */}
       <div
         style={{
           display: 'flex',
@@ -76,7 +95,7 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
           gap: 'var(--space-2)',
           flexShrink: 0,
           position: 'relative',
-          zIndex: 2,
+          zIndex: 4,
         }}
       >
         <span
@@ -101,7 +120,15 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
         >
           Viewport
         </span>
-        {/* Accessibility Rule 5: aria-label + title on all icon-only controls */}
+        {/* Side panels toggle */}
+        <button
+          aria-label={showSidePanels ? 'Hide appearance panels' : 'Show appearance panels'}
+          title={showSidePanels ? 'Hide appearance panels' : 'Show appearance panels'}
+          style={actionBtnStyle}
+          onClick={() => setShowSidePanels(v => !v)}
+        >
+          ☰
+        </button>
         <button
           aria-label="Maximize panel"
           title="Maximize panel"
@@ -120,7 +147,14 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
         </button>
       </div>
 
-      {/* Top-left: render mode chips — Solid | Wire | Textured */}
+      {/* R3F Canvas — position:absolute; inset:0; z-index:1 (behind chips) */}
+      {(isDone || isLoading) && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+          <Viewport onStats={handleStatsWithFps} />
+        </div>
+      )}
+
+      {/* Top-left: render mode chips */}
       <div
         style={{
           position: 'absolute',
@@ -153,7 +187,6 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
           zIndex: 3,
         }}
       >
-        {/* Accessibility Rule 5: aria-label + title on glyph-only controls */}
         <button
           aria-label="Orbit camera"
           title="Orbit camera"
@@ -180,47 +213,109 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
         </button>
       </div>
 
-      {/* Center: Phase 0 placeholder / wiring proof status (display-only) */}
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 6,
-          position: 'relative',
-          zIndex: 1,
-        }}
-      >
-        {wiringProven ? (
-          <>
-            <span style={{ color: 'var(--color-accent)', fontSize: 'var(--text-md)', fontWeight: 600 }}>
-              crossOriginIsolated ✓
-            </span>
-            <span style={{ color: 'var(--color-accent)', fontSize: 'var(--text-sm)' }}>
-              SAB round-trip: PASS
-            </span>
-            <span style={{ color: 'var(--color-accent)', fontSize: 'var(--text-xs)' }}>
-              native-core: utility-process ✓
-            </span>
-          </>
-        ) : (
-          <>
-            <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-md)', fontWeight: 600 }}>
-              Viewport — Phase 0
-            </span>
-            <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-sm)' }}>
-              3D canvas ready
-            </span>
-            <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>
-              Waiting for asset
-            </span>
-          </>
-        )}
-      </div>
+      {/* Loading state overlay */}
+      {isLoading && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-md)', fontWeight: 600 }}>
+            Loading…
+          </span>
+          <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-sm)' }}>
+            {'filename' in loadStatus ? loadStatus.filename : ''}
+          </span>
+        </div>
+      )}
 
-      {/* Bottom-left: stats overlay */}
+      {/* Error state overlay */}
+      {isError && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ color: 'var(--color-danger)', fontSize: 'var(--text-md)', fontWeight: 600 }}>
+            Error
+          </span>
+          <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-sm)' }}>
+            {'reason' in loadStatus ? loadStatus.reason : 'Unknown error'}
+          </span>
+        </div>
+      )}
+
+      {/* Empty state / Phase-2 copy */}
+      {isEmpty && (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            position: 'relative',
+            zIndex: 2,
+          }}
+        >
+          <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-md)', fontWeight: 600 }}>
+            Viewport
+          </span>
+          <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-sm)' }}>
+            Open a mesh from the Assets panel
+          </span>
+          <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>
+            .sat / .apt to compose · .mgn / .msh to inspect
+          </span>
+        </div>
+      )}
+
+      {/* Side panels: LOD + Appearance (shown when showSidePanels) */}
+      {showSidePanels && resolution && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(var(--tabstrip-h) + 40px)',
+            right: 8,
+            width: 200,
+            background: 'rgba(20,20,20,0.85)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-sm)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 3,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0,
+            maxHeight: 'calc(100% - 80px)',
+            overflowY: 'auto',
+          }}
+        >
+          <LodPicker
+            lodLevels={lodLevels && lodLevels.length > 0 ? lodLevels : null}
+            selectedLod={selectedLod}
+            onSelectLod={setSelectedLod}
+          />
+          <div style={{ height: 1, background: 'var(--color-border)', margin: '2px 0' }} />
+          <AppearancePanel resolution={resolution} />
+        </div>
+      )}
+
+      {/* Bottom-left: stats overlay — 'binary' badge (NOT 'zero-copy') */}
       <div
         style={{
           position: 'absolute',
@@ -233,10 +328,12 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
           pointerEvents: 'none',
         }}
       >
-        persp · {dims} · — fps · SAB {wiringProven ? '✓' : '…'}
+        {isDone
+          ? `persp · ${dims} · ${fps} fps · ${stats.verts} v · ${stats.tris} t · ${stats.draws} dc · binary`
+          : `persp · ${dims} · — fps · binary`}
       </div>
 
-      {/* Bottom-right: gizmo (48x48 SVG axes) */}
+      {/* Bottom-right: gizmo (48×48 SVG axes) */}
       <div
         style={{
           position: 'absolute',

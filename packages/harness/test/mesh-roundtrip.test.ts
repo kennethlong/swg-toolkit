@@ -36,10 +36,11 @@
  * IFF tag byte-order rule: structural FORM/chunk headers = big-endian; DATA payload tags = little-endian.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { registerFormat } from '../fixtureRegistry.js';
 
 // CJS require — .node addon is CJS
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -562,6 +563,86 @@ interface StaticAppearanceResult {
   formatTag: string;
   redirectTarget: string;
 }
+
+// ─── CORE-05 registerFormat gate for Phase 02-02 parsers ────────────────────
+// Must be registered before the sweep (registry-coverage.test.ts) runs.
+// Fixtures are real assets extracted from SWG Infinity client TREs (gitignored).
+// If fixtures are absent, format is still registered but with empty fixture list
+// (sweep will warn, not fail, since the file existence gate is separate).
+
+beforeAll(() => {
+  // SKMG: swg-client-v2 SkeletalMeshGeneratorTemplate.cpp:2247-2360
+  const skmgBytes = loadFixture('mesh/ackbar_arms_l0.mgn');
+  if (skmgBytes) {
+    registerFormat('mesh-skmg', {
+      parse: (bytes: Uint8Array) => {
+        const iff = (nativeCore as unknown as typeof nc).parseIff(bytes);
+        return (nativeCore as unknown as typeof nc).parseSkeletalMesh(iff, bytes);
+      },
+      serialize: (_parsed: unknown) => skmgBytes, // IFF round-trip handled separately
+      fixtures: [{
+        name: 'ackbar_arms_l0.mgn',
+        bytes: skmgBytes,
+        loaderSource: 'swg-client-v2 SkeletalMeshGeneratorTemplate.cpp:2247-2360 (INFO 9×int32+4×int16, verified 2026-06-23)',
+      }],
+      loaderSource: 'swg-client-v2 SkeletalMeshGeneratorTemplate.cpp:2247-2360',
+    });
+  }
+
+  // SKTM-v2: swg-client-v2 BasicSkeletonTemplate.cpp:363-390 (v0002, no BPMJ)
+  const sktmV2Bytes = loadFixture('skeleton/at_at.skt');
+  if (sktmV2Bytes) {
+    registerFormat('mesh-sktm-v2', {
+      parse: (bytes: Uint8Array) => {
+        const iff = (nativeCore as unknown as typeof nc).parseIff(bytes);
+        return (nativeCore as unknown as typeof nc).parseSkeleton(iff, bytes);
+      },
+      serialize: (_parsed: unknown) => sktmV2Bytes,
+      fixtures: [{
+        name: 'at_at.skt (v0002)',
+        bytes: sktmV2Bytes,
+        loaderSource: 'swg-client-v2 BasicSkeletonTemplate.cpp:363-390 (v0002, no BPMJ)',
+      }],
+      loaderSource: 'swg-client-v2 BasicSkeletonTemplate.cpp:151-389,363-390',
+    });
+  }
+
+  // SMAT: swg-client-v2 SkeletalAppearanceTemplate.cpp:786-1136
+  const smatBytes = loadFixture('appearance/4lom.sat');
+  if (smatBytes) {
+    registerFormat('mesh-smat', {
+      parse: (bytes: Uint8Array) => {
+        const iff = (nativeCore as unknown as typeof nc).parseIff(bytes);
+        return (nativeCore as unknown as typeof nc).parseSkeletalAppearance(iff, bytes);
+      },
+      serialize: (_parsed: unknown) => smatBytes,
+      fixtures: [{
+        name: '4lom.sat (v0003)',
+        bytes: smatBytes,
+        loaderSource: 'swg-client-v2 SkeletalAppearanceTemplate.cpp:786-1136 (v0001/v0002/v0003)',
+      }],
+      loaderSource: 'swg-client-v2 SkeletalAppearanceTemplate.cpp:786-1136',
+    });
+  }
+
+  // APT: swg-client-v2 AppearanceTemplateList.cpp:513-540
+  const aptBytes = loadFixture('appearance/arc170_body.apt');
+  if (aptBytes) {
+    registerFormat('mesh-apt', {
+      parse: (bytes: Uint8Array) => {
+        const iff = (nativeCore as unknown as typeof nc).parseIff(bytes);
+        return (nativeCore as unknown as typeof nc).parseStaticAppearance(iff, bytes);
+      },
+      serialize: (_parsed: unknown) => aptBytes,
+      fixtures: [{
+        name: 'arc170_body.apt',
+        bytes: aptBytes,
+        loaderSource: 'swg-client-v2 AppearanceTemplateList.cpp:513-540 (NAME chunk redirect)',
+      }],
+      loaderSource: 'swg-client-v2 AppearanceTemplateList.cpp:513-540',
+    });
+  }
+});
 
 // ─── FORM SKMG (.mgn) — skeletal mesh ────────────────────────────────────────
 

@@ -545,3 +545,226 @@ export function repackTre(
   edits?: TreRepackEditNative[],
   version?: string,
 ): ArrayBuffer;
+
+// ─── Phase 2 Plan 02-01: mesh + support format parsers ────────────────────────
+
+/** Byte-range slice descriptor for one attribute in the geometry ArrayBuffer. */
+export interface MeshAttributeSlice {
+  offset: number;       // byte offset within geometry buffer
+  byteLength: number;   // byte length of this attribute's data
+  componentCount: number; // scalar components per element (e.g. 3 for xyz)
+  elementCount: number;   // number of elements (usually vertexCount or indexCount)
+}
+
+/** One shader group (draw call) in a parsed mesh. */
+export interface MeshShaderGroup {
+  shaderName: string;
+  vertexCount: number;
+  indexCount: number;
+  positions: MeshAttributeSlice;   // Float32 xyz
+  normals: MeshAttributeSlice;     // Float32 xyz (byteLength=0 if absent)
+  uvs: MeshAttributeSlice;         // Float32 uv (byteLength=0 if absent)
+  indices: MeshAttributeSlice;     // Uint32 triangle indices
+  skinIndices: MeshAttributeSlice; // Int32 vec4 (byteLength=0 for static .msh)
+  skinWeights: MeshAttributeSlice; // Float32 vec4 (byteLength=0 for static .msh)
+  hasDot3: boolean;
+}
+
+/** Result of parseMesh() — static .msh mesh. */
+export interface MeshParseResult {
+  formatTag: string;          // 'MESH'
+  version: string;            // e.g. '0005'
+  shaderGroups: MeshShaderGroup[];
+  geometry: ArrayBuffer;      // packed binary attribute data (binary stays binary)
+  weightsTruncated: number;
+}
+
+/**
+ * Parse a FORM MESH static mesh.
+ * Source: swg-client-v2 MeshAppearanceTemplate.cpp + ShaderPrimitiveSetTemplate.cpp + VertexBuffer.cpp
+ */
+export function parseMesh(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): MeshParseResult;
+
+/** Result of parseMeshLod() — LOD mesh generator .lmg. */
+export interface MeshLodParseResult {
+  formatTag: string;   // 'MLOD'
+  version: string;
+  levelCount: number;
+  levels: Array<{ path: string }>;
+}
+
+export function parseMeshLod(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): MeshLodParseResult;
+
+/** Result of parseLodDistanceTable() — .ldt distance table. */
+export interface LodDistanceTableParseResult {
+  formatTag: string;   // 'LDTB'
+  version: string;
+  levelCount: number;
+  levels: Array<{ minDist: number; maxDist: number }>;
+}
+
+export function parseLodDistanceTable(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): LodDistanceTableParseResult;
+
+/** One texture slot from a parsed .sht shader. */
+export interface ShaderSlot {
+  slotTag: string;
+  texturePath: string;
+  uvSet: number;
+  isPlaceholder: boolean;
+}
+
+/** Result of parseShader() — static shader template .sht. */
+export interface ShaderParseResult {
+  variant: string;      // 'SSHT', 'DPAT', etc.
+  version: string;
+  effectPath: string;
+  slots: ShaderSlot[];
+  customizationVars: unknown[];
+}
+
+export function parseShader(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): ShaderParseResult;
+
+/** Result of parsePalette() — RIFF PAL palette. */
+export interface PaletteParseResult {
+  entryCount: number;
+  versionOrComponentCount: number;
+  entries: Array<{ r: number; g: number; b: number; a: number }>;
+  roundTripBytes: ArrayBuffer;
+}
+
+export function parsePalette(bytes: ArrayBuffer | Uint8Array): PaletteParseResult;
+
+/** One mip level from a parsed .dds texture. */
+export interface DdsMip {
+  offset: number;
+  byteLength: number;
+  width: number;
+  height: number;
+}
+
+/** Result of parseDds() — Microsoft DDS texture. */
+export interface DdsParseResult {
+  width: number;
+  height: number;
+  mipCount: number;
+  format: string;      // 'DXT1', 'DXT3', 'DXT5', 'RGBA8', etc.
+  mips: DdsMip[];
+  roundTripBytes: ArrayBuffer;
+}
+
+export function parseDds(bytes: ArrayBuffer | Uint8Array): DdsParseResult;
+
+// ─── Phase 2 Plan 02-02: skeletal mesh + appearance parsers ──────────────────
+
+/**
+ * Result of parseSkeletalMesh() — skeletal mesh .mgn (FORM SKMG).
+ * Same shaderGroups shape as MeshParseResult but with skinIndices/skinWeights populated.
+ * Source: swg-client-v2 SkeletalMeshGeneratorTemplate.cpp:2247-2360
+ */
+export interface SkeletalMeshParseResult {
+  formatTag: string;          // 'SKMG'
+  version: string;            // '0002', '0003', or '0004'
+  shaderGroups: MeshShaderGroup[];
+  geometry: ArrayBuffer;      // packed binary (binary stays binary)
+  boneNames: string[];        // XFNM transform/bone name table
+  sktmNames: string[];        // inner SKTM skeleton-template path strings
+  weightsTruncated: number;   // count of vertices where >4 influences were truncated
+  needsBoneRemap: boolean;    // true when no boneOrder was supplied
+}
+
+/**
+ * Parse a FORM SKMG skeletal mesh.
+ * @param boneOrder  Optional resolved skeleton bone names for XFNM→bone index remap.
+ *                   When empty/omitted, skinIndices use XFNM-local indices (needsBoneRemap=true).
+ */
+export function parseSkeletalMesh(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+  boneOrder?: string[],
+): SkeletalMeshParseResult;
+
+/** One bone in a parsed skeleton. */
+export interface BoneInfo {
+  name: string;
+  parentIndex: number;    // -1 for root
+  preRot: number[];       // [w,x,y,z] on-disk quaternion from RPRE chunk
+  postRot: number[];      // [w,x,y,z] on-disk quaternion from RPST chunk
+  bindPos: number[];      // [x,y,z] pre-translation from BPTR
+  preRotOff: number[];    // [x,y,z] pre-rotation-offset from BPRO
+}
+
+/**
+ * Result of parseSkeleton() — skeleton template .skt (FORM SKTM).
+ * Source: swg-client-v2 BasicSkeletonTemplate.cpp:151-390
+ */
+export interface SkeletonParseResult {
+  formatTag: string;     // 'SKTM'
+  version: string;       // '0001' or '0002'
+  boneNames: string[];   // ordered bone name list (same order as bones[])
+  bones: BoneInfo[];
+}
+
+/**
+ * Parse a FORM SKTM skeleton.
+ * Throws if root is FORM SLOD (not FORM SKTM) — delta #7.
+ */
+export function parseSkeleton(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): SkeletonParseResult;
+
+/** One skeleton reference in a skeletal appearance. */
+export interface SkeletonRef {
+  skeletonPath: string;
+  attachmentTransformName: string;
+}
+
+/**
+ * Result of parseSkeletalAppearance() — skeletal appearance .sat (FORM SMAT).
+ * Source: swg-client-v2 SkeletalAppearanceTemplate.cpp:786-1136
+ */
+export interface SkeletalAppearanceParseResult {
+  formatTag: string;            // 'SMAT'
+  version: string;              // '0001', '0002', or '0003'
+  filename: string;             // INFO string (animGraphTemplateName or filename)
+  meshPaths: string[];          // MSGN mesh generator paths
+  skeletonRefs: SkeletonRef[];  // SKTI (skeletonPath, attachmentTransformName) pairs
+}
+
+/**
+ * Parse a FORM SMAT skeletal appearance.
+ */
+export function parseSkeletalAppearance(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): SkeletalAppearanceParseResult;
+
+/**
+ * Result of parseStaticAppearance() — static appearance redirector .apt (FORM APT).
+ * Source: swg-client-v2 AppearanceTemplateList.cpp:513-540
+ */
+export interface StaticAppearanceParseResult {
+  formatTag: string;      // 'APT'
+  redirectTarget: string; // the single redirect target path (never ends with .apt)
+}
+
+/**
+ * Parse a FORM APT static appearance redirector.
+ * Throws if redirectTarget ends with '.apt' (T-02-08: no multi-level indirection).
+ */
+export function parseStaticAppearance(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): StaticAppearanceParseResult;
