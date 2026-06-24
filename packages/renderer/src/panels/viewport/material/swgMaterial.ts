@@ -271,6 +271,24 @@ function getBlack1x1(): THREE.DataTexture {
   return _black1x1;
 }
 
+// ─── 1×1 cube placeholder (valid samplerCube so uEnvMap is never null) ───────────
+// Cursor cited WebGLUniforms.js:616 (null → emptyCubeTexture substitution); Sonnet warned
+// ANGLE/D3D11 may still drop the draw on an unbound samplerCube. A valid 1×1 cube satisfies
+// both: the uniform is always a complete bound cube. bHasEnv (set per-mesh) gates real sampling.
+let _envCube1x1: THREE.CubeTexture | null = null;
+function getEnvCube1x1(): THREE.CubeTexture {
+  if (!_envCube1x1) {
+    const face = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+    face.needsUpdate = true;
+    _envCube1x1 = new THREE.CubeTexture(
+      [face, face, face, face, face, face] as unknown as HTMLImageElement[],
+    );
+    _envCube1x1.generateMipmaps = false;
+    _envCube1x1.needsUpdate = true;
+  }
+  return _envCube1x1;
+}
+
 // ─── Material factory ─────────────────────────────────────────────────────────
 
 /**
@@ -319,7 +337,7 @@ export function buildSwgMaterial(opts: SwgMaterialOptions): THREE.ShaderMaterial
       uNormalMap:    { value: getWhite1x1() }, // neutral normal (0.5,0.5,1.0 in RGB) = (0,0,1) after decode
       uSpecularMap:  { value: getBlack1x1() },
       uEmissiveMap:  { value: getBlack1x1() },
-      uEnvMap:       { value: null },          // wired from ENVM cube bytes or scene.environment in mesh view
+      uEnvMap:       { value: getEnvCube1x1() }, // valid 1×1 cube default (never null); real cube wired in mesh view
 
       // Customization — pathway A (distinct from C)
       uMaterialColor: { value: new THREE.Vector4(1, 1, 1, 1) },

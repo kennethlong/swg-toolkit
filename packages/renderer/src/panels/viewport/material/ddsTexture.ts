@@ -220,22 +220,27 @@ function buildCubeTexture(
     // THREE.CompressedCubeTexture: constructor(images, format, type?)
     // images = array of 6 { data, width, height } for base mip (Three.js handles the rest)
     // Use the first mip of each face as the images array.
-    const images = facesMipmaps.map(faceMips => ({
-      data: faceMips[0]?.data ?? new Uint8Array(0),
+    // Three.js r0.184 reads cubeImage[i].mipmaps per face (WebGLTextures.js:1461) and uploads
+    // every compressed level via compressedTexImage2D. Passing flat base-mip stubs (no .mipmaps)
+    // uploads NO texels → incomplete cube → textureCube() blacks the whole fragment.
+    // Cross-AI verified: Cursor cited THREE source; Opus byte-verified the per-face mip slicing.
+    const faces = facesMipmaps.map(faceMips => ({
+      mipmaps: faceMips,
       width:  dds.width,
       height: dds.height,
+      format: glFormat,
     }));
 
-    // CompressedCubeTexture takes the same constructor as CompressedTexture but
-    // uses CubeReflectionMapping automatically.
-    // Three.js r184: new THREE.CompressedCubeTexture(images, format, type)
-    // images is the 6-face array, format is the S3TC enum.
     const cubeTexture = new THREE.CompressedCubeTexture(
-      images as THREE.CompressedTextureMipmap[],
+      faces as unknown as THREE.CompressedTextureMipmap[],
       glFormat,
     );
     cubeTexture.minFilter = mipCount > 1 ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
     cubeTexture.magFilter = THREE.LinearFilter;
+    cubeTexture.wrapS = THREE.ClampToEdgeWrapping;
+    cubeTexture.wrapT = THREE.ClampToEdgeWrapping;
+    cubeTexture.colorSpace = THREE.NoColorSpace;
+    cubeTexture.generateMipmaps = false;
     cubeTexture.needsUpdate = true;
 
     return { texture: cubeTexture, cpuDecoded: false, formatLabel };
@@ -273,17 +278,15 @@ function buildCubeTexture(
     faceDataTextures.push(faceTex);
   }
 
-  // Build CubeTexture from the 6 decoded images
-  const cubeTexture = new THREE.CubeTexture(
-    faceDataTextures.map(t => {
-      // CubeTexture.images expects HTMLImageElement-like objects or ImageData.
-      // We pass the DataTexture itself and let Three.js handle it internally.
-      // Source image must have .image property or be an Image-like — use the source.
-      const img = (t as unknown as { image: ImageData }).image;
-      return img;
-    }),
-  );
+  // Pass DataTexture objects DIRECTLY — Three.js r0.184 detects data cubes via
+  // image[0].isDataTexture (WebGLTextures.js:1418) and uploads each face's .image.
+  // Unwrapping to a plain {data,width,height} breaks that detection → broken upload → black.
+  // (Cross-AI verified vs THREE source.)
+  const cubeTexture = new THREE.CubeTexture(faceDataTextures as unknown as HTMLImageElement[]);
   cubeTexture.format = THREE.RGBAFormat;
+  cubeTexture.minFilter = THREE.LinearFilter;
+  cubeTexture.magFilter = THREE.LinearFilter;
+  cubeTexture.generateMipmaps = false;
   cubeTexture.needsUpdate = true;
 
   return { texture: cubeTexture, cpuDecoded: true, formatLabel };
