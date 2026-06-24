@@ -89,3 +89,34 @@ marshalling volume, not byte reading.
   - Available on async-mounted handles (pre-built off-thread)
   - Perf gate: 100k entries in <500ms synchronous path (async path is near-instant)
 - Total: 135 tests passing (was 129).
+
+---
+
+## Correction (2026-06-24) — Renderer bottleneck was the unvirtualized VfsTree, not the bridge
+
+After the columnar bridge fix, measurement showed the native layer was already fast
+(~835ms total for `mountSearchableAsync` + 10ms memcpy for `getMountEntriesColumnar`).
+The **dominant cost after the bridge fix** was `VfsTree.tsx` rendering ALL 244,379 entries
+unvirtualized: `entries.map((entry) => <VfsRow .../>)` at line 68 (pre-fix) mounted every
+entry into the DOM (~244k React components, >1M DOM nodes) regardless of viewport height.
+The columnar binding change helped bridge overhead but was not the dominant remaining cost.
+
+### Fix applied (2026-06-24)
+
+`packages/renderer/src/panels/tre/VfsTree.tsx` was fully virtualized to mirror the
+existing `HexInspector` pattern:
+
+- **Mechanism**: ResizeObserver + `scrollTop` state + fixed `ROW_HEIGHT = 30px`
+  (= `--space-2` × 2 + text-sm line-height) + inner spacer at full `entries.length × ROW_HEIGHT`
+  height so the scrollbar is correct; only rows in `[firstVisible − OVERSCAN, firstVisible +
+  visibleCount + OVERSCAN]` are rendered with top/bottom padding spacers.
+- **Selected-row detail**: Moved OUTSIDE the virtualized list into a fixed panel pinned below
+  the scroll container. This keeps all list rows at uniform `ROW_HEIGHT` (no variable-height
+  inline expansion to special-case in the windowing math).
+- **Archive O(n) find eliminated**: `useMemo` builds a `Map<archivePath, MountedArchive>`
+  once per `archives` change; each row receives a pre-resolved `isEncrypted: boolean`
+  instead of doing `archives.find(...)` per row.
+- Typecheck clean (`npx tsc --noEmit` on `packages/renderer`). All 139 tests pass (unchanged).
+
+**Status**: DONE — both the bridge marshalling bottleneck (#1/#2) and the renderer
+bottleneck (unvirtualized VfsTree) are now resolved.
