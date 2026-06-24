@@ -39,6 +39,13 @@ Thumbs.db
 # Large archives
 *.tgz
 
-# Real TRE archives (local SWG install copies — never committed, see D-10)
+# Real SWG asset fixtures (local client extracts — never committed; synthetic fixtures are tracked)
+# TRE archives
 packages/harness/fixtures-real/*.tre
 packages/harness/fixtures-real/*.TRE
+# Real geometry / texture / shader assets extracted from client TREs (not synthetic)
+packages/harness/fixtures-real/mesh/*.msh
+packages/harness/fixtures-real/mesh/*.lmg
+packages/harness/fixtures-real/texture/*.dds
+packages/harness/fixtures-real/shader/*.sht
+packages/harness/fixtures-real/shader/*.cshd

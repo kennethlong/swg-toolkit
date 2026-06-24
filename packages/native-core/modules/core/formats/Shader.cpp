@@ -47,13 +47,15 @@ struct ShtChunkView {
         if (!canRead(1)) throw FormatParseError("ShtChunkView: unexpected end");
         return data[pos++];
     }
-    // Big-endian uint32 (IFF tag encoding)
-    uint32_t readU32BE() {
+    // Little-endian uint32 — IFF DATA payload Tags are raw LE uint32 on disk
+    // (insertChunkData(tag) = raw memcpy on LE Windows; read_uint32() = raw memcpy back).
+    // Source: sharedFile/Iff.h insertChunkData + read_uint32 (both are raw memcpy, LE byte order).
+    // CONTRAST: IFF structural tags (FORM/chunk headers) go through htonl/ntohl — BUT DATA
+    // payload Tags written by insertChunkData(TAG_MAIN) are stored LE on Windows.
+    uint32_t readU32LE() {
         if (!canRead(4)) throw FormatParseError("ShtChunkView: unexpected end");
-        uint32_t v = (static_cast<uint32_t>(data[pos+0]) << 24) |
-                     (static_cast<uint32_t>(data[pos+1]) << 16) |
-                     (static_cast<uint32_t>(data[pos+2]) <<  8) |
-                     (static_cast<uint32_t>(data[pos+3])      );
+        uint32_t v;
+        std::memcpy(&v, data + pos, 4);
         pos += 4;
         return v;
     }
@@ -130,11 +132,11 @@ static bool parseTxmSlot(
     if (isV0000) {
         // v0000: bool8 placeholder, uint32 tag
         placeholder = (dataCv.readU8() != 0);
-        uint32_t tag = dataCv.readU32BE();
+        uint32_t tag = dataCv.readU32LE();
         slotTag = tagToString(tag);
     } else {
         // v0001 / v0002: uint32 tag, bool8 placeholder, sampler state...
-        uint32_t tag = dataCv.readU32BE();
+        uint32_t tag = dataCv.readU32LE();
         slotTag = tagToString(tag);
         placeholder = (dataCv.readU8() != 0);
     }
