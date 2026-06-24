@@ -19,6 +19,7 @@ import { useViewportStore } from '../state/viewportStore.js';
 import Viewport from './viewport/Viewport.js';
 import LodPicker from './viewport/LodPicker.js';
 import AppearancePanel from './viewport/AppearancePanel.js';
+import { MissingDepsOverlay } from './viewport/Viewport.js';
 import type { FrameStats } from './viewport/Viewport.js';
 
 type RenderMode = 'solid' | 'wire' | 'textured';
@@ -153,6 +154,9 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
           <Viewport onStats={handleStatsWithFps} />
         </div>
       )}
+
+      {/* Missing-deps warning overlay (⚠ banner per D-04) */}
+      {isDone && <MissingDepsOverlay />}
 
       {/* Top-left: render mode chips */}
       <div

@@ -16,7 +16,7 @@
  *         + 02-UI-SPEC.md Surface 1 (Canvas chrome, empty/loading/error states, 'binary' badge)
  */
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import { useViewportStore } from '../../state/viewportStore.js';
@@ -54,13 +54,66 @@ function StatsCollector({
   return null;
 }
 
+// ─── Invalidate-on-load helper (inside Canvas) ──────────────────────────────
+// OPTIONAL fix: after async loadComplete swaps state in demand mode, trigger a repaint.
+function LoadInvalidator(): null {
+  const { invalidate } = useThree();
+  const { loadStatus } = useViewportStore();
+
+  useEffect(() => {
+    if (loadStatus.kind === 'done') {
+      // Schedule a repaint so the new geometry is visible in frameloop="demand".
+      invalidate();
+    }
+  }, [loadStatus, invalidate]);
+
+  return null;
+}
+
+// ─── Missing-deps warning (inside Canvas / rendered as HTML overlay outside) ─
+// Exported so ViewportPanel can render it in the overlay layer.
+export function MissingDepsOverlay(): React.ReactElement | null {
+  const { resolution } = useViewportStore();
+  const missing = resolution?.missing ?? [];
+  if (missing.length === 0) return null;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 32,
+        left: 8,
+        background: 'rgba(180, 120, 0, 0.15)',
+        border: '1px solid rgba(180, 120, 0, 0.5)',
+        borderRadius: 4,
+        padding: '4px 8px',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--text-xs)',
+        color: 'rgba(255, 190, 0, 0.9)',
+        zIndex: 3,
+        pointerEvents: 'none',
+        maxWidth: 320,
+      }}
+    >
+      ⚠ {missing.length} missing dep{missing.length > 1 ? 's' : ''}: {missing.slice(0, 3).join(', ')}{missing.length > 3 ? ` +${missing.length - 3} more` : ''}
+    </div>
+  );
+}
+
 // ─── Scene content (inside Canvas) ───────────────────────────────────────────
 
 function SceneContent(): React.ReactElement {
-  const { isSkinned, parsedMesh, parsedSkeleton, renderMode, resolution } = useViewportStore();
+  const { isSkinned, parsedMesh, parsedSkeleton, renderMode, resolution, selectedLod } = useViewportStore();
 
-  // Obtain geometry from resolution result
-  const geometryBuffer = resolution?.meshes[0]?.geometry ?? null;
+  // TERTIARY fix: index by selectedLod instead of always using meshes[0].
+  // The resolver returns meshes[] where each index corresponds to a LOD level
+  // (or for non-LOD assets, meshes[0] is the single mesh).
+  // Render the mesh at the selected LOD if available; fall back to index 0.
+  const lodMesh = resolution?.meshes[selectedLod] ?? resolution?.meshes[0] ?? null;
+  const geometryBuffer = lodMesh?.geometry ?? null;
+
+  // For multi-PSDT / non-null mesh: parsedMesh carries the shaderGroups.
+  // lodMesh.parseResult is the actual per-LOD MeshParseResult.
+  const activeMesh = lodMesh?.parseResult ?? parsedMesh;
 
   return (
     <>
@@ -91,23 +144,26 @@ function SceneContent(): React.ReactElement {
         makeDefault
       />
 
-      {/* Mesh render */}
-      {parsedMesh && geometryBuffer && (
+      {/* Mesh render — use lodMesh.parseResult for the selected LOD */}
+      {activeMesh && geometryBuffer && (
         isSkinned ? (
           <SkinnedMeshView
-            parsedMesh={parsedMesh}
+            parsedMesh={activeMesh}
             geometry={geometryBuffer}
             parsedSkeleton={parsedSkeleton}
             renderMode={renderMode}
           />
         ) : (
           <StaticMeshView
-            parsedMesh={parsedMesh}
+            parsedMesh={activeMesh}
             geometry={geometryBuffer}
             renderMode={renderMode}
           />
         )
       )}
+
+      {/* Repaint trigger for demand frameloop after async loadComplete */}
+      <LoadInvalidator />
     </>
   );
 }
