@@ -26,6 +26,7 @@ set(CORE_SOURCES
     formats/Skeleton.cpp
     formats/SkeletalAppearance.cpp
     formats/StaticAppearance.cpp
+    formats/DetailAppearance.cpp
 )
 
 # ── Vendored zlib 1.2.3 (static) ───────────────────────────────────────────────
