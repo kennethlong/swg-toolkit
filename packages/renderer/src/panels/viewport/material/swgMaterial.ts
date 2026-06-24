@@ -166,7 +166,9 @@ ${hasDot3Tangents ? `
   // ─── Diffuse ───────────────────────────────────────────────────────────────
   vec4 diffuseSample = texture2D(uDiffuseMap, vUv);
   vec3 diffuse = diffuseSample.rgb;
-  float alpha  = diffuseSample.a;
+  // NOTE: on SWG shader families (aes17/as8/...) the diffuse alpha is a SPECULAR/gloss
+  // mask, NOT opacity. Meshes are opaque by default; true transparency/cutout comes from
+  // the .eft effect (not parsed yet). Do NOT drive fragment alpha from diffuseSample.a.
 
   // Pathway A (palette-material-color): distinct material color tint
   vec3 base = diffuse * uMaterialColor.rgb;
@@ -200,7 +202,8 @@ ${hasDot3Tangents ? `
     finalColor += envSample * 0.15; // subtle env contribution
   }
 
-  gl_FragColor = vec4(finalColor, alpha * uMaterialColor.a * uTexFactor.a);
+  // Opaque output (alpha=1). SWG opacity/cutout is an .eft concern, tracked separately.
+  gl_FragColor = vec4(finalColor, 1.0);
 }
 `.trimStart();
 }
@@ -287,7 +290,9 @@ export function buildSwgMaterial(opts: SwgMaterialOptions): THREE.ShaderMaterial
     },
     // DO NOT set `skinning` — removed in r140.
     // Skinning auto-enables from attributes + Skeleton.
-    transparent: true,
+    // Opaque by default: SWG meshes are opaque; diffuse alpha is a spec mask, not opacity.
+    // Per-shader alpha-test/blend (from .eft) tracked in viewport-shader-blend-mode.md.
+    transparent: false,
     side: THREE.FrontSide,
     // Do NOT set glslVersion — Three.js automatically upgrades to GLSL3/300 es in WebGL2
     // (WebGLProgram.js:803-830) and adds #define aliases for texture2D/textureCube.
