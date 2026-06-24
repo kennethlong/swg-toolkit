@@ -485,6 +485,48 @@ LOD levels are **not** embedded inside `.msh` or `.mgn` bytes. They use two comp
 
 The client caps usable levels at `min(4, level_count)`. The appearance resolver must follow `.lmg` → generator paths: each path resolves via `TreeFile` to the actual mesh file for that LOD level. The `.ldt` distance table drives camera-distance selection. **D-02 ("user-selectable LODs") depends on parsing both files** — the resolver cannot find LOD levels by inspecting mesh bytes alone.
 
+### `.lod` Detail LOD Appearance — `FORM DTLA` (v0001–v0008)
+
+**Ground-truth verified** — `swg-client-v2 DetailAppearanceTemplate.cpp:556-658` (load()) + `:343-417` (loadEntries()), plus real `wb_02_09e_00000000000000000000.lod` (362 bytes, extracted from `infinity_custom_01.tre`, 2026-06-24).
+
+This is the **dominant static-object LOD path** in SWG. Almost every placed world object chains: `.apt` → `.lod` → `{meshes}`. Unlike MLOD (which just lists mesh paths without distances), DTLA stores LOD levels WITH their near/far distances in the same file.
+
+```
+FORM DTLA
+  FORM <version>                            // version tag '0001'..'0008'
+    [version >= 4] FORM APPR ...            // AppearanceTemplate (extents/hardpoints/floor)
+                                            // Skip cleanly — not needed for viewport rendering
+    [version >= 6] CHUNK PIVT { uint8 lodFlags }
+                                            // bit 0 = usePivotPoint
+                                            // bit 1 (version >= 8) = disableLodCrossFade
+    CHUNK INFO { (int32 id, float32 near, float32 far) × N }
+                                            // N = chunkLen / 12; one entry per LOD level
+    FORM DATA
+      CHUNK CHLD { int32 id, char name[]+NUL } × N
+                                            // one CHLD per LOD level; name is relative to appearance/
+    [version >= 7] FORM RADR { CHUNK INFO(int32 hasShape) [+IndexedTriList] }  // skip (collision)
+    [version >= 2] FORM TEST { CHUNK INFO(int32 hasShape) [+IndexedTriList] }  // skip (collision)
+    [version >= 2] FORM WRIT { CHUNK INFO(int32 hasShape) [+IndexedTriList] }  // skip (collision)
+```
+
+**Verified real file layout** (`wb_02_09e_00000000000000000000.lod`, version 0007, 362 bytes):
+- FORM APPR at byteOffset=24 (len=165), PIVT at byteOffset=197 (lodFlags=0x00)
+- INFO at byteOffset=206 (len=12): 1 entry — id=0, near=0.0, far=1000.0
+- FORM DATA at byteOffset=226 → CHLD at byteOffset=238 (len=44): id=0, name=`mesh/wb_02_09e_00000000000000000000.msh`
+- FORM RADR/TEST/WRIT follow at byteOffset=290/314/338 (each 16 bytes, hasShape=0)
+
+**Child path resolution** (critical): the raw `name` from each CHLD chunk is **relative to the `appearance/` tree**. The client uses `FileName(P_appearance, name)` (source: `:378`), which prepends the appearance search path. The resolver **MUST prepend `"appearance/"` to each `childPath`** before resolving in the VFS.
+
+Example: CHLD name `mesh/wb_02_09e_..._.msh` → VFS path `appearance/mesh/wb_02_09e_..._.msh`
+
+**LOD level join**: INFO entries and CHLD entries are separate; they share an `id` field. Join them by id to produce `{ id, near, far, childPath }` per level. After loading the client sorts levels by `farDistance` descending (`DetailAppearanceTemplate.cpp:636`).
+
+**Child types**: CHLD names can be `.msh`, `.mgn`, `.apt`, or nested `.lod`. Feed them back through the existing resolver dispatch by extension.
+
+**APT chain**: The dominant path is `.apt` → FORM APT → NAME chunk → `lod/foo.lod` → FORM DTLA. The resolver's APT dispatch branch handles this natively; `.lod` is NOT an "unknown redirect extension".
+
+**CORE-05 round-trip**: `parseIff(bytes) → serializeIff(result, bytes)` must be byte-exact for any `.lod` file. Verified on the real 362-byte asset — passes byte-exact.
+
 ---
 
 ## Palette Customization (`.pal`)
