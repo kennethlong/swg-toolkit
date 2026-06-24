@@ -263,3 +263,64 @@ Commits verified:
 
 Test suite: 122/122 passing (pnpm vitest run from root)
 TypeScript: 0 errors (npx tsc --noEmit in packages/renderer)
+
+---
+
+## Gap Fix: .lod (DTLA) support
+
+**Date:** 2026-06-24
+**Commits:** 3ac70f6, 2d7d2c7, f28d2c5, d794931, 5114dc3
+
+### What Was Missing
+
+The `.apt → .lod → {meshes}` redirect chain — the dominant path for static world objects —
+was silently falling through to `[unknown-apt-redirect-ext]` in the resolver because no
+DTLA parser existed. The MLOD/LDTB pair (`.lmg` + `.ldt`) handles skinned characters; DTLA
+(`.lod`) handles placed static objects like buildings, vehicles, and props.
+
+### What Was Built
+
+**Task 1 — Native parser** (`DetailAppearance.h/cpp`):
+- `parseDetailAppearance(iffRoot, srcData, srcSize)` → `{ formatTag, versionTag, lodFlags, levels[{id,near,far,childPath}] }`
+- Handles versions 1–8: skips APPR (ver≥4), reads PIVT lodFlags uint8 (ver≥6), joins INFO
+  (id/near/far×N, chunkLen/12) with DATA/CHLD (id/name×N) by id, skips RADR/TEST/WRIT cleanly
+- Sorts levels by farDistance descending (mirrors client `std::sort(childSorter)`)
+- childPath is the raw CHLD name (e.g. `mesh/foo.msh`); caller must prepend `"appearance/"`
+- Source: `DetailAppearanceTemplate.cpp:556-658` (load) + `:343-417` (loadEntries)
+- **Verified 2026-06-24** against `wb_02_09e_00000000000000000000.lod` (362 bytes, version 0007)
+
+**Task 2 — N-API binding** (`mesh_binding.cpp` + `addon.cpp` + `index.d.ts`):
+- `ParseDetailAppearance()` binding; `parseDetailAppearance` export registered
+- `DetailAppearanceParseResult` / `DetailAppearanceLevel` typed in `index.d.ts`
+- Same pattern as `parseMeshLod` (Decision D-02)
+
+**Task 3 — CORE-05 harness** (`mesh-roundtrip.test.ts` + `.gitignore`):
+- 4 new tests: IFF round-trip gate (real 362-byte file, byte-exact), parseDetailAppearance struct
+  validation (formatTag=DTLA, versionTag=0007, 1 level, near=0, far=1000, childPath correct),
+  childPath raw-name assertion, synthetic multi-level DTLA v0001 IFF round-trip
+- `registerFormat('appearance-dtla')` in `beforeAll` for CORE-05 registry sweep
+- `.gitignore`: added rules for `lod/*.lod`, `appearance/*.apt/sat`, `skeleton/*.skt`, `mesh/*.mgn`
+- **CORE-05 gate: PASSED** — real file round-trips byte-exact; 134 tests passing (was 130)
+
+**Task 4 — Resolver wiring** (`appearanceResolver.ts`):
+- `resolveDetailAppearanceLod()` helper: parses DTLA, prepends `"appearance/"` to childPath,
+  dispatches each child by extension (.msh/.mgn via existing resolvers; nested .apt/.lod
+  recorded in missing[] per D-04); populates `lodLevels` with real near/far from INFO
+- APT dispatch: `redirectExt === 'lod'` branch added before `[unknown-apt-redirect-ext]` fallthrough
+- Leaf `.lod` dispatch: direct open of a `.lod` file routes through `resolveDetailAppearanceLod`
+- `parseDetailAppearance` binding added to nativeCore type shape
+
+**Task 5 — Docs** (`docs/02-formats/meshes-and-appearances.md`):
+- Added `### .lod Detail LOD Appearance — FORM DTLA (v0001–v0008)` section after MLOD section
+- Verified byte layout with chunk offsets from real file; child path rule cited; APT chain noted
+- Citation: `DetailAppearanceTemplate.cpp:556-658` + `:343-417`
+- "AI-proposed" caveat dropped: format is ground-truth-verified against real source + real bytes
+
+### CORE-05 Round-Trip Result: BYTE-EXACT
+
+`parseIff(wb_02_09e_*.lod) → serializeIff(result, bytes)` produces 362 bytes, byte-for-byte identical to the original. Verified by `assertIffRoundTrip()` in the test harness.
+
+Real file parse result confirmed:
+- `formatTag: "DTLA"`, `versionTag: "0007"`, `lodFlags: 0`
+- 1 level: `id=0, near=0.0, far=1000.0, childPath="mesh/wb_02_09e_00000000000000000000.msh"`
+- VFS path after resolver prepend: `"appearance/mesh/wb_02_09e_00000000000000000000.msh"`
