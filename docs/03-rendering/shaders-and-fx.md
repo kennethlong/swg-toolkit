@@ -953,7 +953,7 @@ Confirmed from `StaticShaderTemplate.cpp:32-36` + `shader_effects.py:28-53`:
 | `CNRM` | Compressed normal (DOT3) | DXT5 or DXT1 | Equivalent to `NRML` in DOT3-era shaders |
 | `SPEC` | Specular intensity | DXT1 or A8R8G8B8 | Present in `a_specmap.eft` family |
 | `EMIS` | Emissive / glow | DXT5 | Present in emismap/specmap_emis effects |
-| `ENVM` | Environment / cube map | Cube DDS | **Always `placeholder=true`** — set globally via `Graphics::setGlobalTexture(TAG_ENVM, ...)`, never per-object |
+| `ENVM` | Environment / cube map | Cube DDS | **`placeholder=true` in client** (`StaticShaderTemplate.cpp:load_texture_0000`): the NAME chunk is written for the asset (e.g. `texture/env_theed.dds`, a 128×128 DXT3 cube map) but the client ignores it at runtime and uses the global environment set via `Graphics::setGlobalTexture(TAG_ENVM, ...)`. **Toolkit fix (gap-closure 02-03):** always read the NAME chunk for ENVM — `texturePath` will be the per-shader cube-map DDS path that was historically skipped. Use it to build a `THREE.CompressedCubeTexture` per material instead of relying on `scene.environment`. |
 | `MASK` | Environment / AO mask | DXT1 | |
 | `DOT3` | Tangent coord set index | N/A | Coordinate set, not a texture |
 
@@ -1082,4 +1082,52 @@ void main() {
 
 Set `material.skinning = true` (Three.js r152+; in newer Three.js this is automatic for `SkinnedMesh`). The bone-matrix texture (`boneTexture` uniform) coexists with customization uniforms with no conflict.
 
-**`ENVM` global cubemap:** SWG sets one scene-global environment texture via `ShaderPrimitiveSorter`. In Three.js, drive it from `scene.environment` (PMREMGenerator output) and bind as `uEnvMap` across all SWG materials globally.
+**`ENVM` per-shader cube map (gap-closure 02-03, verified):**
+The SWG client sets a global environment texture via `ShaderPrimitiveSorter`, but each `.sht` that participates in env-mapped specular carries its own `ENVM` NAME chunk pointing at the cube-map DDS (e.g. `texture/env_theed.dds`). In the toolkit:
+
+1. `Shader.cpp` always reads the NAME chunk for the ENVM slot (Bug 1 fix) → `ShaderParseResult.slots[ENVM].texturePath = "texture/env_theed.dds"`.
+2. The resolver fetches the DDS bytes into `slotBytes[ENVM]`.
+3. `buildDdsTexture` detects `isCubemap=true` (DDS `dwCaps2 & 0x200 = DDSCAPS2_CUBEMAP`) and returns a `THREE.CompressedCubeTexture` from the 6 DXT3 face images (face-major order: +X, -X, +Y, -Y, +Z, -Z).
+4. The mesh view wires this cube texture into `mat.uniforms.uEnvMap`.
+
+The GLSL fragment shader multiplies the cubemap reflection by a spec mask (`SPEC.r` if present, else `MAIN.alpha`) — this is the source of the metallic/relief appearance on droids and ships (Bug 3 fix).
+
+**Effect path (gap-closure 02-03, verified):**
+Each `.sht` ends with either a `NAME` chunk (cstring path to the `.eft` effect file) or an inline `FORM EFCT`. The client reads this in `StaticShaderTemplate.cpp::load_0001` (effect first) or `::load_0000` (effect last). The toolkit's `Shader.cpp` now scans versionForm children for this NAME/EFCT (Bug 2 fix) → `ShaderParseResult.effectPath = "effect/a_envmask_specmap.eft"`. The resolver then fetches and parses the `.eft` to obtain the sampler role map and blend state used to drive `material.transparent`, `alphaTest`, and `depthWrite`.
+
+### EFCT (.eft) — Shader Effect Format
+
+A `.eft` file is `FORM EFCT` containing version-dispatch children (`FORM 0000` or `FORM 0001`). Each version child holds one or more `FORM IMPL` (implementation tier) entries, each containing `FORM PASS` → `FORM PPSH` → `FORM PTXM` (per-texture-map sampler binding). The best implementation is selected at load time by `ShaderCapability`.
+
+**Verified layout (gap-closure 02-03; source: `swg-client-v2 ShaderEffect.cpp:86-179 + ShaderImplementation.cpp:1692-1738`):**
+
+```
+FORM EFCT
+  FORM 0000 | 0001       (version)
+    FORM IMPL ×N         (implementation tiers; N typically 1–3)
+      CHUNK SCAP         (shader capability level — int32 BE; higher = better)
+      CHUNK OPTN         (option string, optional)
+      FORM PASS ×M
+        FORM PPSH ×1     (pixel-shader pass)
+          FORM 0001
+            CHUNK DATA   { uint8 nSamplers, cstring pshPath }
+            FORM PTXM ×nSamplers
+              FORM 0002
+                CHUNK DATA { int8 textureIndex, uint32LE textureTag }
+        CHUNK DATA       (56-byte blend state)
+          Offset  Size  Field
+          0       1     alphaBlendEnable (bool)
+          1       1     blendOperation   (int8, NONE=0, ADD=4, SUBTRACT=5, REVSUBTRACT=6)
+          2       1     blendSrc         (int8)
+          3       1     blendDst         (int8)
+          [skip 44 bytes — material params, unused here]
+          48      1     alphaTestEnable  (bool)
+          49      1     alphaTestFunc    (int8)
+          50      1     alphaTestRef     (uint8)
+          51      1     zWrite           (bool)
+          [skip 4 bytes]
+```
+
+**PTXM tag byte order:** `textureTag` is `uint32LE` (raw memcpy from `iff.read_uint32()` on a LE system). The canonical BE 4-char tag `MAIN` = `0x4D41494E`; stored on disk as bytes `4E 49 41 4D`; read as LE uint32 `0x4D41494E`. Parse high-byte-first to get the ASCII tag string.
+
+**Best IMPL selection:** `bestImplIndex` = index of the IMPL with the highest `maxSCAP` value that has at least one sampler. This matches `ShaderCapability::meetsRequirements` at load time.

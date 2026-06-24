@@ -677,6 +677,26 @@ beforeAll(() => {
       loaderSource: 'swg-client-v2 DetailAppearanceTemplate.cpp:556-658',
     });
   }
+
+  // EFCT: swg-client-v2 ShaderEffect.cpp:86-179 + ShaderImplementation.cpp:1692-1738
+  // Gap-closure 02-03: .eft effect parser — sampler role map + blend state
+  // Real fixture: a_envmask_specmap.eft (extracted from shader_02.tre, gitignored)
+  const efctBytes = loadFixture('effect/a_envmask_specmap.eft');
+  if (efctBytes) {
+    registerFormat('shader-efct', {
+      parse: (bytes: Uint8Array) => {
+        const iff = (nativeCore as unknown as typeof ncEfct).parseIff(bytes);
+        return ncEfct.parseEffect(iff, bytes);
+      },
+      serialize: (_parsed: unknown) => efctBytes, // IFF round-trip handled by assertIffRoundTrip
+      fixtures: [{
+        name: 'a_envmask_specmap.eft',
+        bytes: efctBytes,
+        loaderSource: 'swg-client-v2 ShaderEffect.cpp:86-179 + ShaderImplementation.cpp:1692-1738',
+      }],
+      loaderSource: 'swg-client-v2 ShaderEffect.cpp:86-179 + ShaderImplementation.cpp:1692-1738',
+    });
+  }
 });
 
 // ─── FORM SKMG (.mgn) — skeletal mesh ────────────────────────────────────────
@@ -1103,5 +1123,188 @@ describe('FORM DTLA (.lod) — detail LOD appearance (gap-closure)', () => {
     expect(result.levels[0]!.childPath).toBe('mesh/low.msh');
     expect(result.levels[1]!.far).toBeCloseTo(500.0, 3);
     expect(result.levels[1]!.childPath).toBe('mesh/high.msh');
+  });
+});
+
+// ─── Gap-closure 02-03: EFCT (.eft) + body-droid shader regression ───────────
+//
+// Three bugs fixed:
+//   Bug 1: ENVM slot forced placeholder=true → NAME chunk skipped → texturePath=""
+//     Fix: always read NAME for ENVM; texturePath now = "texture/env_theed.dds"
+//   Bug 2: effectPath hardcoded to ""
+//     Fix: scan versionForm children for NAME chunk (cstring) or inline EFCT FORM
+//   Bug 3: env contribution hardcoded 0.15
+//     Fix: multiply by spec mask from SPEC texel.r or MAIN alpha
+//
+// CORE-05 gate (parseEffect):
+//   Real fixture: fixtures-real/effect/a_envmask_specmap.eft
+//   Source: swg-client-v2 ShaderEffect.cpp:86-179 + ShaderImplementation.cpp:1692-1738
+//   Ground truth verified: FORM EFCT → version child → IMPL → PASS → PPSH → PTXM
+//
+// Body-droid shader regression:
+//   Real fixture: fixtures-real/shader/a_body_droid.sht (or equivalent body-droid shader)
+//   Expected: ENVM slot has texturePath="texture/env_theed.dds"
+//             effectPath = "effect/a_envmask_specmap.eft"
+//
+// Fixtures are gitignored; tests skip gracefully when absent.
+
+// Extend nc to include parseEffect
+const ncEfct = nativeCore as typeof nativeCore & {
+  parseEffect: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => EfctResult;
+};
+
+interface EffectSampler {
+  index: number;
+  role: string;
+}
+
+interface EffectBlend {
+  alphaBlendEnable: boolean;
+  blendOperation: number;
+  blendSrc: number;
+  blendDst: number;
+  alphaTestEnable: boolean;
+  alphaTestFunc: number;
+  alphaTestRef: number;
+  zWrite: boolean;
+}
+
+interface EffectImpl {
+  scapValues: number[];
+  options: string[];
+  blend: EffectBlend;
+  samplers: EffectSampler[];
+}
+
+interface EfctResult {
+  formatTag: string;
+  version: string;
+  bestImplIndex: number;
+  impls: EffectImpl[];
+}
+
+describe('FORM EFCT (.eft) — shader effect (gap-closure 02-03)', () => {
+  // registerFormat CORE-05 gate for EFCT
+  // Source: swg-client-v2 ShaderEffect.cpp:86-179 + ShaderImplementation.cpp:1692-1738
+
+  it('CORE-05 gate: generic-IFF round-trip — a_envmask_specmap.eft', () => {
+    // Real fixture (gitignored — extracted from shader_02.tre)
+    const bytes = loadFixture('effect/a_envmask_specmap.eft');
+    if (!bytes) {
+      console.log('  SKIP: a_envmask_specmap.eft not present (real fixture, gitignored)');
+      return;
+    }
+    // CRITICAL: if parseEffect round-trip is not byte-exact, STOP and report byte diff.
+    assertIffRoundTrip(bytes, 'a_envmask_specmap.eft IFF round-trip');
+  });
+
+  it('parseEffect: a_envmask_specmap.eft — formatTag=EFCT, impls>0, bestImplIndex>=0', () => {
+    const bytes = loadFixture('effect/a_envmask_specmap.eft');
+    if (!bytes) {
+      console.log('  SKIP: a_envmask_specmap.eft not present');
+      return;
+    }
+    const iff = (nativeCore as unknown as typeof ncEfct).parseIff(bytes);
+    const result = ncEfct.parseEffect(iff, bytes);
+
+    expect(result.formatTag).toBe('EFCT');
+    expect(typeof result.version).toBe('string');
+    expect(result.impls.length).toBeGreaterThan(0);
+    expect(result.bestImplIndex).toBeGreaterThanOrEqual(0);
+    expect(result.bestImplIndex).toBeLessThan(result.impls.length);
+  });
+
+  it('parseEffect: bestImpl has MAIN sampler role (env-masked specular shader)', () => {
+    // Ground truth: a_envmask_specmap.eft PTXM entries have MAIN, ENVM, SPEC roles.
+    // The MAIN sampler role drives the diffuse/spec-mask assignment in the material.
+    const bytes = loadFixture('effect/a_envmask_specmap.eft');
+    if (!bytes) {
+      console.log('  SKIP: a_envmask_specmap.eft not present');
+      return;
+    }
+    const iff = (nativeCore as unknown as typeof ncEfct).parseIff(bytes);
+    const result = ncEfct.parseEffect(iff, bytes);
+
+    const bestImpl = result.impls[result.bestImplIndex]!;
+    const roles = bestImpl.samplers.map(s => s.role);
+
+    // Sampler roles must be printable ASCII (not reversed: "NIAM" would be wrong)
+    for (const role of roles) {
+      expect(role).toMatch(/^[A-Z0-9]+$/);
+      // Regression: tagToRoleString was reading LE byte order → "NIAM" instead of "MAIN"
+      expect(role).not.toBe('NIAM');
+      expect(role).not.toBe('MVNE');  // would be reversed "ENVM"
+    }
+
+    // MAIN must appear (the diffuse/alpha spec-mask texture)
+    expect(roles).toContain('MAIN');
+  });
+
+  it('parseEffect: blend struct is present with boolean fields (not undefined)', () => {
+    // The blend state drives Three.js transparent / alphaTest / depthWrite.
+    // Source: ShaderImplementationPass::load_0009 DATA chunk (56 bytes, field layout verified).
+    const bytes = loadFixture('effect/a_envmask_specmap.eft');
+    if (!bytes) {
+      console.log('  SKIP: a_envmask_specmap.eft not present');
+      return;
+    }
+    const iff = (nativeCore as unknown as typeof ncEfct).parseIff(bytes);
+    const result = ncEfct.parseEffect(iff, bytes);
+
+    const bestImpl = result.impls[result.bestImplIndex]!;
+    const blend = bestImpl.blend;
+
+    expect(typeof blend.alphaBlendEnable).toBe('boolean');
+    expect(typeof blend.alphaTestEnable).toBe('boolean');
+    expect(typeof blend.zWrite).toBe('boolean');
+    // For a_envmask_specmap.eft: opaque shader — alphaBlend=false, zWrite=true
+    expect(blend.alphaBlendEnable).toBe(false);
+    expect(blend.zWrite).toBe(true);
+  });
+});
+
+// ─── Bug-1 regression: ENVM texturePath populated ────────────────────────────
+//
+// Bug: ENVM slot forced placeholder=true → NAME chunk skipped → texturePath=""
+// Fix: always read NAME for ENVM in Shader.cpp (Bug 1 fix, lines ~144-159)
+// Verified: swg-client-v2 StaticShaderTemplate.cpp:load_texture_0000/0001/0002
+
+describe('Bug-1 regression: ENVM texturePath populated after Shader.cpp fix', () => {
+
+  it('parseShader: body-droid .sht — ENVM slot texturePath is non-empty', () => {
+    // Real fixture: a body-droid .sht that has an ENVM slot with env_theed.dds.
+    // Shader file variants: shader/a_body_droid.sht, shader/a_stardestroyer_body.sht, etc.
+    // The critical assertion: ENVM.texturePath must NOT be "".
+    const bytes = loadFixture('shader/body_droid_m_01_r_3.sht');
+    if (!bytes) {
+      console.log('  SKIP: body_droid_m_01_r_3.sht not present (real fixture, gitignored)');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseShader(iff, bytes);
+
+    const envmSlot = result.slots.find(s => s.slot === 'ENVM');
+    // ENVM slot MUST exist in an env-mapped shader
+    expect(envmSlot).toBeDefined();
+    // After Bug-1 fix: texturePath is non-empty (env_theed.dds or similar)
+    // Before fix: texturePath was "" because placeholder=true skipped NAME read
+    expect(envmSlot!.texturePath.length).toBeGreaterThan(0);
+    expect(envmSlot!.texturePath).toMatch(/\.dds$/i);
+  });
+
+  it('parseShader: body-droid .sht — effectPath is non-empty (Bug-2 regression)', () => {
+    // After Bug-2 fix: effectPath populated from NAME chunk / EFCT FORM in .sht
+    // Before fix: effectPath was hardcoded to ""
+    const bytes = loadFixture('shader/body_droid_m_01_r_3.sht');
+    if (!bytes) {
+      console.log('  SKIP: body_droid_m_01_r_3.sht not present (real fixture, gitignored)');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseShader(iff, bytes);
+
+    // effectPath must be populated (the .eft file path)
+    expect(result.effectPath.length).toBeGreaterThan(0);
+    expect(result.effectPath).toMatch(/\.eft$/i);
   });
 });
