@@ -141,7 +141,11 @@ static bool parseTxmSlot(
         placeholder = (dataCv.readU8() != 0);
     }
 
-    // ENVM tags are always treated as placeholder by the engine
+    // ENVM tags are always treated as placeholder by the engine.
+    // Bug-1 fix: force placeholder=true for ENVM (matching client StaticShaderTemplate.cpp:708-709)
+    // BUT preserve the texturePath read below — the env texture path (e.g. "texture/env_theed.dds")
+    // IS stored in the NAME chunk and IS needed by the renderer to fetch the cube map.
+    // We keep isPlaceholder=true so the client semantics are preserved; we just don't skip the NAME.
     if (slotTag == "ENVM") placeholder = true;
 
     // Find NAME chunk
@@ -153,7 +157,12 @@ static bool parseTxmSlot(
     }
 
     std::string texturePath;
-    if (!placeholder && nameNode) {
+    // Bug-1 fix: for ENVM slots, read the NAME chunk even though placeholder=true.
+    // The env texture path (e.g. "texture/env_theed.dds") must survive into ShaderSlot.texturePath
+    // so the renderer can fetch and build the cube map. For all other placeholder slots, the NAME
+    // chunk is genuinely absent from the file, so the existing guard is correct there.
+    bool readName = (!placeholder && nameNode) || (slotTag == "ENVM" && nameNode);
+    if (readName) {
         auto nameCv = shtChunkPayload(*nameNode, srcData, srcSize);
         texturePath = nameCv.readString();
     }
@@ -225,8 +234,34 @@ ShaderResult parseShader(const swg_core::iff::IffNode& root,
         }
     }
 
-    // effectPath: extracted from EFCT/PIXL block — skip for MVP (empty string)
+    // Bug-2 fix: read effectPath from the NAME chunk (or EFCT FORM) inside the version form.
+    //
+    // Ground truth (ShaderEffectList::fetch in ShaderEffectList.cpp:172-233):
+    //   The method checks iff.getCurrentName():
+    //     TAG_NAME → reads a cstring from the NAME chunk (path to .eft file, e.g. "effect/a_envmask_specmap.eft")
+    //     TAG_EFCT → the effect is inlined as a FORM EFCT (parse the whole thing)
+    //   In SSHT v0000 the effect comes LAST (after all other blocks) per StaticShaderTemplate.cpp:323.
+    //   In SSHT v0001 the effect comes FIRST (before MATS/TXMS) per StaticShaderTemplate.cpp:486.
+    //
+    // Our IFF tree has already parsed all children. Scan the version form's children for:
+    //   (a) a leaf NAME chunk   → read the cstring = effectPath
+    //   (b) a FORM EFCT         → we don't parse it; just record the tag so we know it was inline
+    // We don't need to parse the EFCT itself — the renderer approximates the effect in GLSL.
     result.effectPath = "";
+    for (const auto& child : versionForm->children) {
+        if (!child.isForm && strncmp(child.tag, "NAME", 4) == 0) {
+            // NAME chunk: read the effect path cstring
+            auto cv = shtChunkPayload(child, srcData, srcSize);
+            result.effectPath = cv.readString();
+            break;
+        }
+        if (child.isForm && strncmp(child.subType, "EFCT", 4) == 0) {
+            // Inline EFCT FORM: set a synthetic path token so the renderer knows an effect is present
+            // but we do not need to parse the raw HLSL bytecode inside it for our GLSL approximation.
+            result.effectPath = "effect/__inline.eft";
+            break;
+        }
+    }
 
     // For CSHD, customization vars would be in a CUST block — skip for MVP
     // (CustomizableShaderTemplate.cpp handles that path)
