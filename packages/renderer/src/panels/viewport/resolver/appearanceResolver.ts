@@ -153,6 +153,12 @@ const nativeCore = require('@swg/native-core') as {
     levelCount: number;
     levels: Array<{ path: string }>;
   };
+  parseDetailAppearance: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => {
+    formatTag: string;
+    versionTag: string;
+    lodFlags: number;
+    levels: Array<{ id: number; near: number; far: number; childPath: string }>;
+  };
   parseShader: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => ShaderParseResult;
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -354,6 +360,73 @@ function createPlaceholderShader(effectPath: string): ShaderParseResult {
   };
 }
 
+// ─── Detail LOD appearance resolver (.lod / FORM DTLA) ───────────────────────
+//
+// Called for both APT → .lod redirects AND direct leaf .lod opens.
+// Source: DetailAppearanceTemplate.cpp:556-658 (load()) + :343-417 (loadEntries())
+// Child path rule: name from CHLD is relative to appearance/; prepend "appearance/".
+// Source: DetailAppearanceTemplate.cpp:378 (FileName(P_appearance, name)).
+//
+// Returns { meshes, lodLevels } — same shape as resolveLodMesh for API consistency.
+
+async function resolveDetailAppearanceLod(
+  mountHandle: string,
+  lodPath: string,
+  missing: string[],
+): Promise<{ meshes: (ResolvedMesh | null)[]; lodLevels: LodLevel[] }> {
+  const bytes = await fetchEntry(mountHandle, lodPath, missing);
+  if (!bytes) return { meshes: [null], lodLevels: [] };
+  const iff = parseIffSafe(bytes, lodPath, missing);
+  if (!iff) return { meshes: [null], lodLevels: [] };
+
+  let dtlaData: { levels: Array<{ id: number; near: number; far: number; childPath: string }> };
+  try {
+    dtlaData = nativeCore.parseDetailAppearance(iff, new Uint8Array(bytes));
+  } catch (_e) {
+    missing.push(`[dtla-parse-error] ${lodPath}`);
+    return { meshes: [null], lodLevels: [] };
+  }
+
+  if (dtlaData.levels.length === 0) {
+    missing.push(`[dtla-no-levels] ${lodPath}`);
+    return { meshes: [null], lodLevels: [] };
+  }
+
+  // Build lodLevels with real near/far from DTLA INFO.
+  // Source: DetailAppearanceTemplate.cpp:349-361 (near/far from INFO chunk).
+  const lodLevels: LodLevel[] = dtlaData.levels.map(lv => ({
+    // generatorPath = full VFS path (prepend "appearance/" to raw CHLD name)
+    // Source: DetailAppearanceTemplate.cpp:378 (FileName(P_appearance, name))
+    generatorPath: `appearance/${lv.childPath}`,
+    minDist: lv.near,
+    maxDist: lv.far,
+  }));
+
+  // Resolve all LOD-level meshes. Each child can be .msh, .mgn, or nested .apt/.lod.
+  // We dispatch by extension — feed back through existing resolvers.
+  const meshes: (ResolvedMesh | null)[] = await Promise.all(
+    dtlaData.levels.map(async (lv) => {
+      const childVfsPath = `appearance/${lv.childPath}`;
+      if (isUnsafePath(childVfsPath)) {
+        missing.push(`[unsafe-dtla-child] ${childVfsPath}`);
+        return null;
+      }
+      const childExt = lv.childPath.split('.').pop()?.toLowerCase() ?? '';
+      if (childExt === 'msh') {
+        return resolveMshMesh(mountHandle, childVfsPath, missing);
+      } else if (childExt === 'mgn') {
+        return resolveMgnMesh(mountHandle, childVfsPath, [], missing);
+      } else {
+        // Nested .apt, .lod, or unknown — record in missing[] gracefully (D-04).
+        missing.push(`[dtla-child-unresolved-ext:${childExt}] ${childVfsPath}`);
+        return null;
+      }
+    }),
+  );
+
+  return { meshes, lodLevels };
+}
+
 // ─── LOD resolver ────────────────────────────────────────────────────────────
 
 async function resolveLodMesh(
@@ -538,6 +611,14 @@ export async function resolveAppearance(
     } else if (redirectExt === 'mgn') {
       mesh = await resolveMgnMesh(mountHandle, redirectTarget, [], missing);
       isSkinned = true;
+    } else if (redirectExt === 'lod') {
+      // APT → .lod redirect: parse DTLA, follow children (dominant static-object path).
+      // Source: DetailAppearanceTemplate.cpp:556-658 (load()) + :343-417 (loadEntries()).
+      // Child path prepend rule: DetailAppearanceTemplate.cpp:378 (FileName(P_appearance, name)).
+      const lodResult = await resolveDetailAppearanceLod(mountHandle, redirectTarget, missing);
+      lodLevels = lodResult.lodLevels;
+      mesh = lodResult.meshes[0] ?? null;
+      isSkinned = false;
     } else {
       missing.push(`[unknown-apt-redirect-ext] ${redirectTarget}`);
     }
@@ -551,6 +632,24 @@ export async function resolveAppearance(
       mode: 'composed-static',
       isSkinned,
       lodLevels,
+    };
+  }
+
+  // ─── leaf .lod (FORM DTLA detail LOD appearance) ─────────────────────────
+  // Direct open of a .lod file (not via .apt redirect).
+  // Source: DetailAppearanceTemplate.cpp:556-658 (load()) + :343-417 (loadEntries()).
+  if (ext === 'lod') {
+    const lodResult = await resolveDetailAppearanceLod(mountHandle, entryPath, missing);
+    const mesh = lodResult.meshes[0] ?? null;
+    const materials = await resolveMeshMaterials(mountHandle, mesh, missing);
+    return {
+      meshes: lodResult.meshes,
+      skeleton: null,
+      materials,
+      missing,
+      mode: 'composed-static',
+      isSkinned: false,
+      lodLevels: lodResult.lodLevels,
     };
   }
 
