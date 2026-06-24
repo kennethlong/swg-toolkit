@@ -616,7 +616,7 @@ export function parseLodDistanceTable(
 
 /** One texture slot from a parsed .sht shader. */
 export interface ShaderSlot {
-  slotTag: string;
+  slot: string;
   texturePath: string;
   uvSet: number;
   isPlaceholder: boolean;

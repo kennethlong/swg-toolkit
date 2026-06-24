@@ -343,7 +343,9 @@ Napi::Value ParseShader(const Napi::CallbackInfo& info) {
     for (size_t i = 0; i < shaderResult.slots.size(); ++i) {
         const auto& s = shaderResult.slots[i];
         auto sobj = Napi::Object::New(env);
-        sobj.Set("slotTag",       Napi::String::New(env, s.slotTag));
+        // JS key is "slot" to match the contract (ShaderSlot.slot in @swg/contracts).
+        // The C++ struct member is still slotTag; only the bridge key name is aligned.
+        sobj.Set("slot",          Napi::String::New(env, s.slotTag));
         sobj.Set("texturePath",   Napi::String::New(env, s.texturePath));
         sobj.Set("uvSet",         Napi::Number::New(env, s.uvSet));
         sobj.Set("isPlaceholder", Napi::Boolean::New(env, s.isPlaceholder));

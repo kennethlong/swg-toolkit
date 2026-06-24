@@ -102,7 +102,7 @@ interface LodDistanceTableResult {
 }
 
 interface ShaderSlot {
-  slotTag: string;
+  slot: string;
   texturePath: string;
   uvSet: number;
   isPlaceholder: boolean;
@@ -361,8 +361,8 @@ describe('FORM SSHT (.sht) — static shader template', () => {
     // 2d_distort.sht has MAIN and NOIS texture slots (verified from real file)
     expect(result.slots.length).toBeGreaterThanOrEqual(2);
 
-    const mainSlot = result.slots.find((s) => s.slotTag === 'MAIN');
-    const noisSlot = result.slots.find((s) => s.slotTag === 'NOIS');
+    const mainSlot = result.slots.find((s) => s.slot === 'MAIN');
+    const noisSlot = result.slots.find((s) => s.slot === 'NOIS');
     expect(mainSlot).toBeDefined();
     expect(noisSlot).toBeDefined();
     // Both are placeholder in 2d_distort.sht (no texture path)
@@ -370,7 +370,7 @@ describe('FORM SSHT (.sht) — static shader template', () => {
     expect(noisSlot!.isPlaceholder).toBe(true);
   });
 
-  it('parseShader: slot tag byte-order: slotTag is ASCII (not reversed)', () => {
+  it('parseShader: slot tag byte-order: slot is ASCII (not reversed)', () => {
     // Key regression: initial implementation used readU32BE() for DATA payload tags,
     // producing "NIAM" instead of "MAIN". After fix to readU32LE() this is correct.
     // Source: sharedFoundation/Tag.h insertChunkData = raw memcpy (LE) on Windows.
@@ -380,10 +380,10 @@ describe('FORM SSHT (.sht) — static shader template', () => {
     const result = nativeCore.parseShader(iff, bytes);
     for (const slot of result.slots) {
       // Tags must be printable ASCII in correct order (not reversed/garbage)
-      expect(slot.slotTag).toMatch(/^[A-Z0-9 ]+$/);
+      expect(slot.slot).toMatch(/^[A-Z0-9 ]+$/);
       // Specifically should NOT be reversed
-      expect(slot.slotTag).not.toBe('NIAM');
-      expect(slot.slotTag).not.toBe('SION');
+      expect(slot.slot).not.toBe('NIAM');
+      expect(slot.slot).not.toBe('SION');
     }
   });
 });
