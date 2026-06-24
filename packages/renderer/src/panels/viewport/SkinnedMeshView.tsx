@@ -53,8 +53,9 @@ const _scratchVec3  = new THREE.Vector3();
 const _scratchMat4  = new THREE.Matrix4();
 
 // ─── SWG→Viewer orientation ───────────────────────────────────────────────────
-// See StaticMeshView.tsx for the rationale. Same 180° Y rotation (pure, det=+1).
-const SWG_ORIENTATION = new THREE.Euler(0, Math.PI, 0);
+// See StaticMeshView.tsx: identity. 180° Y showed the model's back; residual facing vs SIE
+// is a default camera-azimuth preference (viewport-default-facing-axis.md), not a mesh rotation.
+const SWG_ORIENTATION = new THREE.Euler(0, 0, 0);
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

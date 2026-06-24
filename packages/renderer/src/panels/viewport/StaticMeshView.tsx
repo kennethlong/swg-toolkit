@@ -51,10 +51,11 @@ const _scratchVec3Center = new THREE.Vector3();
 // ─── SWG→Viewer axis rotation ─────────────────────────────────────────────────
 // SWG: forward=+Z, up=+Y. Three.js camera looks down -Z.
 // A 180° Y rotation brings SWG's authored front (+Z) to face the default camera.
-// Pure rotation (no scale/mirror): determinant = +1, winding/normals stay correct.
-// This matches io_scene_swg_msh's axis_conversion(from_forward='Z', from_up='Y') convention.
-// HUMAN-VERIFY at checkpoint: compare protocol_droid_red.apt vs SIE.
-const SWG_ORIENTATION = new THREE.Euler(0, Math.PI, 0);
+// Mesh is already correctly oriented (Y-up matches Three.js; geometry verified faithful).
+// The 180° Y guess showed the model's BACK ("facing away"); 0° shows its front. The residual
+// left-vs-right difference from SIE is a default CAMERA-AZIMUTH preference, not a mesh rotation
+// — tracked in viewport-default-facing-axis.md. Identity here keeps winding/normals correct.
+const SWG_ORIENTATION = new THREE.Euler(0, 0, 0);
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
