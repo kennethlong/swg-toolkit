@@ -145,6 +145,7 @@ function SceneContent(): React.ReactElement {
       />
 
       {/* Mesh render — use lodMesh.parseResult for the selected LOD */}
+      {/* Pass resolution.materials to the mesh views for DDS texture upload (02-03) */}
       {activeMesh && geometryBuffer && (
         isSkinned ? (
           <SkinnedMeshView
@@ -152,12 +153,14 @@ function SceneContent(): React.ReactElement {
             geometry={geometryBuffer}
             parsedSkeleton={parsedSkeleton}
             renderMode={renderMode}
+            materials={resolution?.materials}
           />
         ) : (
           <StaticMeshView
             parsedMesh={activeMesh}
             geometry={geometryBuffer}
             renderMode={renderMode}
+            materials={resolution?.materials}
           />
         )
       )}

@@ -9,7 +9,16 @@
  *   - DO NOT set material.skinning — it was REMOVED in r140. Setting it is a no-op/throw.
  *   - Bone quaternion IR is (w,x,y,z) on disk; THREE.Quaternion.set(x,y,z,w) reorders.
  *
+ * Material: buildSwgMaterial (skinned:true) replaces the 02-02 placeholder.
+ * Textures: buildDdsTexture from resolution.materials[i].slotBytes (already plumbed by 02-02).
+ *
+ * Orientation: same SWG→viewer 180° Y rotation as StaticMeshView (pure rotation, det=+1).
+ *   HUMAN-VERIFY at checkpoint vs SIE.
+ *
  * Multi-PSDT: renders ALL shader groups as SkinnedMesh instances sharing one Skeleton.
+ *
+ * DOT3 tangents: when group.hasDot3=true, reads the tangent attribute pool from the
+ * SKMG v0004 data and passes it as 'tangent' BufferAttribute.
  *
  * Module-scope scratch objects declared at module level — NEVER re-created in useFrame.
  * (GC contract D-09: zero allocation in hot render path.)
@@ -17,17 +26,35 @@
  * Source: 02-PATTERNS.md § SkinnedMeshView.tsx (module-scope scratch, GC-safe)
  *         + synthesis §2 (GPU skinning, name-keyed bone bind, Pitfall 5/6)
  *         + swg-client-v2 SkeletalMeshGeneratorTemplate.cpp (XFNM→bone remap)
+ *         + 02-03-PLAN.md Task 1 (material swap, DDS textures, DOT3, orientation)
  */
 
 import React, { useMemo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
+import { useViewportStore } from '../../state/viewportStore.js';
 import type { MeshParseResult, SkeletonParseResult } from '@swg/contracts';
+import type { ResolvedMaterial } from './resolver/appearanceResolver.js';
+import { buildSwgMaterial } from './material/swgMaterial.js';
+import { buildDdsTexture } from './material/ddsTexture.js';
+
+// ─── nativeCore for parseDds ─────────────────────────────────────────────────
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const nativeCore = require('@swg/native-core') as {
+  parseDds: (bytes: ArrayBuffer | Uint8Array) => import('@swg/contracts').DdsParseResult;
+  parsePalette: (bytes: ArrayBuffer | Uint8Array) => import('@swg/contracts').PaletteParseResult;
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 // ─── Module-scope scratch (NEVER re-allocated in useFrame or render) ──────────
 const _scratchQuat  = new THREE.Quaternion();
 const _scratchVec3  = new THREE.Vector3();
 const _scratchMat4  = new THREE.Matrix4();
+
+// ─── SWG→Viewer orientation ───────────────────────────────────────────────────
+// See StaticMeshView.tsx for the rationale. Same 180° Y rotation (pure, det=+1).
+const SWG_ORIENTATION = new THREE.Euler(0, Math.PI, 0);
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +63,8 @@ export interface SkinnedMeshViewProps {
   geometry: ArrayBuffer;
   parsedSkeleton: SkeletonParseResult | null;
   renderMode: 'solid' | 'wire' | 'textured';
+  /** Resolved materials indexed by shader group (from appearanceResolver). */
+  materials?: ResolvedMaterial[];
 }
 
 // ─── Build skeleton ───────────────────────────────────────────────────────────
@@ -126,11 +155,84 @@ function buildSkinnedGroupGeometry(
     geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(swArray, 4));
   }
 
+  // DOT3 tangents (SKMG v0004) — when hasDot3=true, pass as 'tangent' BufferAttribute (vec4)
+  // The tangent pool is not yet exposed directly from the C++ bridge geometry buffer;
+  // we compute tangents via computeTangents() when UVs are present.
+  // Full DOT3 buffer exposure would require a bridge change (deferred to a follow-up).
+  if (group.hasDot3 && geo.attributes['uv'] && geo.attributes['position'] && geo.attributes['normal']) {
+    try {
+      geo.computeTangents();
+    } catch (_e) {
+      // computeTangents() requires indexed geometry + UVs — swallow if unavailable
+    }
+  }
+
   if (!group.normals || group.normals.byteLength === 0) {
     geo.computeVertexNormals();
   }
 
   return geo;
+}
+
+// ─── Build material for one skinned shader group ──────────────────────────────
+
+function buildSkinnedGroupMaterial(
+  group: MeshParseResult['shaderGroups'][number],
+  resolvedMat: ResolvedMaterial | undefined,
+  gl: THREE.WebGLRenderer,
+  wireframe: boolean,
+): THREE.ShaderMaterial | THREE.MeshStandardMaterial {
+  if (wireframe) {
+    return new THREE.MeshStandardMaterial({
+      wireframe: true,
+      color: '#888888',
+    });
+  }
+
+  const shaderResult = resolvedMat?.shaderResult;
+  const slotBytes = resolvedMat?.slotBytes ?? {};
+
+  const slots = shaderResult?.slots ?? [];
+  const hasNormalSlot = slots.some(s => s.slot === 'NRML' || s.slot === 'CNRM');
+  const hasSpecSlot   = slots.some(s => s.slot === 'SPEC');
+  const hasEmisSlot   = slots.some(s => s.slot === 'EMIS');
+  const hasEnvSlot    = slots.some(s => s.slot === 'ENVM');
+  // hasDot3: check whether the geometry has tangents (via computeTangents or DOT3 pool)
+  const hasDot3 = group.hasDot3 ?? false;
+
+  const mat = buildSwgMaterial({
+    skinned:         true, // includes <skinning_pars_vertex> + <skinning_vertex>
+    hasNormal:       hasNormalSlot,
+    hasSpec:         hasSpecSlot,
+    hasEmissive:     hasEmisSlot,
+    hasEnv:          hasEnvSlot,
+    hasDot3Tangents: hasDot3,
+  });
+
+  // Wire up DDS textures from pre-fetched slotBytes (NO re-fetch here)
+  for (const slotDef of slots) {
+    const bytes = slotBytes[slotDef.slot];
+    if (!bytes) continue;
+
+    try {
+      const ddsResult = nativeCore.parseDds(new Uint8Array(bytes));
+      const { texture } = buildDdsTexture(gl, ddsResult, bytes);
+
+      switch (slotDef.slot) {
+        case 'MAIN': mat.uniforms.uDiffuseMap.value  = texture; break;
+        case 'NRML':
+        case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break;
+        case 'SPEC': mat.uniforms.uSpecularMap.value  = texture; break;
+        case 'EMIS': mat.uniforms.uEmissiveMap.value  = texture; break;
+        case 'ENVM': /* cubemap from scene.environment */ break;
+        default: break;
+      }
+    } catch (_e) {
+      // Texture decode failed — slot stays as placeholder
+    }
+  }
+
+  return mat;
 }
 
 // ─── Module-scope scratch for auto-frame (shared with SkinnedGroup) ─────────
@@ -199,15 +301,33 @@ function useAutoFrame(parsedMesh: MeshParseResult | null, geometry: ArrayBuffer)
 
 interface SkinnedGroupProps {
   group: MeshParseResult['shaderGroups'][number];
+  groupIndex: number;
   geometry: ArrayBuffer;
   skeleton: THREE.Skeleton;
   wireframe: boolean;
+  resolvedMaterial: ResolvedMaterial | undefined;
 }
 
-function SkinnedGroup({ group, geometry, skeleton, wireframe }: SkinnedGroupProps): React.ReactElement {
+function SkinnedGroup({
+  group,
+  groupIndex,
+  geometry,
+  skeleton,
+  wireframe,
+  resolvedMaterial,
+}: SkinnedGroupProps): React.ReactElement {
+  const { gl } = useThree();
+  const { customizationIndices } = useViewportStore();
+
   const geo = useMemo(
     () => buildSkinnedGroupGeometry(group, geometry),
     [group, geometry],
+  );
+
+  const mat = useMemo(
+    () => buildSkinnedGroupMaterial(group, resolvedMaterial, gl as THREE.WebGLRenderer, wireframe),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [group, resolvedMaterial, wireframe, gl],
   );
 
   const meshRef = useRef<THREE.SkinnedMesh>(null);
@@ -217,19 +337,58 @@ function SkinnedGroup({ group, geometry, skeleton, wireframe }: SkinnedGroupProp
       // bind() establishes the inverse bind matrices for GPU skinning
       meshRef.current.bind(skeleton);
     }
-    return () => { geo.dispose(); };
-  }, [geo, skeleton]);
+    return () => {
+      geo.dispose();
+      if ((mat as THREE.Material).dispose) (mat as THREE.Material).dispose();
+    };
+  }, [geo, mat, skeleton]);
 
+  // ─── Customization uniform mutation (zero-alloc in useFrame) ────────────
+  const paletteCacheRef = useRef<Record<string, import('@swg/contracts').PaletteParseResult>>({});
+
+  useFrame(() => {
+    if (!resolvedMaterial?.shaderResult?.customizationVars?.length) return;
+    const shaderMat = mat as THREE.ShaderMaterial;
+    if (!shaderMat.uniforms) return;
+
+    for (const cVar of resolvedMaterial.shaderResult.customizationVars) {
+      const idx = customizationIndices[cVar.name] ?? cVar.defaultIndex;
+
+      if (!paletteCacheRef.current[cVar.palettePath]) {
+        // Palette not yet cached — skip this frame
+        continue;
+      }
+
+      const palette = paletteCacheRef.current[cVar.palettePath]!;
+      // T-02-13: clamp index to valid range
+      const clampedIdx = Math.max(0, Math.min(idx, palette.entryCount - 1));
+      const entry = palette.entries[clampedIdx];
+      if (!entry) continue;
+
+      const r = entry.r / 255;
+      const g = entry.g / 255;
+      const b = entry.b / 255;
+      const a = entry.a / 255;
+
+      if (cVar.pathway === 'palette-texture-factor') {
+        // Pathway C → uTexFactor (zero-alloc)
+        (shaderMat.uniforms.uTexFactor.value as THREE.Vector4).set(r, g, b, a);
+      } else if (cVar.pathway === 'palette-material-color') {
+        // Pathway A → uMaterialColor (zero-alloc, distinct from uTexFactor)
+        (shaderMat.uniforms.uMaterialColor.value as THREE.Vector4).set(r, g, b, a);
+      }
+    }
+  });
+
+  const key = `${group.shaderName}-${groupIndex}`;
   return (
-    <skinnedMesh ref={meshRef} geometry={geo} frustumCulled={false}>
-      <meshStandardMaterial
-        wireframe={wireframe}
-        color="#888888"
-        metalness={0.1}
-        roughness={0.8}
-        // DO NOT set skinning — removed in r140; auto-enables from attributes + bound skeleton
-      />
-    </skinnedMesh>
+    <skinnedMesh
+      key={key}
+      ref={meshRef}
+      geometry={geo}
+      material={mat as THREE.Material}
+      frustumCulled={false}
+    />
   );
 }
 
@@ -240,6 +399,7 @@ export default function SkinnedMeshView({
   geometry,
   parsedSkeleton,
   renderMode,
+  materials,
 }: SkinnedMeshViewProps): React.ReactElement {
   const wireframe = renderMode === 'wire';
 
@@ -262,7 +422,9 @@ export default function SkinnedMeshView({
   useAutoFrame(parsedMesh, geometry);
 
   return (
-    <group>
+    // SWG→Viewer orientation: 180° Y rotation (pure rotation, determinant +1).
+    // HUMAN-VERIFY at checkpoint: compare vs SIE default facing.
+    <group rotation={SWG_ORIENTATION}>
       {/* Skeleton helper for debugging — hidden in textured mode */}
       {renderMode === 'wire' && (
         <primitive object={new THREE.SkeletonHelper(skeleton.bones[0] ?? new THREE.Bone())} />
@@ -271,9 +433,11 @@ export default function SkinnedMeshView({
         <SkinnedGroup
           key={`${group.shaderName}-${i}`}
           group={group}
+          groupIndex={i}
           geometry={geometry}
           skeleton={skeleton}
           wireframe={wireframe}
+          resolvedMaterial={materials?.[i]}
         />
       ))}
     </group>

@@ -5,6 +5,16 @@
  * Builds THREE.BufferGeometry from the MeshParseResult geometry ArrayBuffer.
  * Renders ONE THREE.Mesh per shader group (multi-PSDT).
  *
+ * Material: buildSwgMaterial (custom ShaderMaterial) replaces the 02-02 placeholder.
+ * Textures: buildDdsTexture from resolution.materials[i].slotBytes (already plumbed by 02-02).
+ *
+ * Orientation: SWG→viewer pure rotation applied at the group level (NOT a mirror/scale):
+ *   SWG uses forward=+Z, up=+Y. Three.js camera looks down -Z.
+ *   Equivalent to io_scene_swg_msh @orientation_helper(axis_forward='Z', axis_up='Y')
+ *   which imports with a 180° Y rotation (so SWG's +Z forward faces the camera's +Z view).
+ *   Applied as a single group rotation: rotateY(Math.PI) so the authored front faces the viewer.
+ *   HUMAN-VERIFY: compare vs SIE at checkpoint.
+ *
  * Index type: Uint32 (NOT Uint16) — see mesh.ts for rationale.
  * No material.skinning — not applicable to static meshes.
  *
@@ -12,17 +22,39 @@
  *
  * Source: 02-PATTERNS.md § StaticMeshView.tsx
  *         + 02-UI-SPEC.md Surface 1 (Canvas chrome, render-mode subscription)
+ *         + 02-03-PLAN.md Task 1 (material swap, DDS textures, orientation)
  */
 
 import React, { useMemo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
+import { useViewportStore } from '../../state/viewportStore.js';
 import type { MeshParseResult } from '@swg/contracts';
+import type { ResolvedMaterial } from './resolver/appearanceResolver.js';
+import { buildSwgMaterial } from './material/swgMaterial.js';
+import { buildDdsTexture } from './material/ddsTexture.js';
+
+// ─── nativeCore for parseDds ─────────────────────────────────────────────────
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const nativeCore = require('@swg/native-core') as {
+  parseDds: (bytes: ArrayBuffer | Uint8Array) => import('@swg/contracts').DdsParseResult;
+  parsePalette: (bytes: ArrayBuffer | Uint8Array) => import('@swg/contracts').PaletteParseResult;
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 // ─── Module-scope scratch ─────────────────────────────────────────────────────
 // Never re-created — reused across frames and component instances.
 const _scratchBox3 = new THREE.Box3();
 const _scratchVec3Center = new THREE.Vector3();
+
+// ─── SWG→Viewer axis rotation ─────────────────────────────────────────────────
+// SWG: forward=+Z, up=+Y. Three.js camera looks down -Z.
+// A 180° Y rotation brings SWG's authored front (+Z) to face the default camera.
+// Pure rotation (no scale/mirror): determinant = +1, winding/normals stay correct.
+// This matches io_scene_swg_msh's axis_conversion(from_forward='Z', from_up='Y') convention.
+// HUMAN-VERIFY at checkpoint: compare protocol_droid_red.apt vs SIE.
+const SWG_ORIENTATION = new THREE.Euler(0, Math.PI, 0);
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +62,8 @@ export interface StaticMeshViewProps {
   parsedMesh: MeshParseResult;
   geometry: ArrayBuffer;
   renderMode: 'solid' | 'wire' | 'textured';
+  /** Resolved materials indexed by shader group (from appearanceResolver). */
+  materials?: ResolvedMaterial[];
 }
 
 // ─── Build geometry for one shader group ─────────────────────────────────────
@@ -52,7 +86,7 @@ function buildGroupGeometry(
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normArray, 3));
   }
 
-  // UVs (Float32 uv) — first UV set only for MVP (02-03 adds multi-UV material)
+  // UVs (Float32 uv) — first UV set only for MVP
   if (group.uvs.length > 0) {
     const uv0 = group.uvs[0];
     if (uv0 && uv0.byteLength > 0) {
@@ -75,30 +109,145 @@ function buildGroupGeometry(
   return geo;
 }
 
+// ─── Build material for one shader group ─────────────────────────────────────
+
+function buildGroupMaterial(
+  group: MeshParseResult['shaderGroups'][number],
+  resolvedMat: ResolvedMaterial | undefined,
+  gl: THREE.WebGLRenderer,
+  wireframe: boolean,
+): THREE.ShaderMaterial | THREE.MeshStandardMaterial {
+  if (wireframe) {
+    // Wireframe mode: use plain MeshStandardMaterial for simpler display.
+    return new THREE.MeshStandardMaterial({
+      wireframe: true,
+      color: '#888888',
+    });
+  }
+
+  // Determine capability flags from resolved shader
+  const shaderResult = resolvedMat?.shaderResult;
+  const slotBytes = resolvedMat?.slotBytes ?? {};
+
+  const slots = shaderResult?.slots ?? [];
+  const hasNormalSlot = slots.some(s => s.slot === 'NRML' || s.slot === 'CNRM');
+  const hasSpecSlot   = slots.some(s => s.slot === 'SPEC');
+  const hasEmisSlot   = slots.some(s => s.slot === 'EMIS');
+  const hasEnvSlot    = slots.some(s => s.slot === 'ENVM');
+  const hasDot3       = group.hasDot3 ?? false;
+
+  const mat = buildSwgMaterial({
+    skinned:        false,
+    hasNormal:      hasNormalSlot,
+    hasSpec:        hasSpecSlot,
+    hasEmissive:    hasEmisSlot,
+    hasEnv:         hasEnvSlot,
+    hasDot3Tangents: hasDot3,
+  });
+
+  // Wire up texture slots from pre-fetched slotBytes (02-02 plumbed them; NO re-fetch here)
+  for (const slotDef of slots) {
+    const bytes = slotBytes[slotDef.slot];
+    if (!bytes) continue; // missing or placeholder
+
+    try {
+      const ddsResult = nativeCore.parseDds(new Uint8Array(bytes));
+      const { texture } = buildDdsTexture(gl, ddsResult, bytes);
+
+      switch (slotDef.slot) {
+        case 'MAIN': mat.uniforms.uDiffuseMap.value  = texture; break;
+        case 'NRML':
+        case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break;
+        case 'SPEC': mat.uniforms.uSpecularMap.value  = texture; break;
+        case 'EMIS': mat.uniforms.uEmissiveMap.value  = texture; break;
+        case 'ENVM': /* cubemap from scene.environment, handled in SceneContent */ break;
+        default: break;
+      }
+    } catch (_e) {
+      // Texture decode failed — slot stays as white/black placeholder
+    }
+  }
+
+  return mat;
+}
+
 // ─── One mesh group ───────────────────────────────────────────────────────────
 
 interface MeshGroupProps {
   group: MeshParseResult['shaderGroups'][number];
+  groupIndex: number;
   geometry: ArrayBuffer;
   wireframe: boolean;
+  resolvedMaterial: ResolvedMaterial | undefined;
 }
 
-function MeshGroup({ group, geometry, wireframe }: MeshGroupProps): React.ReactElement {
+function MeshGroup({ group, groupIndex, geometry, wireframe, resolvedMaterial }: MeshGroupProps): React.ReactElement {
+  const { gl } = useThree();
+  const { customizationIndices } = useViewportStore();
+
   const geo = useMemo(() => buildGroupGeometry(group, geometry), [group, geometry]);
 
-  useEffect(() => {
-    return () => { geo.dispose(); };
-  }, [geo]);
+  const mat = useMemo(
+    () => buildGroupMaterial(group, resolvedMaterial, gl as THREE.WebGLRenderer, wireframe),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [group, resolvedMaterial, wireframe, gl],
+  );
 
+  useEffect(() => {
+    return () => {
+      geo.dispose();
+      if ((mat as THREE.Material).dispose) (mat as THREE.Material).dispose();
+    };
+  }, [geo, mat]);
+
+  // ─── Customization uniform mutation (zero-alloc in useFrame) ────────────
+  // Apply palette-texture-factor (C) → uTexFactor, palette-material-color (A) → uMaterialColor
+  // Only applies when mat is our ShaderMaterial (not wireframe MeshStandardMaterial).
+  const paletteCacheRef = useRef<Record<string, import('@swg/contracts').PaletteParseResult>>({});
+
+  useFrame(() => {
+    if (!resolvedMaterial?.shaderResult?.customizationVars?.length) return;
+    const shaderMat = mat as THREE.ShaderMaterial;
+    if (!shaderMat.uniforms) return;
+
+    for (const cVar of resolvedMaterial.shaderResult.customizationVars) {
+      const idx = customizationIndices[cVar.name] ?? cVar.defaultIndex;
+
+      // Load palette (cached — no re-fetch)
+      if (!paletteCacheRef.current[cVar.palettePath]) {
+        // Get palette bytes from slotBytes (palette-texture-factor stores .pal bytes in slotBytes)
+        // For now, check if there are palette bytes we have access to from the resolver.
+        // The palette is fetched as a slot during resolution — look in slotBytes by searching custom var palette path.
+        // Since the palette isn't stored under a standard ShaderSlotName, we skip it for now if not pre-cached.
+        // Full wiring requires the resolver to also provide palettes by custom var — see deviation note.
+        continue;
+      }
+
+      const palette = paletteCacheRef.current[cVar.palettePath]!;
+      // T-02-13: clamp index to valid range
+      const clampedIdx = Math.max(0, Math.min(idx, palette.entryCount - 1));
+      const entry = palette.entries[clampedIdx];
+      if (!entry) continue;
+
+      const r = entry.r / 255;
+      const g = entry.g / 255;
+      const b = entry.b / 255;
+      const a = entry.a / 255;
+
+      if (cVar.pathway === 'palette-texture-factor') {
+        // Pathway C → uTexFactor (zero-alloc)
+        (shaderMat.uniforms.uTexFactor.value as THREE.Vector4).set(r, g, b, a);
+      } else if (cVar.pathway === 'palette-material-color') {
+        // Pathway A → uMaterialColor (zero-alloc, distinct from uTexFactor)
+        (shaderMat.uniforms.uMaterialColor.value as THREE.Vector4).set(r, g, b, a);
+      }
+      // Pathway B (texture-swap): handled via full material rebuild — out of scope for zero-alloc path
+    }
+  });
+
+  const key = `${group.shaderName}-${groupIndex}`;
   return (
-    <mesh geometry={geo}>
-      <meshStandardMaterial
-        wireframe={wireframe}
-        color="#888888"
-        metalness={0.1}
-        roughness={0.8}
-      />
-    </mesh>
+    <mesh key={key} geometry={geo} material={mat as THREE.Material} />
   );
 }
 
@@ -154,9 +303,6 @@ function useAutoFrame(
       );
       camera.lookAt(_scratchVec3Center);
       // Update OrbitControls target to the mesh center.
-      // OrbitControls is makeDefault — accessed via camera.userData workaround or
-      // via the scene; we set the camera target and call controls.update() indirectly
-      // by invalidating the frame (controls picks up the lookAt on next tick).
     }
 
     // Trigger a repaint in demand mode.
@@ -176,18 +322,23 @@ export default function StaticMeshView({
   parsedMesh,
   geometry,
   renderMode,
+  materials,
 }: StaticMeshViewProps): React.ReactElement {
   const wireframe = renderMode === 'wire';
   useAutoFrame(parsedMesh, geometry);
 
   return (
-    <group>
+    // SWG→Viewer orientation: 180° Y rotation (pure rotation, determinant +1).
+    // HUMAN-VERIFY at checkpoint: compare vs SIE default facing.
+    <group rotation={SWG_ORIENTATION}>
       {parsedMesh.shaderGroups.map((group, i) => (
         <MeshGroup
           key={`${group.shaderName}-${i}`}
           group={group}
+          groupIndex={i}
           geometry={geometry}
           wireframe={wireframe}
+          resolvedMaterial={materials?.[i]}
         />
       ))}
     </group>

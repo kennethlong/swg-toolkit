@@ -66,6 +66,9 @@ export interface ViewportStore {
 
   // ─── Source-entry fields (for Extract in 02-05 + resolver) ───────────────
 
+  /** S3TC unavailability warning (set once when WEBGL_compressed_texture_s3tc is absent). */
+  s3tcWarning: string | null;
+
   /** Native TRE mount handle string (from treStore). */
   sourceMountHandle: string | null;
 
@@ -114,6 +117,9 @@ export interface ViewportStore {
   /** Merge partial transport state. */
   setTransportState: (partial: Partial<TransportState>) => void;
 
+  /** Record S3TC unavailability warning (called once from ddsTexture.ts). */
+  setS3tcWarning: (msg: string) => void;
+
   /** Reset to idle. */
   reset: () => void;
 }
@@ -140,6 +146,7 @@ export const useViewportStore = create<ViewportStore>((set) => ({
   renderMode:           'textured',
   customizationIndices: {},
   transportState:       initialTransportState,
+  s3tcWarning:          null,
   sourceMountHandle:    null,
   sourceArchiveIndex:   null,
   sourceEntryIndex:     null,
@@ -190,6 +197,8 @@ export const useViewportStore = create<ViewportStore>((set) => ({
       transportState: { ...state.transportState, ...partial },
     })),
 
+  setS3tcWarning: (msg) => set({ s3tcWarning: msg }),
+
   reset: () =>
     set({
       loadStatus:           { kind: 'idle' },
@@ -201,6 +210,7 @@ export const useViewportStore = create<ViewportStore>((set) => ({
       renderMode:           'textured',
       customizationIndices: {},
       transportState:       initialTransportState,
+      s3tcWarning:          null,
       sourceMountHandle:    null,
       sourceArchiveIndex:   null,
       sourceEntryIndex:     null,
