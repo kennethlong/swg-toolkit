@@ -20,8 +20,9 @@
  *   searchMount(handle, query)          — case-insensitive substring/glob search (CORE-02)
  *   readMountEntry(handle, ai, ei)      — extract entry payload as ArrayBuffer
  *   disposeTreMount(handle)             — release mount resources
- *   mountArchiveAsync(path, priority)   — off-thread Napi::AsyncWorker mount (CORE-06)
- *   mountSearchableAsync(paths, prios)  — off-thread multi-archive mount (CORE-06)
+ *   mountArchiveAsync(path, priority)      — off-thread Napi::AsyncWorker mount (CORE-06)
+ *   mountSearchableAsync(paths, prios)     — off-thread multi-archive mount (CORE-06)
+ *   getMountEntriesColumnar(handle)        — zero-copy columnar VFS blob (perf fix, 2026-06-24)
  *
  * Phase 1 Plan 01-03 IFF exports (CORE-03, CORE-04):
  *   parseIff(bytes)                     — parse IFF buffer -> { roots, trailingBytes, roundTrip }
@@ -60,6 +61,7 @@ Napi::Value ResolveChain(const Napi::CallbackInfo& info);
 Napi::Value SearchMount(const Napi::CallbackInfo& info);
 Napi::Value GetMountArchives(const Napi::CallbackInfo& info);
 Napi::Value ListMountEntries(const Napi::CallbackInfo& info);
+Napi::Value GetMountEntriesColumnar(const Napi::CallbackInfo& info);
 Napi::Value ReadMountEntry(const Napi::CallbackInfo& info);
 Napi::Value DisposeTreMount(const Napi::CallbackInfo& info);
 Napi::Value MountArchiveAsyncFixed(const Napi::CallbackInfo& info);
@@ -125,9 +127,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("resolveEntry",        Napi::Function::New(env, ResolveEntry));
     exports.Set("resolveChain",        Napi::Function::New(env, ResolveChain));
     exports.Set("searchMount",         Napi::Function::New(env, SearchMount));
-    exports.Set("getMountArchives",    Napi::Function::New(env, GetMountArchives));
-    exports.Set("listMountEntries",    Napi::Function::New(env, ListMountEntries));
-    exports.Set("readMountEntry",      Napi::Function::New(env, ReadMountEntry));
+    exports.Set("getMountArchives",          Napi::Function::New(env, GetMountArchives));
+    exports.Set("listMountEntries",          Napi::Function::New(env, ListMountEntries));
+    exports.Set("getMountEntriesColumnar",   Napi::Function::New(env, GetMountEntriesColumnar));
+    exports.Set("readMountEntry",            Napi::Function::New(env, ReadMountEntry));
     exports.Set("disposeTreMount",     Napi::Function::New(env, DisposeTreMount));
     exports.Set("mountArchiveAsync",   Napi::Function::New(env, MountArchiveAsyncFixed));
     exports.Set("mountSearchableAsync",Napi::Function::New(env, MountSearchableAsync));

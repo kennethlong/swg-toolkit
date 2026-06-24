@@ -37,6 +37,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 namespace swg {
 
@@ -127,6 +128,41 @@ struct TreMountVfsEntry {
     int         shadowCount;        ///< Number of lower-priority archives also containing the path
     bool        isOverride;         ///< shadowCount > 0
     bool        isTombstone;        ///< True if the winner entry is a tombstone
+};
+
+/**
+ * Zero-copy columnar VFS payload — ONE binary blob that encodes all VFS entries.
+ *
+ * Binary layout (all little-endian):
+ *
+ *   Header (32 bytes):
+ *     [0]   uint32 entryCount
+ *     [4]   uint32 nameDataOffset      — byte offset from blob start to nameData
+ *     [8]   uint32 nameDataSize        — total byte length of nameData section
+ *     [12]  uint32 archPathDataOffset  — byte offset from blob start to archPathData
+ *     [16]  uint32 archPathDataSize
+ *     [20]  uint32 arrayOffset         — byte offset from blob start to per-entry arrays
+ *     [24]  uint32 reserved[2]         — zero
+ *
+ *   Per-entry arrays (each entryCount elements, packed immediately after arrayOffset):
+ *     nameOffsets[n]         — uint32: byte offset within nameData for entry n's name
+ *     archPathOffsets[n]     — uint32: byte offset within archPathData for winner path
+ *     winnerArchiveIndices[n]— int32:  priority-list index of winning archive
+ *     shadowCounts[n]        — int32:  number of shadowed lower-priority archives
+ *     flags[n]               — uint8:  bit0=isOverride, bit1=isTombstone
+ *     [pad to 4-byte alignment]
+ *
+ *   nameData:       all entry names packed as null-terminated UTF-8, in VFS sort order
+ *   archPathData:   all winning archive paths packed as null-terminated UTF-8
+ *
+ * The renderer decodes names lazily: only visible/requested rows need a string decode.
+ * Crossing the N-API bridge costs ONE ArrayBuffer instead of ~1.5M Napi::Set() calls.
+ *
+ * Source: perf fix for the ~250k-entry main-thread marshalling freeze (2026-06-24).
+ */
+struct TreMountColumnar {
+    std::vector<uint8_t> blob; ///< Complete binary payload (see layout above)
+    uint32_t             entryCount = 0;
 };
 
 /**
@@ -233,11 +269,43 @@ public:
      */
     std::vector<TreMountVfsEntry> vfsEntries() const;
 
+    /**
+     * Build the deduplicated VFS as a zero-copy columnar binary blob.
+     *
+     * Same algorithm as vfsEntries() but serializes the result directly into a
+     * compact binary payload (see TreMountColumnar for the layout). The renderer
+     * receives ONE ArrayBuffer instead of ~250k Napi::Object instances — eliminating
+     * the main-thread N-API bridge overhead that caused the one-minute freeze.
+     *
+     * This is intended to be called from INSIDE a Napi::AsyncWorker::Execute()
+     * (off the main thread). The result is then cached on the mount handle; the
+     * main thread retrieves it via getMountEntriesColumnar() as a single memcpy.
+     *
+     * Source: perf fix — issue #1 in tre-mount-perf-marshalling.md (2026-06-24).
+     */
+    TreMountColumnar vfsEntriesColumnar() const;
+
     /** Number of mounted archives. */
     int archiveCount() const { return static_cast<int>(m_nodes.size()); }
 
     /** Access the archive node at the given (priority-list) index. */
     const TreMountNode& nodeAt(int idx) const { return m_nodes[idx]; }
+
+    /**
+     * Store a pre-built columnar payload (built off-thread inside AsyncWorker::Execute).
+     * Thread-safety: written once by the worker before OnOK() runs; after that it is
+     * read-only on the main thread. No mutex needed.
+     */
+    void setCachedColumnar(TreMountColumnar col) { m_cachedColumnar = std::move(col); }
+
+    /**
+     * Retrieve the cached columnar payload.
+     * Returns a reference valid for the lifetime of this TreMount.
+     */
+    const TreMountColumnar& cachedColumnar() const { return m_cachedColumnar; }
+
+    /** True if a cached columnar payload has been built and stored. */
+    bool hasColumnar() const { return !m_cachedColumnar.blob.empty(); }
 
 private:
     /**
@@ -256,6 +324,12 @@ private:
      * Invariant: m_nodes[i].priority >= m_nodes[i+1].priority for all i.
      */
     std::vector<TreMountNode> m_nodes;
+
+    /**
+     * Cached columnar VFS payload — built off-thread, served on the main thread.
+     * Empty until setCachedColumnar() is called (i.e., after mountSearchableAsync).
+     */
+    TreMountColumnar m_cachedColumnar;
 };
 
 } // namespace swg

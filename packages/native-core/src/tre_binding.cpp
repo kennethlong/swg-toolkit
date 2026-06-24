@@ -454,6 +454,60 @@ Napi::Value ListMountEntries(const Napi::CallbackInfo& info) {
 }
 
 /**
+ * getMountEntriesColumnar(handle: string) -> ArrayBuffer
+ *
+ * Returns the deduplicated, shadow-resolved VFS as a compact binary columnar blob
+ * (see TreMountColumnar in TreMount.h for the binary layout). The blob was built
+ * INSIDE MountSearchableAsyncWorker::Execute() — off the main thread — so the main
+ * thread pays only ONE ArrayBuffer::New + memcpy here instead of ~1.5M Napi::Set()
+ * calls. This eliminates the ~1-minute UI freeze during TRE mount (#1 issue).
+ *
+ * The renderer decodes this blob using JS TypedArray views into the ArrayBuffer,
+ * constructing VfsEntry objects only for visible/requested rows (lazy decode).
+ *
+ * Falls back to a synchronous build if called on a mount handle that was created
+ * via the synchronous mountTreMount() path (no cached payload).
+ *
+ * Source: perf fix — tre-mount-perf-marshalling.md issue #1 (2026-06-24).
+ * Contract: binary layout documented in TreMount.h TreMountColumnar.
+ */
+Napi::Value GetMountEntriesColumnar(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "getMountEntriesColumnar: expected (handle: string)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::string handle = info[0].As<Napi::String>().Utf8Value();
+
+    auto it = g_mounts.find(handle);
+    if (it == g_mounts.end()) {
+        Napi::RangeError::New(env, "getMountEntriesColumnar: unknown mount handle").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    swg::TreMount& mount = *it->second;
+
+    // Ensure we have a cached columnar payload (built off-thread by the async worker).
+    // If called on a synchronously-created mount (mountTreMount), build it now as a
+    // one-time synchronous cost (tests and small mounts only).
+    if (!mount.hasColumnar()) {
+        mount.setCachedColumnar(mount.vfsEntriesColumnar());
+    }
+
+    const swg::TreMountColumnar& col = mount.cachedColumnar();
+    const size_t byteLen = col.blob.size();
+
+    // ONE ArrayBuffer allocation + ONE memcpy — replaces ~1.5M Napi::Set() calls.
+    Napi::ArrayBuffer buf = Napi::ArrayBuffer::New(env, byteLen);
+    if (byteLen > 0) {
+        std::memcpy(buf.Data(), col.blob.data(), byteLen);
+    }
+    return buf;
+}
+
+/**
  * readMountEntry(handle: string, archiveIndex: number, entryIndex: number) -> ArrayBuffer
  *
  * Extract a payload from a specific archive in the mount by index.
@@ -658,6 +712,11 @@ public:
                 auto arc = std::make_unique<swg::TreArchive>(swg::TreArchive::parse(stream));
                 m_mount->addArchive(std::move(arc), m_paths[i], m_priorities[i]);
             }
+            // Build the columnar VFS payload here, off the main thread, so the main
+            // thread pays only ONE memcpy (inside getMountEntriesColumnar) instead of
+            // ~1.5M Napi::Set() calls — the root cause of the ~1-minute UI freeze.
+            // Source: perf fix, issue #1 in tre-mount-perf-marshalling.md (2026-06-24).
+            m_mount->setCachedColumnar(m_mount->vfsEntriesColumnar());
         } catch (const std::exception& ex) {
             SetError(ex.what());
         }

@@ -15,6 +15,8 @@
 #include <cctype>
 #include <cstring>
 #include <unordered_map>
+#include <string_view>
+#include <cstdint>
 
 namespace swg {
 
@@ -293,17 +295,12 @@ std::vector<TreSearchHitNative> TreMount::search(const std::string& text, bool g
         const auto& entries = node.archive->entries();
 
         for (int ei = 0; ei < static_cast<int>(entries.size()); ++ei) {
-            // Get the entry name (already normalized: lowercase, forward-slash)
-            const char* namePtr = nullptr;
-            try {
-                namePtr = node.archive->nameAt(entries[ei].fileNameOffset).c_str();
-            } catch (...) {
-                continue; // defensive — skip corrupt name block entries
-            }
-            if (!namePtr || namePtr[0] == '\0') continue;
+            // Use namePtr() — zero-copy pointer into the name block (perf fix #2/#3)
+            const char* np = node.archive->namePtr(entries[ei].fileNameOffset);
+            if (!np || np[0] == '\0') continue;
 
             // Name is already lowercase (normalized by TreArchive)
-            const std::string entryName(namePtr);
+            const std::string entryName(np);
 
             bool matched = false;
             if (glob) {
@@ -369,39 +366,64 @@ std::vector<TreMountVfsEntry> TreMount::vfsEntries() const
      * order (m_nodes[0] = highest), the FIRST node we see a path in is the winner.
      * This is exactly resolveChain() done once over the mount — O(total entries).
      *
+     * Perf fix (#2): use string_view keys in the dedup map (no heap alloc per entry);
+     * use namePtr() instead of nameAt() to avoid thread_local copy overhead;
+     * reserve() the result vector and map up-front to avoid rehashing.
+     *
      * Source: OUR design — REPLACES the renderer's broken JS index-juggling
      * (01-02-PLAN.md). Does NOT touch the file-ordered mountArchive() state.
+     * Perf: tre-mount-perf-marshalling.md issue #2 (2026-06-24).
      */
-    std::unordered_map<std::string, size_t> indexByPath; // path -> position in result
+    // Pre-count total entries for reserve() — avoids repeated rehash/realloc
+    size_t totalEntries = 0;
+    for (const auto& node : m_nodes)
+        totalEntries += static_cast<size_t>(node.archive->entryCount());
+
+    // Key on string_view into the archive's name block (zero heap alloc per entry).
+    // The string_view is stable because TreArchive's name block is owned by the
+    // archive and outlives this call.
+    struct SvHash {
+        size_t operator()(std::string_view sv) const noexcept {
+            // FNV-1a — fast, no dependencies
+            size_t h = 14695981039346656037ull;
+            for (unsigned char c : sv) {
+                h ^= c;
+                h *= 1099511628211ull;
+            }
+            return h;
+        }
+    };
+    std::unordered_map<std::string_view, size_t, SvHash> indexByPath;
+    indexByPath.reserve(totalEntries);
+
     std::vector<TreMountVfsEntry> entries;
+    entries.reserve(totalEntries); // upper bound; actual deduplicated count will be smaller
 
     for (int ai = 0; ai < static_cast<int>(m_nodes.size()); ++ai) {
         const TreMountNode& node = m_nodes[ai];
         const auto& nodeEntries = node.archive->entries();
 
         for (int ei = 0; ei < static_cast<int>(nodeEntries.size()); ++ei) {
-            const char* namePtr = nullptr;
-            try {
-                namePtr = node.archive->nameAt(nodeEntries[ei].fileNameOffset).c_str();
-            } catch (...) {
-                continue; // defensive — skip corrupt name block entries
-            }
-            if (!namePtr || namePtr[0] == '\0') continue;
+            // Use namePtr() — zero-copy pointer into the name block (perf fix #2)
+            const char* np = node.archive->namePtr(nodeEntries[ei].fileNameOffset);
+            if (!np || np[0] == '\0') continue;
 
-            const std::string path(namePtr);
+            const std::string_view sv(np);
             const bool isTombstone = (nodeEntries[ei].length == 0);
 
-            auto it = indexByPath.find(path);
+            auto it = indexByPath.find(sv);
             if (it == indexByPath.end()) {
                 // First (highest-priority) archive containing this path → winner.
+                // We must copy the name into the VfsEntry (the string_view is only
+                // valid while the archive is alive, but VfsEntry owns its path string).
                 TreMountVfsEntry e;
-                e.path               = path;
+                e.path               = std::string(sv);
                 e.winnerArchivePath  = node.path;
                 e.winnerArchiveIndex = ai;
                 e.shadowCount        = 0;
                 e.isOverride         = false;
                 e.isTombstone        = isTombstone;
-                indexByPath.emplace(path, entries.size());
+                indexByPath.emplace(std::string_view(e.path), entries.size()); // point into the owned copy
                 entries.push_back(std::move(e));
             } else {
                 // Lower-priority archive also contains this path → a shadow.
@@ -412,12 +434,206 @@ std::vector<TreMountVfsEntry> TreMount::vfsEntries() const
         }
     }
 
+    // Sort by path (use indices to avoid moving string data)
     std::sort(entries.begin(), entries.end(),
               [](const TreMountVfsEntry& a, const TreMountVfsEntry& b) {
                   return a.path < b.path;
               });
 
     return entries;
+}
+
+// ─── vfsEntriesColumnar ──────────────────────────────────────────────────────
+
+TreMountColumnar TreMount::vfsEntriesColumnar() const
+{
+    /**
+     * Build the deduplicated VFS as a compact binary columnar blob.
+     *
+     * Algorithm: same dedup logic as vfsEntries() but writes directly into a
+     * contiguous binary buffer — no per-entry Napi::Object, no N-API calls here.
+     * The blob is passed to the main thread as ONE Napi::ArrayBuffer (one memcpy),
+     * eliminating ~1.5M Napi::Set() calls that caused the ~1-minute freeze.
+     *
+     * Binary layout (little-endian):
+     *   Header (32 bytes):
+     *     [0]  uint32 entryCount
+     *     [4]  uint32 nameDataOffset
+     *     [8]  uint32 nameDataSize
+     *     [12] uint32 archPathDataOffset
+     *     [16] uint32 archPathDataSize
+     *     [20] uint32 arrayOffset         (= 32, after header)
+     *     [24] uint32[2] reserved = 0
+     *
+     *   Per-entry arrays at arrayOffset, each entryCount elements:
+     *     uint32 nameOffsets[n]          byte offset within nameData
+     *     uint32 archPathOffsets[n]      byte offset within archPathData
+     *     int32  winnerArchiveIndices[n]
+     *     int32  shadowCounts[n]
+     *     uint8  flags[n]  (bit0=isOverride, bit1=isTombstone)
+     *     [3 pad bytes to reach 4-byte alignment]
+     *
+     *   nameData:     all entry names, null-terminated, packed in VFS sort order
+     *   archPathData: all winning archive paths, null-terminated, packed
+     *
+     * Perf: tre-mount-perf-marshalling.md issues #1 and #2 (2026-06-24).
+     * Source: OUR design. Called inside Napi::AsyncWorker::Execute() — off main thread.
+     */
+
+    // ── Phase 1: dedup + collect, same as vfsEntries() but cheaper ──────────
+    struct SvHash {
+        size_t operator()(std::string_view sv) const noexcept {
+            size_t h = 14695981039346656037ull;
+            for (unsigned char c : sv) { h ^= c; h *= 1099511628211ull; }
+            return h;
+        }
+    };
+
+    size_t totalEntries = 0;
+    for (const auto& node : m_nodes)
+        totalEntries += static_cast<size_t>(node.archive->entryCount());
+
+    // Intermediate storage: parallel arrays (avoids struct-of-vecs overhead)
+    std::vector<const char*> namePointers;    // ptrs into archive name blocks (stable)
+    std::vector<const char*> archPaths;       // winning archive paths
+    std::vector<int32_t>     winnerIndices;
+    std::vector<int32_t>     shadowCounts;
+    std::vector<uint8_t>     flags;           // bit0=isOverride, bit1=isTombstone
+
+    namePointers.reserve(totalEntries);
+    archPaths.reserve(totalEntries);
+    winnerIndices.reserve(totalEntries);
+    shadowCounts.reserve(totalEntries);
+    flags.reserve(totalEntries);
+
+    // Map from name pointer (into archive name block) to result index.
+    // Key is string_view to avoid any heap allocation per entry during dedup.
+    std::unordered_map<std::string_view, size_t, SvHash> indexByPath;
+    indexByPath.reserve(totalEntries);
+
+    for (int ai = 0; ai < static_cast<int>(m_nodes.size()); ++ai) {
+        const TreMountNode& node = m_nodes[ai];
+        const auto& nodeEntries = node.archive->entries();
+
+        for (const auto& te : nodeEntries) {
+            const char* np = node.archive->namePtr(te.fileNameOffset);
+            if (!np || np[0] == '\0') continue;
+
+            const std::string_view sv(np);
+            const bool isTombstone = (te.length == 0);
+
+            auto it = indexByPath.find(sv);
+            if (it == indexByPath.end()) {
+                const size_t idx = namePointers.size();
+                indexByPath.emplace(sv, idx);
+                namePointers.push_back(np);
+                archPaths.push_back(node.path.c_str());
+                winnerIndices.push_back(static_cast<int32_t>(ai));
+                shadowCounts.push_back(0);
+                flags.push_back(isTombstone ? 0x02u : 0x00u);
+            } else {
+                const size_t idx = it->second;
+                shadowCounts[idx] += 1;
+                flags[idx] |= 0x01u; // isOverride
+            }
+        }
+    }
+
+    const uint32_t n = static_cast<uint32_t>(namePointers.size());
+
+    // ── Phase 2: sort by name (sort indices, not the arrays) ─────────────────
+    std::vector<uint32_t> order(n);
+    for (uint32_t i = 0; i < n; ++i) order[i] = i;
+    std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
+        return std::string_view(namePointers[a]) < std::string_view(namePointers[b]);
+    });
+
+    // ── Phase 3: build name blobs ─────────────────────────────────────────────
+    // Interleaved scan to compute sizes first (avoid realloc)
+    size_t nameDataSize = 0;
+    size_t archPathDataSize = 0;
+    for (uint32_t i = 0; i < n; ++i) {
+        nameDataSize     += std::string_view(namePointers[i]).size() + 1; // +1 for '\0'
+        archPathDataSize += std::string_view(archPaths[i]).size() + 1;
+    }
+
+    // ── Phase 4: compute section offsets ─────────────────────────────────────
+    constexpr uint32_t kHeaderSize  = 32;
+    const uint32_t arrayOffset      = kHeaderSize;                       // arrays start here
+    const uint32_t perEntryBytes    = n * (4 + 4 + 4 + 4 + 1);         // nameOff+archOff+winnerIdx+shadowCnt+flags
+    const uint32_t flagPad          = (4 - (n % 4)) % 4;               // align after uint8 flags[]
+    const uint32_t nameDataOffset   = arrayOffset + perEntryBytes + flagPad;
+    const uint32_t archPathOffset   = static_cast<uint32_t>(nameDataOffset + nameDataSize);
+    const uint32_t totalSize        = static_cast<uint32_t>(archPathOffset + archPathDataSize);
+
+    // ── Phase 5: allocate and fill the blob ──────────────────────────────────
+    TreMountColumnar col;
+    col.entryCount = n;
+    col.blob.resize(totalSize, 0);
+    uint8_t* B = col.blob.data();
+
+    // Helper: write LE uint32
+    auto wU32 = [&](uint32_t off, uint32_t v) {
+        B[off]   = static_cast<uint8_t>(v);
+        B[off+1] = static_cast<uint8_t>(v >> 8);
+        B[off+2] = static_cast<uint8_t>(v >> 16);
+        B[off+3] = static_cast<uint8_t>(v >> 24);
+    };
+    // Helper: write LE int32
+    auto wI32 = [&](uint32_t off, int32_t v) {
+        wU32(off, static_cast<uint32_t>(v));
+    };
+
+    // Header
+    wU32(0,  n);
+    wU32(4,  nameDataOffset);
+    wU32(8,  static_cast<uint32_t>(nameDataSize));
+    wU32(12, archPathOffset);
+    wU32(16, static_cast<uint32_t>(archPathDataSize));
+    wU32(20, arrayOffset);
+    wU32(24, 0); // reserved
+    wU32(28, 0); // reserved
+
+    // Per-entry arrays (in sorted order)
+    const uint32_t nameOffBase    = arrayOffset;
+    const uint32_t archOffBase    = nameOffBase    + n * 4;
+    const uint32_t winnerBase     = archOffBase    + n * 4;
+    const uint32_t shadowBase     = winnerBase     + n * 4;
+    const uint32_t flagsBase      = shadowBase     + n * 4;
+
+    uint32_t nameDataCursor = 0;
+    uint32_t archDataCursor = 0;
+    uint8_t* nameDataPtr  = B + nameDataOffset;
+    uint8_t* archDataPtr  = B + archPathOffset;
+
+    for (uint32_t si = 0; si < n; ++si) {
+        const uint32_t oi = order[si]; // original index
+
+        // Name
+        const char* nm = namePointers[oi];
+        const size_t nmLen = std::strlen(nm);
+        wU32(nameOffBase + si * 4, nameDataCursor);
+        std::memcpy(nameDataPtr + nameDataCursor, nm, nmLen + 1);
+        nameDataCursor += static_cast<uint32_t>(nmLen + 1);
+
+        // Archive path
+        const char* ap = archPaths[oi];
+        const size_t apLen = std::strlen(ap);
+        wU32(archOffBase + si * 4, archDataCursor);
+        std::memcpy(archDataPtr + archDataCursor, ap, apLen + 1);
+        archDataCursor += static_cast<uint32_t>(apLen + 1);
+
+        // winnerArchiveIndex
+        wI32(winnerBase + si * 4, winnerIndices[oi]);
+
+        // shadowCount
+        wI32(shadowBase + si * 4, shadowCounts[oi]);
+
+        // flags
+        B[flagsBase + si] = flags[oi];
+    }
+
+    return col;
 }
 
 } // namespace swg

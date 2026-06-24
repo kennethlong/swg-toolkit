@@ -104,6 +104,23 @@ public:
     const std::vector<TreEntry>& entries()  const { return m_entries; }
     const std::string&         nameAt(int fileNameOffset) const;
 
+    /**
+     * Zero-copy name accessor — returns a raw pointer directly into the name block.
+     * Caller must NOT hold this pointer beyond the lifetime of this TreArchive.
+     * Prefer this over nameAt() in hot loops (no heap allocation).
+     *
+     * Source: perf fix — avoids the thread_local copy inside nameAt().
+     */
+    const char* namePtr(int fileNameOffset) const {
+        return m_nameBlock.c_str() + fileNameOffset;
+    }
+
+    /**
+     * Access the raw name block for bulk serialization.
+     * Returned reference is valid for the lifetime of this TreArchive.
+     */
+    const std::string& nameBlock() const { return m_nameBlock; }
+
 private:
     TreArchive() = default;
 
