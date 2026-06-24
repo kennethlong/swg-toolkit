@@ -19,6 +19,8 @@ import { useViewportStore } from '../state/viewportStore.js';
 import Viewport from './viewport/Viewport.js';
 import LodPicker from './viewport/LodPicker.js';
 import AppearancePanel from './viewport/AppearancePanel.js';
+import CustomizationPanel from './viewport/CustomizationPanel.js';
+import MaterialInspector from './viewport/MaterialInspector.js';
 import { MissingDepsOverlay } from './viewport/Viewport.js';
 import type { FrameStats } from './viewport/Viewport.js';
 
@@ -316,6 +318,10 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
           />
           <div style={{ height: 1, background: 'var(--color-border)', margin: '2px 0' }} />
           <AppearancePanel resolution={resolution} />
+          <div style={{ height: 1, background: 'var(--color-border)', margin: '2px 0' }} />
+          <CustomizationPanel resolution={resolution} />
+          <div style={{ height: 1, background: 'var(--color-border)', margin: '2px 0' }} />
+          <MaterialInspector resolution={resolution} />
         </div>
       )}
 
