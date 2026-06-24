@@ -660,6 +660,13 @@ export interface DdsParseResult {
   height: number;
   mipCount: number;
   format: string;      // 'DXT1', 'DXT3', 'DXT5', 'RGBA8', etc.
+  /**
+   * True when the DDS file is a cube map (dwCaps2 / dwComplexFlags has DDSCAPS2_CUBEMAP = 0x200).
+   * When true, mips[] contains 6*mipCount entries in face-major order:
+   *   face[i] base mip = mips[i * mipCount + 0]  (i in 0..5: +X, -X, +Y, -Y, +Z, -Z)
+   * Source: Microsoft DDS spec + DDSCAPS2_CUBEMAP flag.
+   */
+  isCubemap: boolean;
   mips: DdsMip[];
   roundTripBytes: ArrayBuffer;
 }
@@ -817,3 +824,83 @@ export function parseDetailAppearance(
   iffResult: IffParseResultNative,
   srcBytes: ArrayBuffer | Uint8Array,
 ): DetailAppearanceParseResult;
+
+// ─── Phase 2 Plan 02-03 gap-closure: Effect (.eft FORM EFCT) ─────────────────
+
+/**
+ * Blend state extracted from a PASS DATA chunk in an EFCT IMPL.
+ * Source: swg-client-v2 ShaderImplementation.cpp:1692-1738 (load_0009 DATA layout).
+ */
+export interface EffectBlend {
+  alphaBlendEnable: boolean;
+  blendOperation:   number;  // BlendOperation enum (1 = ADD)
+  blendSrc:         number;  // Blend enum (5 = SRC_ALPHA)
+  blendDst:         number;  // Blend enum (6 = INV_SRC_ALPHA)
+  alphaTestEnable:  boolean;
+  alphaTestFunc:    number;  // Compare enum (7 = GREATER)
+  alphaTestRef:     number;  // 0-255 reference value
+  zWrite:           boolean;
+}
+
+/**
+ * One texture sampler from a PTXM entry in a PPSH.
+ * Source: swg-client-v2 ShaderImplementation.cpp:3175-3181 (load_0002).
+ */
+export interface EffectSampler {
+  /** Hardware sampler slot index (0-based). */
+  index: number;
+  /**
+   * Semantic role decoded from the PTXM textureTag.
+   * Examples: "MAIN", "SPEC", "ENVM", "CNRM", "NRML", "EMIS", "MASK".
+   * PTXM tag is stored as LE uint32 DATA payload (bytes 4E 49 41 4D = "MAIN" LE).
+   */
+  role: string;
+}
+
+/**
+ * One capability-tier IMPL from an EFCT.
+ * Source: swg-client-v2 ShaderImplementation.cpp:180-236 (load + version dispatch).
+ */
+export interface EffectImpl {
+  /** Raw SCAP int32 values from the SCAP chunk (used for capability selection). */
+  scapValues: number[];
+  /** Optional tags from the OPTN chunk (e.g. "DOT3", "HIQL"). */
+  options: string[];
+  /** Blend state from the first PASS DATA chunk. */
+  blend: EffectBlend;
+  /** Sampler role map from all PTXM entries in the PPSH. */
+  samplers: EffectSampler[];
+}
+
+/**
+ * Full result of parseEffect() — shader effect .eft (FORM EFCT).
+ *
+ * Contains all IMPL capability tiers. bestImplIndex is the selected IMPL:
+ * the one with the highest max SCAP value that has sampler entries.
+ * Use impls[bestImplIndex] to get the sampler role map for the renderer.
+ *
+ * Source: swg-client-v2 ShaderEffect.cpp:86-179 (EFCT load_0000/0001).
+ */
+export interface EffectParseResult {
+  formatTag:     string;       // 'EFCT'
+  version:       string;       // '0000' or '0001'
+  bestImplIndex: number;       // index into impls[] (-1 if no suitable IMPL)
+  impls:         EffectImpl[]; // all IMPLs in file order
+}
+
+/**
+ * Parse a FORM EFCT shader effect from an already-parsed IFF tree.
+ *
+ * Walks all IMPL tiers, extracting SCAP levels, OPTN tags, blend state (PASS DATA),
+ * and sampler role map (PTXM entries in PPSH).
+ *
+ * The .eft is a NEW binary format — callers must not hard-code any sampler roles.
+ * Use impls[bestImplIndex].samplers to discover the actual role→index mapping.
+ *
+ * Source: swg-client-v2 ShaderEffect.cpp:86-179
+ *         + ShaderImplementation.cpp:1692-1738, 2600-2651, 3113-3181.
+ */
+export function parseEffect(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): EffectParseResult;

@@ -115,6 +115,14 @@ Napi::Value ParseStaticAppearance(const Napi::CallbackInfo& info);
 //   Verified 2026-06-24 against wb_02_09e_00000000000000000000.lod (362 bytes, version 0007)
 Napi::Value ParseDetailAppearance(const Napi::CallbackInfo& info);
 
+// Phase 2 Plan 02-03 gap-closure: Effect (.eft) parser (implemented in mesh_binding.cpp):
+// Source: modules/core/formats/Effect.h
+//   Effect: swg-client-v2 ShaderEffect.cpp:86-179 (EFCT load_0000/0001)
+//           swg-client-v2 ShaderImplementation.cpp:1692-1738 (PASS DATA blend state)
+//           swg-client-v2 ShaderImplementation.cpp:2600-2651 (PPSH 0001 sampler list)
+//           swg-client-v2 ShaderImplementation.cpp:3113-3181 (PTXM 0000/0001/0002)
+Napi::Value ParseEffect(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -166,6 +174,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
     // Phase 2 Plan 02-02 gap-closure: DetailAppearance (.lod / FORM DTLA):
     exports.Set("parseDetailAppearance",    Napi::Function::New(env, ParseDetailAppearance));
+
+    // Phase 2 Plan 02-03 gap-closure: Effect (.eft FORM EFCT):
+    exports.Set("parseEffect",              Napi::Function::New(env, ParseEffect));
 
     return exports;
 }

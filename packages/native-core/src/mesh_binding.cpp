@@ -41,6 +41,7 @@
 #include "formats/SkeletalAppearance.h"
 #include "formats/StaticAppearance.h"
 #include "formats/DetailAppearance.h"
+#include "formats/Effect.h"
 
 // ─── Helpers (shared with iff_binding.cpp; duplicated to keep files independent) ────
 
@@ -445,6 +446,7 @@ Napi::Value ParseDds(const Napi::CallbackInfo& info) {
     result.Set("height",     Napi::Number::New(env, ddsResult.height));
     result.Set("mipCount",   Napi::Number::New(env, ddsResult.mipCount));
     result.Set("format",     Napi::String::New(env, ddsResult.formatName));
+    result.Set("isCubemap",  Napi::Boolean::New(env, ddsResult.isCubemap));
 
     auto mips = Napi::Array::New(env, ddsResult.mips.size());
     for (size_t i = 0; i < ddsResult.mips.size(); ++i) {
@@ -824,6 +826,103 @@ Napi::Value ParseDetailAppearance(const Napi::CallbackInfo& info) {
         levels.Set(static_cast<uint32_t>(i), lobj);
     }
     result.Set("levels", levels);
+
+    return result;
+}
+
+// ─── ParseEffect ─────────────────────────────────────────────────────────────
+
+/**
+ * parseEffect(iffResult: object, srcBytes: ArrayBuffer|Uint8Array) -> {
+ *   formatTag: string,       // 'EFCT'
+ *   version: string,         // '0000' or '0001'
+ *   bestImplIndex: number,   // index of selected IMPL (-1 if none)
+ *   impls: Array<{
+ *     scapValues: number[],
+ *     options: string[],
+ *     blend: { alphaBlendEnable, blendOperation, blendSrc, blendDst,
+ *              alphaTestEnable, alphaTestFunc, alphaTestRef, zWrite },
+ *     samplers: Array<{ index: number, role: string }>,
+ *   }>
+ * }
+ *
+ * Phase 2 Plan 02-03 gap-closure: .eft effect parser.
+ * Source: modules/core/formats/Effect.h
+ *   swg-client-v2 ShaderEffect.cpp:86-179
+ *   swg-client-v2 ShaderImplementation.cpp:1692-1738, 2600-2651, 3113-3181
+ */
+Napi::Value ParseEffect(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "parseEffect: (iffResult: object, srcBytes: ArrayBuffer|Uint8Array) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto [srcData, srcSize] = extractBytes(info[1], env, "parseEffect srcBytes");
+    if (!srcData) return env.Undefined();
+
+    swg_core::iff::IffNode root;
+    swg_core::formats::EffectResult effectResult;
+
+    try {
+        root = extractRootNode(info[0].As<Napi::Object>(), srcData, static_cast<uint32_t>(srcSize));
+        effectResult = swg_core::formats::parseEffect(root, srcData, static_cast<uint32_t>(srcSize));
+    } catch (const swg_core::formats::FormatParseError& e) {
+        Napi::Error::New(env, std::string("parseEffect error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    } catch (const std::exception& e) {
+        Napi::Error::New(env, std::string("parseEffect internal error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto result = Napi::Object::New(env);
+    result.Set("formatTag",     Napi::String::New(env, effectResult.formatTag));
+    result.Set("version",       Napi::String::New(env, effectResult.version));
+    result.Set("bestImplIndex", Napi::Number::New(env, effectResult.bestImplIndex));
+
+    auto implsArr = Napi::Array::New(env, effectResult.impls.size());
+    for (size_t i = 0; i < effectResult.impls.size(); ++i) {
+        const auto& impl = effectResult.impls[i];
+        auto iobj = Napi::Object::New(env);
+
+        auto scapArr = Napi::Array::New(env, impl.scapValues.size());
+        for (size_t j = 0; j < impl.scapValues.size(); ++j)
+            scapArr.Set(static_cast<uint32_t>(j), Napi::Number::New(env, impl.scapValues[j]));
+        iobj.Set("scapValues", scapArr);
+
+        auto optsArr = Napi::Array::New(env, impl.options.size());
+        for (size_t j = 0; j < impl.options.size(); ++j)
+            optsArr.Set(static_cast<uint32_t>(j), Napi::String::New(env, impl.options[j]));
+        iobj.Set("options", optsArr);
+
+        auto blendObj = Napi::Object::New(env);
+        blendObj.Set("alphaBlendEnable",  Napi::Boolean::New(env, impl.blend.alphaBlendEnable));
+        blendObj.Set("blendOperation",    Napi::Number::New(env, impl.blend.blendOperation));
+        blendObj.Set("blendSrc",          Napi::Number::New(env, impl.blend.blendSrc));
+        blendObj.Set("blendDst",          Napi::Number::New(env, impl.blend.blendDst));
+        blendObj.Set("alphaTestEnable",   Napi::Boolean::New(env, impl.blend.alphaTestEnable));
+        blendObj.Set("alphaTestFunc",     Napi::Number::New(env, impl.blend.alphaTestFunc));
+        blendObj.Set("alphaTestRef",      Napi::Number::New(env, impl.blend.alphaTestRef));
+        blendObj.Set("zWrite",            Napi::Boolean::New(env, impl.blend.zWrite));
+        iobj.Set("blend", blendObj);
+
+        auto samplersArr = Napi::Array::New(env, impl.samplers.size());
+        for (size_t j = 0; j < impl.samplers.size(); ++j) {
+            const auto& s = impl.samplers[j];
+            auto sobj = Napi::Object::New(env);
+            sobj.Set("index", Napi::Number::New(env, s.index));
+            sobj.Set("role",  Napi::String::New(env, s.role));
+            samplersArr.Set(static_cast<uint32_t>(j), sobj);
+        }
+        iobj.Set("samplers", samplersArr);
+
+        implsArr.Set(static_cast<uint32_t>(i), iobj);
+    }
+    result.Set("impls", implsArr);
 
     return result;
 }

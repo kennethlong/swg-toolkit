@@ -19,6 +19,7 @@ set(CORE_SOURCES
     formats/Mesh.cpp
     formats/MeshLod.cpp
     formats/Shader.cpp
+    formats/Effect.cpp
     formats/Palette.cpp
     formats/Dds.cpp
     formats/LodDistanceTable.cpp
