@@ -58,8 +58,6 @@ export interface DdsMipEntry {
   width: number;
   /** Mip-level height in pixels (halved each level, minimum 1). */
   height: number;
-  /** Pixel format / compression type for this mip. */
-  format: DdsFormat;
 }
 
 /**
@@ -81,6 +79,8 @@ export interface DdsParseResult {
   height: number;
   /** Total mip level count (including mip 0). From the DDS header mipMapCount field. */
   mipCount: number;
+  /** Pixel format / compression type (uniform across all mips; from the DDS FourCC). */
+  format: DdsFormat;
   /** Per-mip descriptors (mips[0] = base level). */
   mips: DdsMipEntry[];
   /**

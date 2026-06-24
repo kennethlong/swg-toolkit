@@ -119,7 +119,7 @@ interface DdsInfo {
 function parseDdsInfo(bytes: ArrayBuffer): DdsInfo | null {
   try {
     const result = nativeCore.parseDds(new Uint8Array(bytes));
-    const fmt = result.mips[0]?.format ?? 'unknown';
+    const fmt = result.format ?? 'unknown';
     return { label: `${fmt} · ${result.width}×${result.height} · ${result.mipCount} mips` };
   } catch (_e) {
     return null;

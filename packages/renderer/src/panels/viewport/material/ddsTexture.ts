@@ -98,7 +98,7 @@ export function buildDdsTexture(
     };
   }
 
-  const formatStr = mip0.format;
+  const formatStr = dds.format;
   const formatLabel = `${formatStr} · ${dds.width}×${dds.height} · ${dds.mipCount} mips`;
 
   // ─── GPU path: S3TC + DXT1/3/5 ──────────────────────────────────────────
