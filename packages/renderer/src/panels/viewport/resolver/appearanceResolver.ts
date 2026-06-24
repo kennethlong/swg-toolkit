@@ -77,7 +77,7 @@ export interface AppearanceResolutionResult {
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const nativeCore = require('@swg/native-core') as {
-  resolveEntry: (handle: string, name: string) => { found: boolean; archiveIndex: number; entryIndex: number };
+  resolveEntry: (handle: string, name: string) => { winner: string | null; tombstone: boolean; archiveIndex: number; entryIndex: number };
   readMountEntry: (handle: string, archiveIndex: number, entryIndex: number) => ArrayBuffer;
   parseIff: (bytes: ArrayBuffer | Uint8Array) => unknown;
   serializeIff: (parseResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => ArrayBuffer;
@@ -187,7 +187,9 @@ async function fetchEntry(
     return null;
   }
   const resolved = nativeCore.resolveEntry(mountHandle, name);
-  if (!resolved.found) {
+  // resolveEntry returns { winner, tombstone, archiveIndex, entryIndex } — there is NO `found`
+  // field. A real hit has a non-null winner and is not a tombstone (negative override / deletion).
+  if (resolved.winner === null || resolved.tombstone) {
     missing.push(name);
     return null;
   }
