@@ -94,6 +94,15 @@ struct DdsResult {
     DdsFormat                format;
     std::string              formatName;  // e.g. "DXT1", "RGBA8"
     std::vector<DdsMipEntry> mips;
+    /**
+     * True when the DDS contains a cube map (dwComplexFlags / caps2 has DDSCAPS2_CUBEMAP = 0x200).
+     * Cube maps contain 6 faces in order: +X, -X, +Y, -Y, +Z, -Z.
+     * Each face has `mipCount` mip levels. mips[] contains ALL face data in face-major order:
+     *   mip[0] = face0 base, mip[1] = face1 base, ... mip[5] = face5 base,
+     *   then mip[6] = face0 mip1, etc. (only mip 0 of each face needed for cube texture).
+     * Source: Microsoft DDS spec; DDSCAPS2_CUBEMAP = 0x200 in dwCaps2 (header offset 108-111 from HDR start).
+     */
+    bool                     isCubemap = false;
     // Raw bytes copy for round-trip (DDS is opaque; serialization is identity)
     std::vector<uint8_t>     rawBytes;
 };

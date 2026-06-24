@@ -81,7 +81,15 @@ export interface DdsParseResult {
   mipCount: number;
   /** Pixel format / compression type (uniform across all mips; from the DDS FourCC). */
   format: DdsFormat;
-  /** Per-mip descriptors (mips[0] = base level). */
+  /**
+   * True when the DDS file is a cube map (dwCaps2 bit DDSCAPS2_CUBEMAP = 0x200).
+   * When true, mips[] contains 6*mipCount entries in face-major order.
+   * Face order: +X(0), -X(1), +Y(2), -Y(3), +Z(4), -Z(5).
+   * Base mip for face i = mips[i * mipCount + 0].
+   * Source: Microsoft DDS spec; DDSCAPS2_CUBEMAP = 0x200 in dwCaps2.
+   */
+  isCubemap: boolean;
+  /** Per-mip descriptors (mips[0] = face0 base level; 6*mipCount total for cubemaps). */
   mips: DdsMipEntry[];
   /**
    * PARSER-NATIVE round-trip status.

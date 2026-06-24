@@ -38,6 +38,9 @@ static constexpr uint32_t DDS_ALPHA  = 0x00000001u; // DDPF_ALPHA
 
 static constexpr uint32_t DDS_HEADER_FLAGS_MIPMAP = 0x00020000u; // DDSD_MIPMAPCOUNT
 
+// dwCaps2 / dwComplexFlags flags (at hdr+108)
+static constexpr uint32_t DDSCAPS2_CUBEMAP = 0x00000200u; // cube map present
+
 // ─── DDS_HEADER offsets within the 124-byte header block (after magic) ───────
 // All offsets relative to start of DDS_HEADER (byte 4 in file).
 // DWORD = 4 bytes, little-endian.
@@ -107,6 +110,10 @@ DdsResult parseDds(const uint8_t* data, uint32_t size)
     (void)dwSize;         // tolerate; source does FATAL in debug only
     (void)dwHeaderFlags;  // used for optional MIPMAP / VOLUME / etc.
 
+    // dwComplexFlags / dwCaps2 at hdr+108 — cube map detection
+    uint32_t dwComplexFlags = readU32LE(hdr + 108);
+    bool isCubemap = (dwComplexFlags & DDSCAPS2_CUBEMAP) != 0;
+
     // DDS_PIXELFORMAT at hdr+72
     const uint8_t* pf = hdr + 72;
     // +0: pfSize
@@ -161,24 +168,34 @@ DdsResult parseDds(const uint8_t* data, uint32_t size)
     result.mipCount  = mipCount;
     result.format    = fmt;
     result.formatName = fmtName;
-    result.mips.reserve(mipCount);
+    result.isCubemap  = isCubemap;
+    result.mips.reserve(isCubemap ? mipCount * 6 : mipCount);  // 6 faces for cube maps
 
     uint32_t offset = 128; // data starts after 4-byte magic + 124-byte header
-    for (uint32_t i = 0; i < mipCount; ++i) {
-        DdsMipEntry mip;
-        mip.width  = mipDim(dwWidth,  i);
-        mip.height = mipDim(dwHeight, i);
-        mip.format = fmt;
-        mip.offset = offset;
 
-        if (isFourCC && fmt != DdsFormat::Unknown) {
-            mip.byteLength = dxtMipBytes(mip.width, mip.height, fmt);
-        } else {
-            mip.byteLength = uncompressedMipBytes(mip.width, mip.height, bitsPerPixel > 0 ? bitsPerPixel : 32);
+    // For cube maps: 6 faces, each face contains mipCount mip levels (face-major order).
+    // mips[] will contain 6*mipCount entries: face0_mip0, face0_mip1, ..., face1_mip0, ...
+    // Callers that build CompressedCubeTexture need face[i] = mips[i * mipCount + level].
+    // For non-cubes: standard mipCount entries.
+    uint32_t faceCount = isCubemap ? 6u : 1u;
+
+    for (uint32_t face = 0; face < faceCount; ++face) {
+        for (uint32_t i = 0; i < mipCount; ++i) {
+            DdsMipEntry mip;
+            mip.width  = mipDim(dwWidth,  i);
+            mip.height = mipDim(dwHeight, i);
+            mip.format = fmt;
+            mip.offset = offset;
+
+            if (isFourCC && fmt != DdsFormat::Unknown) {
+                mip.byteLength = dxtMipBytes(mip.width, mip.height, fmt);
+            } else {
+                mip.byteLength = uncompressedMipBytes(mip.width, mip.height, bitsPerPixel > 0 ? bitsPerPixel : 32);
+            }
+
+            result.mips.push_back(mip);
+            offset += mip.byteLength;
         }
-
-        result.mips.push_back(mip);
-        offset += mip.byteLength;
     }
 
     // Copy raw bytes for identity round-trip

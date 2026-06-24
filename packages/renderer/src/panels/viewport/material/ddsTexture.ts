@@ -78,6 +78,10 @@ export interface BuildDdsTextureResult {
 /**
  * Build a Three.js Texture from parsed DDS data.
  *
+ * Handles both 2D textures and cube maps (isCubemap flag from parseDds).
+ * For cube maps (e.g. env_theed.dds): builds a THREE.CubeTexture (with S3TC GPU upload
+ * per face) or a plain CubeTexture decoded on the CPU.
+ *
  * @param renderer  Three.js WebGLRenderer (from useThree().gl).
  * @param dds       Parse result from the native parseDds binding.
  * @param bytes     Raw DDS file bytes (full ArrayBuffer including 128-byte header).
@@ -90,7 +94,6 @@ export function buildDdsTexture(
 ): BuildDdsTextureResult {
   const mip0 = dds.mips[0];
   if (!mip0) {
-    // Empty/degenerate DDS — return 1×1 magenta placeholder
     return {
       texture: makeMagenta1x1(),
       cpuDecoded: true,
@@ -99,9 +102,18 @@ export function buildDdsTexture(
   }
 
   const formatStr = dds.format;
-  const formatLabel = `${formatStr} · ${dds.width}×${dds.height} · ${dds.mipCount} mips`;
+  const formatLabel = `${formatStr} · ${dds.width}×${dds.height} · ${dds.mipCount} mips${dds.isCubemap ? ' [cube]' : ''}`;
 
-  // ─── GPU path: S3TC + DXT1/3/5 ──────────────────────────────────────────
+  // ─── Cube map path ───────────────────────────────────────────────────────
+  // env_theed.dds is a 128×128 DXT3 cube map (6 faces, caps2=0x200).
+  // Ground truth: The 6 face images are stored in face-major order in the DDS data.
+  // For each face, mips[face * mipCount + 0] gives the base level data.
+  // We build a CompressedCubeTexture or fall back to a decoded CubeTexture.
+  if (dds.isCubemap) {
+    return buildCubeTexture(renderer, dds, bytes, formatStr, formatLabel);
+  }
+
+  // ─── 2D GPU path: S3TC + DXT1/3/5 ───────────────────────────────────────
   const s3tc = checkS3tc(renderer);
   if (s3tc && S3TC_FORMATS.has(formatStr)) {
     const gpuFormat = formatStr as S3tcFormat;
@@ -129,16 +141,13 @@ export function buildDdsTexture(
   }
 
   // ─── CPU decode fallback ─────────────────────────────────────────────────
-  // Used for: DXT2/DXT4 (premultiplied-alpha, never in S3TC) OR S3TC absent.
   if (!s3tc) {
-    // Warn once — read store state outside the render loop to avoid subscription
     const store = useViewportStore.getState();
     store.setS3tcWarning('WEBGL_compressed_texture_s3tc unavailable — using CPU decode');
   }
 
   const supported = ['DXT1', 'DXT2', 'DXT3', 'DXT4', 'DXT5'];
   if (!supported.includes(formatStr)) {
-    // RGBA8 or unknown — can't CPU-decode DXT; return magenta
     return {
       texture: makeMagenta1x1(),
       cpuDecoded: true,
@@ -163,6 +172,121 @@ export function buildDdsTexture(
   tex.needsUpdate = true;
 
   return { texture: tex, cpuDecoded: true, formatLabel };
+}
+
+// ─── Cube map builder ─────────────────────────────────────────────────────────
+
+/**
+ * Build a THREE.CompressedCubeTexture (or CPU-decoded CubeTexture) from a cube map DDS.
+ *
+ * DDS cube map face order (+X, -X, +Y, -Y, +Z, -Z) matches THREE.CubeReflectionMapping.
+ * For S3TC GPU path: each face gets its own CompressedTexture via mipmaps.
+ * For CPU path: decode face 0 base mip per face → CubeTexture from DataTextures.
+ *
+ * Source: Microsoft DDS spec (face-major layout)
+ *   + Three.js CubeTexture / CompressedCubeTexture API (r184).
+ */
+function buildCubeTexture(
+  renderer: THREE.WebGLRenderer,
+  dds: DdsParseResult,
+  bytes: ArrayBuffer,
+  formatStr: string,
+  formatLabel: string,
+): BuildDdsTextureResult {
+  const mipCount = dds.mipCount;
+  const s3tc = checkS3tc(renderer);
+
+  if (s3tc && S3TC_FORMATS.has(formatStr)) {
+    const glFormat = toS3tcEnum(formatStr as S3tcFormat);
+
+    // Build per-face compressed mipmaps array (6 faces)
+    // Three.js CompressedCubeTexture expects mipmaps as an array of 6 mipmaps arrays.
+    // Each element is an array of { data, width, height } per mip level.
+    const facesMipmaps: THREE.CompressedTextureMipmap[][] = [];
+    for (let face = 0; face < 6; face++) {
+      const faceMips: THREE.CompressedTextureMipmap[] = [];
+      for (let level = 0; level < mipCount; level++) {
+        const mipEntry = dds.mips[face * mipCount + level];
+        if (!mipEntry) continue;
+        faceMips.push({
+          data: new Uint8Array(bytes, mipEntry.offset, mipEntry.byteLength),
+          width:  mipEntry.width,
+          height: mipEntry.height,
+        });
+      }
+      facesMipmaps.push(faceMips);
+    }
+
+    // THREE.CompressedCubeTexture: constructor(images, format, type?)
+    // images = array of 6 { data, width, height } for base mip (Three.js handles the rest)
+    // Use the first mip of each face as the images array.
+    const images = facesMipmaps.map(faceMips => ({
+      data: faceMips[0]?.data ?? new Uint8Array(0),
+      width:  dds.width,
+      height: dds.height,
+    }));
+
+    // CompressedCubeTexture takes the same constructor as CompressedTexture but
+    // uses CubeReflectionMapping automatically.
+    // Three.js r184: new THREE.CompressedCubeTexture(images, format, type)
+    // images is the 6-face array, format is the S3TC enum.
+    const cubeTexture = new THREE.CompressedCubeTexture(
+      images as THREE.CompressedTextureMipmap[],
+      glFormat,
+    );
+    cubeTexture.minFilter = mipCount > 1 ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+    cubeTexture.magFilter = THREE.LinearFilter;
+    cubeTexture.needsUpdate = true;
+
+    return { texture: cubeTexture, cpuDecoded: false, formatLabel };
+  }
+
+  // CPU fallback: decode each face's base mip → 6 DataTextures → CubeTexture
+  if (!s3tc) {
+    const store = useViewportStore.getState();
+    store.setS3tcWarning('WEBGL_compressed_texture_s3tc unavailable — using CPU decode');
+  }
+
+  const dxtFormats = ['DXT1', 'DXT2', 'DXT3', 'DXT4', 'DXT5'];
+  if (!dxtFormats.includes(formatStr)) {
+    return { texture: makeMagenta1x1(), cpuDecoded: true, formatLabel };
+  }
+
+  // Decode each face's base mip into RGBA8 and build CubeTexture
+  const faceDataTextures: THREE.DataTexture[] = [];
+  for (let face = 0; face < 6; face++) {
+    const baseMip = dds.mips[face * mipCount];
+    if (!baseMip) {
+      faceDataTextures.push(makeMagenta1x1());
+      continue;
+    }
+    const rgba8 = decodeDxt(
+      bytes,
+      baseMip.offset,
+      baseMip.byteLength,
+      dds.width,
+      dds.height,
+      formatStr as 'DXT1' | 'DXT2' | 'DXT3' | 'DXT4' | 'DXT5',
+    );
+    const faceTex = new THREE.DataTexture(rgba8, dds.width, dds.height, THREE.RGBAFormat);
+    faceTex.needsUpdate = true;
+    faceDataTextures.push(faceTex);
+  }
+
+  // Build CubeTexture from the 6 decoded images
+  const cubeTexture = new THREE.CubeTexture(
+    faceDataTextures.map(t => {
+      // CubeTexture.images expects HTMLImageElement-like objects or ImageData.
+      // We pass the DataTexture itself and let Three.js handle it internally.
+      // Source image must have .image property or be an Image-like — use the source.
+      const img = (t as unknown as { image: ImageData }).image;
+      return img;
+    }),
+  );
+  cubeTexture.format = THREE.RGBAFormat;
+  cubeTexture.needsUpdate = true;
+
+  return { texture: cubeTexture, cpuDecoded: true, formatLabel };
 }
 
 // ─── 1×1 magenta fallback texture ─────────────────────────────────────────────
