@@ -91,19 +91,19 @@ Plans:
 **Plans**: 5 plans
 Plans:
 **Wave 1**
-- [ ] 02-01-PLAN.md — Install three/R3F/drei; contract types (mesh/skeleton/animation/material); C++ static .msh parser (FORM MESH) + .lmg/.ldt/.sht/.pal/.dds parsers + de-index utility + N-API binding; CORE-05 fixtures (SC-5) for all six formats
+- [ ] 02-01-PLAN.md — Install three/R3F/drei; contract types (mesh/skeleton/animation/material, Uint32 indices, MeshAttributeSlice byte offsets); C++ static .msh + .lmg/.ldt/.sht/.pal/.dds parsers + de-index utility + N-API binding; CORE-05 fixtures — generic-IFF for .msh/.lmg/.ldt/.sht, PARSER-NATIVE for .pal/.dds
 
 **Wave 2** *(blocked on 02-01)*
-- [ ] 02-02-PLAN.md — C++ SKMG/SKTM/SMAT parsers + de-index+vec4-normalize + CORE-05 fixtures; TS appearance resolver (cross-TRE SMAT→MLOD→SKMG→SKTM graph walk, D-04 partial-resolution); R3F Viewport + SkinnedMeshView (VIEW-01); viewportStore; LodPicker; AppearancePanel
+- [ ] 02-02-PLAN.md — C++ SKMG (INFO 9×int32+4×int16, TWDT from INFO) / SKTM (v0001+v0002 BPMJ-branched) / SMAT / APT parsers + de-index+vec4-normalize + CORE-05 fixtures; TS resolver (composed/composed-static/leaf, texture-byte plumbing, D-04); R3F Viewport + StaticMeshView AND SkinnedMeshView, multi-PSDT, no material.skinning (VIEW-01 static+skinned); viewportStore (source-entry fields); LodPicker; AppearancePanel
 
 **Wave 3** *(blocked on 02-02)*
-- [ ] 02-03-PLAN.md — Custom ShaderMaterial (skinning + uTexFactor + multi-map: diffuse/normal/spec/emissive/env); DDS GPU upload via WEBGL_compressed_texture_s3tc; CustomizationPanel live color-swap (D-06); MaterialInspector (VIEW-02)
+- [ ] 02-03-PLAN.md — Custom ShaderMaterial (skinning chunks, samplers in fragment, uTexFactor + distinct uMaterialColor, DOT3 tangents, multi-map); DDS GPU upload via S3TC + real CPU-decode fallback; texture bytes consumed from 02-02 resolver; multi-group CustomizationPanel live color-swap (D-06) + multi-group MaterialInspector (VIEW-02)
 
 **Wave 4** *(blocked on 02-02)*
-- [ ] 02-04-PLAN.md — C++ Animation parser (CKAT 0001 compressed + KFAT 0003; KFAT 0002 graceful decline) + CKAT decoder (CompressedQuaternion.cpp:82-100,370-419 w-clamp); CORE-05 fixtures; AnimationTransport (D-08); useFrame zero-GC sampler (VIEW-03)
+- [ ] 02-04-PLAN.md — C++ Animation parser with SEPARATE CKAT(int16)/KFAT(int32) sparse per-channel byte tables + VERBATIM CompressedQuaternion::install()/doExpand() port (255-entry s_formatData, w-clamp); KFAT 0002 declined; CORE-05 fixtures (no on-load decimation); AnimationTransport (D-08, populated picker); ref-clock sparse-key zero-GC sampler (VIEW-03)
 
 **Wave 5** *(blocked on 02-03 + 02-04)*
-- [ ] 02-05-PLAN.md — glTF + COLLADA export (GLTFExporter/ColladaExporter, rigged+animated, X-mirror coordinate transform); Extract… raw-asset action; AI-distilled docs corrections for verified formats (VIEW-04)
+- [ ] 02-05-PLAN.md — glTF (reliable) + COLLADA (best-effort) export with matrix X-mirror (winding+normals+tangents+bind matrices+animation) on a deep-cloned scene, applied once (no double-apply); buildAnimationClip from corrected 02-04 IR; Extract… via viewportStore source-entry fields; precise docs callouts (DDS mis-citation fixed) (VIEW-04)
 
 **UI hint**: yes
 
