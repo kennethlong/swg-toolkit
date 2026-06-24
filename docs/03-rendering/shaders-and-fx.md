@@ -1,8 +1,8 @@
-# Shaders and FX — Lightsabers, Force Fields, and the Shader-Graph Editor
+# Shaders and FX — Lightsabers, Force Fields, and SWG Shader Templates (.sht)
 
-> Covers: lightsaber shaders + motion trails (.lsb), force-field/shield shaders, visual shader-graph editor (.sht). Source: research doc lines 7345–7897, 11645–11871, 12897–13114.
+> Covers: lightsaber shaders + motion trails (.lsb), force-field/shield shaders, `.sht` shader template format (SSHT/CSHD), texture upload, and Three.js material mapping. Source: research doc lines 7345–7897, 11645–11871, 12897–13114; §1.7 + §2 of `.planning/research/CONSULT-P2-SYNTHESIS.md`.
 
-> **Provenance caveat:** The .lsb and .sht binary layouts, hardpoint naming conventions, and shield parameter structs described here are AI-proposed reconstructions. Validate every field offset, chunk tag, and struct member against the real `swg-client-v2` source before shipping. See [source provenance](../00-overview/source-provenance.md).
+> **Provenance caveat:** The .lsb binary layout, hardpoint naming conventions, and shield parameter structs described here are AI-proposed reconstructions. Validate every field offset, chunk tag, and struct member against the real `swg-client-v2` source before shipping. See [source provenance](../00-overview/source-provenance.md). The `.sht`/SSHT/CSHD, `.pal`, DXT upload, and Three.js material sections below are **verified** against `../swg-client-v2`.
 
 IFF reader/writer boilerplate (`IffBinaryWriter`, FORM/chunk framing, little-endian helpers) is documented in [../01-core-engine/iff-and-tre.md](../01-core-engine/iff-and-tre.md). Only .lsb- and .sht-specific parsing and serialization is shown here.
 
@@ -23,13 +23,14 @@ IFF reader/writer boilerplate (`IffBinaryWriter`, FORM/chunk framing, little-end
    - 2.2 [Procedural Volumetric Force-Field Shader](#22-procedural-volumetric-force-field-shader)
    - 2.3 [Shield Dome Node in React Three Fiber](#23-shield-dome-node-in-react-three-fiber)
    - 2.4 [Force-Field Tuning Properties Panel](#24-force-field-tuning-properties-panel)
-3. [Visual Shader-Graph Editor (.sht)](#3-visual-shader-graph-editor-sht)
-   - 3.1 [Shader-Graph Architecture](#31-shader-graph-architecture)
-   - 3.2 [Installing the Node-Canvas Engine](#32-installing-the-node-canvas-engine)
-   - 3.3 [Shader Node Schema (TypeScript)](#33-shader-node-schema-typescript)
-   - 3.4 [Live WebGL Fragment Shader Compiler (TypeScript)](#34-live-webgl-fragment-shader-compiler-typescript)
-   - 3.5 [@xyflow/react Node Editor UI](#35-xyflowreact-node-editor-ui) *(previously "React Flow" — corrected)*
-   - 3.6 [.sht Binary Serialization Engine (C++)](#36-sht-binary-serialization-engine-c)
+3. [SWG Shader Templates (.sht)](#3-swg-shader-templates-sht)
+   - 3.1 [SSHT — Static Shader Template](#31-ssht--static-shader-template)
+   - 3.2 [Texture Slot Tags](#32-texture-slot-tags)
+   - 3.3 [CSHD — Customizable Shader Template](#33-cshd--customizable-shader-template)
+   - 3.4 [Customization Pathways](#34-customization-pathways)
+   - 3.5 [.pal — Palette File Format](#35-pal--palette-file-format)
+   - 3.6 [DXT Texture Upload (WebGL2)](#36-dxt-texture-upload-webgl2)
+   - 3.7 [Three.js Material Mapping for SWG Meshes](#37-threejs-material-mapping-for-swg-meshes)
 
 ---
 
@@ -901,318 +902,184 @@ export const SwgShieldInspectorCard: React.FC<{
 
 ---
 
-## 3. Visual Shader-Graph Editor (.sht)
+## 3. SWG Shader Templates (.sht)
 
-The shader-graph editor lets artists build multi-texture SWG shader files visually, with live WebGL preview, then serialize the result to the proprietary `.sht` IFF binary format.
+> **Verified** against `../swg-client-v2` (clientGraphics: `StaticShaderTemplate.cpp`, `CustomizableShaderTemplate.cpp`, `Texture.cpp`, `Dds.h`; sharedMath: `PaletteArgb.cpp`) + `../swg-blender-plugin` (`shader_extended.py`, `shader_effects.py`); see `.planning/research/CONSULT-P2-SYNTHESIS.md` §1.7 and `.planning/research/CONSULT-P2-04-sonnet.out`.
 
-### 3.1 Shader-Graph Architecture
+A `.sht` file is a **parameter/data file**, not a shader program or node graph. The actual HLSL vertex and pixel programs live in a separate `.eft` **effect file** that the `.sht` names. There are two root IFF forms:
 
-> **Correction (research review 2026-06-21):** The node-graph library is **`@xyflow/react` v12** — the current package name for React Flow. The old `reactflow` package name is deprecated; use `@xyflow/react` for all new installs. Source: [`../../.planning/research/STACK.md`](../../.planning/research/STACK.md).
+| Root tag | C++ class | Role |
+|---|---|---|
+| `SSHT` | `StaticShaderTemplate` | Static: names `.eft` + declares texture slots and UV-set indices |
+| `CSHD` | `CustomizableShaderTemplate` | Customizable: wraps an `SSHT` and adds per-variable color/texture overrides |
+| `SWTS` | `SwitchTextureShaderTemplate` | Switch-texture animated variant |
 
-```
-[ @xyflow/react UI Node Canvas ] ──(State Change)──> [ TypeScript Graph Compiler ]
-             │                                               │
-             ├──> (Generates WebGL Custom Fragment Shader) ──┤
-             │    -> Live 3D Mesh Preview Canvas             │
-             │                                               v
-             └──> (Unrolls Connections to Flat Payload) ──> [ C++ Node-API Core ]
-                                                            -> Packs IFF Chunks (SHTS / DATA)
-                                                            -> Deploys Deployable .SHT Binary
-```
+### 3.1 SSHT — Static Shader Template
 
-### 3.2 Installing the Node-Canvas Engine
+`FORM SSHT` (versions `0000`/`0001`) IFF hierarchy (`StaticShaderTemplate.cpp:310-666`):
 
 ```
-npm install @xyflow/react
+FORM SSHT
+  FORM 0000 (or 0001)
+    NAME   <effect_path_string>          — path to the .eft effect file (real shader programs)
+    FORM MATS (optional)                 — material constants
+      FORM 0000
+        CHUNK TAG    — uint32 material tag
+        CHUNK MATL   — ambient(4f) + diffuse(4f) + emissive(4f) + specular(4f) + specPower(f)
+    FORM TXMS (optional)                 — texture slots, one FORM TXM per slot
+      FORM TXM
+        FORM 0000/0001/0002
+          CHUNK DATA  — tag(uint32), placeholder(bool8), wrap_u/v/w(uint8×3),
+                        filter_mip/min/mag(uint8×3) [0002: +maxAnisotropy(uint8)]
+          <embedded IFF texture reference>
+    FORM TCSS (optional)                 — UV-set index assignments
+      CHUNK 0000   — pairs: tag(uint32) + tcs_index(uint8)
+    FORM TFNS (optional)                 — texture factor constants (packed ARGB uint32)
+    FORM TSNS (optional, v0001 only)     — UV scroll speeds per slot
+    FORM ARVS (optional)                 — alpha-ref values per pass (uint8)
+    FORM SRVS (optional)                 — stencil-ref values per pass (uint32)
 ```
 
-### 3.3 Shader Node Schema (TypeScript)
+When `NRML` or `CNRM` is present in `TXMS`, a `DOT3` tangent coordinate set is automatically added pointing at `tcs[last+1]` (`StaticShaderTemplate.cpp:123-128`).
+
+### 3.2 Texture Slot Tags
+
+Confirmed from `StaticShaderTemplate.cpp:32-36` + `shader_effects.py:28-53`:
+
+| Tag | Semantic | Typical DDS format | Notes |
+|---|---|---|---|
+| `MAIN` | Diffuse / albedo | DXT1 (opaque) or DXT5 (alpha) | Always present |
+| `NRML` | Normal map (legacy) | DXT1 or DXT5 | Triggers auto DOT3 tangent channel |
+| `CNRM` | Compressed normal (DOT3) | DXT5 or DXT1 | Equivalent to `NRML` in DOT3-era shaders |
+| `SPEC` | Specular intensity | DXT1 or A8R8G8B8 | Present in `a_specmap.eft` family |
+| `EMIS` | Emissive / glow | DXT5 | Present in emismap/specmap_emis effects |
+| `ENVM` | Environment / cube map | Cube DDS | **Always `placeholder=true`** — set globally via `Graphics::setGlobalTexture(TAG_ENVM, ...)`, never per-object |
+| `MASK` | Environment / AO mask | DXT1 | |
+| `DOT3` | Tangent coord set index | N/A | Coordinate set, not a texture |
+
+### 3.3 CSHD — Customizable Shader Template
+
+`FORM CSHD` wraps a full embedded `SSHT` and adds up to three optional customization forms (`CustomizableShaderTemplate.cpp:1453-1605`; confirmed by `shader_extended.py:95-225`):
+
+```
+FORM CSHD
+  FORM 0000 (or 0001)
+    <embedded SSHT form>                   — full base static shader
+    FORM MATR (optional)                   — material color customizations
+      FORM ENTR  (one per variable)
+        CHUNK INFO  — material tag (uint32)
+        CHUNK AMCL  — ambient:  variableName(str) [+isPrivate(int8)] + palettePath(str) + defaultIdx(int32)
+        CHUNK DFCL  — diffuse:  same layout
+        CHUNK EMCL  — emissive: same layout
+    FORM TXTR (optional)                   — swappable texture customizations
+      CHUNK DATA  — count(int16) + N×pathName(str)   [flat DDS path array]
+      FORM CUST
+        CHUNK TX1D  — textureTag(uint32) + baseIdx(int16) + count(int16)
+                      + varName(str) + isPrivate(int8) + defaultIdx(int16)
+    FORM TFAC (optional, version 0001+)    — texture-factor palette customizations
+      CHUNK PAL   — varName(str) + isPrivate(int8) + tfactorTag(uint32)
+                    + palettePath(str) + defaultIdx(int32)
+```
+
+### 3.4 Customization Pathways
+
+Three distinct pathways are applied in `CustomizableShaderTemplate::applyShaderSettings` (`CustomizableShaderTemplate.cpp:1246-1286`):
+
+**Pathway A — Palette index → material color** (`MATR`/`AMCL`/`DFCL`/`EMCL`):
+Variable index → `intValues[index]` → `PaletteArgb::getEntry(paletteEntryIndex)` → `VectorArgb` → `Material::setAmbientColor` / `setDiffuseColor` / `setEmissiveColor` → `StaticShader::setMaterial(tag, material)`. Affects D3D fixed-function material color constants.
+
+**Pathway B — Palette index → texture swap** (`TXTR`/`TX1D`):
+Variable index → array offset → `CachedTexture::fetchTexture()` → `StaticShader::setTexture(textureTag, *texture)`. Replaces a named slot (e.g., `MAIN`) with one DDS from a flat array.
+
+**Pathway C — Palette index → texture factor tint** (`TFAC`/`PAL`):
+Variable index → `PaletteArgb::getEntry(paletteEntryIndex)` → packed `0xAARRGGBB` uint32 → `StaticShader::setTextureFactor(tfactorTag, argbUint32)`. Sets a D3D texture-stage multiply tint register.
+
+Each variable's current value is a single `int` (the palette entry index). For live color customization in the toolkit, store one `int` per variable name; re-apply on change.
+
+### 3.5 .pal — Palette File Format
+
+Standard Microsoft RIFF PAL format (`PaletteArgb.cpp:377-523`):
+
+```
+Offset  Size  Field
+0       4     'RIFF' magic
+4       4     riffChunkLength (LE uint32) = paletteChunkLength + 12
+8       4     'PAL ' riff type
+12      4     'data' chunk FourCC
+16      4     paletteChunkLength (LE uint32) = 4 + entryCount×4
+20      1     unknownByte (always 0)
+21      1     versionOrComponentCount (3 = RGB, forces alpha to 255)
+22      2     entryCount (LE uint16), max 1024
+24      entryCount×4  R, G, B, A bytes per entry
+```
+
+**Critical:** when `versionOrComponentCount == 3` (all retail `.pal` files), the A byte in each entry is ignored and forced to 255 (`PaletteArgb.cpp:517-521`). Entry memory layout: R, G, B, A. Internal packed storage is A8R8G8B8 (`getArgb()` returns `(A<<24)|(R<<16)|(G<<8)|B`).
+
+### 3.6 DXT Texture Upload (WebGL2)
+
+> **Previous doc claim ("DXT must be CPU-decoded") is WRONG.**
+
+The SWG D3D client uploads DXT surfaces directly to GPU without decompression (`Texture.cpp` `loadSurface`: uses compressed block pitch, locks D3D surface, reads bytes in — no decode step). The WebGL2 equivalent is identical in principle:
+
+| DXT variant | WebGL2 constant | CPU decode needed? |
+|---|---|---|
+| DXT1 | `COMPRESSED_RGB_S3TC_DXT1_EXT` / `COMPRESSED_RGBA_S3TC_DXT1_EXT` | No — direct GPU upload |
+| DXT3 | `COMPRESSED_RGBA_S3TC_DXT3_EXT` | No — direct GPU upload |
+| DXT5 | `COMPRESSED_RGBA_S3TC_DXT5_EXT` | No — direct GPU upload |
+| DXT2 / DXT4 | No WebGL equivalent | Yes — premultiplied alpha; rare in SWG assets; decode to ARGB_8888 |
+
+Use `THREE.CompressedTexture` with the `WEBGL_compressed_texture_s3tc` extension (available on 99%+ of desktop WebGL2 contexts). CPU-decode path is only needed for DXT2/4 fallback or iOS WebGL1.
+
+### 3.7 Three.js Material Mapping for SWG Meshes
+
+> **`MeshStandardMaterial` is suboptimal for SWG meshes** — it lacks a texture-factor tint uniform and cannot express SWG's D3D texture-stage multiply.
+
+**Recommended: custom `ShaderMaterial`** with the following uniforms (synthesis §2; `CONSULT-P2-04-sonnet.out` §4):
 
 ```typescript
-export type SwgShaderNodeType =
-  | 'TextureSample'
-  | 'ColorConstant'
-  | 'TexCoordScroll'
-  | 'MaterialOutput';
-
-export interface SwgShaderNodeData {
-  label:  string;
-  type:   SwgShaderNodeType;
-  value?: any; // e.g., texture path "art/texture/metal_floor.dds" or color [r, g, b]
-}
-
-export interface SwgShaderGraphPayload {
-  nodes: Array<{
-    id:       string;
-    type:     string;
-    data:     SwgShaderNodeData;
-    position: { x: number; y: number };
-  }>;
-  edges: Array<{
-    id:            string;
-    source:        string;
-    target:        string;
-    sourceHandle?: string;
-    targetHandle?: string;
-  }>;
-}
+const uniforms = THREE.UniformsUtils.merge([
+  THREE.UniformsLib.common,
+  THREE.UniformsLib.normalmap,
+  THREE.UniformsLib.lights,
+  THREE.UniformsLib.fog,
+  {
+    uDiffuseMap:  { value: null as THREE.Texture | null },      // MAIN slot
+    uNormalMap:   { value: null as THREE.Texture | null },      // NRML/CNRM slot
+    uSpecularMap: { value: null as THREE.Texture | null },      // SPEC slot
+    uEmissiveMap: { value: null as THREE.Texture | null },      // EMIS slot
+    uEnvMap:      { value: null as THREE.CubeTexture | null },  // ENVM (global scene cube)
+    uTexFactor:   { value: new THREE.Vector4(1, 1, 1, 1) },     // TFAC tint (Pathway C)
+    uSpecPower:   { value: 16.0 },
+  }
+]);
 ```
 
-### 3.4 Live WebGL Fragment Shader Compiler (TypeScript)
+The SWG D3D texture-factor multiply maps to one GLSL line in the fragment shader:
 
-Parses the active node graph, resolves incoming edge connections, and stitches together a GLSL fragment shader string for instantaneous preview. Supports `TextureSample` (with optional `TexCoordScroll` UV modifier), and `ColorConstant` emissive inputs wired to the `MaterialOutput` node.
+```glsl
+vec4 finalColor = texture2D(uDiffuseMap, vUv) * uTexFactor;
+```
+
+**Live customization is zero-allocation.** For Pathway C (tint), mutate the uniform value directly — no `needsUpdate`, no realloc:
 
 ```typescript
-import { SwgShaderGraphPayload } from './ShaderGraphSchema';
+// User picks palette entry → call this; no shader recompile, no allocation
+material.uniforms.uTexFactor.value.set(r / 255, g / 255, b / 255, 1.0);
+```
 
-export class SwgShaderGraphCompiler {
-  /**
-   * Generates custom WebGL fragment shader code from the node graph payload.
-   */
-  public compileGraphToFragmentShader(
-    payload: SwgShaderGraphPayload
-  ): string {
-    let uniformDeclarations = '';
-    let colorCalculations   = 'vec4 baseColor = vec4(0.5, 0.5, 0.5, 1.0);\n';
+Only set `material.needsUpdate = true` if the shader source changes (not for uniform value changes).
 
-    // 1. Locate the master Material Output node
-    const outputNode = payload.nodes.find(n => n.data.type === 'MaterialOutput');
-    if (!outputNode) return this.getFallbackShader();
+**GPU skinning** composes with customization uniforms without conflict. A custom `ShaderMaterial` targeting a `SkinnedMesh` must include Three.js skinning chunks in the vertex shader:
 
-    // 2. Scan incoming edge structures to trace pixel logic
-    payload.edges.forEach((edge) => {
-      const sourceNode = payload.nodes.find(n => n.id === edge.source);
-      if (!sourceNode) return;
-
-      if (sourceNode.data.type === 'TextureSample' && edge.targetHandle === 'diffuse') {
-        const uniformName = `uTex_${sourceNode.id}`;
-        uniformDeclarations += `uniform sampler2D ${uniformName};\n`;
-
-        // Check if the texture sample has an attached UV scrolling coordinate node
-        const uvEdge   = payload.edges.find(
-          e => e.target === sourceNode.id && e.targetHandle === 'uv'
-        );
-        const uvCoords = uvEdge
-          ? `vUv + (uScrollSpeed_${uvEdge.source} * uTime)`
-          : 'vUv';
-
-        if (uvEdge) {
-          uniformDeclarations += `uniform vec2 uScrollSpeed_${uvEdge.source};\n`;
-        }
-
-        colorCalculations = `baseColor = texture2D(${uniformName}, ${uvCoords});\n`;
-      }
-
-      if (sourceNode.data.type === 'ColorConstant' && edge.targetHandle === 'emissive') {
-        uniformDeclarations += `uniform vec3 uColor_${sourceNode.id};\n`;
-        colorCalculations   += `baseColor.rgb += uColor_${sourceNode.id} * 1.5;\n`; // Emissive boost
-      }
-    });
-
-    return `
-      uniform float uTime;
-      varying vec2  vUv;
-      ${uniformDeclarations}
-
-      void main() {
-        ${colorCalculations}
-        gl_FragColor = baseColor;
-      }
-    `;
-  }
-
-  private getFallbackShader(): string {
-    // Magenta missing-asset indicator
-    return `void main() { gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0); }`;
-  }
+```glsl
+#include <skinning_pars_vertex>
+// ... attribute declarations ...
+void main() {
+  #include <skinning_vertex>
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
 }
 ```
 
-### 3.5 @xyflow/react Node Editor UI
+Set `material.skinning = true` (Three.js r152+; in newer Three.js this is automatic for `SkinnedMesh`). The bone-matrix texture (`boneTexture` uniform) coexists with customization uniforms with no conflict.
 
-Provides the drag-and-drop node canvas. Connecting two nodes triggers immediate shader recompilation and preview update.
-
-> **Package name corrected:** import from `@xyflow/react`, not the deprecated `reactflow`. Source: [`../../.planning/research/STACK.md`](../../.planning/research/STACK.md).
-
-```tsx
-import React, { useState, useMemo, useCallback } from 'react';
-import { ReactFlow, MiniMap, Controls, Background,
-  useNodesState, useEdgesState, addEdge } from '@xyflow/react';
-import type { Connection, Edge } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
-import { SwgShaderGraphCompiler } from './ShaderGraphCompiler';
-
-const initialNodes = [
-  {
-    id:       'out_1',
-    type:     'default',
-    data:     { label: 'Material Output', type: 'MaterialOutput' },
-    position: { x: 500, y: 150 }
-  },
-  {
-    id:       'tex_1',
-    type:     'input',
-    data:     {
-      label: 'Texture Sample (.DDS)',
-      type:  'TextureSample',
-      value: 'art/texture/floor_panel.dds'
-    },
-    position: { x: 100, y: 50 }
-  }
-];
-
-const initialEdges = [
-  { id: 'e1-2', source: 'tex_1', target: 'out_1', targetHandle: 'diffuse' }
-];
-
-export const SwgShaderNodeEditor: React.FC<{
-  onShaderCompiled: (fsCode: string, uniforms: any) => void;
-}> = ({ onShaderCompiled }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  const graphCompiler = useMemo(() => new SwgShaderGraphCompiler(), []);
-
-  const onConnect = useCallback(
-    (params: Connection | Edge) => {
-      setEdges((eds) => {
-        const updatedEdges = addEdge(params, eds);
-        // Trigger instant shader recompilation on link updates
-        const fsCode = graphCompiler.compileGraphToFragmentShader({
-          nodes,
-          edges: updatedEdges
-        });
-        onShaderCompiled(fsCode, {});
-        return updatedEdges;
-      });
-    },
-    [nodes, setEdges, graphCompiler, onShaderCompiled]
-  );
-
-  return (
-    <div style={{
-      width: '100%', height: '500px',
-      background: '#1c1c1f',
-      border: '1px solid #333', borderRadius: '4px'
-    }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        fitView
-      >
-        <Controls />
-        <MiniMap nodeColor={() => '#ff0055'} style={{ background: '#111' }} />
-        <Background color="#333" gap={16} />
-      </ReactFlow>
-    </div>
-  );
-};
-```
-
-### 3.6 .sht Binary Serialization Engine (C++)
-
-Once the material graph is finalized, the frontend passes the flattened node/edge payload to the C++ core. The compiler builds a `FORM/SHTS` IFF container. Each texture pass becomes a `FORM/PASS` sub-container holding a `TXFM` chunk (texture path and pass id) and an `ANIM` chunk (UV scroll speeds). The `IffBinaryWriter` helper is from [../01-core-engine/iff-and-tre.md](../01-core-engine/iff-and-tre.md).
-
-```cpp
-#include <napi.h>
-#include <vector>
-#include <string>
-#include <cstring>
-
-struct ShaderTexturePass {
-    uint32_t    passId;
-    std::string texturePath;
-    float       scrollSpeedX;
-    float       scrollSpeedY;
-};
-
-struct SwgShaderExportManifest {
-    uint32_t shaderTypeFlag = 0; // 0 = Standard Mesh Shader, 1 = Blended Terrain Shader
-    std::vector<ShaderTexturePass> texturePasses;
-};
-
-class SwgShaderCompiler {
-public:
-    static std::vector<uint8_t> CompileShaderTemplate(
-        const SwgShaderExportManifest& manifest)
-    {
-        IffBinaryWriter contentWriter;
-
-        // 1. Pack global header settings (DATA chunk)
-        IffBinaryWriter dataWriter;
-        dataWriter.WriteUint32(manifest.shaderTypeFlag);
-        dataWriter.WriteUint32(
-            static_cast<uint32_t>(manifest.texturePasses.size()));
-        contentWriter.PackChunk("DATA", dataWriter.buffer);
-
-        // 2. Loop over visual node connections inside-out and write pass blocks (PASS FORM)
-        for (const auto& pass : manifest.texturePasses) {
-            IffBinaryWriter passContentWriter;
-
-            // Pack structural property tags containing texture pathways (TXFM chunk)
-            IffBinaryWriter txfmWriter;
-            txfmWriter.WriteUint32(pass.passId);
-            txfmWriter.WriteString(pass.texturePath);
-            passContentWriter.PackChunk("TXFM", txfmWriter.buffer);
-
-            // Pack scrolling vertex offset parameters (ANIM chunk)
-            IffBinaryWriter animWriter;
-            animWriter.WriteFloat(pass.scrollSpeedX);
-            animWriter.WriteFloat(pass.scrollSpeedY);
-            passContentWriter.PackChunk("ANIM", animWriter.buffer);
-
-            // Wrap into an active IFF PASS sub-FORM container
-            IffBinaryWriter passFormWriter;
-            passFormWriter.WriteTag("FORM");
-            passFormWriter.WriteUint32(
-                static_cast<uint32_t>(passContentWriter.buffer.size() + 4));
-            passFormWriter.WriteTag("PASS");
-            passFormWriter.WriteRawBuffer(passContentWriter.buffer);
-
-            contentWriter.WriteRawBuffer(passFormWriter.buffer);
-        }
-
-        // 3. Wrap everything into the primary master FORM tag carrying the SHTS identifier
-        IffBinaryWriter formWriter;
-        formWriter.WriteTag("FORM");
-        formWriter.WriteUint32(
-            static_cast<uint32_t>(contentWriter.buffer.size() + 4));
-        formWriter.WriteTag("SHTS");
-        formWriter.WriteRawBuffer(contentWriter.buffer);
-
-        return formWriter.buffer;
-    }
-};
-
-// Node-API Export Wrapper
-Napi::Value CompileJsToShtStream(const Napi::CallbackInfo& info) {
-    Napi::Env    env        = info.Env();
-    Napi::Object jsManifest = info.As<Napi::Object>();
-
-    SwgShaderExportManifest nativeManifest;
-    // Unpack texture arrays and handles from incoming graph state properties...
-
-    std::vector<uint8_t> compiledBytes =
-        SwgShaderCompiler::CompileShaderTemplate(nativeManifest);
-
-    Napi::ArrayBuffer outputBuffer =
-        Napi::ArrayBuffer::New(env, compiledBytes.size());
-    std::memcpy(outputBuffer.Data(),
-                compiledBytes.data(),
-                compiledBytes.size());
-    return outputBuffer;
-}
-```
-
-**IFF layout summary for `.sht`:**
-
-```
-FORM/SHTS
-  DATA            — shaderTypeFlag (uint32), passCount (uint32)
-  FORM/PASS       — one per texture pass
-    TXFM          — passId (uint32), texturePath (null-terminated string)
-    ANIM          — scrollSpeedX (float), scrollSpeedY (float)
-```
+**`ENVM` global cubemap:** SWG sets one scene-global environment texture via `ShaderPrimitiveSorter`. In Three.js, drive it from `scene.environment` (PMREMGenerator output) and bind as `uEnvMap` across all SWG materials globally.
