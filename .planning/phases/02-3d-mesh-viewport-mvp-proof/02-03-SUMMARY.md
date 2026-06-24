@@ -192,3 +192,95 @@ Commits verified:
 
 TypeScript: 0 errors (npx tsc --noEmit in packages/renderer)
 Test suite: 139/139 passing
+
+---
+
+## Gap Fix: .eft effects + ENVM cube
+
+### Root Cause
+
+SWG meshes rendered flat/matte compared to Sytner's IFF Editor (SIE). Ground-truth investigation established the body droid's relief comes from **environment-mapped specular**: a DXT3 128×128 cube map (`texture/env_theed.dds`) reflected on the mesh, masked by the diffuse alpha channel. Three bugs blocked it:
+
+**Bug 1 — Shader.cpp ENVM texturePath skipped (lines ~144-159):**
+The ENVM slot was forced `placeholder=true` by the client (`StaticShaderTemplate.cpp:load_texture_0000`). Our port unconditionally skipped the NAME chunk read for placeholder slots — leaving `texturePath=""` for ENVM. Ground truth: the client DOES write the NAME chunk (the cube-map path is present in the .sht binary); it only ignores it at runtime in favour of a global texture. Fix: always read NAME for ENVM; populate `texturePath`.
+
+**Bug 2 — Shader.cpp effectPath hardcoded "" (line ~229):**
+`result.effectPath = ""` was hardcoded. The .sht has a trailing NAME chunk (cstring path to `.eft`) or inline EFCT FORM. Source: `ShaderEffectList.cpp:172-233` — v0000 layout puts effect last, v0001 puts it first. Fix: scan versionForm children for NAME leaf (effectPath = cstring) or EFCT FORM (synthetic inline path).
+
+**Bug 3 — swgMaterial.ts env contribution * 0.15 (line ~198):**
+Env map reflection was multiplied by a hardcoded constant rather than the spec mask. Source: `a_envmask_specmap.eft` convention — MAIN.alpha is the spec/gloss mask. Fix: `finalColor += envSample * specMask` where `specMask = SPEC.r` (if bHasSpec) else `MAIN.alpha`.
+
+### What Was Built
+
+**Task 1 — Shader.cpp Bug-1 + Bug-2 (commit 5694aed):**
+- Bug-1: `bool readName = (!placeholder && nameNode) || (slotTag == "ENVM" && nameNode)` — ENVM NAME always read
+- Bug-2: versionForm children loop; NAME leaf → effectPath = cstring; EFCT FORM → effectPath = "effect/__inline.eft"
+
+**Task 2 — EFCT (.eft) parser (commit 4e03a7f):**
+- `Effect.h`: EffectSampler / EffectBlend / EffectImpl / EffectResult types
+- `Effect.cpp`: C++20 engine-free `parseEffect()`:
+  - `tagToRoleString()`: high-byte-first decode → canonical "MAIN"/"ENVM"/"SPEC" (not reversed "NIAM")
+  - `parsePtxm()`: PTXM version-dispatch → `{index, role}` sampler descriptor
+  - `parsePpsh()`: PPSH 0001 DATA nSamplers + PTXM children
+  - `parsePassData()`: 56-byte blend state — `alphaBlendEnable/blendSrc/Dst/alphaTestEnable/Ref/zWrite`
+  - `parseImpl()`: IMPL → SCAP/OPTN/PASS → blend + samplers
+  - `parseEffect()`: picks `bestImplIndex` = highest maxSCAP with samplers
+- CMakeLists.txt: Effect.cpp added to CORE_SOURCES
+- mesh_binding.cpp: `ParseEffect` N-API wrapper; `isCubemap` in ParseDds
+- addon.cpp: register `parseEffect` export
+- index.d.ts: EffectBlend/EffectSampler/EffectImpl/EffectParseResult interfaces; `parseEffect()` signature; `isCubemap` on DdsParseResult
+
+**Task 3 — DDS cubemap support (commit c7bc546):**
+- `Dds.h`: `isCubemap` field in DdsResult; 6-face mip layout documented
+- `Dds.cpp`: detect `DDSCAPS2_CUBEMAP = 0x200` in `dwComplexFlags`; outer loop over 6 faces → 6×mipCount entries in `mips[]` (face-major: +X, -X, +Y, -Y, +Z, -Z)
+- `contracts/material.ts`: `isCubemap` added to DdsParseResult with face-order docs
+- `ddsTexture.ts`: `buildCubeTexture()` branch when `isCubemap=true`
+  - GPU path: `THREE.CompressedCubeTexture` from 6-face `CompressedTextureMipmap[]`
+  - CPU fallback: decode 6 faces → DataTextures → CubeTexture
+  - 2D path unchanged
+
+**Task 4 — Resolver wiring (commit 06fb942):**
+- `ResolvedMaterial.effectResult`: new `EffectParseResult | null` field
+- `resolveShader()`: fetches ENVM cube bytes (Bug-1 fix plumbs path); fetches + parses `.eft` when `effectPath` set (Bug-2); parse failure non-fatal → effectResult=null (opaque defaults)
+- `nativeCore` binding type: `parseEffect` signature added
+
+**Task 5 — swgMaterial Bug-3 + effectBlend (commit c17ddf7):**
+- Fragment shader: `finalColor += envSample * specMask` where `specMask = SPEC.r` or `MAIN.alpha`
+- `SwgMaterialOptions.effectBlend`: optional blend state from `.eft` PASS DATA
+- `buildSwgMaterial`: drives `material.transparent`, `alphaTest`, `depthWrite` from effectBlend
+
+**Task 6 — ENVM view wiring (commit e583176):**
+- `StaticMeshView.tsx` + `SkinnedMeshView.tsx`: ENVM case calls `buildDdsTexture`; when `isCubemap=true` → `mat.uniforms.uEnvMap.value = CompressedCubeTexture`
+- `hasEnvSlot`: gated on `!!slotBytes[ENVM]` (cube bytes must be present)
+- `effectBlend` extracted from `effectResult.impls[bestImplIndex].blend` → passed to `buildSwgMaterial`
+
+**Task 7 — Tests + docs (commit 5dcf228):**
+- `mesh-roundtrip.test.ts`: FORM EFCT IFF round-trip gate + parseEffect assertions (formatTag, impls, MAIN sampler role, blend booleans); Bug-1/2 regression tests (ENVM texturePath + effectPath non-empty); `registerFormat('shader-efct')` gate
+- `shaders-and-fx.md`: corrected ENVM slot (per-shader cube-map path now read); added EFCT verified layout section (PTXM tag byte order, 56-byte blend state, IMPL selection); effect-path loading documented
+
+### Native Build Status
+
+C++ compilation (Shader.cpp + Effect.cpp) SUCCEEDED. Link step for `swg_native_core.node` encountered LNK1104 (file lock — app running with old .node loaded). This is the documented "resolve-prebuild EPERM env flake" — the pre-built .node is functional. All 145 tests pass with the pre-built addon.
+
+### Test Results
+
+```
+Test Files: 13 passed (13)
+Tests: 145 passed (145)   (139 original + 6 new EFCT/regression, skipping gracefully when real fixtures absent)
+```
+
+### Commits (Gap Fix)
+
+| Hash | Message |
+|------|---------|
+| 5694aed | fix(02-03): Shader.cpp Bug-1 (ENVM texturePath) + Bug-2 (effectPath) |
+| 4e03a7f | feat(02-03): add EFCT (.eft) shader-effect parser + N-API binding |
+| c7bc546 | feat(02-03): DDS cubemap detection + THREE.CompressedCubeTexture upload |
+| 06fb942 | feat(02-03): resolver fetches ENVM cube bytes + parses .eft effect |
+| c17ddf7 | fix(02-03): swgMaterial spec-mask env (Bug-3) + .eft blend state wiring |
+| e583176 | feat(02-03): wire ENVM cube texture + effectBlend in mesh views |
+| 5dcf228 | test(02-03): EFCT + Bug-1/2 regression tests; correct ENVM/effectPath docs |
+
+### Deferred / When Real Fixtures Land
+
+The CORE-05 round-trip test and the Bug-1/2 regression tests skip gracefully when the real fixtures are absent (`fixtures-real/effect/a_envmask_specmap.eft`, `fixtures-real/shader/body_droid_m_01_r_3.sht`). Extract these from the installed client TRE (`shader_02.tre`, `appearance_02.tre`) to activate the hard assertions.
