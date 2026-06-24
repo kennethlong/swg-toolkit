@@ -392,9 +392,16 @@ async function resolveDetailAppearanceLod(
     return { meshes: [null], lodLevels: [] };
   }
 
+  // Order LODs highest-detail-first so meshes[0] / selectedLod=0 is the FULL-detail mesh
+  // (l0, near=0), not the distant imposter LOD. DTLA stores levels far-descending
+  // (meshes[0] would otherwise be the crudest l3, near=20/far=1000), so opening an object
+  // would show its lowest-detail LOD up close. Sort by `near` ascending = best detail first;
+  // the LodPicker then lists LOD0=best…LODn=worst (the universal convention).
+  const sortedLevels = [...dtlaData.levels].sort((a, b) => a.near - b.near || a.far - b.far);
+
   // Build lodLevels with real near/far from DTLA INFO.
   // Source: DetailAppearanceTemplate.cpp:349-361 (near/far from INFO chunk).
-  const lodLevels: LodLevel[] = dtlaData.levels.map(lv => ({
+  const lodLevels: LodLevel[] = sortedLevels.map(lv => ({
     // generatorPath = full VFS path (prepend "appearance/" to raw CHLD name)
     // Source: DetailAppearanceTemplate.cpp:378 (FileName(P_appearance, name))
     generatorPath: `appearance/${lv.childPath}`,
@@ -405,7 +412,7 @@ async function resolveDetailAppearanceLod(
   // Resolve all LOD-level meshes. Each child can be .msh, .mgn, or nested .apt/.lod.
   // We dispatch by extension — feed back through existing resolvers.
   const meshes: (ResolvedMesh | null)[] = await Promise.all(
-    dtlaData.levels.map(async (lv) => {
+    sortedLevels.map(async (lv) => {
       const childVfsPath = `appearance/${lv.childPath}`;
       if (isUnsafePath(childVfsPath)) {
         missing.push(`[unsafe-dtla-child] ${childVfsPath}`);
