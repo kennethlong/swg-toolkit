@@ -26,7 +26,7 @@
  * Accessibility Rule 5: aria-label + title on every icon-only control.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useTreStore, basename } from '../../state/treStore.ts';
 import type { MountedArchive, VfsEntry, ShadowChainDisplay } from '../../state/treStore.ts';
 import type { TreVersion } from '@swg/contracts';
@@ -291,6 +291,48 @@ export default function TreVfsBrowser(): React.ReactElement {
     [store, iffStore, viewportStore],
   );
 
+  // ── Splitter (archives region ↔ file list region) ──────────────────────────
+
+  /**
+   * Height of the mounted-archives region in pixels.
+   * Default 180px (~6 rows at ~30px/row); clamped to [64px, 60% of panel].
+   * Persists for the lifetime of the component (session state — no localStorage needed).
+   */
+  const [archivesHeight, setArchivesHeight] = useState(180);
+
+  /**
+   * Ref for the outer panel div — used to compute the 60% max clamp during drag.
+   * Must be on the flex-column container so clientHeight gives the full panel height.
+   */
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const handleSplitterMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+
+      const startY = e.clientY;
+      const startHeight = archivesHeight;
+      const panel = panelRef.current;
+
+      const onMouseMove = (ev: MouseEvent) => {
+        const delta = ev.clientY - startY;
+        const panelH = panel ? panel.clientHeight : 800;
+        const maxH = Math.floor(panelH * 0.6);
+        const clamped = Math.max(64, Math.min(maxH, startHeight + delta));
+        setArchivesHeight(clamped);
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+    [archivesHeight],
+  );
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const { archives, mountStatus, searchResults, vfsEntries, selectedEntryPath, selectedChain, search } = store;
@@ -299,6 +341,7 @@ export default function TreVfsBrowser(): React.ReactElement {
 
   return (
     <div
+      ref={panelRef}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -479,57 +522,116 @@ export default function TreVfsBrowser(): React.ReactElement {
       {/* Archives + search + tree (shown when mounted) */}
       {hasArchives && !isMounting && (
         <>
-          {/* Mounted archives list */}
-          <MountedArchivesList archives={archives} />
+          {/* ── Mounted archives region: bounded + scrollable ─────────────── */}
+          {/*
+           * Height is controlled by the draggable splitter below.
+           * flexShrink:0 prevents the flex column from shrinking this region
+           * when the panel is too short — scrolling handles overflow instead.
+           */}
+          <div
+            style={{
+              height: archivesHeight,
+              flexShrink: 0,
+              overflowY: 'auto',
+              borderBottom: '1px solid var(--color-border)',
+            }}
+          >
+            <MountedArchivesList archives={archives} />
+          </div>
 
-          {/* Search field */}
-          <VfsSearchField
-            onSearch={handleSearch}
-            matchCount={search.text ? searchResults.length : vfsEntries.length}
+          {/* ── Draggable splitter ────────────────────────────────────────── */}
+          {/*
+           * A 5px grab handle between the archives and the file-list regions.
+           * Pointer events track the drag; clamped to [64px, 60% of panel].
+           * cursor:row-resize signals the resize intent per UI convention.
+           */}
+          <div
+            role="separator"
+            aria-label="Resize archives / file list"
+            title="Drag to resize"
+            onMouseDown={handleSplitterMouseDown}
+            style={{
+              height: 5,
+              flexShrink: 0,
+              cursor: 'row-resize',
+              background: 'var(--color-border)',
+              borderTop: '1px solid var(--color-border-soft)',
+              borderBottom: '1px solid var(--color-border-soft)',
+              transition: 'background 0.1s ease',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = 'var(--color-accent-line)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = 'var(--color-border)';
+            }}
           />
 
-          {/* Search empty state */}
-          {search.text && searchResults.length === 0 ? (
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 'var(--space-2)',
-                padding: 'var(--space-4)',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                {`No files match "${search.text}"`}
-              </span>
-              <button
-                onClick={() => handleSearch('', search.mode)}
+          {/* ── File list region: search + tree, takes remaining space ───── */}
+          {/*
+           * flex:1 + minHeight:0 is the critical pair that makes a flex child
+           * scroll instead of expanding the parent container beyond its bounds.
+           * VfsSearchField is flexShrink:0 (already set in VfsSearchField.tsx)
+           * so it is always visible above the tree.
+           */}
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Search field — always visible, never scrolls away */}
+            <VfsSearchField
+              onSearch={handleSearch}
+              matchCount={search.text ? searchResults.length : vfsEntries.length}
+            />
+
+            {/* Search empty state */}
+            {search.text && searchResults.length === 0 ? (
+              <div
                 style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--color-accent)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-xs)',
-                  fontFamily: 'var(--font-sans)',
-                  textDecoration: 'underline',
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 'var(--space-2)',
+                  padding: 'var(--space-4)',
+                  textAlign: 'center',
                 }}
               >
-                Clear search
-              </button>
-            </div>
-          ) : (
-            /* VFS tree */
-            <VfsTree
-              entries={search.text ? searchResults : vfsEntries}
-              archives={archives}
-              selectedPath={selectedEntryPath}
-              selectedChain={selectedChain}
-              onSelect={handleSelectEntry}
-            />
-          )}
+                <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                  {`No files match "${search.text}"`}
+                </span>
+                <button
+                  onClick={() => handleSearch('', search.mode)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--color-accent)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-xs)',
+                    fontFamily: 'var(--font-sans)',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Clear search
+                </button>
+              </div>
+            ) : (
+              /* VFS tree — flex:1 + minHeight:0 makes it scroll independently */
+              <VfsTree
+                entries={search.text ? searchResults : vfsEntries}
+                archives={archives}
+                selectedPath={selectedEntryPath}
+                selectedChain={selectedChain}
+                onSelect={handleSelectEntry}
+              />
+            )}
+          </div>
         </>
       )}
     </div>
