@@ -40,6 +40,7 @@
 #include "formats/Skeleton.h"
 #include "formats/SkeletalAppearance.h"
 #include "formats/StaticAppearance.h"
+#include "formats/DetailAppearance.h"
 
 // ─── Helpers (shared with iff_binding.cpp; duplicated to keep files independent) ────
 
@@ -755,6 +756,72 @@ Napi::Value ParseStaticAppearance(const Napi::CallbackInfo& info) {
     auto result = Napi::Object::New(env);
     result.Set("formatTag",      Napi::String::New(env, aptResult.formatTag));
     result.Set("redirectTarget", Napi::String::New(env, aptResult.redirectTarget));
+
+    return result;
+}
+
+// ─── ParseDetailAppearance ────────────────────────────────────────────────────
+
+/**
+ * parseDetailAppearance(iffResult: object, srcBytes: ArrayBuffer|Uint8Array) -> {
+ *   formatTag: string,        // 'DTLA'
+ *   versionTag: string,       // '0001'..'0008'
+ *   lodFlags: number,         // uint8 from PIVT (0 if version < 6)
+ *   levels: Array<{
+ *     id: number,             // int32 from INFO
+ *     near: number,           // float32 nearDistance
+ *     far: number,            // float32 farDistance
+ *     childPath: string       // raw name from CHLD (e.g. "mesh/foo.msh") — caller prepends "appearance/"
+ *   }>
+ * }
+ *
+ * Source: DetailAppearanceTemplate.cpp:556-658 (load()) and :343-417 (loadEntries()).
+ * Verified 2026-06-24 against wb_02_09e_00000000000000000000.lod (362 bytes).
+ */
+Napi::Value ParseDetailAppearance(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "parseDetailAppearance: (iffResult: object, srcBytes: ArrayBuffer|Uint8Array) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto [srcData, srcSize] = extractBytes(info[1], env, "parseDetailAppearance srcBytes");
+    if (!srcData) return env.Undefined();
+
+    swg_core::iff::IffNode root;
+    swg_core::formats::DetailAppearanceResult dtlaResult;
+
+    try {
+        root = extractRootNode(info[0].As<Napi::Object>(), srcData, static_cast<uint32_t>(srcSize));
+        dtlaResult = swg_core::formats::parseDetailAppearance(root, srcData, static_cast<uint32_t>(srcSize));
+    } catch (const swg_core::formats::FormatParseError& e) {
+        Napi::Error::New(env, std::string("parseDetailAppearance error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    } catch (const std::exception& e) {
+        Napi::Error::New(env, std::string("parseDetailAppearance internal error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto result = Napi::Object::New(env);
+    result.Set("formatTag",   Napi::String::New(env, dtlaResult.formatTag));
+    result.Set("versionTag",  Napi::String::New(env, dtlaResult.versionTag));
+    result.Set("lodFlags",    Napi::Number::New(env, dtlaResult.lodFlags));
+
+    auto levels = Napi::Array::New(env, dtlaResult.levels.size());
+    for (size_t i = 0; i < dtlaResult.levels.size(); ++i) {
+        const auto& lv = dtlaResult.levels[i];
+        auto lobj = Napi::Object::New(env);
+        lobj.Set("id",        Napi::Number::New(env, lv.id));
+        lobj.Set("near",      Napi::Number::New(env, lv.near));
+        lobj.Set("far",       Napi::Number::New(env, lv.far));
+        lobj.Set("childPath", Napi::String::New(env, lv.childPath));
+        levels.Set(static_cast<uint32_t>(i), lobj);
+    }
+    result.Set("levels", levels);
 
     return result;
 }

@@ -109,6 +109,12 @@ Napi::Value ParseSkeleton(const Napi::CallbackInfo& info);
 Napi::Value ParseSkeletalAppearance(const Napi::CallbackInfo& info);
 Napi::Value ParseStaticAppearance(const Napi::CallbackInfo& info);
 
+// Phase 2 Plan 02-02 gap-closure: DetailAppearance parser (implemented in mesh_binding.cpp):
+// Source: modules/core/formats/DetailAppearance.h
+//   DetailAppearance: swg-client-v2 DetailAppearanceTemplate.cpp:556-658 (DTLA LOD appearance)
+//   Verified 2026-06-24 against wb_02_09e_00000000000000000000.lod (362 bytes, version 0007)
+Napi::Value ParseDetailAppearance(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -157,6 +163,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("parseSkeleton",            Napi::Function::New(env, ParseSkeleton));
     exports.Set("parseSkeletalAppearance",  Napi::Function::New(env, ParseSkeletalAppearance));
     exports.Set("parseStaticAppearance",    Napi::Function::New(env, ParseStaticAppearance));
+
+    // Phase 2 Plan 02-02 gap-closure: DetailAppearance (.lod / FORM DTLA):
+    exports.Set("parseDetailAppearance",    Napi::Function::New(env, ParseDetailAppearance));
 
     return exports;
 }

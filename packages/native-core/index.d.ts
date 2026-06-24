@@ -768,3 +768,52 @@ export function parseStaticAppearance(
   iffResult: IffParseResultNative,
   srcBytes: ArrayBuffer | Uint8Array,
 ): StaticAppearanceParseResult;
+
+// ─── Phase 2 Plan 02-02 gap-closure: DetailAppearance (.lod / FORM DTLA) ─────
+
+/**
+ * One LOD level in a parsed DTLA detail appearance.
+ *
+ * childPath is the raw name from the CHLD chunk, relative to the appearance/ tree.
+ * Caller MUST prepend "appearance/" to get the full VFS path.
+ * Source: DetailAppearanceTemplate.cpp:378 (FileName(P_appearance, name)).
+ */
+export interface DetailAppearanceLevel {
+  /** Int32 child id (shared key between INFO and CHLD entries). */
+  id: number;
+  /** Raw float32 near display distance (NOT pre-squared). */
+  near: number;
+  /** Raw float32 far display distance (NOT pre-squared). */
+  far: number;
+  /**
+   * Raw child appearance name from CHLD chunk (e.g. "mesh/wb_02_09e_..._.msh").
+   * MUST prepend "appearance/" to resolve in the VFS.
+   * Source: DetailAppearanceTemplate.cpp:378 (FileName(P_appearance, name)).
+   */
+  childPath: string;
+}
+
+/**
+ * Result of parseDetailAppearance() — detail LOD appearance .lod (FORM DTLA).
+ *
+ * levels are sorted by farDistance descending (matching the client's std::sort childSorter).
+ * Source: swg-client-v2 DetailAppearanceTemplate.cpp:556-658 (load()) + :343-417 (loadEntries()).
+ * Verified 2026-06-24 against wb_02_09e_00000000000000000000.lod (362 bytes, version 0007).
+ */
+export interface DetailAppearanceParseResult {
+  formatTag: string;               // 'DTLA'
+  versionTag: string;              // '0001'..'0008' (e.g. '0007')
+  lodFlags: number;                // uint8 from PIVT chunk (0 if version < 6)
+  levels: DetailAppearanceLevel[]; // LOD levels sorted by far desc
+}
+
+/**
+ * Parse a FORM DTLA detail LOD appearance descriptor.
+ *
+ * Source: swg-client-v2 DetailAppearanceTemplate.cpp:556-658 (load()) + :343-417 (loadEntries()).
+ * Ground-truth verified against real wb_02_09e_00000000000000000000.lod (362 bytes, 2026-06-24).
+ */
+export function parseDetailAppearance(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): DetailAppearanceParseResult;
