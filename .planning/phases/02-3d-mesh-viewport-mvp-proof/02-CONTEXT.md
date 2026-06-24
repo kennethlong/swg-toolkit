@@ -106,6 +106,16 @@ shader binary layouts in `docs/02-formats/` are **AI-distilled hypotheses** — 
 against the `swg-client-v2` loader source + real asset bytes (the project's #1 constraint, and the
 STATE Phase-2 blocker). Paths are relative to repo root unless noted as a sibling (`../`).
 
+### ⭐ LOCKED ground-truth brief — READ FIRST (supersedes the AI-distilled docs for Phase-2 formats)
+- `.planning/research/CONSULT-P2-SYNTHESIS.md` — **verified, source-cited layouts** for `.sat`(`SMAT`),
+  `.skt`(`SKTM`), `.mgn`(`SKMG`), `.msh`(`MESH`), `.lmg`/`.ldt`(`MLOD`/`LDTB`), `.ans`(`KFAT`/`CKAT`),
+  `.sht`(`SSHT`/`CSHD`)+`.pal`+`.dds`, the Three.js material/skinning plan, the SWG→glTF coordinate
+  math, **planning deltas** (LOD is an external file graph; variable→vec4 skin conversion; de-index
+  pass; `.eft` parsing for full material parity; CKAT decoder on the VIEW-03 critical path), and the
+  `docs/` correction list. Produced by a 4-AI consult crew (Codex/Cursor/Opus/Sonnet) that converged
+  at every shared seam. **Treat its §1 layouts as LOCKED — do NOT re-derive from `docs/`.**
+- `.planning/research/CONSULT-P2-0{1..4}-*.out` — full per-consultant detail (formulas + file:line).
+
 ### Ground-truth #1 — `swg-client-v2` loaders (the oracle; cite per the standing gate)
 - `../swg-client-v2/src/engine/client/library/clientObject/src/shared/appearance/MeshAppearance.cpp`
   + `MeshAppearanceTemplate.cpp` + `DynamicMeshAppearance.cpp` + `DynamicMeshAppearanceShaderSet.cpp`
