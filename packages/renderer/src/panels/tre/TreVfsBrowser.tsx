@@ -32,6 +32,8 @@ import type { MountedArchive, VfsEntry, ShadowChainDisplay } from '../../state/t
 import type { TreVersion } from '@swg/contracts';
 import { useIffStore } from '../../state/iffStore.ts';
 import type { IffParseResult } from '../../state/iffStore.ts';
+import { useViewportStore } from '../../state/viewportStore.ts';
+import { resolveAppearance } from '../viewport/resolver/appearanceResolver.js';
 import MountedArchivesList from './MountedArchivesList.tsx';
 import VfsSearchField from './VfsSearchField.tsx';
 import VfsTree from './VfsTree.tsx';
@@ -83,9 +85,13 @@ function parseVersion(versionStr: string): TreVersion {
   return 'v0005'; // fallback (should not happen — native always returns a known string)
 }
 
+/** File extensions that trigger the appearance resolver + viewport. */
+const MESH_EXTENSIONS = new Set(['msh', 'mgn', 'sat', 'apt']);
+
 export default function TreVfsBrowser(): React.ReactElement {
   const store = useTreStore();
   const iffStore = useIffStore();
+  const viewportStore = useViewportStore();
 
   // ── Mount handler ───────────────────────────────────────────────────────────
 
@@ -227,6 +233,8 @@ export default function TreVfsBrowser(): React.ReactElement {
         if (winnerResult.winner && !winnerResult.tombstone &&
             winnerResult.winnerArchiveIndex >= 0 && winnerResult.winnerEntryIndex >= 0) {
           const filename = entry.name;
+
+          // ── IFF parse (always, for the IFF Structure panel) ────────────────
           iffStore.beginParse(filename);
           try {
             const bytes = nativeCore.readMountEntry(
@@ -255,11 +263,43 @@ export default function TreVfsBrowser(): React.ReactElement {
             const reason = readErr instanceof Error ? readErr.message : String(readErr);
             iffStore.parseError(filename, `could not read file — ${reason}`);
           }
+
+          // ── Viewport resolver (mesh-like extensions only) ──────────────────
+          // .msh / .mgn / .sat / .apt: drive idle→loading→done pipeline so
+          // the R3F viewport renders the mesh (PRIMARY gap-closure fix).
+          const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+          if (MESH_EXTENSIONS.has(ext)) {
+            viewportStore.beginLoad(
+              filename,
+              mountHandle,
+              winnerResult.winnerArchiveIndex,
+              winnerResult.winnerEntryIndex,
+              entry.path,
+            );
+            // Resolve async; never throw (D-04 partial resolution).
+            void resolveAppearance(mountHandle, entry.path).then((resolution) => {
+              // Pull the first non-null parsed mesh + skeleton from the resolution result.
+              const firstMesh = resolution.meshes.find((m) => m !== null) ?? null;
+              const parsedMesh = firstMesh?.parseResult ?? null;
+              const parsedSkeleton = resolution.skeleton?.parseResult ?? null;
+              viewportStore.loadComplete(
+                filename,
+                resolution.mode,
+                resolution,
+                resolution.isSkinned,
+                parsedMesh,
+                parsedSkeleton,
+              );
+            }).catch((err) => {
+              const reason = err instanceof Error ? err.message : String(err);
+              viewportStore.loadError(filename, reason);
+            });
+          }
         }
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [store, iffStore],
+    [store, iffStore, viewportStore],
   );
 
   // ── Render ──────────────────────────────────────────────────────────────────
