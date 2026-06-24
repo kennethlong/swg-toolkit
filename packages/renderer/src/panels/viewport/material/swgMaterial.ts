@@ -42,13 +42,26 @@ export interface SwgMaterialOptions {
   hasSpec: boolean;
   /** EMIS slot is present. */
   hasEmissive: boolean;
-  /** ENVM slot is present (uses scene.environment cubemap). */
+  /** ENVM slot is present (cube map from slotBytes[ENVM] or scene.environment). */
   hasEnv: boolean;
   /**
    * True when the SKMG group has a v0004 DOT3 tangent pool (hasDot3 from parsedMesh).
    * Controls TBN derivation strategy in the fragment shader.
    */
   hasDot3Tangents: boolean;
+  /**
+   * Blend state from the .eft effect (gap-closure 02-03).
+   * When null: defaults to opaque (alphaBlend=false, alphaTest=false, zWrite=true).
+   * Source: ShaderImplementationPass::load_0009 DATA chunk blend state fields.
+   */
+  effectBlend?: {
+    alphaBlendEnable: boolean;
+    blendSrc: number;
+    blendDst: number;
+    alphaTestEnable: boolean;
+    alphaTestRef: number;
+    zWrite: boolean;
+  } | null;
 }
 
 // ─── GLSL source ──────────────────────────────────────────────────────────────
@@ -196,10 +209,28 @@ ${hasDot3Tangents ? `
   }
 
   // ─── Environment map ──────────────────────────────────────────────────────
+  // Bug-3 fix: SWG body shaders (a_envmask_specmap.eft) use the MAIN texture's ALPHA
+  // channel as a specular/gloss mask for the cube-map reflection, NOT a flat 0.15 factor.
+  // Ground truth: the body's "relief" = env cube reflection * spec mask (from MAIN.a).
+  //   - MAIN.alpha encodes the specular mask (1 = fully reflective, 0 = matte)
+  //   - SPEC slot (same dds as MAIN on body shaders) provides per-pixel gloss intensity
+  //   - env_theed.dds cube reflection is attenuated by the specular mask from MAIN.a
+  //   - Accessory shaders (backpack, etc.) have a dedicated SPEC slot for this purpose
+  // Source: CONSULT-00-ground-truth-bytes.md; verified vs a_envmask_specmap.eft PTXM roles.
   if (bHasEnv) {
     vec3 envR = reflect(-vViewDir, N);
     vec3 envSample = textureCube(uEnvMap, envR).rgb;
-    finalColor += envSample * 0.15; // subtle env contribution
+    // Spec/gloss mask: use SPEC texel (bHasSpec) if available, else fall back to MAIN.alpha.
+    // Both encode the same data on body shaders (SPEC=same DDS as MAIN); on accessories,
+    // SPEC is a dedicated greyscale map. Either way .r gives us the reflectivity mask.
+    float specMask;
+    if (bHasSpec) {
+      specMask = texture2D(uSpecularMap, vUv).r;
+    } else {
+      // Fall back to diffuse alpha (body shader convention: MAIN.a = spec mask)
+      specMask = diffuseSample.a;
+    }
+    finalColor += envSample * specMask;
   }
 
   // Opaque output (alpha=1). SWG opacity/cutout is an .eft concern, tracked separately.
@@ -260,7 +291,24 @@ export function buildSwgMaterial(opts: SwgMaterialOptions): THREE.ShaderMaterial
     hasEmissive,
     hasEnv,
     hasDot3Tangents,
+    effectBlend,
   } = opts;
+
+  // Blend state from .eft effect (gap-closure 02-03).
+  // Default = opaque (no alpha blend, no alpha test, depth write on).
+  // Source: ShaderImplementationPass::load_0009 DATA chunk (ShaderImplementation.cpp:1692-1738).
+  const blend = effectBlend ?? null;
+  const alphaBlendEnabled = blend?.alphaBlendEnable ?? false;
+  const alphaTestEnabled  = blend?.alphaTestEnable  ?? false;
+  const zWriteEnabled     = blend?.zWrite            ?? true;
+
+  // For Three.js: transparent=true enables WebGL alpha blending.
+  // alphaTest: 0 = disabled; >0 = fragment discarded when alpha <= alphaTest.
+  // depthWrite: false when zWrite=false (transparent surfaces).
+  const isTransparent = alphaBlendEnabled;
+  const alphaTestThreshold = alphaTestEnabled
+    ? (blend ? (blend.alphaTestRef / 255.0) : 0)
+    : 0;
 
   const material = new THREE.ShaderMaterial({
     vertexShader:   buildVertexShader(skinned, hasDot3Tangents),
@@ -271,7 +319,7 @@ export function buildSwgMaterial(opts: SwgMaterialOptions): THREE.ShaderMaterial
       uNormalMap:    { value: getWhite1x1() }, // neutral normal (0.5,0.5,1.0 in RGB) = (0,0,1) after decode
       uSpecularMap:  { value: getBlack1x1() },
       uEmissiveMap:  { value: getBlack1x1() },
-      uEnvMap:       { value: null },          // wired from scene.environment in mesh view
+      uEnvMap:       { value: null },          // wired from ENVM cube bytes or scene.environment in mesh view
 
       // Customization — pathway A (distinct from C)
       uMaterialColor: { value: new THREE.Vector4(1, 1, 1, 1) },
@@ -290,9 +338,15 @@ export function buildSwgMaterial(opts: SwgMaterialOptions): THREE.ShaderMaterial
     },
     // DO NOT set `skinning` — removed in r140.
     // Skinning auto-enables from attributes + Skeleton.
-    // Opaque by default: SWG meshes are opaque; diffuse alpha is a spec mask, not opacity.
-    // Per-shader alpha-test/blend (from .eft) tracked in viewport-shader-blend-mode.md.
-    transparent: false,
+    //
+    // Blend state from .eft (gap-closure 02-03):
+    //   - transparent=true enables WebGL alpha blending (from alphaBlendEnable)
+    //   - alphaTest=0 disables; >0 discards fragments with alpha <= threshold (from alphaTestEnable)
+    //   - depthWrite=false when the .eft says zWrite=false (transparent surfaces)
+    //   When no .eft is present: opaque defaults (transparent=false, alphaTest=0, depthWrite=true).
+    transparent: isTransparent,
+    alphaTest: alphaTestThreshold,
+    depthWrite: zWriteEnabled,
     side: THREE.FrontSide,
     // Do NOT set glslVersion — Three.js automatically upgrades to GLSL3/300 es in WebGL2
     // (WebGLProgram.js:803-830) and adds #define aliases for texture2D/textureCube.
