@@ -844,17 +844,28 @@ const nativeCore = require('@swg/native-core') as {
 
 **Partial resolution + missing list pattern** (D-04 ethos from RESEARCH Pitfall 6):
 ```typescript
+/** One resolved shader group. `slotBytes` carries the raw .dds/.pal bytes the
+ *  resolver fetched from the TRE VFS (02-02) so 02-03 builds textures WITHOUT
+ *  re-fetching. Indexed by shader-group (NOT by mesh) for multi-PSDT meshes. */
+export interface ResolvedMaterial {
+  shaderResult: ShaderParseResult;
+  /** Per texture slot → raw bytes (null when that slot's entry was missing). */
+  slotBytes: Partial<Record<ShaderSlotName, ArrayBuffer | null>>;
+}
+
 export interface AppearanceResolutionResult {
   /** Successfully resolved meshes per LOD level (null = fell back to placeholder). */
   meshes: (ResolvedMesh | null)[];
   /** Successfully resolved skeleton (null = default skeleton placeholder). */
   skeleton: ResolvedSkeleton | null;
-  /** Resolved shaders + textures per mesh. */
+  /** Resolved shader groups + textures, indexed by shader-group. */
   materials: ResolvedMaterial[];
   /** Names of every dependency that could NOT be resolved. */
   missing: string[];
   /** Open mode taken (D-03). */
-  mode: 'composed' | 'leaf';
+  mode: 'composed' | 'composed-static' | 'leaf';
+  /** Drives StaticMeshView vs SkinnedMeshView selection. */
+  isSkinned: boolean;
 }
 
 // D-04: never throw on missing — collect and return:
