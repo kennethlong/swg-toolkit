@@ -160,7 +160,7 @@ No `postinstall` scripts on `three` or `@react-three/fiber` (checked). Three.js 
    │  DXT mip table: (offset,size,format enum) per mip — blocks stay compressed            │
    │  CKAT/KFAT decode: per-joint keyframe streams → IR (quat (w,x,y,z) normalized order)  │
    └───────────────────────────────┬──────────────────────────────────────────────────────┘
-                                    │  ZERO-COPY typed arrays (Float32/Uint16/Int32) +
+                                    │  binary typed arrays, no JSON (Float32/Uint32/Int32) +
                                     │  control metadata (small JSON: bone names, slot map)
                                     ▼
    ┌──────────────────────────────────── RENDERER (R3F / Three.js) ───────────────────────┐
@@ -227,7 +227,8 @@ auto out    = swg_core::iff::serializeIff(result, data, size);  // byte-exact fo
 
 ### Pattern 4: Custom ShaderMaterial with skinning + customization coexisting
 **What:** SWG materials need a D3D-style texture-factor multiply (`final = texture(MAIN,uv) * uTexFactor`) plus multi-map parity — not expressible on `MeshStandardMaterial`. GPU skinning must coexist.
-**How:** A `ShaderMaterial` (or `onBeforeCompile` injection) with `#include <skinning_pars_vertex>` + `<skinning_vertex>` in the vertex shader, `material.skinning = true`, and uniforms `uDiffuseMap/uNormalMap/uSpecularMap/uEmissiveMap/uEnvMap(global cube)/uTexFactor(vec4)/uSpecPower`. The bone texture Three.js installs for skinning is a separate uniform and does not conflict.
+**How:** A `ShaderMaterial` (or `onBeforeCompile` injection) with `#include <skinning_pars_vertex>` + `<skinning_vertex>` in the vertex shader, and uniforms `uDiffuseMap/uNormalMap/uSpecularMap/uEmissiveMap/uEnvMap(global cube)/uTexFactor(vec4)/uSpecPower`. The bone texture Three.js installs for skinning is a separate uniform and does not conflict.
+> ⚠ **Do NOT set `material.skinning = true`** — that property was **removed in Three.js r140** and is a silent no-op on the pinned `r0.184.0`. Skinning auto-enables when the geometry carries `skinIndex`/`skinWeight` attributes, the mesh is a `SkinnedMesh` bound to a `Skeleton`, and the `<skinning_*>` chunks are included. (Verified 2026-06-23: Three.js r140 release notes; REVIEWS.md HIGH — Sonnet.)
 > Source: synthesis §2 (Sonnet, source-verified) + `StaticShaderTemplate.cpp` / `CustomizableShaderTemplate.cpp` slot semantics.
 
 ### Anti-Patterns to Avoid

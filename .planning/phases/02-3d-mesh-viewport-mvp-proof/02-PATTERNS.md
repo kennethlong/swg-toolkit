@@ -358,7 +358,9 @@ export interface MeshShaderGroup {
   /**
    * Byte offset of this group's geometry data within the geometry ArrayBuffer
    * returned by parseSkeletalMesh(). Layout: Float32[positions] + Float32[normals]
-   * + Float32[uvs] + Uint16[indices] + Int32[skinIndices] + Float32[skinWeights].
+   * + Float32[uvs] + Uint32[indices] + Int32[skinIndices] + Float32[skinWeights].
+   * NOTE: indices are Uint32, NOT Uint16 — source ITL indices are int32 and meshes
+   * can exceed 65535 verts (REVIEWS.md — Opus/Sonnet; Uint16 silently corrupts large meshes).
    * Source: RESEARCH.md Pattern 2 (de-index) + Pattern 3 (vec4 skin normalize).
    */
   geometryOffset: number;

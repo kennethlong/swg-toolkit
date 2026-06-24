@@ -197,8 +197,11 @@ Sources (verified 2026-06-23): `CompressedKeyframeAnimationTemplate.cpp:1198-131
   — no `needsUpdate`, no realloc. Picker model: each var = {name, palettePath, defaultIndex,
   affectedChannel|textureSlot}; selection stored as an int index, applied as a uniform. **Satisfies
   the "no per-frame GC" bar (D-09) for customization.**
-- **GPU skinning (D-09):** `#include <skinning_pars_vertex>` + `<skinning_vertex>`, `material.skinning
-  = true`; bone texture is a separate Three.js uniform that **coexists** with customization uniforms.
+- **GPU skinning (D-09):** `#include <skinning_pars_vertex>` + `<skinning_vertex>`; bone texture is a
+  separate Three.js uniform that **coexists** with customization uniforms. ⚠ Do **NOT** set
+  `material.skinning = true` — removed in Three.js r140, silent no-op on the pinned r0.184.0. Skinning
+  auto-enables from `skinIndex`/`skinWeight` attributes + a `SkinnedMesh` bound to a `Skeleton` + the
+  `<skinning_*>` chunks. (Verified 2026-06-23 vs r140 release notes; REVIEWS.md HIGH — Sonnet.)
 - **DXT (VIEW-02):** upload compressed via `WEBGL_compressed_texture_s3tc` (WebGL2, desktop-ubiquitous)
   — keeps binary-binary. CPU-decode path only for DXT2/4 fallback.
 
