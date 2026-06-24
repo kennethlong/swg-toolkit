@@ -166,6 +166,10 @@ function buildGroupMaterial(
   });
 
   // Wire up texture slots from pre-fetched slotBytes (02-02 plumbed them; NO re-fetch here)
+  // FAIL-SAFE: env reflection samples textureCube(uEnvMap) only when a real cube actually bound.
+  // A null/broken samplerCube blacks out the whole fragment on strict drivers, so we gate
+  // bHasEnv on envBound AFTER the loop — worst case is solid-red diffuse, never a black mesh.
+  let envBound = false;
   for (const slotDef of slots) {
     const bytes = slotBytes[slotDef.slot];
     if (!bytes) continue; // missing or placeholder
@@ -187,6 +191,7 @@ function buildGroupMaterial(
           // The uEnvMap sampler (samplerCube) in the fragment shader consumes this.
           if (ddsResult.isCubemap) {
             mat.uniforms.uEnvMap.value = texture;
+            envBound = true;
           }
           // Non-cubemap ENVM (rare/unexpected): ignore; scene.environment is the fallback.
           break;
@@ -196,6 +201,9 @@ function buildGroupMaterial(
       // Texture decode failed — slot stays as white/black placeholder
     }
   }
+
+  // FAIL-SAFE gate: only sample the env cube when one actually bound (else diffuse-only).
+  mat.uniforms.bHasEnv.value = envBound;
 
   return mat;
 }

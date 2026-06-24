@@ -228,6 +228,8 @@ function buildSkinnedGroupMaterial(
   });
 
   // Wire up DDS textures from pre-fetched slotBytes (NO re-fetch here)
+  // FAIL-SAFE: gate bHasEnv on a real bound cube (null samplerCube blacks out the fragment).
+  let envBound = false;
   for (const slotDef of slots) {
     const bytes = slotBytes[slotDef.slot];
     if (!bytes) continue;
@@ -247,6 +249,7 @@ function buildSkinnedGroupMaterial(
           // buildDdsTexture returns CompressedCubeTexture when ddsResult.isCubemap is true.
           if (ddsResult.isCubemap) {
             mat.uniforms.uEnvMap.value = texture;
+            envBound = true;
           }
           break;
         default: break;
@@ -255,6 +258,9 @@ function buildSkinnedGroupMaterial(
       // Texture decode failed — slot stays as placeholder
     }
   }
+
+  // FAIL-SAFE gate: only sample the env cube when one actually bound (else diffuse-only).
+  mat.uniforms.bHasEnv.value = envBound;
 
   return mat;
 }
