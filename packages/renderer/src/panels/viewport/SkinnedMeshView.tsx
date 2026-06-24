@@ -191,15 +191,31 @@ function buildSkinnedGroupMaterial(
   }
 
   const shaderResult = resolvedMat?.shaderResult;
-  const slotBytes = resolvedMat?.slotBytes ?? {};
+  const slotBytes    = resolvedMat?.slotBytes ?? {};
+  const effectResult = resolvedMat?.effectResult ?? null;
 
   const slots = shaderResult?.slots ?? [];
   const hasNormalSlot = slots.some(s => s.slot === 'NRML' || s.slot === 'CNRM');
   const hasSpecSlot   = slots.some(s => s.slot === 'SPEC');
   const hasEmisSlot   = slots.some(s => s.slot === 'EMIS');
-  const hasEnvSlot    = slots.some(s => s.slot === 'ENVM');
+  // Gap-closure 02-03: ENVM is "active" only when cube bytes are present.
+  const envBytes   = slotBytes['ENVM'];
+  const hasEnvSlot = slots.some(s => s.slot === 'ENVM') && !!envBytes;
   // hasDot3: check whether the geometry has tangents (via computeTangents or DOT3 pool)
   const hasDot3 = group.hasDot3 ?? false;
+
+  // Extract blend state from the best .eft implementation (gap-closure 02-03).
+  const bestImpl = effectResult?.impls?.[effectResult.bestImplIndex] ?? null;
+  const effectBlend = bestImpl?.blend
+    ? {
+        alphaBlendEnable: bestImpl.blend.alphaBlendEnable,
+        blendSrc:         bestImpl.blend.blendSrc,
+        blendDst:         bestImpl.blend.blendDst,
+        alphaTestEnable:  bestImpl.blend.alphaTestEnable,
+        alphaTestRef:     bestImpl.blend.alphaTestRef,
+        zWrite:           bestImpl.blend.zWrite,
+      }
+    : null;
 
   const mat = buildSwgMaterial({
     skinned:         true, // includes <skinning_pars_vertex> + <skinning_vertex>
@@ -208,6 +224,7 @@ function buildSkinnedGroupMaterial(
     hasEmissive:     hasEmisSlot,
     hasEnv:          hasEnvSlot,
     hasDot3Tangents: hasDot3,
+    effectBlend,
   });
 
   // Wire up DDS textures from pre-fetched slotBytes (NO re-fetch here)
@@ -225,7 +242,13 @@ function buildSkinnedGroupMaterial(
         case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break;
         case 'SPEC': mat.uniforms.uSpecularMap.value  = texture; break;
         case 'EMIS': mat.uniforms.uEmissiveMap.value  = texture; break;
-        case 'ENVM': /* cubemap from scene.environment */ break;
+        case 'ENVM':
+          // Gap-closure 02-03: wire the cube map texture from ENVM DDS bytes.
+          // buildDdsTexture returns CompressedCubeTexture when ddsResult.isCubemap is true.
+          if (ddsResult.isCubemap) {
+            mat.uniforms.uEnvMap.value = texture;
+          }
+          break;
         default: break;
       }
     } catch (_e) {

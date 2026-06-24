@@ -128,14 +128,32 @@ function buildGroupMaterial(
 
   // Determine capability flags from resolved shader
   const shaderResult = resolvedMat?.shaderResult;
-  const slotBytes = resolvedMat?.slotBytes ?? {};
+  const slotBytes    = resolvedMat?.slotBytes ?? {};
+  const effectResult = resolvedMat?.effectResult ?? null;
 
   const slots = shaderResult?.slots ?? [];
   const hasNormalSlot = slots.some(s => s.slot === 'NRML' || s.slot === 'CNRM');
   const hasSpecSlot   = slots.some(s => s.slot === 'SPEC');
   const hasEmisSlot   = slots.some(s => s.slot === 'EMIS');
-  const hasEnvSlot    = slots.some(s => s.slot === 'ENVM');
-  const hasDot3       = group.hasDot3 ?? false;
+  // Gap-closure 02-03: ENVM is "active" only when we have actual cube map bytes in slotBytes.
+  // If no bytes were fetched (path missing), hasEnv stays false to keep the env branch off.
+  const envBytes    = slotBytes['ENVM'];
+  const hasEnvSlot  = slots.some(s => s.slot === 'ENVM') && !!envBytes;
+  const hasDot3     = group.hasDot3 ?? false;
+
+  // Extract blend state from the best .eft implementation (gap-closure 02-03).
+  // Best impl = impls[bestImplIndex]; its blend drives material transparent/alphaTest/depthWrite.
+  const bestImpl = effectResult?.impls?.[effectResult.bestImplIndex] ?? null;
+  const effectBlend = bestImpl?.blend
+    ? {
+        alphaBlendEnable: bestImpl.blend.alphaBlendEnable,
+        blendSrc:         bestImpl.blend.blendSrc,
+        blendDst:         bestImpl.blend.blendDst,
+        alphaTestEnable:  bestImpl.blend.alphaTestEnable,
+        alphaTestRef:     bestImpl.blend.alphaTestRef,
+        zWrite:           bestImpl.blend.zWrite,
+      }
+    : null;
 
   const mat = buildSwgMaterial({
     skinned:        false,
@@ -144,6 +162,7 @@ function buildGroupMaterial(
     hasEmissive:    hasEmisSlot,
     hasEnv:         hasEnvSlot,
     hasDot3Tangents: hasDot3,
+    effectBlend,
   });
 
   // Wire up texture slots from pre-fetched slotBytes (02-02 plumbed them; NO re-fetch here)
@@ -161,7 +180,16 @@ function buildGroupMaterial(
         case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break;
         case 'SPEC': mat.uniforms.uSpecularMap.value  = texture; break;
         case 'EMIS': mat.uniforms.uEmissiveMap.value  = texture; break;
-        case 'ENVM': /* cubemap from scene.environment, handled in SceneContent */ break;
+        case 'ENVM':
+          // Gap-closure 02-03: wire the cube map texture from the ENVM DDS bytes.
+          // env_theed.dds is a DXT3 cube map; buildDdsTexture returns CompressedCubeTexture
+          // when ddsResult.isCubemap is true.
+          // The uEnvMap sampler (samplerCube) in the fragment shader consumes this.
+          if (ddsResult.isCubemap) {
+            mat.uniforms.uEnvMap.value = texture;
+          }
+          // Non-cubemap ENVM (rare/unexpected): ignore; scene.environment is the fallback.
+          break;
         default: break;
       }
     } catch (_e) {
