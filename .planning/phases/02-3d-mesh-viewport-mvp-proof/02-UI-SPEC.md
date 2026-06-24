@@ -1,10 +1,11 @@
 ---
 phase: 2
 slug: 3d-mesh-viewport-mvp-proof
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-06-23
+reviewed_at: 2026-06-23
 ---
 
 # Phase 2 — UI Design Contract: 3D Mesh Viewport (MVP Proof)
