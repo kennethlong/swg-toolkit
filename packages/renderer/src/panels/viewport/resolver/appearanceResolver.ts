@@ -48,11 +48,42 @@ export interface ResolvedSkeleton {
  * One resolved material/shader for a shader-group index.
  * 02-03 reads slotBytes[slot] to build CompressedTexture without re-fetching.
  * Indexed by shader-group (NOT by mesh) for multi-PSDT meshes.
+ *
+ * Gap-closure (02-03): effectResult carries the parsed .eft sampler role map + blend state.
+ * slotBytes[ENVM] is populated when the shader's ENVM slot has a texturePath (e.g. env_theed.dds).
  */
 export interface ResolvedMaterial {
   shaderResult: ShaderParseResult;
   /** Per texture slot → raw bytes (null when that slot's entry was missing). */
   slotBytes: Partial<Record<ShaderSlotName, ArrayBuffer | null>>;
+  /**
+   * Parsed .eft effect result (null when effectPath is empty or the .eft could not be fetched).
+   * Contains the sampler role map (impls[bestImplIndex].samplers) and blend state.
+   * Gap-closure 02-03: this drives material transparent/alphaTest/depthWrite settings.
+   */
+  effectResult: EffectParseResult | null;
+}
+
+/** Minimal shape of the effect parse result needed by the renderer. */
+export interface EffectParseResult {
+  formatTag: string;
+  version: string;
+  bestImplIndex: number;
+  impls: Array<{
+    scapValues: number[];
+    options: string[];
+    blend: {
+      alphaBlendEnable: boolean;
+      blendOperation: number;
+      blendSrc: number;
+      blendDst: number;
+      alphaTestEnable: boolean;
+      alphaTestFunc: number;
+      alphaTestRef: number;
+      zWrite: boolean;
+    };
+    samplers: Array<{ index: number; role: string }>;
+  }>;
 }
 
 /** Full appearance resolution result. */
@@ -160,6 +191,7 @@ const nativeCore = require('@swg/native-core') as {
     levels: Array<{ id: number; near: number; far: number; childPath: string }>;
   };
   parseShader: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => ShaderParseResult;
+  parseEffect: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => EffectParseResult;
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -272,7 +304,9 @@ async function resolveShader(
     return null;
   }
 
-  // Fetch texture bytes for each slot (D-04: missing slot → null bytes, not a throw)
+  // Fetch texture bytes for each slot (D-04: missing slot → null bytes, not a throw).
+  // Gap-closure 02-03: ENVM slots now have a texturePath (env_theed.dds) — fetch it too.
+  // Bug-1 fix: the native parser now preserves ENVM.texturePath so we can fetch it here.
   const slotBytes: Partial<Record<ShaderSlotName, ArrayBuffer | null>> = {};
   for (const slot of shaderResult.slots) {
     if (!slot.texturePath) {
@@ -283,7 +317,27 @@ async function resolveShader(
     slotBytes[slot.slot] = texBytes;
   }
 
-  return { shaderResult, slotBytes };
+  // Gap-closure 02-03 Task 4: fetch + parse the .eft when effectPath is set.
+  // Bug-2 fix: the native parser now populates effectPath from the NAME chunk in the .sht.
+  // We parse it here and attach it to ResolvedMaterial so the renderer can use the
+  // sampler role map (impls[bestImplIndex].samplers) and blend state.
+  let effectResult: EffectParseResult | null = null;
+  const effectPath = shaderResult.effectPath;
+  if (effectPath && effectPath !== '' && !effectPath.includes('__inline')) {
+    try {
+      const eftBytes = await fetchEntry(mountHandle, effectPath, missing);
+      if (eftBytes) {
+        const eftIff = parseIffSafe(eftBytes, effectPath, missing);
+        if (eftIff) {
+          effectResult = nativeCore.parseEffect(eftIff, new Uint8Array(eftBytes));
+        }
+      }
+    } catch (_e) {
+      // Effect parse failure is non-fatal; renderer falls back to opaque defaults
+    }
+  }
+
+  return { shaderResult, slotBytes, effectResult };
 }
 
 // ─── Mesh resolver ───────────────────────────────────────────────────────────
