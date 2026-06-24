@@ -13,7 +13,7 @@ The journey runs from a proven cross-process pipeline to a complete, in-game-ver
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 0: Toolchain De-risk & App Shell** - Prove the full native->renderer pipeline, lock Electron security/isolation, ship the dark dockable shell ✓ 2026-06-22 (Path B: native-in-renderer zero-copy)
-- [x] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate (completed 2026-06-23)
+- [x] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate (completed 2026-06-23)
 - [ ] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export
 - [ ] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track)
 - [ ] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs
@@ -88,7 +88,23 @@ Plans:
   3. The user can preview a `.skt`/`.sat` skeleton and play back an `.ans` animation on the mesh without per-frame GC hitching.
   4. The user can extract a raw asset and export a viewed mesh to glTF/COLLADA that opens in an external tool.
   5. Each parser added here passes the Phase 1 byte-exact round-trip gate with a cited `swg-client-v2` source.
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1**
+- [ ] 02-01-PLAN.md — Install three/R3F/drei; contract types (mesh/skeleton/animation/material); C++ static .msh parser (FORM MESH) + .lmg/.ldt/.sht/.pal/.dds parsers + de-index utility + N-API binding; CORE-05 fixtures (SC-5) for all six formats
+
+**Wave 2** *(blocked on 02-01)*
+- [ ] 02-02-PLAN.md — C++ SKMG/SKTM/SMAT parsers + de-index+vec4-normalize + CORE-05 fixtures; TS appearance resolver (cross-TRE SMAT→MLOD→SKMG→SKTM graph walk, D-04 partial-resolution); R3F Viewport + SkinnedMeshView (VIEW-01); viewportStore; LodPicker; AppearancePanel
+
+**Wave 3** *(blocked on 02-02)*
+- [ ] 02-03-PLAN.md — Custom ShaderMaterial (skinning + uTexFactor + multi-map: diffuse/normal/spec/emissive/env); DDS GPU upload via WEBGL_compressed_texture_s3tc; CustomizationPanel live color-swap (D-06); MaterialInspector (VIEW-02)
+
+**Wave 4** *(blocked on 02-02)*
+- [ ] 02-04-PLAN.md — C++ Animation parser (CKAT 0001 compressed + KFAT 0003; KFAT 0002 graceful decline) + CKAT decoder (CompressedQuaternion.cpp:82-100,370-419 w-clamp); CORE-05 fixtures; AnimationTransport (D-08); useFrame zero-GC sampler (VIEW-03)
+
+**Wave 5** *(blocked on 02-03 + 02-04)*
+- [ ] 02-05-PLAN.md — glTF + COLLADA export (GLTFExporter/ColladaExporter, rigged+animated, X-mirror coordinate transform); Extract… raw-asset action; AI-distilled docs corrections for verified formats (VIEW-04)
+
 **UI hint**: yes
 
 ### Phase 3: Live-Injection Foundation
@@ -178,7 +194,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 |-------|----------------|--------|-----------|
 | 0. Toolchain De-risk & App Shell | 4/5 | In Progress|  |
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
-| 2. 3D Mesh Viewport (MVP Proof) | 0/TBD | Not started | - |
+| 2. 3D Mesh Viewport (MVP Proof) | 0/5 | Not started | - |
 | 3. Live-Injection Foundation | 0/TBD | Not started | - |
 | 4. Edit & Deploy Loop | 0/TBD | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
