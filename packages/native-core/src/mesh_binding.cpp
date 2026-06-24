@@ -36,6 +36,10 @@
 #include "formats/Shader.h"
 #include "formats/Palette.h"
 #include "formats/Dds.h"
+#include "formats/SkeletalMeshGen.h"
+#include "formats/Skeleton.h"
+#include "formats/SkeletalAppearance.h"
+#include "formats/StaticAppearance.h"
 
 // ─── Helpers (shared with iff_binding.cpp; duplicated to keep files independent) ────
 
@@ -458,6 +462,299 @@ Napi::Value ParseDds(const Napi::CallbackInfo& info) {
         std::memcpy(ab.Data(), serialized.data(), serialized.size());
     }
     result.Set("roundTripBytes", ab);
+
+    return result;
+}
+
+// ─── ParseSkeletalMesh ────────────────────────────────────────────────────────
+
+/**
+ * parseSkeletalMesh(iffResult: object, srcBytes: ArrayBuffer|Uint8Array, boneOrder?: string[]) -> {
+ *   formatTag: string,
+ *   version: string,
+ *   shaderGroups: Array<...MeshShaderGroupResult with skinIndices/skinWeights>,
+ *   geometry: ArrayBuffer,
+ *   boneNames: string[],
+ *   sktmNames: string[],
+ *   weightsTruncated: number,
+ *   needsBoneRemap: boolean
+ * }
+ *
+ * Phase 2 Plan 02-02 T-02-06/T-02-07 security:
+ *   - positionCount/perShaderDataCount capped in SkeletalMeshGen.cpp
+ *   - PIDX/NIDX OOB -> FormatParseError (T-02-07)
+ */
+Napi::Value ParseSkeletalMesh(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "parseSkeletalMesh: (iffResult: object, srcBytes: ArrayBuffer|Uint8Array, boneOrder?: string[]) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto [srcData, srcSize] = extractBytes(info[1], env, "parseSkeletalMesh srcBytes");
+    if (!srcData) return env.Undefined();
+
+    // Optional boneOrder parameter
+    std::vector<std::string> boneOrder;
+    if (info.Length() >= 3 && info[2].IsArray()) {
+        auto arr = info[2].As<Napi::Array>();
+        for (uint32_t i = 0; i < arr.Length(); ++i) {
+            auto v = arr.Get(i);
+            if (v.IsString()) boneOrder.push_back(v.As<Napi::String>().Utf8Value());
+        }
+    }
+
+    swg_core::iff::IffNode root;
+    swg_core::formats::SkeletalMeshResult meshResult;
+
+    try {
+        root = extractRootNode(info[0].As<Napi::Object>(), srcData, static_cast<uint32_t>(srcSize));
+        meshResult = swg_core::formats::parseSkeletalMesh(root, srcData, static_cast<uint32_t>(srcSize), boneOrder);
+    } catch (const swg_core::formats::FormatParseError& e) {
+        Napi::Error::New(env, std::string("parseSkeletalMesh error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    } catch (const std::exception& e) {
+        Napi::Error::New(env, std::string("parseSkeletalMesh internal error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto result = Napi::Object::New(env);
+    result.Set("formatTag",         Napi::String::New(env, meshResult.formatTag));
+    result.Set("version",           Napi::String::New(env, meshResult.version));
+    result.Set("weightsTruncated",  Napi::Number::New(env, meshResult.weightsTruncated));
+    result.Set("needsBoneRemap",    Napi::Boolean::New(env, meshResult.needsBoneRemap));
+
+    // boneNames (XFNM)
+    auto boneNamesArr = Napi::Array::New(env, meshResult.boneNames.size());
+    for (size_t i = 0; i < meshResult.boneNames.size(); ++i) {
+        boneNamesArr.Set(static_cast<uint32_t>(i), Napi::String::New(env, meshResult.boneNames[i]));
+    }
+    result.Set("boneNames", boneNamesArr);
+
+    // sktmNames
+    auto sktmNamesArr = Napi::Array::New(env, meshResult.sktmNames.size());
+    for (size_t i = 0; i < meshResult.sktmNames.size(); ++i) {
+        sktmNamesArr.Set(static_cast<uint32_t>(i), Napi::String::New(env, meshResult.sktmNames[i]));
+    }
+    result.Set("sktmNames", sktmNamesArr);
+
+    // shaderGroups
+    auto groups = Napi::Array::New(env, meshResult.shaderGroups.size());
+    for (size_t i = 0; i < meshResult.shaderGroups.size(); ++i) {
+        const auto& grp = meshResult.shaderGroups[i];
+        auto gobj = Napi::Object::New(env);
+        gobj.Set("shaderName",   Napi::String::New(env, grp.shaderName));
+        gobj.Set("vertexCount",  Napi::Number::New(env, grp.vertexCount));
+        gobj.Set("indexCount",   Napi::Number::New(env, grp.indexCount));
+        gobj.Set("positions",    sliceToJs(env, grp.positions));
+        gobj.Set("normals",      sliceToJs(env, grp.normals));
+        gobj.Set("uvs",          sliceToJs(env, grp.uvs));
+        gobj.Set("indices",      sliceToJs(env, grp.indices));
+        gobj.Set("skinIndices",  sliceToJs(env, grp.skinIndices));
+        gobj.Set("skinWeights",  sliceToJs(env, grp.skinWeights));
+        gobj.Set("hasDot3",      Napi::Boolean::New(env, grp.hasDot3));
+        groups.Set(static_cast<uint32_t>(i), gobj);
+    }
+    result.Set("shaderGroups", groups);
+
+    // geometry: packed binary buffer (NEVER JSON)
+    auto geomAb = Napi::ArrayBuffer::New(env, meshResult.geometry.size());
+    if (!meshResult.geometry.empty()) {
+        std::memcpy(geomAb.Data(), meshResult.geometry.data(), meshResult.geometry.size());
+    }
+    result.Set("geometry", geomAb);
+
+    return result;
+}
+
+// ─── ParseSkeleton ────────────────────────────────────────────────────────────
+
+/**
+ * parseSkeleton(iffResult: object, srcBytes: ArrayBuffer|Uint8Array) -> {
+ *   formatTag: string,
+ *   version: string,
+ *   boneNames: string[],
+ *   bones: Array<{ name, parentIndex, preRot[4], postRot[4], bindPos[3], preRotOff[3] }>
+ * }
+ *
+ * Throws if root is FORM SLOD (not FORM SKTM) -- delta #7.
+ */
+Napi::Value ParseSkeleton(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "parseSkeleton: (iffResult: object, srcBytes: ArrayBuffer|Uint8Array) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto [srcData, srcSize] = extractBytes(info[1], env, "parseSkeleton srcBytes");
+    if (!srcData) return env.Undefined();
+
+    swg_core::iff::IffNode root;
+    swg_core::formats::SkeletonResult skelResult;
+
+    try {
+        root = extractRootNode(info[0].As<Napi::Object>(), srcData, static_cast<uint32_t>(srcSize));
+        skelResult = swg_core::formats::parseSkeleton(root, srcData, static_cast<uint32_t>(srcSize));
+    } catch (const swg_core::formats::FormatParseError& e) {
+        Napi::Error::New(env, std::string("parseSkeleton error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    } catch (const std::exception& e) {
+        Napi::Error::New(env, std::string("parseSkeleton internal error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto result = Napi::Object::New(env);
+    result.Set("formatTag", Napi::String::New(env, skelResult.formatTag));
+    result.Set("version",   Napi::String::New(env, skelResult.version));
+
+    auto boneNamesArr = Napi::Array::New(env, skelResult.boneNames.size());
+    for (size_t i = 0; i < skelResult.boneNames.size(); ++i) {
+        boneNamesArr.Set(static_cast<uint32_t>(i), Napi::String::New(env, skelResult.boneNames[i]));
+    }
+    result.Set("boneNames", boneNamesArr);
+
+    auto bonesArr = Napi::Array::New(env, skelResult.bones.size());
+    for (size_t i = 0; i < skelResult.bones.size(); ++i) {
+        const auto& b = skelResult.bones[i];
+        auto bobj = Napi::Object::New(env);
+        bobj.Set("name",        Napi::String::New(env, b.name));
+        bobj.Set("parentIndex", Napi::Number::New(env, b.parentIndex));
+
+        auto preRot  = Napi::Array::New(env, 4);
+        auto postRot = Napi::Array::New(env, 4);
+        auto bindPos = Napi::Array::New(env, 3);
+        auto preOff  = Napi::Array::New(env, 3);
+        for (int k = 0; k < 4; ++k) {
+            preRot.Set(static_cast<uint32_t>(k),  Napi::Number::New(env, b.preRot[k]));
+            postRot.Set(static_cast<uint32_t>(k), Napi::Number::New(env, b.postRot[k]));
+        }
+        for (int k = 0; k < 3; ++k) {
+            bindPos.Set(static_cast<uint32_t>(k), Napi::Number::New(env, b.bindPos[k]));
+            preOff.Set(static_cast<uint32_t>(k),  Napi::Number::New(env, b.preRotOff[k]));
+        }
+        bobj.Set("preRot",    preRot);
+        bobj.Set("postRot",   postRot);
+        bobj.Set("bindPos",   bindPos);
+        bobj.Set("preRotOff", preOff);
+        bonesArr.Set(static_cast<uint32_t>(i), bobj);
+    }
+    result.Set("bones", bonesArr);
+
+    return result;
+}
+
+// ─── ParseSkeletalAppearance ──────────────────────────────────────────────────
+
+/**
+ * parseSkeletalAppearance(iffResult: object, srcBytes: ArrayBuffer|Uint8Array) -> {
+ *   formatTag: string,
+ *   version: string,
+ *   filename: string,
+ *   meshPaths: string[],
+ *   skeletonRefs: Array<{ skeletonPath: string, attachmentTransformName: string }>
+ * }
+ */
+Napi::Value ParseSkeletalAppearance(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "parseSkeletalAppearance: (iffResult: object, srcBytes: ArrayBuffer|Uint8Array) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto [srcData, srcSize] = extractBytes(info[1], env, "parseSkeletalAppearance srcBytes");
+    if (!srcData) return env.Undefined();
+
+    swg_core::iff::IffNode root;
+    swg_core::formats::SkeletalAppearanceResult satResult;
+
+    try {
+        root = extractRootNode(info[0].As<Napi::Object>(), srcData, static_cast<uint32_t>(srcSize));
+        satResult = swg_core::formats::parseSkeletalAppearance(root, srcData, static_cast<uint32_t>(srcSize));
+    } catch (const swg_core::formats::FormatParseError& e) {
+        Napi::Error::New(env, std::string("parseSkeletalAppearance error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    } catch (const std::exception& e) {
+        Napi::Error::New(env, std::string("parseSkeletalAppearance internal error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto result = Napi::Object::New(env);
+    result.Set("formatTag", Napi::String::New(env, satResult.formatTag));
+    result.Set("version",   Napi::String::New(env, satResult.version));
+    result.Set("filename",  Napi::String::New(env, satResult.filename));
+
+    auto meshPathsArr = Napi::Array::New(env, satResult.meshPaths.size());
+    for (size_t i = 0; i < satResult.meshPaths.size(); ++i) {
+        meshPathsArr.Set(static_cast<uint32_t>(i), Napi::String::New(env, satResult.meshPaths[i]));
+    }
+    result.Set("meshPaths", meshPathsArr);
+
+    auto sktRefsArr = Napi::Array::New(env, satResult.skeletonRefs.size());
+    for (size_t i = 0; i < satResult.skeletonRefs.size(); ++i) {
+        const auto& ref = satResult.skeletonRefs[i];
+        auto robj = Napi::Object::New(env);
+        robj.Set("skeletonPath",            Napi::String::New(env, ref.skeletonPath));
+        robj.Set("attachmentTransformName", Napi::String::New(env, ref.attachmentTransformName));
+        sktRefsArr.Set(static_cast<uint32_t>(i), robj);
+    }
+    result.Set("skeletonRefs", sktRefsArr);
+
+    return result;
+}
+
+// ─── ParseStaticAppearance ────────────────────────────────────────────────────
+
+/**
+ * parseStaticAppearance(iffResult: object, srcBytes: ArrayBuffer|Uint8Array) -> {
+ *   formatTag: string,
+ *   redirectTarget: string
+ * }
+ *
+ * Throws FormatParseError if redirectTarget ends with ".apt" (T-02-08).
+ */
+Napi::Value ParseStaticAppearance(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "parseStaticAppearance: (iffResult: object, srcBytes: ArrayBuffer|Uint8Array) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto [srcData, srcSize] = extractBytes(info[1], env, "parseStaticAppearance srcBytes");
+    if (!srcData) return env.Undefined();
+
+    swg_core::iff::IffNode root;
+    swg_core::formats::StaticAppearanceResult aptResult;
+
+    try {
+        root = extractRootNode(info[0].As<Napi::Object>(), srcData, static_cast<uint32_t>(srcSize));
+        aptResult = swg_core::formats::parseStaticAppearance(root, srcData, static_cast<uint32_t>(srcSize));
+    } catch (const swg_core::formats::FormatParseError& e) {
+        Napi::Error::New(env, std::string("parseStaticAppearance error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    } catch (const std::exception& e) {
+        Napi::Error::New(env, std::string("parseStaticAppearance internal error: ") + e.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto result = Napi::Object::New(env);
+    result.Set("formatTag",      Napi::String::New(env, aptResult.formatTag));
+    result.Set("redirectTarget", Napi::String::New(env, aptResult.redirectTarget));
 
     return result;
 }

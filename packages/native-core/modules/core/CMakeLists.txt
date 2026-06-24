@@ -22,6 +22,10 @@ set(CORE_SOURCES
     formats/Palette.cpp
     formats/Dds.cpp
     formats/LodDistanceTable.cpp
+    formats/SkeletalMeshGen.cpp
+    formats/Skeleton.cpp
+    formats/SkeletalAppearance.cpp
+    formats/StaticAppearance.cpp
 )
 
 # ── Vendored zlib 1.2.3 (static) ───────────────────────────────────────────────

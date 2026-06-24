@@ -96,6 +96,17 @@ Napi::Value ParseShader(const Napi::CallbackInfo& info);
 Napi::Value ParsePalette(const Napi::CallbackInfo& info);
 Napi::Value ParseDds(const Napi::CallbackInfo& info);
 
+// Phase 2 Plan 02-02 skeletal mesh + appearance parsers (implemented in mesh_binding.cpp):
+// Source: modules/core/formats/SkeletalMeshGen.h, Skeleton.h, SkeletalAppearance.h, StaticAppearance.h
+//   SkeletalMesh:      swg-client-v2 SkeletalMeshGeneratorTemplate.cpp:2247-2360 (INFO 9x int32+4xint16)
+//   Skeleton:          swg-client-v2 BasicSkeletonTemplate.cpp:151-390 (v0001/v0002)
+//   SkeletalAppearance:swg-client-v2 SkeletalAppearanceTemplate.cpp:786-1136 (SMAT v0001/v0002/v0003)
+//   StaticAppearance:  swg-client-v2 AppearanceTemplateList.cpp:513-540 (APT redirect)
+Napi::Value ParseSkeletalMesh(const Napi::CallbackInfo& info);
+Napi::Value ParseSkeleton(const Napi::CallbackInfo& info);
+Napi::Value ParseSkeletalAppearance(const Napi::CallbackInfo& info);
+Napi::Value ParseStaticAppearance(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -137,6 +148,12 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("parseShader",          Napi::Function::New(env, ParseShader));
     exports.Set("parsePalette",         Napi::Function::New(env, ParsePalette));
     exports.Set("parseDds",             Napi::Function::New(env, ParseDds));
+
+    // Phase 2 Plan 02-02 skeletal mesh + appearance parsers:
+    exports.Set("parseSkeletalMesh",        Napi::Function::New(env, ParseSkeletalMesh));
+    exports.Set("parseSkeleton",            Napi::Function::New(env, ParseSkeleton));
+    exports.Set("parseSkeletalAppearance",  Napi::Function::New(env, ParseSkeletalAppearance));
+    exports.Set("parseStaticAppearance",    Napi::Function::New(env, ParseStaticAppearance));
 
     return exports;
 }

@@ -485,3 +485,345 @@ describe('Microsoft DDS (.dds) — texture', () => {
     expect(result.roundTripBytes.byteLength).toBe(22000);
   });
 });
+
+// ─── Phase 02-02: SKMG / SKTM / SMAT / APT ───────────────────────────────────
+//
+// New parser types:
+//   FORM SKMG (.mgn)  — skeletal mesh generator (Phase 02-02)
+//   FORM SKTM (.skt)  — skeleton template      (Phase 02-02)
+//   FORM SMAT (.sat)  — skeletal appearance     (Phase 02-02)
+//   FORM APT  (.apt)  — static appearance redirector (Phase 02-02)
+//
+// Additional N-API exports wired in this plan:
+//   parseSkeletalMesh(iffResult, srcBytes, boneOrder?)
+//   parseSkeleton(iffResult, srcBytes)
+//   parseSkeletalAppearance(iffResult, srcBytes)
+//   parseStaticAppearance(iffResult, srcBytes)
+//
+// Source citations (LOCKED, verified 2026-06-23 against real oracle files):
+//   SKMG: swg-client-v2 SkeletalMeshGeneratorTemplate.cpp:2247-2360 (INFO 9×int32+4×int16)
+//   SKTM: swg-client-v2 BasicSkeletonTemplate.cpp:151-389,280-286,363-390 (v0001/v0002)
+//   SMAT: swg-client-v2 SkeletalAppearanceTemplate.cpp:786-1136 (v0001/v0002/v0003)
+//   APT:  swg-client-v2 AppearanceTemplateList.cpp:513-540 (NAME chunk redirect)
+
+// Extend nativeCore type to include Phase 02-02 parsers
+const nc = nativeCore as typeof nativeCore & {
+  parseSkeletalMesh: (
+    iffResult: unknown,
+    srcBytes: ArrayBuffer | Uint8Array,
+    boneOrder?: string[]
+  ) => SkeletalMeshResult;
+  parseSkeleton: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => SkeletonResult;
+  parseSkeletalAppearance: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => SkeletalAppearanceResult;
+  parseStaticAppearance: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => StaticAppearanceResult;
+};
+
+interface SkeletalMeshResult {
+  formatTag: string;
+  version: string;
+  shaderGroups: ShaderGroup[];
+  geometry: ArrayBuffer;
+  boneNames: string[];
+  sktmNames: string[];
+  weightsTruncated: number;
+  needsBoneRemap: boolean;
+}
+
+interface BoneInfo {
+  name: string;
+  parentIndex: number;
+  preRot: number[];
+  postRot: number[];
+  bindPos: number[];
+  preRotOff: number[];
+}
+
+interface SkeletonResult {
+  formatTag: string;
+  version: string;
+  boneNames: string[];
+  bones: BoneInfo[];
+}
+
+interface SktReference {
+  skeletonPath: string;
+  attachmentTransformName: string;
+}
+
+interface SkeletalAppearanceResult {
+  formatTag: string;
+  version: string;
+  filename: string;
+  meshPaths: string[];
+  skeletonRefs: SktReference[];
+}
+
+interface StaticAppearanceResult {
+  formatTag: string;
+  redirectTarget: string;
+}
+
+// ─── FORM SKMG (.mgn) — skeletal mesh ────────────────────────────────────────
+
+describe('FORM SKMG (.mgn) — skeletal mesh', () => {
+  // registerFormat CORE-05 gate for SKMG
+  // loaderSource: swg-client-v2 SkeletalMeshGeneratorTemplate.cpp:2247-2360 (INFO 9×int32+4×int16, verified 2026-06-23)
+  it('generic-IFF round-trip: ackbar_arms_l0.mgn (SKMG v0004)', () => {
+    const bytes = loadFixture('mesh/ackbar_arms_l0.mgn');
+    if (!bytes) {
+      console.log('  SKIP: ackbar_arms_l0.mgn not present (real fixture)');
+      return;
+    }
+    assertIffRoundTrip(bytes, 'ackbar_arms_l0.mgn IFF round-trip');
+  });
+
+  it('parseSkeletalMesh: ackbar_arms_l0.mgn — formatTag=SKMG, shaderGroups>0, boneNames.length>0', () => {
+    const bytes = loadFixture('mesh/ackbar_arms_l0.mgn');
+    if (!bytes) {
+      console.log('  SKIP: ackbar_arms_l0.mgn not present');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseSkeletalMesh(iff, bytes);
+
+    expect(result.formatTag).toBe('SKMG');
+    // ackbar_arms_l0.mgn is SKMG v0004
+    expect(['0002', '0003', '0004']).toContain(result.version);
+    expect(result.shaderGroups.length).toBeGreaterThan(0);
+    expect(result.boneNames.length).toBeGreaterThan(0);
+    expect(result.geometry).toBeInstanceOf(ArrayBuffer);
+    expect(result.geometry.byteLength).toBeGreaterThan(0);
+
+    // At least one shader group must have vertexCount > 0
+    const populated = result.shaderGroups.filter((g) => g.vertexCount > 0);
+    expect(populated.length).toBeGreaterThan(0);
+
+    // skinIndices and skinWeights must be present for SKMG groups with vertices
+    const g0 = populated[0];
+    expect(g0!.skinIndices.byteLength).toBeGreaterThan(0);
+    expect(g0!.skinWeights.byteLength).toBeGreaterThan(0);
+    // 4 components per vertex
+    expect(g0!.skinIndices.componentCount).toBe(4);
+    expect(g0!.skinWeights.componentCount).toBe(4);
+    // binary contract: indices are Uint32 (not Uint16)
+    expect(g0!.indices.componentCount).toBe(1);
+  });
+
+  it('parseSkeletalMesh: sktmNames lists skeleton template references', () => {
+    const bytes = loadFixture('mesh/ackbar_arms_l0.mgn');
+    if (!bytes) {
+      console.log('  SKIP: ackbar_arms_l0.mgn not present');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseSkeletalMesh(iff, bytes);
+    // SKMG stores skeleton template paths in inner SKTM chunk
+    expect(result.sktmNames.length).toBeGreaterThan(0);
+    // sktmNames should be .skt paths
+    for (const name of result.sktmNames) {
+      expect(typeof name).toBe('string');
+    }
+  });
+
+  it('CORE-05 gate (SC-5): parseSkeletalMesh needsBoneRemap=true when no boneOrder given', () => {
+    const bytes = loadFixture('mesh/ackbar_arms_l0.mgn');
+    if (!bytes) {
+      console.log('  SKIP: ackbar_arms_l0.mgn not present');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseSkeletalMesh(iff, bytes); // no boneOrder
+    expect(result.needsBoneRemap).toBe(true);
+  });
+});
+
+// ─── FORM SKTM v0002 (.skt) — skeleton ───────────────────────────────────────
+
+describe('FORM SKTM v0002 (.skt) — skeleton template', () => {
+  // registerFormat CORE-05 gate for SKTM-v2
+  // loaderSource: swg-client-v2 BasicSkeletonTemplate.cpp:151-389,363-390 (v0002, no BPMJ)
+  it('generic-IFF round-trip: at_at.skt (SKTM v0002)', () => {
+    const bytes = loadFixture('skeleton/at_at.skt');
+    if (!bytes) {
+      console.log('  SKIP: at_at.skt not present (real fixture)');
+      return;
+    }
+    assertIffRoundTrip(bytes, 'at_at.skt IFF round-trip');
+  });
+
+  it('parseSkeleton: at_at.skt — formatTag=SKTM, version=0002, joints>0', () => {
+    const bytes = loadFixture('skeleton/at_at.skt');
+    if (!bytes) {
+      console.log('  SKIP: at_at.skt not present');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseSkeleton(iff, bytes);
+
+    expect(result.formatTag).toBe('SKTM');
+    expect(result.version).toBe('0002');
+    expect(result.bones.length).toBeGreaterThan(0);
+    expect(result.boneNames.length).toBe(result.bones.length);
+
+    // Each bone must have a non-empty name
+    for (const bone of result.bones) {
+      expect(typeof bone.name).toBe('string');
+      expect(bone.name.length).toBeGreaterThan(0);
+    }
+
+    // Root bone must have parentIndex = -1
+    const root = result.bones.find((b) => b.parentIndex === -1);
+    expect(root).toBeDefined();
+
+    // Quaternion arrays must be length 4
+    expect(result.bones[0]!.preRot).toHaveLength(4);
+    expect(result.bones[0]!.postRot).toHaveLength(4);
+  });
+
+  it('parseSkeleton: throws on FORM SLOD (not FORM SKTM) — delta #7', () => {
+    // acklay.skt is FORM SLOD, NOT FORM SKTM — parseSkeleton must throw FormatParseError
+    const bytes = loadFixture('skeleton/acklay.skt');
+    if (!bytes) {
+      console.log('  SKIP: acklay.skt not present');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    // parseSkeleton must throw because SLOD is not SKTM
+    expect(() => nc.parseSkeleton(iff, bytes)).toThrow(/SLOD|SKTM/);
+  });
+});
+
+// ─── FORM SKTM v0001 (.skt) — skeleton with BPMJ ────────────────────────────
+
+describe('FORM SKTM v0001 (.skt) — skeleton template with BPMJ', () => {
+  // loaderSource: swg-client-v2 BasicSkeletonTemplate.cpp:151-286,280-286 (v0001, BPMJ mandatory)
+  it('parseSkeleton: synthetic SKTM v0001 with BPMJ — parsed correctly', () => {
+    // Synthetic SKTM v0001: 1 joint, with BPMJ chunk (mandatory per oracle)
+    // Manually constructed following BasicSkeletonTemplate.cpp:151-286
+    // Structure: FORM SKTM (12) → FORM 0001 (inner) → INFO(4) + NAME(~10) + PRNT(4) + RPRE(16) + RPST(16) + BPTR(12) + BPRO(12) + BPMJ(12) + JROR(8)
+    const bytes = loadFixture('skeleton/synthetic_sktm_v0001.skt');
+    if (!bytes) {
+      console.log('  SKIP: synthetic_sktm_v0001.skt not present (will be created)');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseSkeleton(iff, bytes);
+    expect(result.formatTag).toBe('SKTM');
+    expect(result.version).toBe('0001');
+    expect(result.bones.length).toBeGreaterThan(0);
+  });
+});
+
+// ─── FORM SMAT (.sat) — skeletal appearance ──────────────────────────────────
+
+describe('FORM SMAT (.sat) — skeletal appearance template', () => {
+  // registerFormat CORE-05 gate for SMAT
+  // loaderSource: swg-client-v2 SkeletalAppearanceTemplate.cpp:786-1136 (v0001/v0002/v0003)
+  it('generic-IFF round-trip: 4lom.sat (SMAT v0003)', () => {
+    const bytes = loadFixture('appearance/4lom.sat');
+    if (!bytes) {
+      console.log('  SKIP: 4lom.sat not present (real fixture)');
+      return;
+    }
+    assertIffRoundTrip(bytes, '4lom.sat IFF round-trip');
+  });
+
+  it('parseSkeletalAppearance: 4lom.sat — formatTag=SMAT, meshPaths>0, skeletonRefs>0', () => {
+    const bytes = loadFixture('appearance/4lom.sat');
+    if (!bytes) {
+      console.log('  SKIP: 4lom.sat not present');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseSkeletalAppearance(iff, bytes);
+
+    expect(result.formatTag).toBe('SMAT');
+    expect(['0001', '0002', '0003']).toContain(result.version);
+    expect(result.meshPaths.length).toBeGreaterThan(0);
+    expect(result.skeletonRefs.length).toBeGreaterThan(0);
+
+    // Each mesh path must look like an appearance path
+    for (const path of result.meshPaths) {
+      expect(typeof path).toBe('string');
+      expect(path.length).toBeGreaterThan(0);
+    }
+
+    // Each skeleton ref must have a skeletonPath
+    for (const ref of result.skeletonRefs) {
+      expect(typeof ref.skeletonPath).toBe('string');
+      expect(ref.skeletonPath.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ─── FORM APT (.apt) — static appearance redirector ──────────────────────────
+
+describe('FORM APT (.apt) — static appearance redirector', () => {
+  // registerFormat CORE-05 gate for APT
+  // loaderSource: swg-client-v2 AppearanceTemplateList.cpp:513-540 (NAME chunk redirect)
+  it('generic-IFF round-trip: arc170_body.apt (APT)', () => {
+    const bytes = loadFixture('appearance/arc170_body.apt');
+    if (!bytes) {
+      console.log('  SKIP: arc170_body.apt not present (real fixture)');
+      return;
+    }
+    assertIffRoundTrip(bytes, 'arc170_body.apt IFF round-trip');
+  });
+
+  it('parseStaticAppearance: arc170_body.apt — formatTag=APT, redirectTarget is non-.apt path', () => {
+    const bytes = loadFixture('appearance/arc170_body.apt');
+    if (!bytes) {
+      console.log('  SKIP: arc170_body.apt not present');
+      return;
+    }
+    const iff = nc.parseIff(bytes);
+    const result = nc.parseStaticAppearance(iff, bytes);
+
+    expect(result.formatTag).toBe('APT');
+    expect(typeof result.redirectTarget).toBe('string');
+    expect(result.redirectTarget.length).toBeGreaterThan(0);
+    // redirectTarget must NOT end with .apt (oracle constraint: AppearanceTemplateList.cpp:530)
+    expect(result.redirectTarget.toLowerCase()).not.toMatch(/\.apt$/);
+  });
+
+  it('parseStaticAppearance: throws if redirectTarget ends with .apt (T-02-08)', () => {
+    // Construct a minimal APT that illegally redirects to another .apt
+    // NAME payload: 'some_other.apt\0'
+    const redirect = 'some_other.apt';
+    // NAME chunk: 8-byte header + NUL-terminated string
+    const namePayloadLen = redirect.length + 1; // include NUL
+    // FORM 0000 body: 4-byte subType + 8-byte NAME header + namePayloadLen
+    const form0000BodyLen = 4 + 8 + namePayloadLen;
+    // FORM APT body: 4-byte subType + 8-byte FORM0000 header + form0000BodyLen
+    const aptBodyLen = 4 + 8 + form0000BodyLen;
+    // Total: 8-byte FORM APT header + aptBodyLen
+    const total = 8 + aptBodyLen;
+
+    const ab = new ArrayBuffer(total);
+    const dv = new DataView(ab);
+    const u8 = new Uint8Array(ab);
+    let off = 0;
+
+    // FORM APT outer header
+    dv.setUint32(off, 0x464f524d, false); off += 4; // 'FORM' BE
+    dv.setUint32(off, aptBodyLen, false);  off += 4; // body length (excludes outer 8-byte header)
+    // APT subType (4 bytes, part of aptBodyLen)
+    dv.setUint32(off, 0x41505420, false);  off += 4; // 'APT '
+
+    // FORM 0000 header
+    dv.setUint32(off, 0x464f524d, false); off += 4; // 'FORM'
+    dv.setUint32(off, form0000BodyLen, false); off += 4;
+    // 0000 subType
+    dv.setUint32(off, 0x30303030, false); off += 4; // '0000'
+
+    // CHUNK NAME header
+    dv.setUint32(off, 0x4e414d45, false); off += 4; // 'NAME'
+    dv.setUint32(off, namePayloadLen, false); off += 4;
+    // NAME payload: NUL-terminated redirect path
+    for (let i = 0; i < redirect.length; i++) u8[off + i] = redirect.charCodeAt(i);
+    u8[off + redirect.length] = 0; // NUL terminator
+
+    const iff = nc.parseIff(u8);
+    expect(() => nc.parseStaticAppearance(iff, u8)).toThrow(/circular|\.apt/i);
+  });
+});
