@@ -81,6 +81,21 @@ Napi::Value GetChunkBytes(const Napi::CallbackInfo& info);
 Napi::Value BuildTre(const Napi::CallbackInfo& info);
 Napi::Value RepackTre(const Napi::CallbackInfo& info);
 
+// Phase 2 Plan 02-01 mesh + format parsers (implemented in mesh_binding.cpp):
+// Source: modules/core/formats/Mesh.h, MeshLod.h, LodDistanceTable.h, Shader.h, Palette.h, Dds.h
+//   Mesh:     swg-client-v2 MeshAppearanceTemplate.cpp + ShaderPrimitiveSetTemplate.cpp + VertexBuffer.cpp
+//   MeshLod:  swg-client-v2 LodMeshGeneratorTemplate.cpp:210-254
+//   LodDT:    swg-client-v2 LodDistanceTable.cpp:140-175
+//   Shader:   swg-client-v2 StaticShaderTemplate.cpp:671-810
+//   Palette:  swg-client-v2 PaletteArgb.cpp:450-607
+//   Dds:      swg-client-v2 Dds.h + Texture.cpp:487-654
+Napi::Value ParseMesh(const Napi::CallbackInfo& info);
+Napi::Value ParseMeshLod(const Napi::CallbackInfo& info);
+Napi::Value ParseLodDistanceTable(const Napi::CallbackInfo& info);
+Napi::Value ParseShader(const Napi::CallbackInfo& info);
+Napi::Value ParsePalette(const Napi::CallbackInfo& info);
+Napi::Value ParseDds(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -114,6 +129,14 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 1 Plan 01-04 TRE builder exports (D-04, CORE-04 write side):
     exports.Set("buildTre",   Napi::Function::New(env, BuildTre));
     exports.Set("repackTre",  Napi::Function::New(env, RepackTre));
+
+    // Phase 2 Plan 02-01 mesh + format parsers:
+    exports.Set("parseMesh",            Napi::Function::New(env, ParseMesh));
+    exports.Set("parseMeshLod",         Napi::Function::New(env, ParseMeshLod));
+    exports.Set("parseLodDistanceTable",Napi::Function::New(env, ParseLodDistanceTable));
+    exports.Set("parseShader",          Napi::Function::New(env, ParseShader));
+    exports.Set("parsePalette",         Napi::Function::New(env, ParsePalette));
+    exports.Set("parseDds",             Napi::Function::New(env, ParseDds));
 
     return exports;
 }

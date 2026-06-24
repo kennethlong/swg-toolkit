@@ -15,6 +15,13 @@ set(CORE_SOURCES
     tre/TreMount.cpp
     tre/TreBuilder.cpp
     iff/Iff.cpp
+    geometry/DeIndex.cpp
+    formats/Mesh.cpp
+    formats/MeshLod.cpp
+    formats/Shader.cpp
+    formats/Palette.cpp
+    formats/Dds.cpp
+    formats/LodDistanceTable.cpp
 )
 
 # ── Vendored zlib 1.2.3 (static) ───────────────────────────────────────────────
