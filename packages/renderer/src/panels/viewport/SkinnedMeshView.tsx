@@ -21,7 +21,7 @@
 
 import React, { useMemo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { useThree } from '@react-three/fiber';
+import { useThree, useFrame } from '@react-three/fiber';
 import type { MeshParseResult, SkeletonParseResult } from '@swg/contracts';
 
 // ─── Module-scope scratch (NEVER re-allocated in useFrame or render) ──────────
@@ -133,20 +133,66 @@ function buildSkinnedGroupGeometry(
   return geo;
 }
 
+// ─── Module-scope scratch for auto-frame (shared with SkinnedGroup) ─────────
+const _scratchBox3 = new THREE.Box3();
+const _scratchSphere = new THREE.Sphere();
+
 // ─── Auto-frame helper ────────────────────────────────────────────────────────
 
-function useAutoFrame(hasMesh: boolean): void {
-  const { camera } = useThree();
+/**
+ * Real bounds-based auto-fit for skinned meshes.
+ * Computes a THREE.Box3 from actual BIND-POSE vertex positions across ALL shader groups.
+ * SECONDARY gap-closure fix — hardcoded camera.position.set(3,2,3) missed large/off-origin meshes.
+ */
+function useAutoFrame(parsedMesh: MeshParseResult | null, geometry: ArrayBuffer): void {
+  const { camera, invalidate } = useThree();
   const framed = useRef(false);
 
   useEffect(() => {
-    if (!hasMesh || framed.current) return;
+    if (!parsedMesh || framed.current) return;
     framed.current = true;
-    // Use _scratchVec3 (module-scope) — no allocation
-    _scratchVec3.set(0, 0, 0);
-    camera.position.set(3, 2, 3);
-    camera.lookAt(_scratchVec3);
-  }, [hasMesh, camera]);
+
+    const box = _scratchBox3.makeEmpty();
+
+    for (const g of parsedMesh.shaderGroups) {
+      if (g.positions.byteLength <= 0 || g.positions.elementCount <= 0) continue;
+      const posArray = new Float32Array(
+        geometry,
+        g.positions.offset,
+        g.positions.elementCount * 3,
+      );
+      for (let i = 0; i < posArray.length; i += 3) {
+        _scratchVec3.set(posArray[i] ?? 0, posArray[i + 1] ?? 0, posArray[i + 2] ?? 0);
+        box.expandByPoint(_scratchVec3);
+      }
+    }
+
+    if (box.isEmpty()) {
+      camera.position.set(3, 2, 3);
+      camera.lookAt(0, 0, 0);
+    } else {
+      box.getCenter(_scratchVec3);
+      box.getBoundingSphere(_scratchSphere);
+      const radius = _scratchSphere.radius > 0 ? _scratchSphere.radius : 1.0;
+      const fovRad = ((camera as THREE.PerspectiveCamera).fov ?? 55) * (Math.PI / 180);
+      const dist = (radius / Math.sin(fovRad / 2)) * 1.2;
+      camera.position.set(
+        _scratchVec3.x + dist * 0.707,
+        _scratchVec3.y + dist * 0.424,
+        _scratchVec3.z + dist * 0.707,
+      );
+      camera.lookAt(_scratchVec3);
+    }
+
+    invalidate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedMesh]);
+
+  // Suppress unused scratch var warnings — scratch objects are declared at module scope.
+  useFrame(() => {
+    if (!framed.current) return;
+    void _scratchMat4;
+  });
 }
 
 // ─── One skinned mesh group component ────────────────────────────────────────
@@ -173,10 +219,6 @@ function SkinnedGroup({ group, geometry, skeleton, wireframe }: SkinnedGroupProp
     }
     return () => { geo.dispose(); };
   }, [geo, skeleton]);
-
-  // Suppress unused scratch var warnings — scratch objects are declared at module
-  // scope for GC safety; they are used in other parts of this file.
-  void _scratchMat4;
 
   return (
     <skinnedMesh ref={meshRef} geometry={geo} frustumCulled={false}>
@@ -217,7 +259,7 @@ export default function SkinnedMeshView({
     };
   }, [skeleton]);
 
-  useAutoFrame(parsedMesh.shaderGroups.length > 0);
+  useAutoFrame(parsedMesh, geometry);
 
   return (
     <group>
