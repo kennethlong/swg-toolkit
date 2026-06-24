@@ -40,6 +40,7 @@ const nativeCore = require('../../native-core/index.js') as {
   readMountEntry: (mountHandle: string, archiveIndex: number, entryIndex: number) => ArrayBuffer;
   disposeTreMount: (mountHandle: string) => void;
   mountSearchableAsync: (paths: string[], priorities: number[]) => Promise<string>;
+  getMountEntriesColumnar: (mountHandle: string) => ArrayBuffer;
 };
 
 const TMPDIR = join(tmpdir(), 'swg-async-test');
@@ -366,6 +367,237 @@ describe('tre search', () => {
       // Verify results are entry INDICES, not names
       expect(typeof hits[0].entryIndex).toBe('number');
       expect(typeof hits[0].archiveIndex).toBe('number');
+    } finally {
+      nativeCore.disposeTreMount(handle);
+    }
+  });
+});
+
+// ─── getMountEntriesColumnar tests ───────────────────────────────────────────
+
+/**
+ * Decode the compact binary columnar blob from getMountEntriesColumnar().
+ * Mirrors the renderer's decodeMountEntriesColumnar() in TreVfsBrowser.tsx.
+ * Binary layout: see TreMount.h TreMountColumnar.
+ */
+interface DecodedVfsEntry {
+  path: string;
+  winnerArchivePath: string;
+  winnerArchiveIndex: number;
+  shadowCount: number;
+  isOverride: boolean;
+  isTombstone: boolean;
+}
+
+function decodeColumnarBlob(blob: ArrayBuffer): DecodedVfsEntry[] {
+  const buf = new DataView(blob);
+  const u8  = new Uint8Array(blob);
+
+  const entryCount         = buf.getUint32(0,  true);
+  const nameDataOffset     = buf.getUint32(4,  true);
+  const archPathDataOffset = buf.getUint32(12, true);
+  const arrayOffset        = buf.getUint32(20, true);
+
+  if (entryCount === 0) return [];
+
+  const nameOffBase  = arrayOffset;
+  const archOffBase  = nameOffBase  + entryCount * 4;
+  const winnerBase   = archOffBase  + entryCount * 4;
+  const shadowBase   = winnerBase   + entryCount * 4;
+  const flagsBase    = shadowBase   + entryCount * 4;
+
+  const decoder = new TextDecoder('utf-8');
+  function readCStr(dataOffset: number, relOff: number): string {
+    let end = dataOffset + relOff;
+    while (end < u8.length && u8[end] !== 0) end++;
+    return decoder.decode(u8.subarray(dataOffset + relOff, end));
+  }
+
+  const result: DecodedVfsEntry[] = new Array(entryCount);
+  for (let i = 0; i < entryCount; i++) {
+    result[i] = {
+      path:               readCStr(nameDataOffset,     buf.getUint32(nameOffBase + i * 4, true)),
+      winnerArchivePath:  readCStr(archPathDataOffset, buf.getUint32(archOffBase + i * 4, true)),
+      winnerArchiveIndex: buf.getInt32(winnerBase + i * 4, true),
+      shadowCount:        buf.getInt32(shadowBase + i * 4, true),
+      isOverride:         (u8[flagsBase + i] & 0x01) !== 0,
+      isTombstone:        (u8[flagsBase + i] & 0x02) !== 0,
+    };
+  }
+  return result;
+}
+
+describe('getMountEntriesColumnar', () => {
+  it('returns an ArrayBuffer (not an array of objects)', () => {
+    /**
+     * PERF CONTRACT: getMountEntriesColumnar must return a single ArrayBuffer,
+     * NOT an array of JS objects. This is the core property that eliminates the
+     * ~1.5M Napi::Set() calls that caused the ~1-minute UI freeze.
+     *
+     * Source: perf fix, tre-mount-perf-marshalling.md issue #1 (2026-06-24).
+     */
+    const arc = buildV0005Archive([
+      { name: 'appearance/player.apt', payload: Buffer.from('A') },
+      { name: 'sound/ambient.snd',     payload: Buffer.from('B') },
+    ]);
+    const path = writeTempArchive('col-type-test.tre', arc);
+    const handle = nativeCore.mountTreMount([path], [1]);
+    try {
+      const blob = nativeCore.getMountEntriesColumnar(handle);
+      expect(blob).toBeInstanceOf(ArrayBuffer);
+    } finally {
+      nativeCore.disposeTreMount(handle);
+    }
+  });
+
+  it('decodes to the correct entry count and paths', () => {
+    const arc = buildV0005Archive([
+      { name: 'appearance/player.apt', payload: Buffer.from('A') },
+      { name: 'sound/ambient.snd',     payload: Buffer.from('B') },
+      { name: 'object/weapon/sword.iff', payload: Buffer.from('C') },
+    ]);
+    const path = writeTempArchive('col-decode-test.tre', arc);
+    const handle = nativeCore.mountTreMount([path], [1]);
+    try {
+      const blob = nativeCore.getMountEntriesColumnar(handle);
+      const entries = decodeColumnarBlob(blob);
+
+      expect(entries.length).toBe(3);
+      // Entries are sorted by path
+      const paths = entries.map((e) => e.path).sort();
+      expect(paths).toEqual([
+        'appearance/player.apt',
+        'object/weapon/sword.iff',
+        'sound/ambient.snd',
+      ]);
+    } finally {
+      nativeCore.disposeTreMount(handle);
+    }
+  });
+
+  it('override and tombstone flags are correct for two-archive mount', () => {
+    const sharedFile = 'appearance/player.apt';
+    const uniqueFile = 'sound/unique.snd';
+
+    const arcLow  = buildV0005Archive([
+      { name: sharedFile, payload: Buffer.from('LOW') },
+      { name: uniqueFile, payload: Buffer.from('ONLY_IN_LOW') },
+    ]);
+    const arcHigh = buildV0005Archive([
+      { name: sharedFile, payload: Buffer.from('HIGH') },
+    ]);
+
+    const pathLow  = writeTempArchive('col-override-low.tre', arcLow);
+    const pathHigh = writeTempArchive('col-override-high.tre', arcHigh);
+
+    const handle = nativeCore.mountTreMount([pathLow, pathHigh], [1, 2]);
+    try {
+      const blob    = nativeCore.getMountEntriesColumnar(handle);
+      const entries = decodeColumnarBlob(blob);
+
+      const shared = entries.find((e) => e.path === sharedFile);
+      const unique = entries.find((e) => e.path === uniqueFile);
+
+      expect(shared).toBeDefined();
+      expect(shared!.isOverride).toBe(true);
+      expect(shared!.shadowCount).toBe(1);
+      expect(shared!.isTombstone).toBe(false);
+
+      expect(unique).toBeDefined();
+      expect(unique!.isOverride).toBe(false);
+      expect(unique!.shadowCount).toBe(0);
+    } finally {
+      nativeCore.disposeTreMount(handle);
+    }
+  });
+
+  it('tombstone flag is set for entries with length==0 in the winning archive', () => {
+    const tombFile = 'deleted/file.iff';
+    const arcReal  = buildV0005Archive([{ name: tombFile, payload: Buffer.from('REAL') }]);
+    const arcTomb  = buildV0005Archive([{ name: tombFile, payload: Buffer.alloc(0), tombstone: true }]);
+
+    const pathReal = writeTempArchive('col-tomb-real.tre', arcReal);
+    const pathTomb = writeTempArchive('col-tomb-high.tre', arcTomb);
+
+    const handle = nativeCore.mountTreMount([pathReal, pathTomb], [1, 2]);
+    try {
+      const blob    = nativeCore.getMountEntriesColumnar(handle);
+      const entries = decodeColumnarBlob(blob);
+
+      const e = entries.find((en) => en.path === tombFile);
+      expect(e).toBeDefined();
+      expect(e!.isTombstone).toBe(true);
+    } finally {
+      nativeCore.disposeTreMount(handle);
+    }
+  });
+
+  it('is available on async-mounted handles (pre-built off-thread)', async () => {
+    /**
+     * Verifies that mountSearchableAsync pre-builds the columnar payload off-thread
+     * so getMountEntriesColumnar on the main thread is near-zero-cost (just a memcpy).
+     * This is the PRIMARY perf fix — see tre-mount-perf-marshalling.md issue #1.
+     */
+    const arc = buildV0005Archive([
+      { name: 'test/async_col.apt', payload: Buffer.from('X') },
+    ]);
+    const path = writeTempArchive('col-async-test.tre', arc);
+
+    const handle = await nativeCore.mountSearchableAsync([path], [1]);
+    try {
+      const blob = nativeCore.getMountEntriesColumnar(handle);
+      expect(blob).toBeInstanceOf(ArrayBuffer);
+      const entries = decodeColumnarBlob(blob);
+      expect(entries.length).toBe(1);
+      expect(entries[0].path).toBe('test/async_col.apt');
+    } finally {
+      nativeCore.disposeTreMount(handle);
+    }
+  });
+
+  it('perf gate: 100k-entry blob crosses the bridge orders of magnitude faster than 250k-object marshal', { timeout: 60_000 }, () => {
+    /**
+     * Key perf regression guard: with the old listMountEntries() approach, marshalling
+     * 250k entries synchronously took ~60 seconds (~1.5M Napi::Set() calls).
+     * With the columnar blob approach, the N-API bridge crossing is ONE ArrayBuffer::New
+     * + memcpy — the returned blob for 100k entries is well under 500ms even on the
+     * SYNCHRONOUS (first-time) path (the async path via mountSearchableAsync is
+     * pre-built off-thread and returns near-instantly on the main thread).
+     *
+     * Budget: 500ms for the first-time synchronous build of 100k entries.
+     * The async path (pre-built off-thread) should be < 5ms on the main thread.
+     *
+     * Source: perf fix, tre-mount-perf-marshalling.md issue #1 (2026-06-24).
+     */
+    const COUNT = 100_000;
+    const entries: TreEntry[] = [];
+    for (let i = 0; i < COUNT; i++) {
+      entries.push({
+        name: `appearance/perf_${i.toString().padStart(6, '0')}.apt`,
+        payload: Buffer.from('x'),
+      });
+    }
+    const arc  = buildV0005Archive(entries);
+    const path = writeTempArchive('col-perf-100k.tre', arc);
+    const handle = nativeCore.mountTreMount([path], [1]);
+    try {
+      const t0   = performance.now();
+      const blob = nativeCore.getMountEntriesColumnar(handle);
+      const elapsed = performance.now() - t0;
+
+      // The blob itself must be an ArrayBuffer (not an array of objects)
+      expect(blob).toBeInstanceOf(ArrayBuffer);
+
+      // Synchronous first-time build budget: 500ms (the async path is pre-built
+      // off-thread and is near-instant: just a memcpy on the main thread).
+      // The old listMountEntries() approach would take ~24 seconds for 100k entries
+      // (~250k would take ~60s); 500ms is still an order-of-magnitude improvement.
+      expect(elapsed).toBeLessThan(500);
+
+      // Sanity: blob has valid header
+      const view = new DataView(blob);
+      const decodedCount = view.getUint32(0, true);
+      expect(decodedCount).toBe(COUNT);
     } finally {
       nativeCore.disposeTreMount(handle);
     }
