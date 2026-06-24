@@ -209,6 +209,39 @@ No new threat surface beyond what the plan's threat model covers:
 - T-02-10: Bone order name-keyed (XFNM→skeleton name→index) — implemented
 - T-02-11: APT path count cap 64, string cap 512 — implemented
 
+## Gap Fix (post-checkpoint)
+
+**Date:** 2026-06-24
+**Commits:** a8900b4, 98ca401, e082e67, 4e74447
+
+### What Was Missing
+
+A read-only trace after the checkpoint identified that the entire open→render pipeline was dead code. Opening a `.msh/.mgn/.sat/.apt` from the TRE VFS browser drove the IFF store but never touched the viewport store, so `parsedMesh` stayed null forever and the Canvas rendered nothing (grid + lights only).
+
+Three layered bugs:
+
+**PRIMARY (pipeline never called):** `TreVfsBrowser.handleSelectEntry` only called `iffStore.beginParse/parseComplete`. `viewportStore.beginLoad`, `resolveAppearance`, and `viewportStore.loadComplete` had zero call sites. Fix: added mesh-extension detection (`MESH_EXTENSIONS = {msh, mgn, sat, apt}`), then for matching entries: `beginLoad()` → `await resolveAppearance()` → `loadComplete(filename, mode, resolution, isSkinned, parsedMesh, parsedSkeleton)`.
+
+**SECONDARY (auto-fit was fake):** `StaticMeshView.useAutoFrame` only called `expandByPoint(0,0,0)` — never read actual vertices; camera always parked at `dist=3`. `SkinnedMeshView.useAutoFrame` hardcoded `camera.position.set(3,2,3)`. SWG meshes are frequently large/off-origin → outside the frustum → invisible. Fix: read actual `Float32Array` positions from the geometry `ArrayBuffer` using `MeshAttributeSlice` offsets across ALL shader groups, compute `THREE.Box3 → getBoundingSphere()`, then set camera distance as `(radius / sin(fovRad/2)) * 1.2` (20% FOV-based margin). Applied to both views. Call `invalidate()` to repaint in demand mode.
+
+**TERTIARY (LOD always index 0, missing[] not surfaced):** `SceneContent` always read `resolution?.meshes[0]?.geometry`, ignoring `selectedLod`. Fix: index as `resolution?.meshes[selectedLod] ?? resolution?.meshes[0]`; use `lodMesh.parseResult` for the active `MeshParseResult`. Added `LoadInvalidator` (inside Canvas) to call `invalidate()` when `loadStatus` transitions to `done` in `frameloop="demand"`. Added `MissingDepsOverlay` (HTML, outside Canvas) that shows a `⚠` banner when `resolution.missing.length > 0`, rendered in `ViewportPanel` when `isDone`.
+
+### Why It Was Missing
+
+The plan built all the components correctly in isolation (viewportStore actions exist, resolver works, mesh views render) but the plan's Task 2 never connected the TRE browser selection event to the viewport pipeline. The integration point — the `handleSelectEntry` callback — was the only missing link. The 122 existing tests passed because none asserted end-to-end from "select entry" → "store has parsedMesh".
+
+### Integration Test Added
+
+`packages/harness/test/viewport-wiring.test.ts` — 7 tests exercising the full `beginLoad → loadComplete → parsedMesh-non-null` state machine, `selectedLod` array indexing, `resolution.missing[]` preservation for ⚠ display, error state, and reset.
+
+### Auto-fit Margin Decision
+
+1.2× FOV-based margin (20% padding): `dist = (radius / sin(fov/2)) * 1.2`. This ensures the bounding sphere fits the frustum with visual breathing room. The "Frame" chip in 02-04 will let users re-fit interactively.
+
+### LOD Default
+
+`selectedLod = 0` (store initial value, reset on each new load). This is the highest-detail level in SWG's LOD ordering, which is the correct inspector default. The LodPicker lets users switch.
+
 ## Self-Check: PASSED
 
 Files created verified:
