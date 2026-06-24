@@ -26,8 +26,8 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 - [ ] **CORE-06**: Binary payloads (geometry, textures, audio, terrain) cross the N-API bridge zero-copy and parse on async worker threads (UI never blocks).
 
 ### 3D Viewer (VIEW)
-- [ ] **VIEW-01**: User can open a static or skinned mesh (`.msh`/`.mgn`) and see it rendered in a Three.js viewport with an orbit camera.
-- [ ] **VIEW-02**: System renders `.dds` textures and `.pal` palette customization on the displayed mesh.
+- [x] **VIEW-01**: User can open a static or skinned mesh (`.msh`/`.mgn`) and see it rendered in a Three.js viewport with an orbit camera.
+- [x] **VIEW-02**: System renders `.dds` textures and `.pal` palette customization on the displayed mesh.
 - [ ] **VIEW-03**: User can preview a skeleton (`.skt`/`.sat`) and play back `.ans` animations.
 - [ ] **VIEW-04**: User can extract raw assets and export a viewed mesh to glTF/COLLADA.
 
@@ -105,8 +105,8 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | CORE-04 | Phase 1 | Complete |
 | CORE-05 | Phase 1 | Complete |
 | CORE-06 | Phase 1 | Pending |
-| VIEW-01 | Phase 2 | Pending |
-| VIEW-02 | Phase 2 | Pending |
+| VIEW-01 | Phase 2 | Complete |
+| VIEW-02 | Phase 2 | Complete |
 | VIEW-03 | Phase 2 | Pending |
 | VIEW-04 | Phase 2 | Pending |
 | LIVE-01 | Phase 3 | Pending |
