@@ -26,9 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 02 (3d-mesh-viewport-mvp-proof) — EXECUTING
-Plan: 02-01/02/03/04 tasks 1-2 complete ✓ — 02-04 task 3 checkpoint awaiting human-verify
-Status: Wave 4 (animation) tasks 1-2 done; human-verify checkpoint for animation playback correctness
-Last activity: 2026-06-24 — 02-03 materials verified (textured red droid matches SIE; remaining gap = lighting rig, tracked)
+Plan: 02-01/02/03 done ✓; 02-04 (animation) tasks 1-2 done + byte-exact verified — BLOCKED at checkpoint
+Status: ⛔ BLOCKER — skinned .sat load LOCKS UP the UI (renderer skinned path, never exercised pre-SLOD-fix).
+        Native data 100% valid. SLOD skeleton fix landed (5a8baac). >>> RESUME via handoff <<<
+Resume: .planning/handoff/2026-06-25-phase2-skinned-animation-blocker.md  (full debug state + next steps)
+Last activity: 2026-06-25 — 02-04 anim parser+transport+sampler built (byte-exact ✓); SLOD fix; skinned-render lockup found
 
 Progress: [████████░░] 79%
 
