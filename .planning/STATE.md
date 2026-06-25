@@ -26,11 +26,19 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 02 (3d-mesh-viewport-mvp-proof) — EXECUTING
-Plan: 3 of 5
-Status: Ready to execute
-Last activity: 2026-06-24
+Plan: 02-01/02/03 complete ✓ — 02-04 (animation) next
+Status: Wave 3 (materials) verified vs SIE & approved; material pixel-parity → backlog VIEW-MAT-FIDELITY
+Last activity: 2026-06-24 — 02-03 materials verified (textured red droid matches SIE; remaining gap = lighting rig, tracked)
 
 Progress: [████████░░] 79%
+
+### 02-03 key facts (crew-verified)
+- ~6 native-binding↔contract field-shape mismatches shipped silently this phase (resolveEntry.found,
+  LOD order, shader slotTag, DDS format, uvs-array, env-mask). → native-contract-conformance-test (HIGH)
+  is a prerequisite-quality item before 02-04 adds the .ans binding.
+- protocol_droid_red: red is BAKED in the diffuse (sat 0.44 maroon); material=white, no texfactor,
+  no vertex color, SSHT not CSHD. Env reflection is highlight-gated (not flat wash). Remaining SIE
+  gap = lighting/tone (presentation, not bytes) → backlog VIEW-MAT-FIDELITY.
 
 ## Performance Metrics
 

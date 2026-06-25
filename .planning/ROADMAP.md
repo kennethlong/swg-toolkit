@@ -97,7 +97,7 @@ Plans:
 - [x] 02-02-PLAN.md — C++ SKMG (INFO 9×int32+4×int16, TWDT from INFO) / SKTM (v0001+v0002 BPMJ-branched) / SMAT / APT parsers + de-index+vec4-normalize + CORE-05 fixtures; TS resolver (composed/composed-static/leaf, texture-byte plumbing, D-04); R3F Viewport + StaticMeshView AND SkinnedMeshView, multi-PSDT, no material.skinning (VIEW-01 static+skinned); viewportStore (source-entry fields); LodPicker; AppearancePanel
 
 **Wave 3** *(blocked on 02-02)*
-- [ ] 02-03-PLAN.md — Custom ShaderMaterial (skinning chunks, samplers in fragment, uTexFactor + distinct uMaterialColor, DOT3 tangents, multi-map); DDS GPU upload via S3TC + real CPU-decode fallback; texture bytes consumed from 02-02 resolver; multi-group CustomizationPanel live color-swap (D-06) + multi-group MaterialInspector (VIEW-02)
+- [x] 02-03-PLAN.md — Custom ShaderMaterial (skinning chunks, samplers in fragment, uTexFactor + distinct uMaterialColor, DOT3 tangents, multi-map); DDS GPU upload via S3TC + real CPU-decode fallback; texture bytes consumed from 02-02 resolver; multi-group CustomizationPanel live color-swap (D-06) + multi-group MaterialInspector (VIEW-02)
 
 **Wave 4** *(blocked on 02-02)*
 - [ ] 02-04-PLAN.md — C++ Animation parser with SEPARATE CKAT(int16)/KFAT(int32) sparse per-channel byte tables + VERBATIM CompressedQuaternion::install()/doExpand() port (255-entry s_formatData, w-clamp); KFAT 0002 declined; CORE-05 fixtures (no on-load decimation); AnimationTransport (D-08, populated picker); ref-clock sparse-key zero-GC sampler (VIEW-03)
