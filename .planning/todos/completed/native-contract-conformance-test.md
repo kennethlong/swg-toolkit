@@ -5,7 +5,9 @@ created: 2026-06-24
 origin: Phase 02 — 4 field-shape mismatches found at runtime during 02-02/02-03 verification
 severity: high
 area: harness / native-core / contracts
-status: pending
+status: completed
+completed: 2026-06-24
+coverage: packages/harness/test/contract-conformance.test.ts (15 tests; 160 total suite green)
 ---
 
 ## Why
