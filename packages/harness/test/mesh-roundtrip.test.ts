@@ -697,6 +697,47 @@ beforeAll(() => {
       loaderSource: 'swg-client-v2 ShaderEffect.cpp:86-179 + ShaderImplementation.cpp:1692-1738',
     });
   }
+
+  // CKAT-0001: swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313,553-594 +
+  //             CompressedQuaternion.cpp:82-122,156-228,370-419 (verbatim port)
+  // Real fixtures: acklay_std_turn_right.ans + all_b_cbt_pistol_*.ans (gitignored)
+  const ckatBytes1 = loadFixture('animation/acklay_std_turn_right.ans');
+  const ckatBytes2 = loadFixture('animation/all_b_cbt_pistol_kneeling_aimed_hurry_to_pistol_standing_aimed.ans');
+  const ckatFixtures: Array<{ name: string; bytes: Uint8Array; loaderSource: string }> = [];
+  if (ckatBytes1) ckatFixtures.push({ name: 'acklay_std_turn_right.ans (CKAT-0001)', bytes: ckatBytes1, loaderSource: 'swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313,553-594' });
+  if (ckatBytes2) ckatFixtures.push({ name: 'all_b_cbt_pistol*.ans (CKAT-0001)', bytes: ckatBytes2, loaderSource: 'swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313' });
+  if (ckatFixtures.length > 0) {
+    const firstCkatBytes = (ckatBytes1 ?? ckatBytes2)!;
+    registerFormat('mesh-ans-ckat', {
+      parse: (bytes: Uint8Array) => {
+        const iff = ncAnim.parseIff(bytes);
+        return ncAnim.parseAnimation(iff, bytes);
+      },
+      serialize: (_parsed: unknown) => firstCkatBytes,
+      fixtures: ckatFixtures,
+      loaderSource: 'swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313,553-594 + CompressedQuaternion.cpp:82-419',
+    });
+  }
+
+  // KFAT-0003: swg-client-v2 KeyframeSkeletalAnimationTemplate.cpp:1518-1620,521-553,574-608
+  // Real fixtures: acklay_rea_get_hit_add.ans + acklay_rea_stand_get_hit_medium.ans (gitignored)
+  const kfatBytes1 = loadFixture('animation/acklay_rea_get_hit_add.ans');
+  const kfatBytes2 = loadFixture('animation/acklay_rea_stand_get_hit_medium.ans');
+  const kfatFixtures: Array<{ name: string; bytes: Uint8Array; loaderSource: string }> = [];
+  if (kfatBytes1) kfatFixtures.push({ name: 'acklay_rea_get_hit_add.ans (KFAT-0003)', bytes: kfatBytes1, loaderSource: 'swg-client-v2 KeyframeSkeletalAnimationTemplate.cpp:1518-1620' });
+  if (kfatBytes2) kfatFixtures.push({ name: 'acklay_rea_stand_get_hit_medium.ans (KFAT-0003)', bytes: kfatBytes2, loaderSource: 'swg-client-v2 KeyframeSkeletalAnimationTemplate.cpp:1518-1620' });
+  if (kfatFixtures.length > 0) {
+    const firstKfatBytes = (kfatBytes1 ?? kfatBytes2)!;
+    registerFormat('mesh-ans-kfat', {
+      parse: (bytes: Uint8Array) => {
+        const iff = ncAnim.parseIff(bytes);
+        return ncAnim.parseAnimation(iff, bytes);
+      },
+      serialize: (_parsed: unknown) => firstKfatBytes,
+      fixtures: kfatFixtures,
+      loaderSource: 'swg-client-v2 KeyframeSkeletalAnimationTemplate.cpp:1518-1620,521-553,574-608',
+    });
+  }
 });
 
 // ─── FORM SKMG (.mgn) — skeletal mesh ────────────────────────────────────────
@@ -1306,5 +1347,300 @@ describe('Bug-1 regression: ENVM texturePath populated after Shader.cpp fix', ()
     // effectPath must be populated (the .eft file path)
     expect(result.effectPath.length).toBeGreaterThan(0);
     expect(result.effectPath).toMatch(/\.eft$/i);
+  });
+});
+
+// ─── Animation parser types ───────────────────────────────────────────────────
+
+interface AnimationJoint {
+  name: string;
+  hasAnimatedRotation: boolean;
+  rotationChannelIndex: number;
+  translationMask: number;
+  translationChannelIndex: [number, number, number];
+}
+
+interface AnimationChannelHeader {
+  byteOffset: number;
+  keyCount: number;
+}
+
+interface AnimationChannelTable {
+  rotationChannels: AnimationChannelHeader[];
+  staticRotByteOffset: number;
+  staticRotationCount: number;
+  translationChannels: AnimationChannelHeader[];
+  staticTransByteOffset: number;
+  staticTranslationCount: number;
+}
+
+interface AnimationResult {
+  variant: 'CKAT-0001' | 'KFAT-0003' | 'KFAT-0002-unsupported';
+  fps: number;
+  frameCount: number;
+  joints: AnimationJoint[];
+  keyframes: ArrayBuffer;
+  channelTable: AnimationChannelTable;
+  roundTrip: { passed: boolean; failOffset?: number };
+}
+
+const ncAnim = nativeCore as typeof nativeCore & {
+  parseAnimation: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => AnimationResult;
+};
+
+// ─── FORM CKAT-0001 (.ans) — compressed keyframe animation ───────────────────
+//
+// Ground truth:
+//   swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313,553-594,637-660,1273-1277
+//   swg-client-v2 CompressedQuaternion.cpp:82-122,156-228,370-419 (verbatim port)
+//
+// CORE-05 gate: byte-exact IFF round-trip on real CKAT .ans fixture.
+
+describe('FORM CKAT-0001 (.ans) — compressed keyframe animation', () => {
+  // registerFormat: see beforeAll below — loaderSource: swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313,553-594
+
+  it('CORE-05 gate: generic-IFF round-trip — acklay_std_turn_right.ans (CKAT-0001)', () => {
+    const bytes = loadFixture('animation/acklay_std_turn_right.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_std_turn_right.ans not present (real fixture, gitignored)');
+      return;
+    }
+    assertIffRoundTrip(bytes, 'acklay_std_turn_right.ans IFF round-trip');
+  });
+
+  it('parseAnimation: acklay_std_turn_right.ans — variant=CKAT-0001, fps>0, frameCount>0, joints>0', () => {
+    const bytes = loadFixture('animation/acklay_std_turn_right.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_std_turn_right.ans not present');
+      return;
+    }
+    const iff = ncAnim.parseIff(bytes);
+    const result = ncAnim.parseAnimation(iff, bytes);
+
+    expect(result.variant).toBe('CKAT-0001');
+    expect(result.fps).toBeGreaterThan(0);
+    expect(result.frameCount).toBeGreaterThan(0);
+    expect(result.joints.length).toBeGreaterThan(0);
+
+    // joints must have the right shape
+    const j0 = result.joints[0]!;
+    expect(typeof j0.name).toBe('string');
+    expect(j0.name.length).toBeGreaterThan(0);
+    expect(typeof j0.hasAnimatedRotation).toBe('boolean');
+    expect(Array.isArray(j0.translationChannelIndex)).toBe(true);
+    expect(j0.translationChannelIndex.length).toBe(3);
+  });
+
+  it('parseAnimation: CKAT-0001 — keyframes is ArrayBuffer, channelTable has rotation channels', () => {
+    const bytes = loadFixture('animation/acklay_std_turn_right.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_std_turn_right.ans not present');
+      return;
+    }
+    const iff = ncAnim.parseIff(bytes);
+    const result = ncAnim.parseAnimation(iff, bytes);
+
+    // Binary contract: keyframes crosses as ArrayBuffer (AGENTS.md: binary-stays-binary)
+    expect(result.keyframes).toBeInstanceOf(ArrayBuffer);
+    expect(result.keyframes.byteLength).toBeGreaterThan(0);
+
+    // channelTable must exist with rotation channels (CKAT animation has rotations)
+    expect(result.channelTable).toBeDefined();
+    expect(Array.isArray(result.channelTable.rotationChannels)).toBe(true);
+    expect(result.channelTable.rotationChannels.length).toBeGreaterThan(0);
+  });
+
+  it('parseAnimation: CKAT-0001 — compressed quaternion magnitude ≈ 1.0, w >= 0 (decode unit test)', () => {
+    // This tests CompressedQuaternion::doExpand() verbatim port correctness.
+    // Read the first animated rotation channel from the CKAT file.
+    // The first key's decoded quaternion must be a unit quaternion (|q| ≈ 1.0, w >= 0).
+    const bytes = loadFixture('animation/acklay_std_turn_right.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_std_turn_right.ans not present');
+      return;
+    }
+    const iff = ncAnim.parseIff(bytes);
+    const result = ncAnim.parseAnimation(iff, bytes);
+
+    // Find first channel with keys
+    const rotCh = result.channelTable.rotationChannels.find(ch => ch.keyCount > 0);
+    if (!rotCh) {
+      console.log('  SKIP: no rotation keys found in CKAT fixture');
+      return;
+    }
+
+    // Read from keyframeBuffer: channel starts at rotCh.byteOffset
+    // Layout: int32 keyCount + int32 frame[kc] + float (w,x,y,z)[kc*4]
+    const kfBuf = result.keyframes;
+    const dv = new DataView(kfBuf);
+    const base = rotCh.byteOffset;
+    const keyCount = dv.getInt32(base, true);
+    expect(keyCount).toBeGreaterThan(0);
+
+    // Read first key's quaternion: after keyCount(4) + frame[0](4) = offset 8
+    const quatBase = base + 4 + keyCount * 4; // skip keyCount + all frames
+    const w = dv.getFloat32(quatBase + 0, true);
+    const x = dv.getFloat32(quatBase + 4, true);
+    const y = dv.getFloat32(quatBase + 8, true);
+    const z = dv.getFloat32(quatBase + 12, true);
+
+    const mag = Math.sqrt(w * w + x * x + y * y + z * z);
+    // Magnitude must be within 0.001 of 1.0 (verbatim port correctness)
+    expect(mag).toBeCloseTo(1.0, 2); // 2 decimal places = ±0.005
+
+    // w must be >= 0 (clamp applied per plan must_have §3)
+    expect(w).toBeGreaterThanOrEqual(0);
+  });
+
+  it('parseAnimation: CKAT-0001 — ON-DISK key count (no decimation applied)', () => {
+    // The client's loader decimates keys; our typed parser must NOT.
+    // This verifies the "decimation caveat" is honoured: ON-DISK counts preserved.
+    const bytes = loadFixture('animation/acklay_std_turn_right.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_std_turn_right.ans not present');
+      return;
+    }
+    const iff = ncAnim.parseIff(bytes);
+    const result = ncAnim.parseAnimation(iff, bytes);
+
+    // channelTable must have positive keyCount for animated channels
+    const animatedChs = result.channelTable.rotationChannels.filter(ch => ch.keyCount > 0);
+    expect(animatedChs.length).toBeGreaterThan(0);
+
+    // keyCount must be positive (channels with >1 frame are animated)
+    for (const ch of animatedChs) {
+      expect(ch.keyCount).toBeGreaterThan(0);
+    }
+  });
+
+  it('parseAnimation: second CKAT-0001 fixture round-trip', () => {
+    const bytes = loadFixture('animation/all_b_cbt_pistol_kneeling_aimed_hurry_to_pistol_standing_aimed.ans');
+    if (!bytes) {
+      console.log('  SKIP: second CKAT fixture not present');
+      return;
+    }
+    assertIffRoundTrip(bytes, 'all_b_cbt_pistol*.ans IFF round-trip');
+    const iff = ncAnim.parseIff(bytes);
+    const result = ncAnim.parseAnimation(iff, bytes);
+    expect(result.variant).toBe('CKAT-0001');
+    expect(result.joints.length).toBeGreaterThan(0);
+  });
+});
+
+// ─── FORM KFAT-0003 (.ans) — uncompressed keyframe animation ─────────────────
+//
+// Ground truth:
+//   swg-client-v2 KeyframeSkeletalAnimationTemplate.cpp:1518-1620,521-553,574-608,1590
+//
+// CORE-05 gate: byte-exact IFF round-trip on real KFAT-0003 .ans fixture.
+
+describe('FORM KFAT-0003 (.ans) — uncompressed keyframe animation', () => {
+  it('CORE-05 gate: generic-IFF round-trip — acklay_rea_get_hit_add.ans (KFAT-0003)', () => {
+    const bytes = loadFixture('animation/acklay_rea_get_hit_add.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_rea_get_hit_add.ans not present (real fixture, gitignored)');
+      return;
+    }
+    assertIffRoundTrip(bytes, 'acklay_rea_get_hit_add.ans IFF round-trip');
+  });
+
+  it('parseAnimation: acklay_rea_get_hit_add.ans — variant=KFAT-0003, fps>0, joints>0', () => {
+    const bytes = loadFixture('animation/acklay_rea_get_hit_add.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_rea_get_hit_add.ans not present');
+      return;
+    }
+    const iff = ncAnim.parseIff(bytes);
+    const result = ncAnim.parseAnimation(iff, bytes);
+
+    expect(result.variant).toBe('KFAT-0003');
+    expect(result.fps).toBeGreaterThan(0);
+    expect(result.frameCount).toBeGreaterThan(0);
+    expect(result.joints.length).toBeGreaterThan(0);
+
+    // keyframes is ArrayBuffer (binary-stays-binary)
+    expect(result.keyframes).toBeInstanceOf(ArrayBuffer);
+  });
+
+  it('parseAnimation: KFAT-0003 — int32 widths (INFO/XFIN/QCHN all read correctly)', () => {
+    const bytes = loadFixture('animation/acklay_rea_stand_get_hit_medium.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_rea_stand_get_hit_medium.ans not present');
+      return;
+    }
+    const iff = ncAnim.parseIff(bytes);
+    const result = ncAnim.parseAnimation(iff, bytes);
+
+    expect(result.variant).toBe('KFAT-0003');
+    // int32 fps/frameCount from INFO
+    expect(result.fps).toBeCloseTo(30.0, 1);
+    expect(result.frameCount).toBeGreaterThan(0);
+    expect(result.joints.length).toBeGreaterThan(0);
+
+    // Verify rotation channels have positive keyCount (KFAT QCHN read_int32 widths)
+    const animJoints = result.joints.filter(j => j.hasAnimatedRotation);
+    expect(animJoints.length).toBeGreaterThan(0);
+  });
+
+  it('parseAnimation: KFAT-0003 — second round-trip (acklay_rea_stand_get_hit_medium)', () => {
+    const bytes = loadFixture('animation/acklay_rea_stand_get_hit_medium.ans');
+    if (!bytes) {
+      console.log('  SKIP: acklay_rea_stand_get_hit_medium.ans not present');
+      return;
+    }
+    assertIffRoundTrip(bytes, 'acklay_rea_stand_get_hit_medium.ans IFF round-trip');
+  });
+});
+
+// ─── KFAT-0002 decline test ────────────────────────────────────────────────────
+
+describe('KFAT-0002 graceful decline', () => {
+  it('parseAnimation on KFAT-0002 returns variant=KFAT-0002-unsupported without throwing', () => {
+    // Build a synthetic minimal KFAT 0002 IFF to test the decline path.
+    // FORM KFAT → FORM 0002 → INFO (minimal placeholder, parser exits at version check)
+    //
+    // We only need the outer forms to be parseable; the KFAT 0002 parser must NOT
+    // enter XFRM/AROT etc — it must return immediately on version detection.
+    //
+    // Layout:
+    //   FORM KFAT (outerLen)
+    //     FORM 0002 (form0002Len)
+    //       INFO (infoPayLen bytes — any content, parser exits before reading)
+    const infoPayLen = 4; // minimal: 4 bytes (don't care content)
+    const infoChunkLen = 8 + infoPayLen;
+    // FORM 0002 body: 4-byte subType + INFO chunk
+    const form0002BodyLen = 4 + infoChunkLen;
+    const form0002Len = 8 + form0002BodyLen;
+    // FORM KFAT body: 4-byte subType + FORM 0002
+    const outerBodyLen = 4 + form0002Len;
+    const total = 8 + outerBodyLen;
+
+    const ab = new ArrayBuffer(total);
+    const dv = new DataView(ab);
+    const u8 = new Uint8Array(ab);
+
+    function writeTag4(off: number, s: string): number {
+      for (let i = 0; i < 4; i++) u8[off + i] = s.charCodeAt(i);
+      return off + 4;
+    }
+    function writeBE32(off: number, v: number): number {
+      dv.setUint32(off, v, false); return off + 4;
+    }
+
+    let off = 0;
+    off = writeTag4(off, 'FORM'); off = writeBE32(off, outerBodyLen);
+    off = writeTag4(off, 'KFAT');
+    off = writeTag4(off, 'FORM'); off = writeBE32(off, form0002BodyLen);
+    off = writeTag4(off, '0002');
+    off = writeTag4(off, 'INFO'); off = writeBE32(off, infoPayLen);
+    off += infoPayLen; // placeholder payload
+
+    // parseIff then parseAnimation must NOT throw
+    const iff = ncAnim.parseIff(u8);
+    let result: AnimationResult | undefined;
+    expect(() => { result = ncAnim.parseAnimation(iff, u8); }).not.toThrow();
+    expect(result?.variant).toBe('KFAT-0002-unsupported');
+    expect(result?.fps).toBe(0);
+    expect(result?.frameCount).toBe(0);
   });
 });

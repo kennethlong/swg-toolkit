@@ -123,6 +123,13 @@ Napi::Value ParseDetailAppearance(const Napi::CallbackInfo& info);
 //           swg-client-v2 ShaderImplementation.cpp:3113-3181 (PTXM 0000/0001/0002)
 Napi::Value ParseEffect(const Napi::CallbackInfo& info);
 
+// Phase 2 Plan 02-04 animation parser (implemented in anim_binding.cpp):
+// Source: modules/core/formats/Animation.h + modules/core/math/CompressedQuaternion.h
+//   CKAT: swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313,553-594,637-660,1273-1277
+//   KFAT: swg-client-v2 KeyframeSkeletalAnimationTemplate.cpp:1518-1620,521-553,574-608,1590
+//   CQuat: swg-client-v2 CompressedQuaternion.cpp:82-122,156-228,370-419 (verbatim port)
+Napi::Value ParseAnimation(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -177,6 +184,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
     // Phase 2 Plan 02-03 gap-closure: Effect (.eft FORM EFCT):
     exports.Set("parseEffect",              Napi::Function::New(env, ParseEffect));
+
+    // Phase 2 Plan 02-04 animation parser (.ans CKAT-0001 + KFAT-0003):
+    exports.Set("parseAnimation",           Napi::Function::New(env, ParseAnimation));
 
     return exports;
 }

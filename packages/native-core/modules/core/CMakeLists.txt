@@ -28,6 +28,8 @@ set(CORE_SOURCES
     formats/SkeletalAppearance.cpp
     formats/StaticAppearance.cpp
     formats/DetailAppearance.cpp
+    math/CompressedQuaternion.cpp
+    formats/Animation.cpp
 )
 
 # ── Vendored zlib 1.2.3 (static) ───────────────────────────────────────────────

@@ -904,3 +904,141 @@ export function parseEffect(
   iffResult: IffParseResultNative,
   srcBytes: ArrayBuffer | Uint8Array,
 ): EffectParseResult;
+
+// ─── Animation (.ans) ─────────────────────────────────────────────────────────
+
+/**
+ * Identifies the animation format variant.
+ *
+ * - 'CKAT-0001': compressed keyframe animation (FORM CKAT, version 0001).
+ *   Rotation keys use CompressedQuaternion (verbatim port of swg-client-v2).
+ * - 'KFAT-0003': uncompressed keyframe animation (FORM KFAT, version 0003).
+ *   Rotation keys use raw float quaternions (w, x, y, z).
+ * - 'KFAT-0002-unsupported': legacy Euler animation (version 0002). Detected and
+ *   immediately declined — variant is returned, fps/frameCount are 0, no keys.
+ */
+export type AnimationVariant = 'CKAT-0001' | 'KFAT-0003' | 'KFAT-0002-unsupported';
+
+/**
+ * Per-joint metadata for a skeletal animation.
+ *
+ * Source: swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:553-594 (CKAT XFRM),
+ *         KeyframeSkeletalAnimationTemplate.cpp:521-553 (KFAT XFRM).
+ */
+export interface AnimationJoint {
+  /** Bone name string from XFRM NAME chunk. */
+  name: string;
+  /** True if the rotation channel is animated (not static). */
+  hasAnimatedRotation: boolean;
+  /**
+   * Index into channelTable.rotationChannels[] for this joint's rotation data.
+   * -1 if hasAnimatedRotation is false (use staticRotations instead).
+   */
+  rotationChannelIndex: number;
+  /**
+   * Bitmask indicating which translation axes are animated.
+   * Bit 0 = X, bit 1 = Y, bit 2 = Z. 0 = no translation animation.
+   */
+  translationMask: number;
+  /**
+   * Indices into channelTable.translationChannels[] for [X, Y, Z].
+   * -1 for axes not animated (translationMask bit = 0).
+   */
+  translationChannelIndex: [number, number, number];
+}
+
+/**
+ * Header descriptor for a sparse keyframe channel in the keyframeBuffer.
+ * Use byteOffset to seek into AnimationParseResult.keyframes.
+ *
+ * Rotation channel layout at byteOffset:
+ *   int32  keyCount
+ *   int32  frame[keyCount]
+ *   float  (w, x, y, z)[keyCount * 4]   // on-disk quaternion order
+ *
+ * Translation channel layout at byteOffset:
+ *   int32  keyCount
+ *   int32  frame[keyCount]
+ *   float  value[keyCount]
+ */
+export interface AnimationChannelHeader {
+  byteOffset: number;
+  keyCount: number;
+}
+
+/**
+ * Channel lookup table for an animation result.
+ * All byte offsets are relative to the start of AnimationParseResult.keyframes.
+ */
+export interface AnimationChannelTable {
+  /** One entry per animated rotation channel (in XFRM order). */
+  rotationChannels: AnimationChannelHeader[];
+  /**
+   * Byte offset of the static rotation block in keyframes.
+   * Each static rotation is 4 floats: (w, x, y, z). Stride = 16 bytes.
+   */
+  staticRotByteOffset: number;
+  /** Number of static rotations (one per non-animated joint with a static rotation). */
+  staticRotationCount: number;
+  /** One entry per animated translation channel (in XFRM/CHNL order). */
+  translationChannels: AnimationChannelHeader[];
+  /**
+   * Byte offset of the static translation block in keyframes.
+   * Each static translation is 1 float. Stride = 4 bytes.
+   */
+  staticTransByteOffset: number;
+  /** Number of static translations. */
+  staticTranslationCount: number;
+}
+
+/**
+ * Result of parseAnimation().
+ *
+ * Binary data (keyframes ArrayBuffer) is zero-copy across the N-API bridge
+ * (AGENTS.md: binary-stays-binary). All counts are on-disk values — no decimation.
+ */
+export interface AnimationParseResult {
+  /** Format variant. */
+  variant: AnimationVariant;
+  /** Playback rate in frames per second (0 for unsupported variants). */
+  fps: number;
+  /** Total frame count (0 for unsupported variants). */
+  frameCount: number;
+  /** Per-joint metadata in XFRM order. Empty for unsupported variants. */
+  joints: AnimationJoint[];
+  /**
+   * Sparse keyframe binary buffer.
+   *
+   * Contains packed rotation channels, static rotations, translation channels,
+   * and static translations in order. Use channelTable to navigate offsets.
+   * Quaternion order is on-disk (w, x, y, z); THREE.Quaternion.set(x,y,z,w) at render time.
+   *
+   * Zero allocation per-frame: callers should read directly from this buffer
+   * using DataView with module-scope scratch objects (Decision D-09).
+   */
+  keyframes: ArrayBuffer;
+  /** Byte-offset and key-count lookup table for the keyframes buffer. */
+  channelTable: AnimationChannelTable;
+  /** CORE-05 round-trip gate result. */
+  roundTrip: { passed: boolean; failOffset?: number };
+}
+
+/**
+ * Parse a FORM CKAT or FORM KFAT skeletal animation from an already-parsed IFF tree.
+ *
+ * Supported variants:
+ *   - CKAT-0001: compressed quaternion keyframes (uses CompressedQuaternion verbatim port)
+ *   - KFAT-0003: uncompressed float quaternion keyframes
+ *   - KFAT-0002: detected and immediately declined (no exception, variant='KFAT-0002-unsupported')
+ *
+ * Security caps (T-02-16): transformInfoCount ≤ 2048, keyCount ≤ 100000, name length ≤ 256 bytes.
+ *
+ * Source:
+ *   swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313 (CKAT)
+ *   swg-client-v2 KeyframeSkeletalAnimationTemplate.cpp:1518-1620 (KFAT)
+ *   swg-client-v2 CompressedQuaternion.cpp:82-419 (verbatim port)
+ */
+export function parseAnimation(
+  iffResult: IffParseResultNative,
+  srcBytes: ArrayBuffer | Uint8Array,
+): AnimationParseResult;
