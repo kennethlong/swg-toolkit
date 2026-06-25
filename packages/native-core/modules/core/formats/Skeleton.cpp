@@ -101,22 +101,31 @@ SkeletonResult parseSkeleton(
     const uint8_t* srcData,
     uint32_t srcSize)
 {
-    // Validate root is FORM SKTM (not SLOD, not a leaf SKTM)
     if (!root.isForm || strncmp(root.tag, "FORM", 4) != 0) {
         throw FormatParseError("SKTM: root must be FORM SKTM (got leaf or non-FORM)");
     }
+
+    // Real character skeletons (all_b, protocol_droid, ...) are wrapped FORM SLOD (multi-LOD):
+    //   FORM SLOD -> FORM 0000 -> INFO(lodCount) + FORM SKTM (one per LOD).
+    // Unwrap to LOD 0 (the first / highest-detail SKTM) so animation has the full bone set.
+    // Direct FORM SKTM (e.g. face skeletons like mon_m_face) is used as-is.
+    const swg_core::iff::IffNode* sktm = &root;
     if (strncmp(root.subType, "SLOD", 4) == 0) {
-        throw FormatParseError("SKTM: received FORM SLOD (multi-LOD skeleton), not FORM SKTM — unwrap first");
+        const auto* lodVer = findChildForm(root, "0000");
+        if (!lodVer) throw FormatParseError("SLOD: missing version FORM 0000");
+        const auto* firstSktm = findChildForm(*lodVer, "SKTM");
+        if (!firstSktm) throw FormatParseError("SLOD: no SKTM LOD found inside FORM 0000");
+        sktm = firstSktm;
     }
-    if (strncmp(root.subType, "SKTM", 4) != 0) {
-        throw FormatParseError("SKTM: root subType must be SKTM");
+    if (strncmp(sktm->subType, "SKTM", 4) != 0) {
+        throw FormatParseError("SKTM: root subType must be SKTM (or FORM SLOD wrapping one)");
     }
 
     // Find version form (0001 or 0002)
     const swg_core::iff::IffNode* versionForm = nullptr;
     std::string version;
     for (const char* ver : {"0002", "0001"}) {
-        versionForm = findChildForm(root, ver);
+        versionForm = findChildForm(*sktm, ver);
         if (versionForm) { version = ver; break; }
     }
     if (!versionForm) throw FormatParseError("SKTM: missing version FORM (0001 or 0002)");
