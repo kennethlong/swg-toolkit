@@ -223,7 +223,13 @@ ${hasDot3Tangents ? `
   // GPU does NOT decode it). Decode sRGB→linear HERE so the mix happens in linear space — else
   // the env is ~2x too bright and a warm Theed cube washes the red base to brown.
   vec3 envColor  = bHasEnv ? pow(textureCube(uEnvMap, reflect(-V, N)).rgb, vec3(2.2)) : vec3(0.0);
-  vec3 rgb       = mix(litSurface, envColor, bHasEnv ? envMask : 0.0) + spec;
+  // Gate env to actual HIGHLIGHTS (envMask * specular intensity), NOT a flat 27% LERP over the
+  // whole surface. env_theed is a bright gray-tan cube; a flat mask wash desaturates the maroon
+  // base [128,72,84] to brown [128,90,90]. Crew-verified (4 AIs): the asset carries no extra red
+  // (material/texfactor/vertex-color all white/absent) — the brown was OUR env wash. So show the
+  // texture at face value and let env contribute only where it's actually glossy/highlighted.
+  float envWeight = bHasEnv ? envMask * specInt : 0.0;
+  vec3 rgb       = mix(litSurface, envColor, envWeight) + spec;
 
   // ─── FIX 2 — output encode (sRGB) ────────────────────────────────────────
   // Three.js ShaderMaterial with SRGBColorSpace output: must call the linearToOutputTexel

@@ -1,0 +1,9 @@
+Read `.planning/research/CONSULT-COLOR-EVIDENCE.md` first (treat as given). Read the real code.
+
+YOUR ANGLE: the REAL pixel-shader HLSL + its constant inputs — what multiplies the diffuse that we omit.
+
+1. Extract and read the actual HLSL of `pixel_program/a_envmask_specmap_ps20.psh` (the bytecode .psh is IFF-wrapped; its original HLSL source is in the `PSRC` chunk — extract via `require('D:/Code/SWG-Toolkit/packages/native-core')` parseIff + read the chunk, or the blender tre_reader). Read it line by line. Identify EVERY input that multiplies/biases `diffuseColor`: `materialDiffuseColor`, `dot3LightDiffuseColor`, `dot3LightIntensity`, `vertexDiffuse`, `materialAmbientColor`, ambient registers, etc.
+2. In ../swg-client-v2, find where those pixel-shader CONSTANTS are uploaded for a StaticShader running this effect (`ShaderImplementation`/`StaticShader` set-constants path; `pixel_program/include/*.inc` register assignments; `Graphics`/`Light` providing light colors). What ACTUAL values do `materialDiffuseColor`, the light diffuse color, and ambient take for a normal scene? Is `materialDiffuseColor` the saturated red, or is it the LIGHT color, or vertex color?
+3. Compare to our GLSL (CONSULT-COLOR-EVIDENCE.md): we do `diffuseColor * 1.0 * 1.0 * (0.3 + 0.7*NdotL)`. What constant(s)/term(s) are we missing that turn the muted maroon texture into SIE's saturated red — is it a per-material diffuse color multiply, a light color, a vertex color, or a different combine (e.g. the texture is modulated 2x / there's a color-doubling stage)?
+
+Output: the real .psh diffuse-color math (quoted), the actual constant values + where they come from (cited swg-client-v2 file:line), and the precise change to our GLSL/uniforms (which multiplier with what value) to reproduce the red. Be concrete.
