@@ -24,6 +24,7 @@ import MaterialInspector from './viewport/MaterialInspector.js';
 import AnimationTransport from './viewport/AnimationTransport.js';
 import { MissingDepsOverlay } from './viewport/Viewport.js';
 import type { FrameStats } from './viewport/Viewport.js';
+import ExportDialog from './viewport/ExportDialog.js';
 
 type RenderMode = 'solid' | 'wire' | 'textured';
 type CameraMode = 'orbit' | 'pan' | 'frame';
@@ -33,7 +34,7 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
   const [stats, setStats] = useState<FrameStats>({ verts: 0, tris: 0, draws: 0 });
   const [showSidePanels, setShowSidePanels] = useState(false);
 
-  const { renderMode, setRenderMode, selectedLod, setSelectedLod, resolution, loadStatus, isSkinned } = useViewportStore();
+  const { renderMode, setRenderMode, selectedLod, setSelectedLod, resolution, loadStatus, isSkinned, setExportDialogOpen } = useViewportStore();
 
   const dims = '1280×800'; // Phase 0 placeholder
 
@@ -124,6 +125,16 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
         >
           Viewport
         </span>
+        {/* Export / Extract buttons — Surface 7 (VIEW-05) */}
+        <button
+          aria-label="Export as glTF (.glb) or extract raw bytes"
+          title="Export / Extract"
+          style={actionBtnStyle}
+          disabled={loadStatus.kind !== 'done'}
+          onClick={() => setExportDialogOpen(true)}
+        >
+          ↑
+        </button>
         {/* Side panels toggle */}
         <button
           aria-label={showSidePanels ? 'Hide appearance panels' : 'Show appearance panels'}
@@ -359,6 +370,9 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
           ? `persp · ${dims} · ${fps} fps · ${stats.verts} v · ${stats.tris} t · ${stats.draws} dc · binary`
           : `persp · ${dims} · — fps · binary`}
       </div>
+
+      {/* Export / Extract modal — Surface 7 (VIEW-05) */}
+      <ExportDialog />
 
       {/* Bottom-right: gizmo (48×48 SVG axes) */}
       <div

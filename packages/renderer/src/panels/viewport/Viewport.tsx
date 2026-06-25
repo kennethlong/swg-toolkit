@@ -19,9 +19,25 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
+import * as THREE from 'three';
 import { useViewportStore } from '../../state/viewportStore.js';
 import StaticMeshView from './StaticMeshView.js';
 import SkinnedMeshView from './SkinnedMeshView.js';
+
+// ─── Live-scene capture (module-level, not reactive) ─────────────────────────
+// The live R3F scene (THREE.Scene) is captured inside the Canvas by SceneCapturer
+// and exposed via getLiveScene() for the export pipeline.
+// This is read-only: the export pipeline clones geometry from it but NEVER mutates it.
+let _capturedScene: THREE.Scene | null = null;
+
+/**
+ * Get the current live THREE.Scene for glTF export.
+ * Returns null if no Canvas is mounted yet.
+ * The returned scene is READ-ONLY — pass it to buildExportScene() which deep-clones.
+ */
+export function getLiveScene(): THREE.Scene | null {
+  return _capturedScene;
+}
 
 // ─── Stats collector (inside Canvas) ─────────────────────────────────────────
 
@@ -67,6 +83,18 @@ function LoadInvalidator(): null {
     }
   }, [loadStatus, invalidate]);
 
+  return null;
+}
+
+// ─── Scene capturer (inside Canvas) ──────────────────────────────────────────
+// Captures the THREE.Scene from useThree() and stores it in the module-level ref.
+// The export pipeline (buildExportScene) reads this to find live SkinnedMesh instances.
+function SceneCapturer(): null {
+  const { scene } = useThree();
+  useEffect(() => {
+    _capturedScene = scene;
+    return () => { _capturedScene = null; };
+  }, [scene]);
   return null;
 }
 
@@ -215,6 +243,7 @@ export default function Viewport({ onStats }: ViewportProps): React.ReactElement
     >
       <SceneContent />
       <StatsCollector onStats={handleStats} />
+      <SceneCapturer />
     </Canvas>
   );
 }

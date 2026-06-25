@@ -115,7 +115,24 @@ export interface ViewportStore {
   /** Normalized path of the source entry in the VFS. */
   sourceEntryPath: string | null;
 
+  // ─── Export / Extract (02-05) ────────────────────────────────────────────
+
+  /** Whether the ExportDialog modal is open. */
+  exportDialogOpen: boolean;
+
+  /**
+   * Last successfully exported filename (basename only, e.g. "creature_id.glb").
+   * Displayed in the VerificationStatus success chip.
+   */
+  lastExportFilename: string | null;
+
   // ─── Actions ─────────────────────────────────────────────────────────────
+
+  /** Open or close the ExportDialog modal. */
+  setExportDialogOpen: (open: boolean) => void;
+
+  /** Record a successful export filename. */
+  setLastExportFilename: (name: string | null) => void;
 
   /** Begin loading a file. Sets status to 'loading' and records source-entry fields. */
   beginLoad: (
@@ -203,6 +220,8 @@ export const useViewportStore = create<ViewportStore>((set) => ({
   sourceArchiveIndex:    null,
   sourceEntryIndex:      null,
   sourceEntryPath:       null,
+  exportDialogOpen:      false,
+  lastExportFilename:    null,
 
   beginLoad: (filename, mountHandle, archiveIndex, entryIndex, entryPath) =>
     set({
@@ -269,6 +288,10 @@ export const useViewportStore = create<ViewportStore>((set) => ({
 
   setAnsPickerOptions: (paths) => set({ ansPickerOptions: paths }),
 
+  setExportDialogOpen: (open) => set({ exportDialogOpen: open }),
+
+  setLastExportFilename: (name) => set({ lastExportFilename: name }),
+
   reset: () =>
     set({
       loadStatus:            { kind: 'idle' },
@@ -288,5 +311,7 @@ export const useViewportStore = create<ViewportStore>((set) => ({
       sourceArchiveIndex:    null,
       sourceEntryIndex:      null,
       sourceEntryPath:       null,
+      exportDialogOpen:      false,
+      lastExportFilename:    null,
     }),
 }));
