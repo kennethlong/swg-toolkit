@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: verifying
 stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-06-24T05:07:17.780Z"
-last_activity: 2026-06-24
+last_updated: "2026-06-25T04:20:22.006Z"
+last_activity: 2026-06-24 — 02-03 materials verified (textured red droid matches SIE; remaining gap = lighting rig, tracked)
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 14
-  completed_plans: 11
-  percent: 79
+  completed_plans: 13
+  percent: 93
 ---
 
 # Project State
@@ -26,16 +26,18 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 02 (3d-mesh-viewport-mvp-proof) — EXECUTING
-Plan: 02-01/02/03 complete ✓ — 02-04 (animation) next
-Status: Wave 3 (materials) verified vs SIE & approved; material pixel-parity → backlog VIEW-MAT-FIDELITY
+Plan: 02-01/02/03/04 tasks 1-2 complete ✓ — 02-04 task 3 checkpoint awaiting human-verify
+Status: Wave 4 (animation) tasks 1-2 done; human-verify checkpoint for animation playback correctness
 Last activity: 2026-06-24 — 02-03 materials verified (textured red droid matches SIE; remaining gap = lighting rig, tracked)
 
 Progress: [████████░░] 79%
 
 ### 02-03 key facts (crew-verified)
+
 - ~6 native-binding↔contract field-shape mismatches shipped silently this phase (resolveEntry.found,
   LOD order, shader slotTag, DDS format, uvs-array, env-mask). → native-contract-conformance-test (HIGH)
   is a prerequisite-quality item before 02-04 adds the .ans binding.
+
 - protocol_droid_red: red is BAKED in the diffuse (sat 0.44 maroon); material=white, no texfactor,
   no vertex color, SSHT not CSHD. Env reflection is highlight-gated (not flat wash). Remaining SIE
   gap = lighting/tone (presentation, not bytes) → backlog VIEW-MAT-FIDELITY.
@@ -139,6 +141,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24T05:07:17.759Z
+Last session: 2026-06-25T04:20:21.982Z
 Stopped at: Phase 2 UI-SPEC approved
 Resume file: None
