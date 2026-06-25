@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
+status: executing
 stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-06-25T04:20:22.006Z"
-last_activity: 2026-06-24 — 02-03 materials verified (textured red droid matches SIE; remaining gap = lighting rig, tracked)
+last_updated: "2026-06-25T23:21:27Z"
+last_activity: 2026-06-25 -- 02-05 Tasks 1-2 done; paused at Task 3 human-verify checkpoint
 progress:
   total_phases: 9
   completed_phases: 2
@@ -26,11 +26,10 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 02 (3d-mesh-viewport-mvp-proof) — EXECUTING
-Plan: 02-01/02/03 done ✓; 02-04 (animation) tasks 1-2 done + byte-exact verified — BLOCKED at checkpoint
-Status: ⛔ BLOCKER — skinned .sat load LOCKS UP the UI (renderer skinned path, never exercised pre-SLOD-fix).
-        Native data 100% valid. SLOD skeleton fix landed (5a8baac). >>> RESUME via handoff <<<
-Resume: .planning/handoff/2026-06-25-phase2-skinned-animation-blocker.md  (full debug state + next steps)
-Last activity: 2026-06-25 — 02-04 anim parser+transport+sampler built (byte-exact ✓); SLOD fix; skinned-render lockup found
+Plan: 5 of 5 (Tasks 1-2 done; Task 3 = checkpoint:human-verify)
+Status: CHECKPOINT-PENDING — awaiting human verification of glTF export + docs
+Resume: Type "approved" (or describe issues) to finalize Phase 2
+Last activity: 2026-06-25 -- Phase 02 execution started
 
 Progress: [████████░░] 79%
 
@@ -143,6 +142,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T04:20:21.982Z
-Stopped at: Phase 2 UI-SPEC approved
-Resume file: None
+Last session: 2026-06-25T23:21:27Z
+Stopped at: 02-05 Task 3 checkpoint:human-verify (gate="blocking") — glTF export + docs human verification
+Resume file: .planning/phases/02-3d-mesh-viewport-mvp-proof/02-05-SUMMARY.md
