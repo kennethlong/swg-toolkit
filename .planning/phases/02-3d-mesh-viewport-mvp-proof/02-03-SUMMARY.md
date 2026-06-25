@@ -284,3 +284,91 @@ Tests: 145 passed (145)   (139 original + 6 new EFCT/regression, skipping gracef
 ### Deferred / When Real Fixtures Land
 
 The CORE-05 round-trip test and the Bug-1/2 regression tests skip gracefully when the real fixtures are absent (`fixtures-real/effect/a_envmask_specmap.eft`, `fixtures-real/shader/body_droid_m_01_r_3.sht`). Extract these from the installed client TRE (`shader_02.tre`, `appearance_02.tre`) to activate the hard assertions.
+
+---
+
+## Gap Fix: material fidelity (crew)
+
+4-AI crew (Codex, Cursor, Sonnet, Opus) ground-truth analysis against real client bytes + `../swg-client-v2` + extracted HLSL from `a_envmask_specmap_ps20.psh`. Five ranked fixes applied in order.
+
+### FIX 1 — UV bridge array mismatch [native] (commit 078d4f1)
+
+**Root cause:** `mesh_binding.cpp` emitted `uvs` as a plain JS object (`sliceToJs(grp.uvs)`). Contracts (`mesh.ts`) declare `uvs: MeshAttributeSlice[]` and views access `group.uvs[0]`. With a plain object, `group.uvs.length` was `undefined` → falsy → `group.uvs[0]` was `undefined` → the `uv` BufferAttribute was NEVER set → `vUv = (0,0)` → every texture sampled only the (0,0) corner texel → flat colour, no weathering detail, wrong region colours.
+
+**Fix:** Both `ParseMesh` (~line 195) and `ParseSkeletalMesh` (~line 560) now wrap the single UV slice in a `Napi::Array` of length 1:
+```cpp
+auto uvsArr = Napi::Array::New(env, 1);
+uvsArr.Set(0u, sliceToJs(env, grp.uvs));
+gobj.Set("uvs", uvsArr);
+```
+`index.d.ts` updated: `uvs: MeshAttributeSlice[]`. Test `ShaderGroup.uvs` local interface updated to array.
+
+**Headless verification:** `group.uvs isArray=true, length=1, uvs[0].elementCount=515` (arc170_body_l2.msh, group 0).
+
+**Addon rebuild:** `npm run rebuild` + `node scripts/prebuild.js` — clean, no link errors.
+
+### FIX 2 — sRGB colorSpace on MAIN/EMIS [renderer] (commit b57ff12)
+
+**Root cause:** DDS `CompressedTexture` had no `colorSpace` set (defaults to `NoColorSpace` = linear). Three.js output is sRGB. The GPU received colour values as-if-linear but displayed them as sRGB → pale, desaturated colours.
+
+**Fix:**
+- `StaticMeshView.tsx` and `SkinnedMeshView.tsx` slot switch: `texture.colorSpace = THREE.SRGBColorSpace` for `MAIN` and `EMIS` cases; `ENVM`/`SPEC`/`NRML` remain `NoColorSpace` (they carry linear data, not colour).
+- `swgMaterial.ts` fragment shader: added `#include <colorspace_fragment>` as the LAST line of `main()`. Three.js WebGLProgram injects `linearToOutputTexel` via this include, which encodes our linear-space RGB to sRGB for display. We do NOT also apply `pow(2.2)` — that would be double-encoding.
+
+### FIX 3 — Env reflection is mix() not additive [shader] (commit b57ff12)
+
+**Root cause:** `finalColor += envSample * specMask` is additive at full strength → bright pink wash on body.
+
+**Ground truth (a_envmask_specmap_ps20.psh HLSL):**
+```hlsl
+result.rgb = lerp(diffuseLitSurface, envColor, envMask) + allSpecularLight;
+```
+`envMask = MAIN.alpha` (mean ~0.27 → subtle). The env cube replaces rather than adds to the lit surface.
+
+**Fix in swgMaterial.ts fragment shader:**
+```glsl
+vec3 rgb = mix(litSurface, envColor, bHasEnv ? envMask : 0.0) + spec;
+```
+When `bHasEnv=false` (a_simple path, no cube): blend weight = 0 → pure `litSurface`.
+
+### FIX 4 — Emissive folded into diffuse-light term [shader] (commit b57ff12)
+
+**Root cause:** Old code added `emisSample.rgb` additively on top of `finalColor`, which was not the SWG behaviour. SWG: `allDiffuseLight = saturate(NdotL*light + ambient + emisMask)` — the emissive mask is a self-illum FLOOR inside the light clamp.
+
+**Fix:** `emisMask = bHasEmissive ? texture2D(uEmissiveMap, vUv).a : 0.0;` folded into:
+```glsl
+vec3 allDiffuse = clamp(vec3(0.3) + NdotL * vec3(0.7) + vec3(emisMask), 0.0, 1.0);
+```
+Separate `finalColor += emisSample` additive removed. Red droid has no EMIS slot → `emisMask = 0.0` throughout; eye glow comes from bright diffuse texels now lit by correct UVs + sRGB.
+
+### FIX 5 — a_simple group (gold/waist) [verify]
+
+No code change needed. With FIX 1 restoring UVs, the `bHasEnv=false` / `bHasSpec=false` gates in the fragment shader already route the gold abdomen group to plain `diffuse * lighting` via the `mix(litSurface, envColor, 0.0)` path. The black-band appearance was caused by the UV bug producing (0,0) sampling on a dark corner of the texture.
+
+### Test / Typecheck Results
+
+```
+Test Files: 13 passed (13)
+Tests:      145 passed (145)   (139 original + 6 EFCT/regression)
+Renderer typecheck: 0 errors (packages/renderer && npx tsc --noEmit)
+```
+
+The `tre-async-zerocopy` performance gate is a pre-existing env flake confirmed present on main before these changes (elapsed 1128ms vs 500ms limit; varies with system load). Not caused by any change in this fix set.
+
+### Commits (Gap Fix: material fidelity)
+
+| Hash | Message |
+|------|---------|
+| 078d4f1 | fix(02-03): UV bridge array mismatch — emit uvs as 1-element array (FIX 1) |
+| b57ff12 | fix(02-03): sRGB colorSpace + env LERP + emissive fold (FIX 2/3/4) |
+
+### What the Maintainer Should Re-check vs SIE
+
+Load `protocol_droid_red` in the updated viewer and compare against Sytner's IFF Editor:
+
+1. **Weathering/scratches visible** — the torso, arms, and legs should now show dirt, scuffs, and panel lines from the diffuse texture. If they're still flat/smooth, the MAIN texture bytes may not be reaching the shader (check resolver slotBytes for that group's MAIN slot).
+2. **Rich red, not pink** — body should be a saturated maroon/red. The sRGB + correct UV sampling together fix the desaturation. If still pink, check `texture.colorSpace = THREE.SRGBColorSpace` applied (add a console.log in the MAIN case to verify).
+3. **Subtle metallic sheen, not a wash** — the env cube reflection should add a dim, high-frequency gloss highlight (especially on convex surfaces), not a bright pink flood. The `mix()` at `envMask ~0.27` makes it subtle.
+4. **Eye region bright** — the eye texels are bright diffuse, now sampled at the correct UV coordinates. With sRGB they should appear lighter. The red droid has no EMIS slot, so eye glow is diffuse-only.
+5. **Belt/waist region** — should sample real texels from the gold strip diffuse map. If still black, log the `group.uvs[0].elementCount` for that shader group to confirm UVs are non-zero.
+6. **Hands are red** — `group.uvs[0]` now set → hands sample correct red texels from the body diffuse.
