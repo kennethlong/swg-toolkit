@@ -219,7 +219,10 @@ ${hasDot3Tangents ? `
 
   // Env cube LERP (FIX 3): mix towards env only where gloss mask is high.
   // When bHasEnv=false: blend weight = 0.0 → pure litSurface (a_simple path).
-  vec3 envColor  = bHasEnv ? textureCube(uEnvMap, reflect(-V, N)).rgb : vec3(0.0);
+  // env_theed.dds is an sRGB-authored LDR color cube (set NoColorSpace in ddsTexture, so the
+  // GPU does NOT decode it). Decode sRGB→linear HERE so the mix happens in linear space — else
+  // the env is ~2x too bright and a warm Theed cube washes the red base to brown.
+  vec3 envColor  = bHasEnv ? pow(textureCube(uEnvMap, reflect(-V, N)).rgb, vec3(2.2)) : vec3(0.0);
   vec3 rgb       = mix(litSurface, envColor, bHasEnv ? envMask : 0.0) + spec;
 
   // ─── FIX 2 — output encode (sRGB) ────────────────────────────────────────
