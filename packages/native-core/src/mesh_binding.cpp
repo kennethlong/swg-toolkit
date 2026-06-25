@@ -192,7 +192,15 @@ Napi::Value ParseMesh(const Napi::CallbackInfo& info) {
         gobj.Set("indexCount",   Napi::Number::New(env, grp.indexCount));
         gobj.Set("positions",    sliceToJs(env, grp.positions));
         gobj.Set("normals",      sliceToJs(env, grp.normals));
-        gobj.Set("uvs",          sliceToJs(env, grp.uvs));
+        // FIX 1 (UV bridge): emit uvs as a 1-element array so consumers can access group.uvs[0].
+        // Contract (contracts/src/mesh.ts) and views (StaticMeshView/SkinnedMeshView) expect
+        // uvs: MeshAttributeSlice[] — the prior scalar emission meant group.uvs.length was
+        // undefined → uv attribute never set → every texture sampled the (0,0) corner texel.
+        {
+            auto uvsArr = Napi::Array::New(env, 1);
+            uvsArr.Set(0u, sliceToJs(env, grp.uvs));
+            gobj.Set("uvs", uvsArr);
+        }
         gobj.Set("indices",      sliceToJs(env, grp.indices));
         gobj.Set("skinIndices",  sliceToJs(env, grp.skinIndices));
         gobj.Set("skinWeights",  sliceToJs(env, grp.skinWeights));
@@ -557,7 +565,12 @@ Napi::Value ParseSkeletalMesh(const Napi::CallbackInfo& info) {
         gobj.Set("indexCount",   Napi::Number::New(env, grp.indexCount));
         gobj.Set("positions",    sliceToJs(env, grp.positions));
         gobj.Set("normals",      sliceToJs(env, grp.normals));
-        gobj.Set("uvs",          sliceToJs(env, grp.uvs));
+        // FIX 1 (UV bridge): emit uvs as a 1-element array (matches contract + view expectation).
+        {
+            auto uvsArr = Napi::Array::New(env, 1);
+            uvsArr.Set(0u, sliceToJs(env, grp.uvs));
+            gobj.Set("uvs", uvsArr);
+        }
         gobj.Set("indices",      sliceToJs(env, grp.indices));
         gobj.Set("skinIndices",  sliceToJs(env, grp.skinIndices));
         gobj.Set("skinWeights",  sliceToJs(env, grp.skinWeights));

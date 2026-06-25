@@ -563,7 +563,7 @@ export interface MeshShaderGroup {
   indexCount: number;
   positions: MeshAttributeSlice;   // Float32 xyz
   normals: MeshAttributeSlice;     // Float32 xyz (byteLength=0 if absent)
-  uvs: MeshAttributeSlice;         // Float32 uv (byteLength=0 if absent)
+  uvs: MeshAttributeSlice[];        // Float32 uv sets; uvs[0] = primary UV (byteLength=0 if absent)
   indices: MeshAttributeSlice;     // Uint32 triangle indices
   skinIndices: MeshAttributeSlice; // Int32 vec4 (byteLength=0 for static .msh)
   skinWeights: MeshAttributeSlice; // Float32 vec4 (byteLength=0 for static .msh)

@@ -70,7 +70,7 @@ interface ShaderGroup {
   indexCount: number;
   positions: AttributeSlice;
   normals: AttributeSlice;
-  uvs: AttributeSlice;
+  uvs: AttributeSlice[];   // FIX 1 (UV bridge): array — uvs[0] is the primary UV set
   indices: AttributeSlice;
   skinIndices: AttributeSlice;
   skinWeights: AttributeSlice;
