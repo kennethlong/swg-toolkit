@@ -1080,7 +1080,7 @@ void main() {
 }
 ```
 
-Set `material.skinning = true` (Three.js r152+; in newer Three.js this is automatic for `SkinnedMesh`). The bone-matrix texture (`boneTexture` uniform) coexists with customization uniforms with no conflict.
+In Three.js r140+ (including three@0.184.0 used here), skinning is **automatic** for `SkinnedMesh` — the `material.skinning` property was removed in r140, not r152+. Do NOT set it; the property no longer exists. The bone-matrix texture (`boneTexture` uniform) coexists with customization uniforms with no conflict.
 
 **`ENVM` per-shader cube map (gap-closure 02-03, verified):**
 The SWG client sets a global environment texture via `ShaderPrimitiveSorter`, but each `.sht` that participates in env-mapped specular carries its own `ENVM` NAME chunk pointing at the cube-map DDS (e.g. `texture/env_theed.dds`). In the toolkit:
@@ -1094,6 +1094,12 @@ The GLSL fragment shader multiplies the cubemap reflection by a spec mask (`SPEC
 
 **Effect path (gap-closure 02-03, verified):**
 Each `.sht` ends with either a `NAME` chunk (cstring path to the `.eft` effect file) or an inline `FORM EFCT`. The client reads this in `StaticShaderTemplate.cpp::load_0001` (effect first) or `::load_0000` (effect last). The toolkit's `Shader.cpp` now scans versionForm children for this NAME/EFCT (Bug 2 fix) → `ShaderParseResult.effectPath = "effect/a_envmask_specmap.eft"`. The resolver then fetches and parses the `.eft` to obtain the sampler role map and blend state used to drive `material.transparent`, `alphaTest`, and `depthWrite`.
+
+**glTF Export Conversion (02-05, verified 2026-06-25):**
+`THREE.GLTFExporter` does NOT serialize a `ShaderMaterial` — it warns and silently omits the material, leaving the primitive without one. For glTF (`.glb`) export the material must be converted first:
+- `toStandardMaterial(swgShaderMat)` reads `uDiffuseMap` (→ `.map`, `SRGBColorSpace`), `uNormalMap` (→ `.normalMap`, linear), `uEmissiveMap` (→ `.emissiveMap`). Specular (`SPEC` slot) has no glTF-PBR equivalent and is dropped.
+- `THREE.CompressedTexture` (DXT1/3/5) is also rejected by `GLTFExporter`. CPU-decode to a `THREE.DataTexture` (RGBA8) before export via `decodeDxt(mip0.data.buffer, byteOffset, byteLength, w, h, fmt)`. Set `texture.flipY = false` (glTF UV origin = top-left).
+- The live viewport continues to use the custom `ShaderMaterial` with DXT `CompressedTexture` unchanged; the conversion is export-only, on a deep-cloned scene.
 
 ### EFCT (.eft) — Shader Effect Format
 

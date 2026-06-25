@@ -405,7 +405,7 @@ Sources: `SkeletalMeshGeneratorTemplate.cpp:2169–3198` (load), cross-checked a
 
 ```
 FORM SKMG → FORM 000{2,3,4}
-  CHUNK INFO    { 8× int32, 4× int16 counts — see table below }
+  CHUNK INFO    { 9× int32, 4× int16 counts — see table below }    ← (SkeletalMeshGeneratorTemplate.cpp:2247-2360)
   CHUNK SKTM    { string+NUL × skeleton_name_count }   ← skeleton template paths (inner chunk, NOT the .skt root FORM)
   CHUNK XFNM    { string+NUL × transform_name_count }  ← bone name table; TWDT indices key into this
   CHUNK POSN    { 3× float32 × position_count }        ← global bind-pose position pool

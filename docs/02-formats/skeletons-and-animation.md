@@ -40,7 +40,7 @@ FORM SKTM            (root skeleton template form)
     RPST             post-rotation per joint (quaternion)
     BPTR             bind-pose translation per joint (3×float32 X,Y,Z)
     BPRO             bind-pose rotation per joint (quaternion, on-disk order w,x,y,z)
-    [BPMJ]           optional bind-pose mirror joint data
+    [BPMJ]           bind-pose mirror joint data — mandatory in v0001; ABSENT in v0002 (BasicSkeletonTemplate.cpp:249-275)
     JROR             joint rendering order
 ```
 
@@ -778,9 +778,17 @@ Decode the N-API buffers into `VectorKeyframeTrack` and `QuaternionKeyframeTrack
 Key conversions from SWG on-disk format to Three.js:
 - Frame index → seconds: `time = frame / fps`
 - Quaternion order: on-disk `(w,x,y,z)` → Three.js `(x,y,z,w)` via `new THREE.Quaternion(x, y, z, w)`
-- Handedness (left→right): positions negate X; rotations apply X-mirror: `(w,x,y,z) → (w,x,-y,-z)` before reordering
+- Handedness (left→right for export): positions negate X; rotations apply X-mirror: `(w,x,y,z) → (w,x,-y,-z)` before reordering
 - Translation is three independent scalar tracks, not a single [x,y,z] vector track
 - Three.js `QuaternionKeyframeTrack` uses slerp by default — matches the engine (`CKAT.cpp:762`)
+
+> **Per-frame local composition (verified Skeleton.cpp:1274-1279, 2026-06-25):**
+> Raw animation quaternion keys are NOT the final joint-local rotation. For each animated joint, at each sparse key frame `f`, the correct local rotation is composed as:
+> ```
+> localRotation(f) = postMul · (keyQuat(f) · bindPoseRot · preMul)
+> localTranslation(f) = bindTranslation + delta(f)    // additive delta, NOT absolute
+> ```
+> The X-mirror handedness conversion (for export/right-handed DCC) must be applied AFTER this composition, not to the raw key quaternion. Mirroring the raw key first gives wrong results whenever `bindPoseRot`, `preMul`, or `postMul` are non-identity (the common case for SWG rigs). See `buildAnimationClip.ts` and `SkinnedMeshView.tsx` for the reference implementation.
 
 ```typescript
 import * as THREE from 'three';
