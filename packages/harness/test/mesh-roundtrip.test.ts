@@ -857,16 +857,20 @@ describe('FORM SKTM v0002 (.skt) — skeleton template', () => {
     expect(result.bones[0]!.postRot).toHaveLength(4);
   });
 
-  it('parseSkeleton: throws on FORM SLOD (not FORM SKTM) — delta #7', () => {
-    // acklay.skt is FORM SLOD, NOT FORM SKTM — parseSkeleton must throw FormatParseError
+  it('parseSkeleton: unwraps FORM SLOD (multi-LOD skeleton) to LOD 0 SKTM — delta #7', () => {
+    // acklay.skt is FORM SLOD (multi-LOD wrapper), NOT bare FORM SKTM. Real character skeletons
+    // are SLOD-wrapped, so parseSkeleton must UNWRAP it (SLOD → FORM 0000 → SKTM LOD 0) and return
+    // the skeleton — NOT throw. (Throwing here was the bug that blocked all character animation.)
     const bytes = loadFixture('skeleton/acklay.skt');
     if (!bytes) {
       console.log('  SKIP: acklay.skt not present');
       return;
     }
     const iff = nc.parseIff(bytes);
-    // parseSkeleton must throw because SLOD is not SKTM
-    expect(() => nc.parseSkeleton(iff, bytes)).toThrow(/SLOD|SKTM/);
+    const result = nc.parseSkeleton(iff, bytes);
+    expect(result.bones.length).toBeGreaterThan(0);
+    expect(result.bones.every((b) => typeof b.name === 'string' && b.name.length > 0)).toBe(true);
+    expect(result.bones.some((b) => b.parentIndex === -1)).toBe(true); // a root bone exists
   });
 });
 
