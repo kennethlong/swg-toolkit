@@ -179,16 +179,28 @@ function buildGroupMaterial(
       const { texture } = buildDdsTexture(gl, ddsResult, bytes);
 
       switch (slotDef.slot) {
-        case 'MAIN': mat.uniforms.uDiffuseMap.value  = texture; break;
+        case 'MAIN':
+          // FIX 2 (sRGB): MAIN (diffuse) is a colour map — decode as sRGB.
+          // Lighting is done in linear; Three.js output is sRGB; marking the texture
+          // sRGB lets the GPU linearise it on sample before our fragment math.
+          // ENVM/SPEC/NRML stay at NoColorSpace (linear data).
+          texture.colorSpace = THREE.SRGBColorSpace;
+          mat.uniforms.uDiffuseMap.value = texture;
+          break;
         case 'NRML':
-        case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break;
-        case 'SPEC': mat.uniforms.uSpecularMap.value  = texture; break;
-        case 'EMIS': mat.uniforms.uEmissiveMap.value  = texture; break;
+        case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break; // linear
+        case 'SPEC': mat.uniforms.uSpecularMap.value  = texture; break; // linear (mask data)
+        case 'EMIS':
+          // FIX 2 (sRGB): EMIS is also a colour map → sRGB decode.
+          texture.colorSpace = THREE.SRGBColorSpace;
+          mat.uniforms.uEmissiveMap.value = texture;
+          break;
         case 'ENVM':
           // Gap-closure 02-03: wire the cube map texture from the ENVM DDS bytes.
           // env_theed.dds is a DXT3 cube map; buildDdsTexture returns CompressedCubeTexture
           // when ddsResult.isCubemap is true.
           // The uEnvMap sampler (samplerCube) in the fragment shader consumes this.
+          // Cube stays linear (NoColorSpace) — env sampling is in linear space.
           if (ddsResult.isCubemap) {
             mat.uniforms.uEnvMap.value = texture;
             envBound = true;

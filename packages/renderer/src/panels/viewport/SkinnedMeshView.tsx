@@ -239,14 +239,25 @@ function buildSkinnedGroupMaterial(
       const { texture } = buildDdsTexture(gl, ddsResult, bytes);
 
       switch (slotDef.slot) {
-        case 'MAIN': mat.uniforms.uDiffuseMap.value  = texture; break;
+        case 'MAIN':
+          // FIX 2 (sRGB): MAIN (diffuse) is a colour map — mark sRGB so GPU linearises on sample.
+          // Lighting runs in linear space; Three.js output is sRGB.
+          // ENVM/SPEC/NRML stay at NoColorSpace (linear data maps).
+          texture.colorSpace = THREE.SRGBColorSpace;
+          mat.uniforms.uDiffuseMap.value = texture;
+          break;
         case 'NRML':
-        case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break;
-        case 'SPEC': mat.uniforms.uSpecularMap.value  = texture; break;
-        case 'EMIS': mat.uniforms.uEmissiveMap.value  = texture; break;
+        case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break; // linear
+        case 'SPEC': mat.uniforms.uSpecularMap.value  = texture; break; // linear (gloss mask)
+        case 'EMIS':
+          // FIX 2 (sRGB): EMIS is also a colour map → sRGB decode.
+          texture.colorSpace = THREE.SRGBColorSpace;
+          mat.uniforms.uEmissiveMap.value = texture;
+          break;
         case 'ENVM':
           // Gap-closure 02-03: wire the cube map texture from ENVM DDS bytes.
           // buildDdsTexture returns CompressedCubeTexture when ddsResult.isCubemap is true.
+          // Cube stays linear (NoColorSpace) — env sampling is in linear space.
           if (ddsResult.isCubemap) {
             mat.uniforms.uEnvMap.value = texture;
             envBound = true;

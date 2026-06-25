@@ -176,65 +176,58 @@ ${hasDot3Tangents ? `
 `}
   }
 
-  // ─── Diffuse ───────────────────────────────────────────────────────────────
-  vec4 diffuseSample = texture2D(uDiffuseMap, vUv);
-  vec3 diffuse = diffuseSample.rgb;
+  // ─── Diffuse sample ────────────────────────────────────────────────────────
   // NOTE: on SWG shader families (aes17/as8/...) the diffuse alpha is a SPECULAR/gloss
   // mask, NOT opacity. Meshes are opaque by default; true transparency/cutout comes from
   // the .eft effect (not parsed yet). Do NOT drive fragment alpha from diffuseSample.a.
+  vec4 diffuseSample = texture2D(uDiffuseMap, vUv);
 
-  // Pathway A (palette-material-color): distinct material color tint
-  vec3 base = diffuse * uMaterialColor.rgb;
-
-  // Pathway C (palette-texture-factor): distinct texture factor multiply
-  vec3 finalColor = base * uTexFactor.rgb;
-
-  // ─── Simple diffuse lighting ───────────────────────────────────────────────
+  // ─── Lighting setup ───────────────────────────────────────────────────────
+  // SWG directional light (normalised) + ambient floor
   vec3 lightDir = normalize(vec3(1.0, 1.0, 0.5));
-  float NdotL = max(dot(N, lightDir), 0.0);
-  finalColor = finalColor * (0.3 + 0.7 * NdotL);
+  float NdotL   = max(dot(N, lightDir), 0.0);
+  // Half-vector for Blinn-Phong specular (FIX 3/4 use V+L, not R)
+  vec3 V = normalize(vViewDir);
+  vec3 H = normalize(lightDir + V);
 
-  // ─── Specular ─────────────────────────────────────────────────────────────
-  if (bHasSpec) {
-    vec3 specSample = texture2D(uSpecularMap, vUv).rgb;
-    vec3 R = reflect(-lightDir, N);
-    float spec = pow(max(dot(vViewDir, R), 0.0), uSpecPower);
-    finalColor += specSample * spec;
-  }
-
-  // ─── Emissive ─────────────────────────────────────────────────────────────
+  // ─── FIX 4 — Emissive folded into the diffuse-light term ─────────────────
+  // SWG: allDiffuseLight = saturate(NdotL*lightColor + ambient + emisMask)
+  // emisMask = EMIS.a when bHasEmissive, else 0.0 (red droid has no EMIS slot).
+  // Self-illum floor ensures emissive texels glow even with no direct light.
+  float emisMask = 0.0;
   if (bHasEmissive) {
-    vec3 emisSample = texture2D(uEmissiveMap, vUv).rgb;
-    finalColor += emisSample;
+    emisMask = texture2D(uEmissiveMap, vUv).a;
   }
+  // The old separate finalColor += emisSample is REMOVED; self-illum is inside the clamp.
+  vec3 allDiffuse = clamp(vec3(0.3) + NdotL * vec3(0.7) + vec3(emisMask), 0.0, 1.0);
 
-  // ─── Environment map ──────────────────────────────────────────────────────
-  // Bug-3 fix: SWG body shaders (a_envmask_specmap.eft) use the MAIN texture's ALPHA
-  // channel as a specular/gloss mask for the cube-map reflection, NOT a flat 0.15 factor.
-  // Ground truth: the body's "relief" = env cube reflection * spec mask (from MAIN.a).
-  //   - MAIN.alpha encodes the specular mask (1 = fully reflective, 0 = matte)
-  //   - SPEC slot (same dds as MAIN on body shaders) provides per-pixel gloss intensity
-  //   - env_theed.dds cube reflection is attenuated by the specular mask from MAIN.a
-  //   - Accessory shaders (backpack, etc.) have a dedicated SPEC slot for this purpose
-  // Source: CONSULT-00-ground-truth-bytes.md; verified vs a_envmask_specmap.eft PTXM roles.
-  if (bHasEnv) {
-    vec3 envR = reflect(-vViewDir, N);
-    vec3 envSample = textureCube(uEnvMap, envR).rgb;
-    // Spec/gloss mask: use SPEC texel (bHasSpec) if available, else fall back to MAIN.alpha.
-    // Both encode the same data on body shaders (SPEC=same DDS as MAIN); on accessories,
-    // SPEC is a dedicated greyscale map. Either way .r gives us the reflectivity mask.
-    float specMask;
-    if (bHasSpec) {
-      specMask = texture2D(uSpecularMap, vUv).r;
-    } else {
-      // Fall back to diffuse alpha (body shader convention: MAIN.a = spec mask)
-      specMask = diffuseSample.a;
-    }
-    finalColor += envSample * specMask;
-  }
+  // ─── FIX 3 — Env reflection is mix(), not additive ────────────────────────
+  // Real HLSL (a_envmask_specmap_ps20.psh): result.rgb = lerp(litSurface, envColor, envMask) + specLight
+  // envMask = MAIN.alpha (same alpha that was spec mask). Mean ~0.27 → subtle reflection.
+  // Our old "finalColor += envSample * specMask" (additive, full-strength) was the pink wash.
+  vec4  mainSample   = diffuseSample;        // already read above
+  vec3  diffuseColor = mainSample.rgb;
+  float envMask      = mainSample.a;         // MAIN.alpha = specular/gloss mask
 
-  // Opaque output (alpha=1). SWG opacity/cutout is an .eft concern, tracked separately.
-  gl_FragColor = vec4(finalColor, 1.0);
+  // Pathway A + C tints still applied (identity unless palette wired)
+  vec3  tinted       = diffuseColor * uMaterialColor.rgb * uTexFactor.rgb;
+  vec3  litSurface   = tinted * allDiffuse;
+
+  // Specular: Blinn-Phong masked by the same envMask (per HLSL convention)
+  float specInt  = pow(max(dot(N, H), 0.0), uSpecPower);
+  vec3  spec     = specInt * vec3(envMask);  // masked by gloss channel
+
+  // Env cube LERP (FIX 3): mix towards env only where gloss mask is high.
+  // When bHasEnv=false: blend weight = 0.0 → pure litSurface (a_simple path).
+  vec3 envColor  = bHasEnv ? textureCube(uEnvMap, reflect(-V, N)).rgb : vec3(0.0);
+  vec3 rgb       = mix(litSurface, envColor, bHasEnv ? envMask : 0.0) + spec;
+
+  // ─── FIX 2 — output encode (sRGB) ────────────────────────────────────────
+  // Three.js ShaderMaterial with SRGBColorSpace output: must call the linearToOutputTexel
+  // hook injected by WebGLProgram as #include <colorspace_fragment> (last line of main).
+  // This encodes our linear-space rgb to sRGB for display. DO NOT also pow(2.2) — double-encode.
+  gl_FragColor = vec4(rgb, 1.0);
+  #include <colorspace_fragment>
 }
 `.trimStart();
 }
