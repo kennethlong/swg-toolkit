@@ -482,9 +482,9 @@ describe('parseSkeletalMesh — SkeletalMeshParseResult contract (REGRESSION R4:
 // ─── parseSkeleton — SkeletonParseResult contract ────────────────────────────
 //
 // Contract: SkeletonParseResult { version: string, bones: BoneNode[], roundTrip: {passed} }
-// BoneNode: { name, parentIndex, bindTranslation: [n,n,n], bindRotation: [n,n,n,n] }
-// Note: native binding uses BoneInfo shape which has preRot/postRot/bindPos/preRotOff —
-// this test validates the REAL emitted shape (what the native actually returns).
+// Native BoneInfo shape: { name, parentIndex, preRot[4], postRot[4], bindPos[3], bindPoseRot[4] }.
+// BPRO (bindPoseRot) MUST be a 4-float quaternion (w,x,y,z) — reading it as 3 floats was a real
+// bug that dropped bind-pose rotation and misaligned every joint. This test guards the widths.
 
 describe('parseSkeleton — SkeletonParseResult contract', () => {
   const FIXTURE = FIXTURE_PATHS.skeleton;
@@ -516,7 +516,18 @@ describe('parseSkeleton — SkeletonParseResult contract', () => {
     assertShape(b0, [
       { name: 'name',        kind: 'string' },
       { name: 'parentIndex', kind: 'number' },
+      { name: 'preRot',      kind: 'array'  },
+      { name: 'postRot',     kind: 'array'  },
+      { name: 'bindPos',     kind: 'array'  },
+      { name: 'bindPoseRot', kind: 'array'  },
     ], 'parseSkeleton bones[0]');
+
+    // Quaternion arrays are 4 floats (w,x,y,z); bind translation is 3 floats.
+    // BPRO=4 is the regression guard for the 3-float mis-read.
+    expect((b0['preRot']      as unknown[]).length).toBe(4);
+    expect((b0['postRot']     as unknown[]).length).toBe(4);
+    expect((b0['bindPos']     as unknown[]).length).toBe(3);
+    expect((b0['bindPoseRot'] as unknown[]).length).toBe(4);
   });
 });
 

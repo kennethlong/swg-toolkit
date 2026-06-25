@@ -44,12 +44,24 @@ export interface BoneNode {
    */
   bindTranslation: [number, number, number];
   /**
-   * Bind-pose (rest-pose) rotation quaternion: [w, x, y, z].
-   * On-disk order is (w,x,y,z) per read_floatQuaternion — preserved here.
-   * Consumers reorder to (x,y,z,w) for Three.js Quaternion.set(x,y,z,w).
-   * Source: BPRO chunk — 4×float32 in (w,x,y,z) order.
+   * preMultiply rotation quaternion [w, x, y, z]. Source: RPRE chunk — 4×float32.
+   * Part of the SWG joint composition (see preMultiply in BasicSkeletonTemplate).
    */
-  bindRotation: [number, number, number, number];
+  preMultiplyRotation: [number, number, number, number];
+  /**
+   * postMultiply rotation quaternion [w, x, y, z]. Source: RPST chunk — 4×float32.
+   */
+  postMultiplyRotation: [number, number, number, number];
+  /**
+   * Bind-pose rotation quaternion [w, x, y, z]. Source: BPRO chunk — 4×float32.
+   * On-disk order is (w,x,y,z); consumers reorder to (x,y,z,w) for Three.js.
+   *
+   * The full SWG joint local rotation is:
+   *   localRotation = postMultiply · (animResolverRot · bindPoseRotation) · preMultiply
+   * (Skeleton.cpp:1273-1285). At rest (animResolverRot = identity) it is
+   *   postMultiply · bindPoseRotation · preMultiply.
+   */
+  bindPoseRotation: [number, number, number, number];
 }
 
 /**

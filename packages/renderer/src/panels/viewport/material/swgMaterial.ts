@@ -86,26 +86,38 @@ ${hasDot3Tangents ? 'attribute vec4 tangent;\nvarying vec4 vTangent;' : ''}
 void main() {
   vUv = uv;
 
-  // "transformed" is the Three.js convention for the current vertex position
+  // "transformed" is the Three.js convention for the current vertex position.
   vec3 transformed = vec3(position);
 
+  // Declare objectNormal (= normal) BEFORE skinning so <skinnormal_vertex> can deform it.
+  #include <beginnormal_vertex>
+
 ${skinned ? `
-  // Skinning: include base (computes boneMatX/Y/Z/W) then deform transform
+  // Skin BOTH position and normal. <skinbase_vertex> builds boneMatX/Y/Z/W;
+  // <skinnormal_vertex> deforms objectNormal by the same skinMatrix; <skinning_vertex>
+  // deforms the position. Skinning the NORMAL is essential: the real client bone-deforms
+  // normals too (SoftwareBlendSkeletalShaderPrimitive.cpp). Lighting a bind-pose normal on
+  // a deformed position is what made the seams blow out white during animation.
   #include <skinbase_vertex>
+  #include <skinnormal_vertex>
   #include <skinning_vertex>
 ` : ''}
 
-  // World-space position + view direction
+  // World-space position + view direction.
   vec4 worldPos = modelMatrix * vec4(transformed, 1.0);
   vWorldPos = worldPos.xyz;
 
-  // World-space normal (normalMatrix is built-in Three.js mat3: inverse(transpose(modelViewMatrix)))
-  vNormal = normalize(normalMatrix * normal);
+  // World-space normal, consistent with lightDir/vViewDir (which are world-space).
+  // Do NOT use normalMatrix here — that is inverse-transpose of modelVIEW (view space),
+  // which mismatched the world-space light/view vectors. mat3(modelMatrix) is correct for
+  // rigid / uniform-scale model transforms. RENORMALIZE: the blended skinMatrix is not
+  // length-preserving, so the skinned objectNormal is non-unit.
+  vNormal = normalize(mat3(modelMatrix) * objectNormal);
 
-  // Camera direction in world space
+  // Camera direction in world space.
   vViewDir = normalize(cameraPosition - worldPos.xyz);
 
-${hasDot3Tangents ? '  vTangent = tangent;' : ''}
+${hasDot3Tangents ? '  // TODO: skin the tangent (USE_TANGENT/<skinnormal_vertex>) when DOT3 normal maps are active.\n  vTangent = tangent;' : ''}
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
 }
@@ -213,8 +225,12 @@ ${hasDot3Tangents ? `
   vec3  tinted       = diffuseColor * uMaterialColor.rgb * uTexFactor.rgb;
   vec3  litSurface   = tinted * allDiffuse;
 
-  // Specular: Blinn-Phong masked by the same envMask (per HLSL convention)
-  float specInt  = pow(max(dot(N, H), 0.0), uSpecPower);
+  // Specular: Blinn-Phong masked by the same envMask (per HLSL convention), GATED by NdotL.
+  // The real client computes specular via the lit() instruction, which yields ZERO specular
+  // when NdotL <= 0 (no highlight on faces turned away from the light). Without this gate a
+  // grazing/incorrect normal produced a spurious highlight that — added on top of a saturating
+  // diffuse and ACES-tonemapped — clipped to WHITE at the deformed part seams.
+  float specInt  = NdotL > 0.0 ? pow(max(dot(N, H), 0.0), uSpecPower) : 0.0;
   vec3  spec     = specInt * vec3(envMask);  // masked by gloss channel
 
   // Env cube LERP (FIX 3): mix towards env only where gloss mask is high.

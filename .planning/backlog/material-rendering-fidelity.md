@@ -26,9 +26,20 @@ for-pixel. Crew-verified: the remaining gap is presentation (lighting/tone), NOT
    ambient-saturation choice. Calibrate against SIE (ACES toneMapping on the Canvas + exposure).
 3. **.eft PTXM sampler-role map** — parseEffect returns samplers:[] (PTXM not decoded). See
    [[eft-parser-completion]]. Needed for authoritative texture→sampler roles.
-4. **CSHD customization palette** — wire `.pal` tint for customizable (non-baked) variants. Codex
-   gave the full spec (parse CSHD MATR/TXTR/TFAC vars → fetch .pal → tint uMaterialColor/uTexFactor).
-   Not needed for the red droid (SSHT, baked) but required for color-customizable assets.
+4. **CSHD customization shaders — UNRESOLVED DIFFUSE (renders WHITE).** Confirmed 2026-06-25:
+   `stormtrooper.sat` → `storm_trooper_hces24.sht` is variant **CSHD** with **no static MAIN slot**;
+   our renderer only wires the SSHT `MAIN` diffuse path → falls back to the white 1×1 default →
+   fully white armor. Affects EVERY customizable armor/clothing piece, not just stormtrooper. Need to
+   parse the CSHD diffuse/texture references + `.pal` tint (parse CSHD MATR/TXTR/TFAC vars → fetch
+   `.pal` → tint uMaterialColor/uTexFactor — Codex gave the full spec). Baked SSHT assets (red droid,
+   ackbar, han_solo) are unaffected.
+9. **Specular over-drive on skin (over-shiny).** Confirmed 2026-06-25: `han_solo.sat` (all SSHT,
+   textures resolve) reads too glossy on the lit side. Our shader does `spec = specInt * MAIN.alpha`,
+   but the real client tempers spec by `materialSpecularColor` (× light spec color) which we omit —
+   so skin/`as9`/`asb14` shaders are too hot. (Newly obvious because the seam fix put the highlight in
+   the geometrically-correct place.) Fix: source `materialSpecularColor` (from the `.eft`/`.sht`/material)
+   and modulate spec by it; ground-truth math = `a_specmap_pp_ps20.psh`
+   `(dot3SpecularIntensity * dot3LightSpecularColor * materialSpecularColor + vertexSpecular) * specularMask`.
 5. **Per-shader blend mode from .eft** — foliage cutout / glass / additive. See [[viewport-shader-blend-mode]].
 6. **Default camera facing** vs SIE. See [[viewport-default-facing-axis]].
 7. **Status-bar mesh name** stale readout. See [[statusbar-mesh-name-stale]].

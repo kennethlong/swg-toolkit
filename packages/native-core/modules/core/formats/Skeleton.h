@@ -48,10 +48,11 @@ namespace formats {
 struct BoneInfo {
     std::string name;
     int32_t     parentIndex = -1;   // -1 = root
-    float       preRot[4]   = {};   // RPRE quaternion (w,x,y,z)
-    float       postRot[4]  = {};   // RPST quaternion (w,x,y,z)
-    float       bindPos[3]  = {};   // BPTR pre-translation
-    float       preRotOff[3]= {};   // BPRO pre-rotation-offset
+    float       preRot[4]     = {};  // RPRE preMultiply quaternion  (w,x,y,z)
+    float       postRot[4]    = {};  // RPST postMultiply quaternion (w,x,y,z)
+    float       bindPos[3]    = {};  // BPTR bind-pose translation   (x,y,z)
+    float       bindPoseRot[4]= {};  // BPRO bind-pose ROTATION quaternion (w,x,y,z) — 4 floats, NOT 3
+                                     // Ground truth: BasicSkeletonTemplate.cpp:271-276 (read_floatQuaternion).
 };
 
 /**

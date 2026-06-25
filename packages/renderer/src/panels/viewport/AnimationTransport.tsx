@@ -72,18 +72,13 @@ export default function AnimationTransport(): React.ReactElement | null {
   // Warn state for KFAT-0002-unsupported selections
   const kfat0002WarnRef = useRef(false);
 
-  // ─── No skeleton — transport hidden ─────────────────────────────────────
-  if (!parsedSkeleton) {
-    return (
-      <div style={barStyle}>
-        <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-          Load a skinned mesh or skeleton to animate
-        </span>
-      </div>
-    );
-  }
+  const { playing, currentFrame, totalFrames, speed, loop } = transportState;
 
   // ─── Picker change ────────────────────────────────────────────────────────
+  // NOTE: ALL hooks must run unconditionally and in a stable order — the early
+  // "no skeleton" return below MUST come after every hook, or React throws
+  // "rendered more hooks than during the previous render" when parsedSkeleton
+  // transitions null → non-null.
   const handlePickerChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const path = e.target.value;
     if (!path || !sourceMountHandle) return;
@@ -120,7 +115,6 @@ export default function AnimationTransport(): React.ReactElement | null {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceMountHandle]);
 
-  const { playing, currentFrame, totalFrames, speed, loop } = transportState;
   const fps = parsedAnimation?.fps ?? 30;
   const timeSec = fps > 0 ? (currentFrame / fps).toFixed(2) : '0.00';
 
@@ -136,6 +130,17 @@ export default function AnimationTransport(): React.ReactElement | null {
     if (e.key === 'Home')       { e.preventDefault(); setTransportState({ currentFrame: 0, playing: false }); }
     if (e.key === 'End')        { e.preventDefault(); setTransportState({ currentFrame: totalFrames > 0 ? totalFrames - 1 : 0, playing: false }); }
   }, [currentFrame, totalFrames, setTransportState]);
+
+  // ─── No skeleton — transport hidden (AFTER all hooks; see note above) ──────
+  if (!parsedSkeleton) {
+    return (
+      <div style={barStyle}>
+        <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+          Load a skinned mesh or skeleton to animate
+        </span>
+      </div>
+    );
+  }
 
   // ─── Render ───────────────────────────────────────────────────────────────
 

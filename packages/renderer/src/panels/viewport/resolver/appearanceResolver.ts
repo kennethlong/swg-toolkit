@@ -25,6 +25,7 @@ import type {
   ShaderSlotName,
   LodLevel,
 } from '@swg/contracts';
+import { mergeSkeletons, type SkeletonSegment } from './mergeSkeletons.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -86,11 +87,28 @@ export interface EffectParseResult {
   }>;
 }
 
+/**
+ * One renderable part of a composed skinned appearance.
+ * A multi-part .sat (e.g. ackbar = head + arms + body) has one ResolvedAppearancePart
+ * per mesh generator, each with its OWN per-LOD meshes + materials. All parts share the
+ * single merged skeleton (AppearanceResolutionResult.skeleton).
+ */
+export interface ResolvedAppearancePart {
+  /** Source meshPath (e.g. "appearance/mesh/ackbar_body.lmg") — diagnostics. */
+  meshPath: string;
+  /** Per-LOD meshes for THIS part (index = LOD level; null = placeholder). */
+  meshesByLod: (ResolvedMesh | null)[];
+  /** Materials for THIS part, indexed by shader group (from this part's LOD 0). */
+  materials: ResolvedMaterial[];
+}
+
 /** Full appearance resolution result. */
 export interface AppearanceResolutionResult {
   /** Per-LOD mesh list (null entries = placeholder when mesh could not be resolved). */
   meshes: (ResolvedMesh | null)[];
-  /** Resolved skeleton (null if static or skeleton not found). */
+  /** Resolved skeleton (null if static or skeleton not found). For multi-skeleton .sat this
+   *  is the MERGED skeleton; `skeleton.path` stays the MAIN/first skeleton path (so the
+   *  .ans picker heuristic keeps working). */
   skeleton: ResolvedSkeleton | null;
   /** Resolved shader groups + texture bytes, indexed by shader-group. */
   materials: ResolvedMaterial[];
@@ -102,6 +120,14 @@ export interface AppearanceResolutionResult {
   isSkinned: boolean;
   /** LOD levels from .lmg (empty for non-LOD assets). */
   lodLevels: LodLevel[];
+  /**
+   * Composed skinned parts (multi-part .sat). Present ONLY for the composed .sat path
+   * (one entry even for a single-part .sat). When undefined, consumers use the legacy
+   * single-mesh path (`meshes`). Each part renders at the shared selectedLod.
+   */
+  parts?: ResolvedAppearancePart[];
+  /** Skeleton-ref metadata (path + attachment transform) for every segment of a .sat. */
+  skeletonSegments?: Array<{ path: string; attachmentTransformName: string }>;
 }
 
 // ─── nativeCore binding ──────────────────────────────────────────────────────
@@ -172,10 +198,10 @@ const nativeCore = require('@swg/native-core') as {
     bones: Array<{
       name: string;
       parentIndex: number;
-      preRot: number[];
-      postRot: number[];
-      bindPos: number[];
-      preRotOff: number[];
+      preRot: number[];      // RPRE preMultiply (w,x,y,z)
+      postRot: number[];     // RPST postMultiply (w,x,y,z)
+      bindPos: number[];     // BPTR bind translation (x,y,z)
+      bindPoseRot: number[]; // BPRO bind-pose rotation (w,x,y,z) — 4 floats
     }>;
   };
   parseMeshLod: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => {
@@ -267,7 +293,10 @@ async function resolveSkeleton(
         name: b.name,
         parentIndex: b.parentIndex,
         bindTranslation: [b.bindPos[0] ?? 0, b.bindPos[1] ?? 0, b.bindPos[2] ?? 0],
-        bindRotation: [b.preRot[0] ?? 1, b.preRot[1] ?? 0, b.preRot[2] ?? 0, b.preRot[3] ?? 0],
+        // All quaternions kept in on-disk (w,x,y,z) order; the renderer reorders to (x,y,z,w).
+        preMultiplyRotation:  [b.preRot[0] ?? 1, b.preRot[1] ?? 0, b.preRot[2] ?? 0, b.preRot[3] ?? 0],
+        postMultiplyRotation: [b.postRot[0] ?? 1, b.postRot[1] ?? 0, b.postRot[2] ?? 0, b.postRot[3] ?? 0],
+        bindPoseRotation:     [b.bindPoseRot[0] ?? 1, b.bindPoseRot[1] ?? 0, b.bindPoseRot[2] ?? 0, b.bindPoseRot[3] ?? 0],
       })),
       roundTrip: { passed: true },
     };
@@ -576,58 +605,70 @@ export async function resolveAppearance(
       return { meshes: [], skeleton: null, materials: [], missing, mode: 'composed', isSkinned: true, lodLevels: [] };
     }
 
-    // Resolve skeleton first (need boneOrder for XFNM→bone remap)
+    // Resolve ALL skeleton refs (main + attached) and MERGE into one skeleton.
+    // The merged boneOrder is required before parsing any mesh: each part's skinIndices
+    // are name-remapped (case-insensitive) into the merged skeleton index space, so a
+    // mesh can reference bones from any segment (e.g. ackbar's head mesh binds `jaw`
+    // from mon_m_face alongside body bones from all_b). Ground truth: CONSULT-MP-AXIOMS.
     let skeleton: ResolvedSkeleton | null = null;
     let boneOrder: string[] = [];
+    const skeletonSegments: Array<{ path: string; attachmentTransformName: string }> = [];
     if (satData.skeletonRefs.length > 0) {
-      const sktRef = satData.skeletonRefs[0];
-      if (sktRef) {
-        const sktResolved = await resolveSkeleton(mountHandle, sktRef.skeletonPath, missing);
-        if (sktResolved) {
-          skeleton = sktResolved.result;
-          boneOrder = sktResolved.boneOrder;
-        }
+      const segments: SkeletonSegment[] = [];
+      for (const ref of satData.skeletonRefs) {
+        skeletonSegments.push({ path: ref.skeletonPath, attachmentTransformName: ref.attachmentTransformName });
+        const r = await resolveSkeleton(mountHandle, ref.skeletonPath, missing);
+        if (r) segments.push({ parseResult: r.result.parseResult, attachmentTransformName: ref.attachmentTransformName });
+      }
+      if (segments.length > 0) {
+        const merged = mergeSkeletons(segments);
+        for (const w of merged.warnings) missing.push(`[skeleton-merge] ${w}`);
+        // Keep skeleton.path = MAIN (first) skeleton path so the .ans picker heuristic
+        // (which derives the base name from skeleton.path) keeps finding animations.
+        skeleton = { path: satData.skeletonRefs[0]!.skeletonPath, parseResult: merged.parseResult };
+        boneOrder = merged.boneOrder;
       }
     }
 
-    // Resolve meshes (single or via .lmg)
-    const allMeshes: (ResolvedMesh | null)[] = [];
-    const allMaterials: ResolvedMaterial[] = [];
+    // Resolve each mesh generator as its OWN part (per-LOD meshes + per-part materials).
+    // ALL parts share the merged skeleton + merged boneOrder. selectedLod is applied
+    // per-part at render time (shared LOD index across parts).
+    const parts: ResolvedAppearancePart[] = [];
     let lodLevels: LodLevel[] = [];
 
     for (const meshPath of satData.meshPaths) {
       if (isUnsafePath(meshPath)) {
         missing.push(`[unsafe-mesh-path] ${meshPath}`);
-        allMeshes.push(null);
         continue;
       }
       const meshExt = meshPath.split('.').pop()?.toLowerCase() ?? '';
+      let meshesByLod: (ResolvedMesh | null)[];
       if (meshExt === 'lmg') {
-        // LOD mesh generator
         const lodResult = await resolveLodMesh(mountHandle, meshPath, boneOrder, true, missing);
-        lodLevels = lodResult.lodLevels;
-        allMeshes.push(...lodResult.meshes);
-        // Materials from LOD level 0
-        const lod0 = lodResult.meshes[0] ?? null;
-        const mats = await resolveMeshMaterials(mountHandle, lod0, missing);
-        allMaterials.push(...mats);
+        meshesByLod = lodResult.meshes;
+        if (lodResult.lodLevels.length > lodLevels.length) lodLevels = lodResult.lodLevels;
       } else {
-        // Direct .mgn
-        const mesh = await resolveMgnMesh(mountHandle, meshPath, boneOrder, missing);
-        allMeshes.push(mesh);
-        const mats = await resolveMeshMaterials(mountHandle, mesh, missing);
-        allMaterials.push(...mats);
+        meshesByLod = [await resolveMgnMesh(mountHandle, meshPath, boneOrder, missing)];
       }
+      const materials = await resolveMeshMaterials(mountHandle, meshesByLod[0] ?? null, missing);
+      parts.push({ meshPath, meshesByLod, materials });
     }
 
+    // Legacy/compat fields: meshes = first part's LODs (LOD picker), materials = all parts'
+    // LOD0 materials flattened (MaterialInspector / CustomizationPanel inspect the full set).
+    const compatMeshes = parts[0]?.meshesByLod ?? [];
+    const compatMaterials = parts.flatMap(p => p.materials);
+
     return {
-      meshes: allMeshes,
+      meshes: compatMeshes,
       skeleton,
-      materials: allMaterials,
+      materials: compatMaterials,
       missing,
       mode: 'composed',
       isSkinned: true,
       lodLevels,
+      parts,
+      skeletonSegments,
     };
   }
 

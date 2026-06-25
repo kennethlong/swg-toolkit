@@ -42,6 +42,21 @@
 namespace swg_core {
 namespace formats {
 
+// ─── Case-insensitive ASCII string equality ──────────────────────────────────
+// SWG keys transform/bone names via CrcLowerString (CRC of the lowercased string),
+// so name matching is case-insensitive: mesh XFNM "lthigh" matches skeleton "lThigh".
+static bool iequalsAscii(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        unsigned char ca = static_cast<unsigned char>(a[i]);
+        unsigned char cb = static_cast<unsigned char>(b[i]);
+        if (ca >= 'A' && ca <= 'Z') ca = static_cast<unsigned char>(ca - 'A' + 'a');
+        if (cb >= 'A' && cb <= 'Z') cb = static_cast<unsigned char>(cb - 'A' + 'a');
+        if (ca != cb) return false;
+    }
+    return true;
+}
+
 // ─── IFF node helpers (same pattern as Mesh.cpp) ─────────────────────────────
 
 static const swg_core::iff::IffNode* findChild(
@@ -521,9 +536,14 @@ static void processPSDT(
                     int32_t boneIdx = xfIdx; // default: XFNM-local if boneOrder empty
                     if (!boneOrder.empty() && xfIdx >= 0 && xfIdx < static_cast<int32_t>(xfnm.size())) {
                         const std::string& boneName = xfnm[static_cast<size_t>(xfIdx)];
-                        auto it = std::find(boneOrder.begin(), boneOrder.end(), boneName);
-                        if (it != boneOrder.end()) {
-                            boneIdx = static_cast<int32_t>(std::distance(boneOrder.begin(), it));
+                        // Case-insensitive match (SWG CrcLowerString semantics): mesh XFNM names
+                        // are often lowercase (e.g. "lthigh") while the .skt is camelCase ("lThigh").
+                        // An exact compare missed these and bound limb vertices to the wrong bone.
+                        for (size_t bi = 0; bi < boneOrder.size(); ++bi) {
+                            if (iequalsAscii(boneOrder[bi], boneName)) {
+                                boneIdx = static_cast<int32_t>(bi);
+                                break;
+                            }
                         }
                     }
                     skinIndices[i*4+j] = boneIdx;

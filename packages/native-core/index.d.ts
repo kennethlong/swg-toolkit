@@ -706,10 +706,10 @@ export function parseSkeletalMesh(
 export interface BoneInfo {
   name: string;
   parentIndex: number;    // -1 for root
-  preRot: number[];       // [w,x,y,z] on-disk quaternion from RPRE chunk
-  postRot: number[];      // [w,x,y,z] on-disk quaternion from RPST chunk
-  bindPos: number[];      // [x,y,z] pre-translation from BPTR
-  preRotOff: number[];    // [x,y,z] pre-rotation-offset from BPRO
+  preRot: number[];       // [w,x,y,z] preMultiply quaternion from RPRE chunk
+  postRot: number[];      // [w,x,y,z] postMultiply quaternion from RPST chunk
+  bindPos: number[];      // [x,y,z] bind-pose translation from BPTR
+  bindPoseRot: number[];  // [w,x,y,z] bind-pose ROTATION quaternion from BPRO (4 floats)
 }
 
 /**

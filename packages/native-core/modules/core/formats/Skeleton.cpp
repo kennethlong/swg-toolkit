@@ -14,8 +14,8 @@
  *       PRNT  (jointCount × int32 parent indices)
  *       RPRE  (jointCount × 4×float32 quaternions w,x,y,z)
  *       RPST  (jointCount × 4×float32 quaternions w,x,y,z)
- *       BPTR  (jointCount × 3×float32 translation vectors)
- *       BPRO  (jointCount × 3×float32 offset vectors)
+ *       BPTR  (jointCount × 3×float32 bind-pose translation vectors)
+ *       BPRO  (jointCount × 4×float32 bind-pose ROTATION quaternions w,x,y,z)
  *       [BPMJ v0001 only] (jointCount × 3×float32 — consume, not used for rendering)
  *       JROR  (jointCount × (float32, int32) rotation records — skip)
  *
@@ -189,12 +189,15 @@ SkeletonResult parseSkeleton(
         }
     }
 
-    // BPRO: jointCount × 3 float32 pre-rotation-offset
+    // BPRO: jointCount × 4 float32 bind-pose ROTATION quaternion (w,x,y,z).
+    // Ground truth: BasicSkeletonTemplate.cpp:271-276 reads this via read_floatQuaternion
+    // (4 floats/joint) into m_bindPoseRotations. Previously mis-read as 3 floats, which
+    // both dropped the bind-pose rotation and misaligned every joint after the first.
     const auto* bproLeaf = findChildLeaf(*versionForm, "BPRO");
     if (bproLeaf) {
         auto cv = chunkPayload(*bproLeaf, srcData, srcSize);
         for (int32_t i = 0; i < jointCount; ++i) {
-            for (int k = 0; k < 3; ++k) result.bones[i].preRotOff[k] = cv.readF32();
+            for (int k = 0; k < 4; ++k) result.bones[i].bindPoseRot[k] = cv.readF32();
         }
     }
 

@@ -596,7 +596,7 @@ Napi::Value ParseSkeletalMesh(const Napi::CallbackInfo& info) {
  *   formatTag: string,
  *   version: string,
  *   boneNames: string[],
- *   bones: Array<{ name, parentIndex, preRot[4], postRot[4], bindPos[3], preRotOff[3] }>
+ *   bones: Array<{ name, parentIndex, preRot[4], postRot[4], bindPos[3], bindPoseRot[4] }>
  * }
  *
  * Throws if root is FORM SLOD (not FORM SKTM) -- delta #7.
@@ -646,22 +646,22 @@ Napi::Value ParseSkeleton(const Napi::CallbackInfo& info) {
         bobj.Set("name",        Napi::String::New(env, b.name));
         bobj.Set("parentIndex", Napi::Number::New(env, b.parentIndex));
 
-        auto preRot  = Napi::Array::New(env, 4);
-        auto postRot = Napi::Array::New(env, 4);
-        auto bindPos = Napi::Array::New(env, 3);
-        auto preOff  = Napi::Array::New(env, 3);
+        auto preRot      = Napi::Array::New(env, 4);
+        auto postRot     = Napi::Array::New(env, 4);
+        auto bindPos     = Napi::Array::New(env, 3);
+        auto bindPoseRot = Napi::Array::New(env, 4);
         for (int k = 0; k < 4; ++k) {
-            preRot.Set(static_cast<uint32_t>(k),  Napi::Number::New(env, b.preRot[k]));
-            postRot.Set(static_cast<uint32_t>(k), Napi::Number::New(env, b.postRot[k]));
+            preRot.Set(static_cast<uint32_t>(k),      Napi::Number::New(env, b.preRot[k]));
+            postRot.Set(static_cast<uint32_t>(k),     Napi::Number::New(env, b.postRot[k]));
+            bindPoseRot.Set(static_cast<uint32_t>(k), Napi::Number::New(env, b.bindPoseRot[k]));
         }
         for (int k = 0; k < 3; ++k) {
             bindPos.Set(static_cast<uint32_t>(k), Napi::Number::New(env, b.bindPos[k]));
-            preOff.Set(static_cast<uint32_t>(k),  Napi::Number::New(env, b.preRotOff[k]));
         }
-        bobj.Set("preRot",    preRot);
-        bobj.Set("postRot",   postRot);
-        bobj.Set("bindPos",   bindPos);
-        bobj.Set("preRotOff", preOff);
+        bobj.Set("preRot",      preRot);       // RPRE preMultiply (w,x,y,z)
+        bobj.Set("postRot",     postRot);      // RPST postMultiply (w,x,y,z)
+        bobj.Set("bindPos",     bindPos);      // BPTR bind translation (x,y,z)
+        bobj.Set("bindPoseRot", bindPoseRot);  // BPRO bind-pose rotation (w,x,y,z)
         bonesArr.Set(static_cast<uint32_t>(i), bobj);
     }
     result.Set("bones", bonesArr);

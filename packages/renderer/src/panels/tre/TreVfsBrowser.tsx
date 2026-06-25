@@ -33,6 +33,7 @@ import type { TreVersion } from '@swg/contracts';
 import { useIffStore } from '../../state/iffStore.ts';
 import type { IffParseResult } from '../../state/iffStore.ts';
 import { useViewportStore } from '../../state/viewportStore.ts';
+import type { ViewportStore } from '../../state/viewportStore.ts';
 import { resolveAppearance } from '../viewport/resolver/appearanceResolver.js';
 import MountedArchivesList from './MountedArchivesList.tsx';
 import VfsSearchField from './VfsSearchField.tsx';
@@ -73,6 +74,8 @@ const nativeCore = require('@swg/native-core') as {
     trailingBytes: { offset: number; count: number } | null;
     roundTrip: { passed: boolean; failOffset?: number };
   };
+  /** Parse a .ans animation (CKAT/KFAT). Returns null/KFAT-0002-unsupported for legacy. */
+  parseAnimation: (iff: unknown, bytes: ArrayBuffer | Uint8Array) => ViewportStore['parsedAnimation'];
   /** Substring/glob search across all VFS entries. Returns {entryIndex, archiveIndex} objects. */
   searchMount: (handle: string, query: { text: string; mode: 'substring' | 'glob' }) => Array<{ entryIndex: number; archiveIndex: number }>;
   /** List all entries in a single archive. */
@@ -293,27 +296,27 @@ export default function TreVfsBrowser(): React.ReactElement {
                 const sktPath = resolution.skeleton.path;
                 // Extract the base name without extension (e.g. "4lom" from ".../4lom.skt")
                 const sktBase = sktPath.split('/').pop()?.replace(/\.skt$/i, '') ?? '';
-                if (sktBase && mountHandle) {
-                  try {
-                    // Search all archives for .ans entries matching the skeleton base name.
-                    const hits = nativeCore.searchMount(mountHandle, { text: `${sktBase}`, mode: 'substring' });
-                    const ansPaths: string[] = [];
-                    const seen = new Set<string>();
-                    for (const hit of hits) {
-                      try {
-                        const entries = nativeCore.listMountEntries(mountHandle, hit.archiveIndex);
-                        const ent = entries[hit.entryIndex];
-                        if (ent && ent.path.endsWith('.ans') && !seen.has(ent.path)) {
-                          seen.add(ent.path);
-                          ansPaths.push(ent.path);
-                        }
-                      } catch (_e) { /* skip broken entries */ }
+                if (sktBase) {
+                  // Filter the already-decoded VFS entry list IN JS — the same approach as
+                  // handleSearch (above). Do NOT use searchMount + listMountEntries here:
+                  // listMountEntries materializes an ENTIRE archive's entries as N-API objects,
+                  // and it was being called once PER search hit. On a broad substring match over
+                  // ~245k entries that is a synchronous, main-thread O(hits × archiveSize) blowup
+                  // — the hard UI freeze on skinned loads (this block only runs when a skeleton
+                  // resolves, i.e. skinned only; static loads skip it, which is why they worked).
+                  // searchMount's index space also doesn't match the VFS (see handleSearch note).
+                  const base = sktBase.toLowerCase();
+                  const ansPaths: string[] = [];
+                  const seen = new Set<string>();
+                  for (const e of store.vfsEntries) {
+                    const lower = e.path.toLowerCase();
+                    if (lower.endsWith('.ans') && lower.includes(base) && !seen.has(e.path)) {
+                      seen.add(e.path);
+                      ansPaths.push(e.path);
                     }
-                    if (ansPaths.length > 0) {
-                      viewportStore.setAnsPickerOptions(ansPaths);
-                    }
-                  } catch (_e) {
-                    // VFS search failed — picker stays empty; non-fatal
+                  }
+                  if (ansPaths.length > 0) {
+                    viewportStore.setAnsPickerOptions(ansPaths);
                   }
                 }
               }
@@ -321,6 +324,30 @@ export default function TreVfsBrowser(): React.ReactElement {
               const reason = err instanceof Error ? err.message : String(err);
               viewportStore.loadError(filename, reason);
             });
+          } else if (ext === 'ans') {
+            // Click-to-play: a .ans has no mesh of its own — it animates whatever skinned
+            // model is already loaded. If a skeleton is loaded, parse the animation and apply
+            // it (mirrors the AnimationTransport dropdown). Otherwise no-op (nothing to drive).
+            // Read live store state (getState) to avoid a stale-closure parsedSkeleton.
+            const vp = useViewportStore.getState();
+            if (vp.parsedSkeleton) {
+              try {
+                const ansBytes = nativeCore.readMountEntry(
+                  mountHandle,
+                  winnerResult.winnerArchiveIndex,
+                  winnerResult.winnerEntryIndex,
+                );
+                const u8 = new Uint8Array(ansBytes);
+                const iff = nativeCore.parseIff(u8);
+                const anim = nativeCore.parseAnimation(iff, u8);
+                // KFAT-0002 is unsupported legacy Euler — keep bind pose, don't apply.
+                if (anim && anim.variant !== 'KFAT-0002-unsupported') {
+                  vp.setParsedAnimation(anim);
+                }
+              } catch {
+                // Non-fatal: malformed/unsupported .ans leaves the current animation as-is.
+              }
+            }
           }
         }
       }

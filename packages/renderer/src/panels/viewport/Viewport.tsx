@@ -104,6 +104,18 @@ export function MissingDepsOverlay(): React.ReactElement | null {
 function SceneContent(): React.ReactElement {
   const { isSkinned, parsedMesh, parsedSkeleton, renderMode, resolution, selectedLod } = useViewportStore();
 
+  // Multi-part composed skinned .sat: select each part's mesh at the shared selectedLod.
+  // All parts render together sharing the one merged skeleton.
+  const skinnedParts = React.useMemo(() => {
+    if (!resolution?.parts) return null;
+    const out = [];
+    for (const part of resolution.parts) {
+      const m = part.meshesByLod[selectedLod] ?? part.meshesByLod[0] ?? null;
+      if (m) out.push({ parsedMesh: m.parseResult, geometry: m.geometry, materials: part.materials });
+    }
+    return out;
+  }, [resolution?.parts, selectedLod]);
+
   // TERTIARY fix: index by selectedLod instead of always using meshes[0].
   // The resolver returns meshes[] where each index corresponds to a LOD level
   // (or for non-LOD assets, meshes[0] is the single mesh).
@@ -144,9 +156,16 @@ function SceneContent(): React.ReactElement {
         makeDefault
       />
 
-      {/* Mesh render — use lodMesh.parseResult for the selected LOD */}
-      {/* Pass resolution.materials to the mesh views for DDS texture upload (02-03) */}
-      {activeMesh && geometryBuffer && (
+      {/* Mesh render. Multi-part composed skinned .sat → render all parts at selectedLod
+          sharing the merged skeleton. Otherwise the legacy single-mesh path (static
+          redirects, leaf .mgn). */}
+      {isSkinned && skinnedParts && skinnedParts.length > 0 ? (
+        <SkinnedMeshView
+          parts={skinnedParts}
+          parsedSkeleton={parsedSkeleton}
+          renderMode={renderMode}
+        />
+      ) : activeMesh && geometryBuffer && (
         isSkinned ? (
           <SkinnedMeshView
             parsedMesh={activeMesh}
