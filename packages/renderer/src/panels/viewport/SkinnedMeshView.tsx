@@ -295,6 +295,7 @@ function buildSkinnedGroupMaterial(
     hasEnv:          hasEnvSlot,
     hasDot3Tangents: hasDot3,
     effectBlend,
+    material:        shaderResult?.material ?? null, // MATL spec color/power (tempers spec)
   });
 
   // Wire up DDS textures from pre-fetched slotBytes (NO re-fetch here)
@@ -315,6 +316,9 @@ function buildSkinnedGroupMaterial(
           // ENVM/SPEC/NRML stay at NoColorSpace (linear data maps).
           texture.colorSpace = THREE.SRGBColorSpace;
           mat.uniforms.uDiffuseMap.value = texture;
+          // DXT1/BC1 has no alpha channel → its alpha samples as 1.0, which is NOT a gloss mask.
+          // Flag it so the shader uses a moderate spec default instead of full-strength spec.
+          mat.uniforms.bMainHasAlpha.value = !/dxt1|bc1/i.test(String(ddsResult.format));
           break;
         case 'NRML':
         case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break; // linear

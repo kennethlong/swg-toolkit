@@ -622,13 +622,23 @@ export interface ShaderSlot {
   isPlaceholder: boolean;
 }
 
+/** MATL material colors (rgb only; from MATS → MATL). Present only when readable. */
+export interface ShaderMaterial {
+  ambient: number[];        // [r,g,b]
+  diffuse: number[];        // [r,g,b]
+  emissive: number[];       // [r,g,b]
+  specular: number[];       // [r,g,b] = materialSpecularColor
+  specularPower: number;
+}
+
 /** Result of parseShader() — static shader template .sht. */
 export interface ShaderParseResult {
-  variant: string;      // 'SSHT', 'DPAT', etc.
+  variant: string;      // 'SSHT', 'CSHD', etc.
   version: string;
   effectPath: string;
   slots: ShaderSlot[];
   customizationVars: unknown[];
+  material?: ShaderMaterial;   // MATL colors; absent ⇒ identity (specular white, power 32)
 }
 
 export function parseShader(

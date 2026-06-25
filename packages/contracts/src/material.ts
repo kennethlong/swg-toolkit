@@ -264,8 +264,31 @@ export interface ShaderParseResult {
    * Source: CustomizableShaderTemplate.cpp:1246-1286.
    */
   customizationVars: ShaderCustomizationVar[];
+  /**
+   * MATL material colors (MATS → FORM 0000 → MATL). Undefined when the shader has no
+   * readable MATL → consumers fall back to identity (specular white, power 32), preserving
+   * prior renders. For CSHD this is the nested SSHT's MATL. rgb only (alpha dropped); colors
+   * are linear 0..1 (can exceed 1 for HDR metal spec). Source: Material.cpp:64-72 (A,R,G,B order).
+   */
+  material?: ShaderMaterialColors;
   /** IFF-level round-trip status. .sht IS IFF so uses the generic-IFF pair. */
   roundTrip: { passed: boolean; failOffset?: number };
+}
+
+/**
+ * MATL material colors carried on ShaderParseResult.
+ * Disk layout: 4×VectorArgb(A,R,G,B float32) + specularPower = 17 LE float32 = 68 bytes.
+ * Only `specular` + `specularPower` are currently consumed by the renderer (ambient/diffuse/
+ * emissive are identity/zero in all measured character shaders). Source: Material.cpp:64-72.
+ */
+export interface ShaderMaterialColors {
+  ambient:  [number, number, number];
+  diffuse:  [number, number, number];
+  emissive: [number, number, number];
+  /** = materialSpecularColor in the body PSH; multiplies the specular term (fixes over-shiny). */
+  specular: [number, number, number];
+  /** Phong exponent; drives uSpecPower (was hardcoded 32). */
+  specularPower: number;
 }
 
 // ─── LOD types ───────────────────────────────────────────────────────────────

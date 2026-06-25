@@ -19,9 +19,22 @@ for-pixel. Crew-verified: the remaining gap is presentation (lighting/tone), NOT
 
 ## Items (consolidated from this phase's tracked todos)
 
-1. **Lighting rig** (the main residual): replace the single hardcoded directional + 0.3 ambient
-   with the real client light setup (1 specular-capable parallel light + fill lights + ambient
-   object) — see swg-client-v2 D3D9_LightManager / the VS lighting path. Match brightness/contrast.
+1. **Lighting rig** (the main residual): replace the single hardcoded directional + ambient floor
+   with the real client light setup. Ground truth (crew, 2026-06-25, `CONSULT-LIGHT-*`): the real
+   diffuse is `calculateHemisphericLighting` (functions.inc) — a 3-stop key→tangent→back gradient on
+   N·L PLUS a per-vertex `vertexDiffuse` (= accumulated ambient+fill+bounce ≈ 0.38-0.42 outdoor) —
+   uploaded from `parallelSpecular[0]` only (D3D9/11_LightManager). back/tangent are SCENE-DERIVED
+   (EnvironmentBlock TGA ramps, time-of-day); default to BLACK with no zone data. **Interim fix
+   shipped:** raised the flat ambient floor 0.30→0.40 (NdotL scale 0.70→0.60) — for a neutral viewer
+   a greyscale hemispheric model collapses to exactly this, so the full model only pays off once we
+   feed scene-derived COLORED ambient/back + the fill light into the shader as uniforms (our custom
+   ShaderMaterial ignores the THREE 3-point rig). Full impl = wire vertexDiffuse(V) + colored back/
+   tangent; also consider a low-intensity colored fill directional for terminator softening.
+9. **Emissive crush bug** (separate, found 2026-06-25): `allDiffuse = clamp(floor + NdotL*k + emisMask, 0,1)`
+   folds EMIS.a INTO the clamped diffuse-light term, so on a partially-lit face with an active EMIS slot
+   the emissive contribution clamps to 1.0 and destroys lit-region texture detail (affects glow assets —
+   droid eyes, panel emitters, saber emitters). Fix: add emissive as a post-clamp additive term, not
+   inside the diffuse saturate. No emissive-slot asset verified yet; file when one is tested.
 2. **Tone / exposure**: SIE shows the maroon slightly more vivid — likely a tone-map/exposure or
    ambient-saturation choice. Calibrate against SIE (ACES toneMapping on the Canvas + exposure).
 3. **.eft PTXM sampler-role map** — parseEffect returns samplers:[] (PTXM not decoded). See

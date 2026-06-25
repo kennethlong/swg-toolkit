@@ -583,6 +583,28 @@ describe('parseShader — ShaderParseResult contract (REGRESSION R2: .slot not .
       expect(slot['slot']).toMatch(/^[A-Z0-9]+$/);
     }
   });
+
+  // R6: MATL material colors (specular drives the spec-temper fix; CSHD recursion surfaces MAIN).
+  it('[R6] material (MATL) is absent OR a {ambient,diffuse,emissive,specular[3],specularPower}', () => {
+    const bytes = loadFixture(FIXTURE);
+    if (!bytes) {
+      console.log(`  SKIP: ${FIXTURE} not present (real fixture)`);
+      return;
+    }
+    const iff    = nativeCore.parseIff(bytes);
+    const result = nativeCore.parseShader(iff, bytes) as Record<string, unknown>;
+    const material = result['material'];
+    if (material === undefined || material === null) return; // optional — identity fallback
+
+    const m = material as Record<string, unknown>;
+    for (const key of ['ambient', 'diffuse', 'emissive', 'specular'] as const) {
+      const c = m[key];
+      expect(Array.isArray(c), `material.${key} is an array`).toBe(true);
+      expect((c as unknown[]).length, `material.${key} is rgb (len 3)`).toBe(3);
+      for (const v of c as unknown[]) expect(typeof v).toBe('number');
+    }
+    expect(typeof m['specularPower']).toBe('number');
+  });
 });
 
 // ─── parseDds — DdsParseResult contract ──────────────────────────────────────

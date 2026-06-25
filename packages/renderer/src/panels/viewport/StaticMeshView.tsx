@@ -163,6 +163,7 @@ function buildGroupMaterial(
     hasEnv:         hasEnvSlot,
     hasDot3Tangents: hasDot3,
     effectBlend,
+    material:       shaderResult?.material ?? null, // MATL spec color/power (tempers spec)
   });
 
   // Wire up texture slots from pre-fetched slotBytes (02-02 plumbed them; NO re-fetch here)
@@ -186,6 +187,8 @@ function buildGroupMaterial(
           // ENVM/SPEC/NRML stay at NoColorSpace (linear data).
           texture.colorSpace = THREE.SRGBColorSpace;
           mat.uniforms.uDiffuseMap.value = texture;
+          // DXT1/BC1 has no alpha channel → not a gloss mask; use a moderate spec default.
+          mat.uniforms.bMainHasAlpha.value = !/dxt1|bc1/i.test(String(ddsResult.format));
           break;
         case 'NRML':
         case 'CNRM': mat.uniforms.uNormalMap.value   = texture; break; // linear

@@ -59,6 +59,14 @@ struct ShtChunkView {
         pos += 4;
         return v;
     }
+    // Little-endian float32 — MATL colors are raw LE float32 (Iff read_misc = memcpy, no byteswap).
+    float readF32LE() {
+        if (!canRead(4)) throw FormatParseError("ShtChunkView: unexpected end (f32)");
+        float v;
+        std::memcpy(&v, data + pos, 4);
+        pos += 4;
+        return v;
+    }
     std::string readString() {
         std::string s;
         while (pos < size) {
@@ -174,27 +182,54 @@ static bool parseTxmSlot(
     return true;
 }
 
-// ─── parseShader (public) ─────────────────────────────────────────────────────
-
-ShaderResult parseShader(const swg_core::iff::IffNode& root,
-                          const uint8_t* srcData, uint32_t srcSize)
+// ─── MATL material colors ──────────────────────────────────────────────────────
+// MATS → FORM 0000 → MATL leaf (68 bytes = 4×VectorArgb[A,R,G,B] + specularPower).
+// We keep rgb only (drop each color's alpha). Source: Material.cpp:64-72, Iff.cpp:1732 (A,R,G,B order).
+static void readMatl(const swg_core::iff::IffNode& versionForm,
+                     const uint8_t* srcData, uint32_t srcSize,
+                     ShaderMaterial& out)
 {
-    ShaderResult result;
-
-    // root must be FORM SSHT or FORM CSHD
-    if (!root.isForm) throw FormatParseError("parseShader: root is not a FORM");
-
-    if (strncmp(root.subType, "SSHT", 4) == 0) {
-        result.variant = "SSHT";
-    } else if (strncmp(root.subType, "CSHD", 4) == 0) {
-        result.variant = "CSHD";
-    } else {
-        throw FormatParseError("parseShader: root is not FORM SSHT or CSHD");
+    const swg_core::iff::IffNode* mats = nullptr;
+    for (const auto& c : versionForm.children) {
+        if (c.isForm && strncmp(c.subType, "MATS", 4) == 0) { mats = &c; break; }
     }
+    if (!mats) return;
 
-    // Find the version FORM (0000..0004 for SSHT; for CSHD may differ)
+    // MATS → FORM 0000 → MATL leaf. Tolerate a flatter layout (MATL directly under MATS).
+    auto findMatl = [](const swg_core::iff::IffNode& form) -> const swg_core::iff::IffNode* {
+        for (const auto& c : form.children) {
+            if (!c.isForm && strncmp(c.tag, "MATL", 4) == 0) return &c;
+        }
+        return nullptr;
+    };
+    const swg_core::iff::IffNode* matl = findMatl(*mats);
+    if (!matl) {
+        for (const auto& sub : mats->children) {
+            if (sub.isForm) { matl = findMatl(sub); if (matl) break; }
+        }
+    }
+    if (!matl) return;
+
+    auto cv = shtChunkPayload(*matl, srcData, srcSize);
+    // Each VectorArgb = A,R,G,B; discard A, keep rgb.
+    auto rgb = [&](float* dst) { cv.readF32LE(); dst[0] = cv.readF32LE(); dst[1] = cv.readF32LE(); dst[2] = cv.readF32LE(); };
+    rgb(out.ambient);
+    rgb(out.diffuse);
+    rgb(out.emissive);
+    rgb(out.specular);
+    out.specularPower = cv.readF32LE();
+    out.present = true;
+}
+
+// ─── Parse a FORM SSHT body into result (slots + effectPath + material) ─────────
+// Shared by the plain-SSHT path and the CSHD path (whose nested SSHT is delegated here).
+static void parseSshtBody(const swg_core::iff::IffNode& sshtRoot,
+                          const uint8_t* srcData, uint32_t srcSize,
+                          ShaderResult& result)
+{
+    // Find the version FORM (0000..0004)
     const swg_core::iff::IffNode* versionForm = nullptr;
-    for (const auto& child : root.children) {
+    for (const auto& child : sshtRoot.children) {
         if (child.isForm) { versionForm = &child; break; }
     }
     if (!versionForm) throw FormatParseError("FORM SSHT: missing version form");
@@ -263,8 +298,48 @@ ShaderResult parseShader(const swg_core::iff::IffNode& root,
         }
     }
 
-    // For CSHD, customization vars would be in a CUST block — skip for MVP
-    // (CustomizableShaderTemplate.cpp handles that path)
+    // Material colors (MATS → MATL). Absent ⇒ material.present stays false (identity defaults).
+    readMatl(*versionForm, srcData, srcSize, result.material);
+}
+
+// ─── Find a nested FORM SSHT (depth-first) ──────────────────────────────────────
+// CSHD wraps a full SSHT: FORM CSHD → FORM 0001 → FORM SSHT → … (Source: CSHD A2).
+static const swg_core::iff::IffNode* findNestedSsht(const swg_core::iff::IffNode& node) {
+    for (const auto& c : node.children) {
+        if (c.isForm && strncmp(c.subType, "SSHT", 4) == 0) return &c;
+        if (c.isForm) { if (auto* r = findNestedSsht(c)) return r; }
+    }
+    return nullptr;
+}
+
+// ─── parseShader (public) ─────────────────────────────────────────────────────
+
+ShaderResult parseShader(const swg_core::iff::IffNode& root,
+                          const uint8_t* srcData, uint32_t srcSize)
+{
+    ShaderResult result;
+
+    if (!root.isForm) throw FormatParseError("parseShader: root is not a FORM");
+
+    if (strncmp(root.subType, "SSHT", 4) == 0) {
+        result.variant = "SSHT";
+        parseSshtBody(root, srcData, srcSize, result);
+    } else if (strncmp(root.subType, "CSHD", 4) == 0) {
+        // CSHD wraps a full SSHT (material + texture maps) + customization. Delegate to the
+        // shared SSHT body so slots/material come through in plain-SSHT shape (the resolver's
+        // texture-fetch path needs no change). Keep variant='CSHD'. The CSHD-level palette/
+        // texture-factor customization (TFAC/MATR/TXTR) is a tracked follow-up — until wired,
+        // the base diffuse renders (no longer a white 1×1 fallback).
+        result.variant = "CSHD";
+        const swg_core::iff::IffNode* nestedSsht = findNestedSsht(root);
+        if (nestedSsht) {
+            parseSshtBody(*nestedSsht, srcData, srcSize, result);
+        }
+    } else {
+        throw FormatParseError("parseShader: root is not FORM SSHT or CSHD");
+    }
+
+    // CSHD customization vars (CUST/TFAC/MATR) — not parsed yet (tracked follow-up).
     result.customizationVars.clear();
 
     return result;

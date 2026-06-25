@@ -62,6 +62,18 @@ export interface SwgMaterialOptions {
     alphaTestRef: number;
     zWrite: boolean;
   } | null;
+  /**
+   * MATL material colors (from ShaderParseResult.material). Only specular + specularPower are
+   * consumed: spec is scaled by materialSpecularColor (per a_specmap_pp_ps20.psh) so skin/matte
+   * surfaces aren't over-shiny, and the Phong exponent comes from MATL instead of a hardcoded 32.
+   * Undefined ⇒ identity defaults (specular white, power 32) which preserve prior renders.
+   * (ambient/diffuse/emissive are intentionally NOT applied — identity/zero in all measured
+   * character shaders; wiring them adds risk with no visible gain.)
+   */
+  material?: {
+    specular: [number, number, number];
+    specularPower: number;
+  } | null;
 }
 
 // ─── GLSL source ──────────────────────────────────────────────────────────────
@@ -149,6 +161,8 @@ uniform vec4 uTexFactor;
 
 // ─── Surface uniforms ─────────────────────────────────────────────────────────
 uniform float uSpecPower;
+uniform vec3  uMatSpecular;   // = MATL.specularColor.rgb (identity = white); tempers the spec term
+uniform bool bMainHasAlpha;   // false when MAIN is DXT1/no-alpha (its alpha is NOT a gloss mask)
 uniform bool bHasNormal;
 uniform bool bHasSpec;
 uniform bool bHasEmissive;
@@ -164,6 +178,7 @@ ${hasDot3Tangents ? 'varying vec4 vTangent;' : ''}
 void main() {
   // ─── Normal ────────────────────────────────────────────────────────────────
   vec3 N = normalize(vNormal);
+  vec3 geoN = N;   // smooth geometric (pre-normal-map) normal — used to tame specular
   if (bHasNormal) {
     vec3 tangentSpaceNormal = texture2D(uNormalMap, vUv).xyz * 2.0 - 1.0;
 ${hasDot3Tangents ? `
@@ -186,6 +201,14 @@ ${hasDot3Tangents ? `
       N = normalize(TBN * tangentSpaceNormal);
     }
 `}
+    // Normal-map LOD fade — fixes the distance-dependent "line / weird pattern on the face"
+    // (visible zoomed out, perfect up close). Under minification each pixel spans many texels,
+    // the derivative TBN samples across them, and the high-frequency normal map aliases into
+    // patterns. Fade the bumped normal toward the smooth geometric normal as the surface
+    // minifies (large screen-space UV gradient) — full bump detail close, clean shading far.
+    float uvGrad   = max(length(dFdx(vUv)), length(dFdy(vUv)));
+    float bumpFade = 1.0 - smoothstep(0.006, 0.025, uvGrad);   // 1 = up close, 0 = far/minified
+    N = normalize(mix(geoN, N, bumpFade));
   }
 
   // ─── Diffuse sample ────────────────────────────────────────────────────────
@@ -195,7 +218,9 @@ ${hasDot3Tangents ? `
   vec4 diffuseSample = texture2D(uDiffuseMap, vUv);
 
   // ─── Lighting setup ───────────────────────────────────────────────────────
-  // SWG directional light (normalised) + ambient floor
+  // SWG directional light (normalised) + ambient floor. (The proper scene light rig is the
+  // VIEW-MAT-FIDELITY pass; a camera-relative variant was used briefly to confirm the face
+  // artifact was texture, not lighting — see normal-map LOD fade above.)
   vec3 lightDir = normalize(vec3(1.0, 1.0, 0.5));
   float NdotL   = max(dot(N, lightDir), 0.0);
   // Half-vector for Blinn-Phong specular (FIX 3/4 use V+L, not R)
@@ -211,7 +236,13 @@ ${hasDot3Tangents ? `
     emisMask = texture2D(uEmissiveMap, vUv).a;
   }
   // The old separate finalColor += emisSample is REMOVED; self-illum is inside the clamp.
-  vec3 allDiffuse = clamp(vec3(0.3) + NdotL * vec3(0.7) + vec3(emisMask), 0.0, 1.0);
+  // Ambient floor = 0.40 (was 0.30): the real client's shadow side is lifted by the per-vertex
+  // ambient+fill+bounce term (vertexDiffuse ≈ 0.38-0.42 outdoor midday), not a flat 0.30 — our
+  // crushed dark side was simply the floor being too low. NdotL scale drops to 0.60 so the lit
+  // side still peaks at exactly 1.0 at NdotL=1 (no overflow, lit side + spec/env unchanged).
+  // NOTE: a full hemispheric model (colored sky/ground) needs scene-derived ambient color we
+  // don't have yet — for a neutral viewer it collapses to this raised floor (see VIEW-MAT-FIDELITY).
+  vec3 allDiffuse = clamp(vec3(0.40) + NdotL * vec3(0.60) + vec3(emisMask), 0.0, 1.0);
 
   // ─── FIX 3 — Env reflection is mix(), not additive ────────────────────────
   // Real HLSL (a_envmask_specmap_ps20.psh): result.rgb = lerp(litSurface, envColor, envMask) + specLight
@@ -230,8 +261,26 @@ ${hasDot3Tangents ? `
   // when NdotL <= 0 (no highlight on faces turned away from the light). Without this gate a
   // grazing/incorrect normal produced a spurious highlight that — added on top of a saturating
   // diffuse and ACES-tonemapped — clipped to WHITE at the deformed part seams.
-  float specInt  = NdotL > 0.0 ? pow(max(dot(N, H), 0.0), uSpecPower) : 0.0;
-  vec3  spec     = specInt * vec3(envMask);  // masked by gloss channel
+  // Faithful spec (a_specmap_pp_ps20.psh): allSpecular = (specInt * lightSpecColor *
+  // materialSpecularColor) * specularMask. lightSpecColor is white in this viewport; the
+  // material specular color (uMatSpecular, from MATL) tempers the highlight so skin/matte
+  // surfaces aren't blasted to full-intensity white. specularMask = MAIN.alpha (envMask).
+  // specularMask = MAIN.alpha — BUT only when MAIN actually HAS an alpha channel. A DXT1
+  // (no-alpha) diffuse samples alpha as 1.0, which is the ABSENCE of a gloss map, not a
+  // full-gloss surface. Treating that 1.0 as a mask blasts skin/matte DXT1 surfaces with
+  // full specular (the over-bright Han Solo face: face=DXT1 no-alpha vs body=DXT5 mask≈0.6,
+  // measured 1.64× peak spec). When there's no real mask, fall back to a moderate default
+  // (~0.5 ≈ a typical authored gloss value) instead of 1.0 — keeps a modest highlight (small
+  // DXT1 bits like eyes) without blowing out large skin surfaces.
+  float specMask = bMainHasAlpha ? envMask : 0.5;
+  // Specular uses a LESS-perturbed normal than diffuse. Our no-DOT3 path reconstructs the TBN
+  // from screen-space derivatives (dFdx/dFdy), which jitter on curved/detailed normal maps and
+  // make a single texel swing dot(N,H) toward 1 → firefly spec hotspots (bright patches on
+  // shins/arms). Blending the bumped normal back toward the smooth geometric normal for the
+  // SPEC lobe only kills those hotspots while diffuse keeps full normal-map detail.
+  vec3  Nspec    = bHasNormal ? normalize(mix(geoN, N, 0.55)) : N;
+  float specInt  = NdotL > 0.0 ? pow(max(dot(Nspec, H), 0.0), uSpecPower) : 0.0;
+  vec3  spec     = specInt * uMatSpecular * specMask;  // material-tempered, gloss-masked
 
   // Env cube LERP (FIX 3): mix towards env only where gloss mask is high.
   // When bHasEnv=false: blend weight = 0.0 → pure litSurface (a_simple path).
@@ -328,7 +377,15 @@ export function buildSwgMaterial(opts: SwgMaterialOptions): THREE.ShaderMaterial
     hasEnv,
     hasDot3Tangents,
     effectBlend,
+    material: matlColors,
   } = opts;
+
+  // MATL material specular (rgb) + Phong power. Defaults preserve prior renders when MATL is
+  // absent: white specular (matches the old un-tempered look) and the old hardcoded power 32.
+  const matSpec = matlColors?.specular ?? [1, 1, 1];
+  const matSpecPower = (matlColors?.specularPower && matlColors.specularPower > 0)
+    ? matlColors.specularPower
+    : 32.0;
 
   // Blend state from .eft effect (gap-closure 02-03).
   // Default = opaque (no alpha blend, no alpha test, depth write on).
@@ -364,7 +421,10 @@ export function buildSwgMaterial(opts: SwgMaterialOptions): THREE.ShaderMaterial
       uTexFactor: { value: new THREE.Vector4(1, 1, 1, 1) },
 
       // Surface
-      uSpecPower: { value: 32.0 },
+      uSpecPower:    { value: matSpecPower },
+      uMatSpecular:  { value: new THREE.Vector3(matSpec[0], matSpec[1], matSpec[2]) },
+      // Default true; the mesh view sets false when the bound MAIN DDS has no alpha channel.
+      bMainHasAlpha: { value: true },
 
       // Bool flags (driven from opts, not changed at runtime)
       bHasNormal:   { value: hasNormal },

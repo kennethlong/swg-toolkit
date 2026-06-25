@@ -365,6 +365,25 @@ Napi::Value ParseShader(const Napi::CallbackInfo& info) {
     // customizationVars (empty for MVP)
     result.Set("customizationVars", Napi::Array::New(env, 0));
 
+    // material (MATL colors). Present only when a readable MATL was found; absent ⇒ JS sees
+    // undefined and falls back to identity (specular white / power 32) preserving prior renders.
+    if (shaderResult.material.present) {
+        auto vec3 = [&](const float* f) {
+            auto a = Napi::Array::New(env, 3);
+            a.Set(0u, Napi::Number::New(env, f[0]));
+            a.Set(1u, Napi::Number::New(env, f[1]));
+            a.Set(2u, Napi::Number::New(env, f[2]));
+            return a;
+        };
+        auto m = Napi::Object::New(env);
+        m.Set("ambient",       vec3(shaderResult.material.ambient));
+        m.Set("diffuse",       vec3(shaderResult.material.diffuse));
+        m.Set("emissive",      vec3(shaderResult.material.emissive));
+        m.Set("specular",      vec3(shaderResult.material.specular));
+        m.Set("specularPower", Napi::Number::New(env, shaderResult.material.specularPower));
+        result.Set("material", m);
+    }
+
     return result;
 }
 

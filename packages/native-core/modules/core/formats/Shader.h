@@ -51,12 +51,28 @@ struct ShaderCustomizationVar {
     std::string affectedSlot;   // optional slot name this var affects
 };
 
+/**
+ * MATL material colors (MATS → FORM 0000 → MATL chunk). Disk layout: 4×VectorArgb
+ * (A,R,G,B float32) + 1 specularPower = 17 LE float32 = 68 bytes. We keep rgb only
+ * (the per-color alpha is unused; the spec mask is MAIN.alpha). Source: Material.cpp:64-72.
+ * Defaults below = the fixed-function identity that preserves prior renders when MATL is absent.
+ */
+struct ShaderMaterial {
+    bool  present = false;
+    float ambient[3]  = {1.0f, 1.0f, 1.0f};
+    float diffuse[3]  = {1.0f, 1.0f, 1.0f};
+    float emissive[3] = {0.0f, 0.0f, 0.0f};
+    float specular[3] = {1.0f, 1.0f, 1.0f};
+    float specularPower = 32.0f;
+};
+
 struct ShaderResult {
     std::string                         variant;    // 'SSHT' or 'CSHD'
     std::string                         version;    // e.g. '0004'
     std::string                         effectPath; // the .eft effect path (from EFCT/PIXL/VTXS block)
     std::vector<ShaderSlot>             slots;
     std::vector<ShaderCustomizationVar> customizationVars;
+    ShaderMaterial                      material;   // present=false when no readable MATL
 };
 
 // ─── Public API ───────────────────────────────────────────────────────────────

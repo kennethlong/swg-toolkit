@@ -140,6 +140,37 @@ export function buildDdsTexture(
     return { texture: tex, cpuDecoded: false, formatLabel };
   }
 
+  // ─── 2D uncompressed 32-bit path (RGBA8) — e.g. normal maps ────────────────
+  // SWG ships normal/lookup maps as uncompressed 32-bit DDS. There was NO path for this:
+  // they fell through to makeMagenta1x1(), so every uncompressed normal map rendered as a
+  // 1×1 magenta texel → a constant bogus tangent normal (1,-1,1) → the distance-dependent
+  // face artifacts. Fix: upload the real pixels, mipmapped, so they don't alias when minified.
+  //
+  // Byte order: D3D9 A8R8G8B8 stores BGRA on disk (verified: flat-normal Z is in byte[0]).
+  // THREE RGBAFormat expects byte0=R, so swap B<->R. GPU-generated mips (generateMipmaps) +
+  // trilinear + anisotropy give clean minification (the normal map is mostly flat so box-filter
+  // mips are fine). All SWG uncompressed textures are A8R8G8B8 — if an A8B8G8R8 file ever appears
+  // it would need mask-based handling (parser would have to expose the channel masks).
+  if (formatStr === 'RGBA8') {
+    const src = new Uint8Array(bytes, mip0.offset, mip0.byteLength);
+    const rgba = new Uint8Array(src.length);
+    for (let i = 0; i + 3 < src.length; i += 4) {
+      rgba[i]     = src[i + 2]!; // R <- B
+      rgba[i + 1] = src[i + 1]!; // G
+      rgba[i + 2] = src[i]!;     // B <- R
+      rgba[i + 3] = src[i + 3]!; // A
+    }
+    const tex = new THREE.DataTexture(rgba, dds.width, dds.height, THREE.RGBAFormat);
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true; // GPU box-filter mip chain (NPOT ok in WebGL2)
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.needsUpdate = true;
+    return { texture: tex, cpuDecoded: true, formatLabel };
+  }
+
   // ─── CPU decode fallback ─────────────────────────────────────────────────
   if (!s3tc) {
     const store = useViewportStore.getState();
