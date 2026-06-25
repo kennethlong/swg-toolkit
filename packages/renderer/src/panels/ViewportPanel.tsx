@@ -21,6 +21,7 @@ import LodPicker from './viewport/LodPicker.js';
 import AppearancePanel from './viewport/AppearancePanel.js';
 import CustomizationPanel from './viewport/CustomizationPanel.js';
 import MaterialInspector from './viewport/MaterialInspector.js';
+import AnimationTransport from './viewport/AnimationTransport.js';
 import { MissingDepsOverlay } from './viewport/Viewport.js';
 import type { FrameStats } from './viewport/Viewport.js';
 
@@ -32,7 +33,7 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
   const [stats, setStats] = useState<FrameStats>({ verts: 0, tris: 0, draws: 0 });
   const [showSidePanels, setShowSidePanels] = useState(false);
 
-  const { renderMode, setRenderMode, selectedLod, setSelectedLod, resolution, loadStatus } = useViewportStore();
+  const { renderMode, setRenderMode, selectedLod, setSelectedLod, resolution, loadStatus, isSkinned } = useViewportStore();
 
   const dims = '1280×800'; // Phase 0 placeholder
 
@@ -159,6 +160,22 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
 
       {/* Missing-deps warning overlay (⚠ banner per D-04) */}
       {isDone && <MissingDepsOverlay />}
+
+      {/* Animation transport bar — Surface 5 (VIEW-03 / D-08) */}
+      {/* Shown for skinned meshes; AnimationTransport handles the no-skeleton state internally */}
+      {isSkinned && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 24, // above the stats overlay (stats are at bottom: 8)
+            left: 0,
+            right: 0,
+            zIndex: 3,
+          }}
+        >
+          <AnimationTransport />
+        </div>
+      )}
 
       {/* Top-left: render mode chips */}
       <div

@@ -13,7 +13,7 @@
  */
 
 import { create } from 'zustand';
-import type { MeshParseResult, SkeletonParseResult } from '@swg/contracts';
+import type { MeshParseResult, SkeletonParseResult, AnimationParseResult } from '@swg/contracts';
 import type { AppearanceResolutionResult } from '../panels/viewport/resolver/appearanceResolver.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -63,6 +63,40 @@ export interface ViewportStore {
 
   /** Animation transport state. */
   transportState: TransportState;
+
+  // ─── Animation (VIEW-03 / D-08) ──────────────────────────────────────────
+
+  /**
+   * Currently loaded animation parse result (CKAT-0001 or KFAT-0003).
+   * Null when no animation is selected or KFAT-0002-unsupported is returned.
+   * Note: the keyframe ArrayBuffer is carried on the native AnimationParseResult from
+   * the N-API bridge; this field stores the full result including the .keyframes ArrayBuffer
+   * and .channelTable. The binary data stays binary (not JSON).
+   */
+  parsedAnimation: AnimationParseResult & {
+    keyframes: ArrayBuffer;
+    channelTable: {
+      rotationChannels: Array<{ byteOffset: number; keyCount: number }>;
+      staticRotByteOffset: number;
+      staticRotationCount: number;
+      translationChannels: Array<{ byteOffset: number; keyCount: number }>;
+      staticTransByteOffset: number;
+      staticTranslationCount: number;
+    };
+  } | null;
+
+  /**
+   * Whether the THREE.SkeletonHelper bone wire is visible in the viewport.
+   * Toggled by the ⊹ skeleton-helper chip in AnimationTransport.
+   */
+  skeletonHelperVisible: boolean;
+
+  /**
+   * VFS paths for .ans files available for the loaded skeleton.
+   * Populated from the LATX animation-table mapping (or heuristic fallback).
+   * Used to populate the AnimationTransport .ans picker dropdown.
+   */
+  ansPickerOptions: string[];
 
   // ─── Source-entry fields (for Extract in 02-05 + resolver) ───────────────
 
@@ -120,6 +154,21 @@ export interface ViewportStore {
   /** Record S3TC unavailability warning (called once from ddsTexture.ts). */
   setS3tcWarning: (msg: string) => void;
 
+  /** Set the current animation (CKAT-0001 or KFAT-0003 parse result + binary buffers). */
+  setParsedAnimation: (anim: ViewportStore['parsedAnimation']) => void;
+
+  /** Clear the current animation and reset transport to frame 0. */
+  clearAnimation: () => void;
+
+  /** Show/hide the THREE.SkeletonHelper bone wire overlay. */
+  setSkeletonHelperVisible: (visible: boolean) => void;
+
+  /**
+   * Set the list of .ans VFS paths available for the loaded skeleton.
+   * Called by the appearance resolver when a skeleton loads (from LATX chain or heuristic).
+   */
+  setAnsPickerOptions: (paths: string[]) => void;
+
   /** Reset to idle. */
   reset: () => void;
 }
@@ -137,20 +186,23 @@ const initialTransportState: TransportState = {
 // ─── Store implementation ─────────────────────────────────────────────────────
 
 export const useViewportStore = create<ViewportStore>((set) => ({
-  loadStatus:           { kind: 'idle' },
-  resolution:           null,
-  parsedMesh:           null,
-  parsedSkeleton:       null,
-  isSkinned:            false,
-  selectedLod:          0,
-  renderMode:           'textured',
-  customizationIndices: {},
-  transportState:       initialTransportState,
-  s3tcWarning:          null,
-  sourceMountHandle:    null,
-  sourceArchiveIndex:   null,
-  sourceEntryIndex:     null,
-  sourceEntryPath:      null,
+  loadStatus:            { kind: 'idle' },
+  resolution:            null,
+  parsedMesh:            null,
+  parsedSkeleton:        null,
+  isSkinned:             false,
+  selectedLod:           0,
+  renderMode:            'textured',
+  customizationIndices:  {},
+  transportState:        initialTransportState,
+  parsedAnimation:       null,
+  skeletonHelperVisible: false,
+  ansPickerOptions:      [],
+  s3tcWarning:           null,
+  sourceMountHandle:     null,
+  sourceArchiveIndex:    null,
+  sourceEntryIndex:      null,
+  sourceEntryPath:       null,
 
   beginLoad: (filename, mountHandle, archiveIndex, entryIndex, entryPath) =>
     set({
@@ -159,6 +211,8 @@ export const useViewportStore = create<ViewportStore>((set) => ({
       parsedMesh:         null,
       parsedSkeleton:     null,
       isSkinned:          false,
+      parsedAnimation:    null,
+      ansPickerOptions:   [],
       sourceMountHandle:  mountHandle,
       sourceArchiveIndex: archiveIndex,
       sourceEntryIndex:   entryIndex,
@@ -199,21 +253,40 @@ export const useViewportStore = create<ViewportStore>((set) => ({
 
   setS3tcWarning: (msg) => set({ s3tcWarning: msg }),
 
+  setParsedAnimation: (anim) =>
+    set({
+      parsedAnimation: anim,
+      transportState:  { ...initialTransportState, totalFrames: anim?.frameCount ?? 0 },
+    }),
+
+  clearAnimation: () =>
+    set({
+      parsedAnimation: null,
+      transportState:  initialTransportState,
+    }),
+
+  setSkeletonHelperVisible: (visible) => set({ skeletonHelperVisible: visible }),
+
+  setAnsPickerOptions: (paths) => set({ ansPickerOptions: paths }),
+
   reset: () =>
     set({
-      loadStatus:           { kind: 'idle' },
-      resolution:           null,
-      parsedMesh:           null,
-      parsedSkeleton:       null,
-      isSkinned:            false,
-      selectedLod:          0,
-      renderMode:           'textured',
-      customizationIndices: {},
-      transportState:       initialTransportState,
-      s3tcWarning:          null,
-      sourceMountHandle:    null,
-      sourceArchiveIndex:   null,
-      sourceEntryIndex:     null,
-      sourceEntryPath:      null,
+      loadStatus:            { kind: 'idle' },
+      resolution:            null,
+      parsedMesh:            null,
+      parsedSkeleton:        null,
+      isSkinned:             false,
+      selectedLod:           0,
+      renderMode:            'textured',
+      customizationIndices:  {},
+      transportState:        initialTransportState,
+      parsedAnimation:       null,
+      skeletonHelperVisible: false,
+      ansPickerOptions:      [],
+      s3tcWarning:           null,
+      sourceMountHandle:     null,
+      sourceArchiveIndex:    null,
+      sourceEntryIndex:      null,
+      sourceEntryPath:       null,
     }),
 }));

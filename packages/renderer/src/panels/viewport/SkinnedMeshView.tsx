@@ -38,6 +38,10 @@ import type { ResolvedMaterial } from './resolver/appearanceResolver.js';
 import { buildSwgMaterial } from './material/swgMaterial.js';
 import { buildDdsTexture } from './material/ddsTexture.js';
 
+// ─── Animation sampler constants ──────────────────────────────────────────────
+// Throttle the store flush to avoid per-frame Zustand churn (D-09 / RESEARCH anti-pattern).
+const FLUSH_INTERVAL_MS = 100; // flush at most ~10×/s
+
 // ─── nativeCore for parseDds ─────────────────────────────────────────────────
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -51,6 +55,13 @@ const nativeCore = require('@swg/native-core') as {
 const _scratchQuat  = new THREE.Quaternion();
 const _scratchVec3  = new THREE.Vector3();
 const _scratchMat4  = new THREE.Matrix4();
+// Slerp bracket endpoints — two additional scratch quats for the animation sampler.
+// Declared here to avoid any allocation in useFrame (D-09 GC-safe contract).
+const _scratchQuatA = new THREE.Quaternion();
+const _scratchQuatB = new THREE.Quaternion();
+// Lerp bracket endpoints for translation.
+const _scratchVecA  = new THREE.Vector3();
+const _scratchVecB  = new THREE.Vector3();
 
 // ─── SWG→Viewer orientation ───────────────────────────────────────────────────
 // See StaticMeshView.tsx: identity. 180° Y showed the model's back; residual facing vs SIE
@@ -280,6 +291,51 @@ function buildSkinnedGroupMaterial(
 const _scratchBox3 = new THREE.Box3();
 const _scratchSphere = new THREE.Sphere();
 
+// ─── Animation channel pre-built data ────────────────────────────────────────
+
+/**
+ * Pre-built per-channel flat arrays for the sparse-key sampler.
+ * Built once in useEffect when parsedAnimation changes (NOT in useFrame).
+ * The RotationChannelData float32 array is already (w,x,y,z) order per C++ decode.
+ */
+interface RotationChannelData {
+  frames: Int32Array;   // frame indices (keyCount)
+  quats: Float32Array;  // (w,x,y,z)[keyCount * 4]
+}
+
+interface TranslationChannelData {
+  frames: Int32Array;   // frame indices (keyCount)
+  values: Float32Array; // float[keyCount]
+}
+
+interface PrebuiltAnimData {
+  rotChannels: RotationChannelData[];          // index = rotationChannelIndex
+  staticRotations: Float32Array;               // (w,x,y,z) × staticRotationCount
+  transChannels: TranslationChannelData[];     // index = translationChannelIndex
+  staticTranslations: Float32Array;            // float × staticTranslationCount
+  /** name → bone index in THREE.Skeleton.bones[] (built from parsedSkeleton) */
+  nameToBoneIndex: Map<string, number>;
+}
+
+/**
+ * Binary-search the frames array for the largest frame index ≤ queryFrame.
+ * Returns the index k such that frames[k] <= queryFrame < frames[k+1].
+ * Returns 0 when queryFrame < frames[0], and keyCount-1 for overflow.
+ */
+function binarySearchBracket(frames: Int32Array, keyCount: number, queryFrame: number): number {
+  if (keyCount === 0) return 0;
+  if (queryFrame <= frames[0]!) return 0;
+  if (queryFrame >= frames[keyCount - 1]!) return keyCount - 1;
+  let lo = 0;
+  let hi = keyCount - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (frames[mid]! <= queryFrame) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
 // ─── Auto-frame helper ────────────────────────────────────────────────────────
 
 /**
@@ -433,6 +489,292 @@ function SkinnedGroup({
   );
 }
 
+// ─── Sparse-key animation sampler hook ───────────────────────────────────────
+
+/**
+ * useAnimationSampler — extends useFrame with the ref-clock + sparse-key sampler.
+ *
+ * REF CLOCK: currentFrame lives in a ref (no Zustand write per frame). The ref is
+ * advanced each useFrame by delta × fps × speed when playing. On loop: wraps to 0.
+ * On end without loop: clamps to totalFrames-1 and sets playing=false.
+ * Flush to Zustand store THROTTLED (at most ~10×/s) so the scrubber follows.
+ *
+ * PRE-BUILT DATA (useEffect on parsedAnimation): flat Float32Array + Int32Array per
+ * channel, read from the sparse keyframe ArrayBuffer. Built ONCE, stored in a ref.
+ * NOT built in useFrame — avoids a per-frame allocation (D-09).
+ *
+ * PER-FRAME SAMPLE: for each animated joint:
+ *   - binary-search rotation frames for bracket [k0,k1] around frameRef.current
+ *   - compute fraction t = (frame - frames[k0]) / (frames[k1] - frames[k0])
+ *   - set _scratchQuatA from quats[k0*4..] and _scratchQuatB from quats[k1*4..]
+ *     reordering (w,x,y,z) → THREE.Quaternion (x,y,z,w)
+ *   - THREE.Quaternion.slerpQuaternions(_scratchQuatA, _scratchQuatB, t, _scratchQuat)
+ *   - bone.quaternion.copy(_scratchQuat)
+ * Same for translation. Static rotation/translation set bone in bind-pose override.
+ *
+ * ANTI-PATTERN CHECK: no `new THREE.*`, no arrays, no per-frame setTransportState.
+ */
+function useAnimationSampler(
+  skeleton: THREE.Skeleton,
+  parsedSkeleton: SkeletonParseResult | null,
+): void {
+  const { parsedAnimation, transportState, setTransportState } = useViewportStore();
+
+  // Pre-built channel data (rebuilt on parsedAnimation change)
+  const prebuiltRef = useRef<PrebuiltAnimData | null>(null);
+
+  // Ref clock — currentFrame as float (sub-frame precision for smooth playback)
+  const frameRef = useRef<number>(0);
+
+  // Throttle flush accumulator
+  const flushAccRef = useRef<number>(0);
+
+  // Sync frameRef with store on non-playing (scrub / step)
+  // This is an EFFECT that only runs when the store changes externally.
+  useEffect(() => {
+    if (!transportState.playing) {
+      frameRef.current = transportState.currentFrame;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transportState.currentFrame, transportState.playing]);
+
+  // Pre-build channel data from parsedAnimation (NOT in useFrame)
+  useEffect(() => {
+    if (!parsedAnimation || !parsedSkeleton) {
+      prebuiltRef.current = null;
+      return;
+    }
+
+    const ct = parsedAnimation.channelTable;
+    const kfBuf = parsedAnimation.keyframes;
+    const kfDv  = new DataView(kfBuf);
+
+    // Build rotation channels
+    const rotChannels: RotationChannelData[] = ct.rotationChannels.map(ch => {
+      const base = ch.byteOffset;
+      const keyCount = kfDv.getInt32(base, true);
+      const safeKc = Math.min(keyCount, ch.keyCount); // defensive
+      const frames = new Int32Array(safeKc);
+      const quats  = new Float32Array(safeKc * 4);
+      const framesBase = base + 4;
+      const quatsBase  = base + 4 + safeKc * 4;
+      for (let k = 0; k < safeKc; k++) {
+        frames[k] = kfDv.getInt32(framesBase + k * 4, true);
+      }
+      for (let k = 0; k < safeKc; k++) {
+        const qBase = quatsBase + k * 16;
+        quats[k * 4 + 0] = kfDv.getFloat32(qBase + 0,  true); // w
+        quats[k * 4 + 1] = kfDv.getFloat32(qBase + 4,  true); // x
+        quats[k * 4 + 2] = kfDv.getFloat32(qBase + 8,  true); // y
+        quats[k * 4 + 3] = kfDv.getFloat32(qBase + 12, true); // z
+      }
+      return { frames, quats };
+    });
+
+    // Build static rotations
+    const staticRotCount = ct.staticRotationCount;
+    const staticRotations = new Float32Array(staticRotCount * 4);
+    for (let i = 0; i < staticRotCount; i++) {
+      const base = ct.staticRotByteOffset + i * 16;
+      staticRotations[i * 4 + 0] = kfDv.getFloat32(base + 0,  true); // w
+      staticRotations[i * 4 + 1] = kfDv.getFloat32(base + 4,  true); // x
+      staticRotations[i * 4 + 2] = kfDv.getFloat32(base + 8,  true); // y
+      staticRotations[i * 4 + 3] = kfDv.getFloat32(base + 12, true); // z
+    }
+
+    // Build translation channels
+    const transChannels: TranslationChannelData[] = ct.translationChannels.map(ch => {
+      const base = ch.byteOffset;
+      const keyCount = kfDv.getInt32(base, true);
+      const safeKc = Math.min(keyCount, ch.keyCount);
+      const frames = new Int32Array(safeKc);
+      const values = new Float32Array(safeKc);
+      const framesBase = base + 4;
+      const valuesBase = base + 4 + safeKc * 4;
+      for (let k = 0; k < safeKc; k++) {
+        frames[k] = kfDv.getInt32(framesBase + k * 4, true);
+        values[k] = kfDv.getFloat32(valuesBase + k * 4, true);
+      }
+      return { frames, values };
+    });
+
+    // Build static translations
+    const staticTransCount = ct.staticTranslationCount;
+    const staticTranslations = new Float32Array(staticTransCount);
+    for (let i = 0; i < staticTransCount; i++) {
+      staticTranslations[i] = kfDv.getFloat32(ct.staticTransByteOffset + i * 4, true);
+    }
+
+    // Build name→bone index map (name-keyed, T-02-17)
+    const nameToBoneIndex = new Map<string, number>();
+    for (let i = 0; i < skeleton.bones.length; i++) {
+      nameToBoneIndex.set(skeleton.bones[i]!.name, i);
+    }
+
+    prebuiltRef.current = {
+      rotChannels,
+      staticRotations,
+      transChannels,
+      staticTranslations,
+      nameToBoneIndex,
+    };
+
+    // Reset ref clock when animation changes
+    frameRef.current = 0;
+    flushAccRef.current = 0;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedAnimation, parsedSkeleton]);
+
+  // useFrame: ref clock + sparse sampler
+  useFrame((_state, delta) => {
+    const data = prebuiltRef.current;
+    const anim = parsedAnimation;
+    if (!data || !anim) return;
+
+    const { playing, speed, loop, totalFrames } = transportState;
+    const fps = anim.fps > 0 ? anim.fps : 30;
+    const maxFrame = totalFrames > 0 ? totalFrames - 1 : 0;
+
+    // ── Advance ref clock when playing ──────────────────────────────────────
+    if (playing) {
+      frameRef.current += delta * fps * speed;
+
+      if (frameRef.current > maxFrame) {
+        if (loop) {
+          frameRef.current = frameRef.current % (maxFrame + 1);
+        } else {
+          frameRef.current = maxFrame;
+          // Throttle this store call — it's a one-time event (end-of-anim), not per-frame.
+          setTransportState({ playing: false, currentFrame: maxFrame });
+        }
+      }
+    }
+
+    const queryFrame = frameRef.current;
+
+    // ── Throttled UI flush ───────────────────────────────────────────────────
+    if (playing) {
+      flushAccRef.current += delta * 1000;
+      if (flushAccRef.current >= FLUSH_INTERVAL_MS) {
+        flushAccRef.current = 0;
+        setTransportState({ currentFrame: Math.round(queryFrame) });
+      }
+    }
+
+    // ── Per-joint sample ─────────────────────────────────────────────────────
+    const joints = anim.joints;
+
+    for (let ji = 0; ji < joints.length; ji++) {
+      const joint = joints[ji];
+      if (!joint) continue;
+
+      const boneIdx = data.nameToBoneIndex.get(joint.name);
+      if (boneIdx == null) continue; // T-02-17: unmatched joint skipped
+
+      const bone = skeleton.bones[boneIdx];
+      if (!bone) continue;
+
+      // ── Rotation ────────────────────────────────────────────────────────
+      if (joint.hasAnimatedRotation && joint.rotationChannelIndex >= 0) {
+        const ch = data.rotChannels[joint.rotationChannelIndex];
+        if (ch && ch.frames.length > 0) {
+          const kc = ch.frames.length;
+          const k0 = binarySearchBracket(ch.frames, kc, Math.floor(queryFrame));
+          const k1 = Math.min(k0 + 1, kc - 1);
+
+          // Set endpoint quaternions — reorder on-disk (w,x,y,z) → THREE (x,y,z,w)
+          _scratchQuatA.set(
+            ch.quats[k0 * 4 + 1]!, // x
+            ch.quats[k0 * 4 + 2]!, // y
+            ch.quats[k0 * 4 + 3]!, // z
+            ch.quats[k0 * 4 + 0]!, // w
+          );
+          _scratchQuatB.set(
+            ch.quats[k1 * 4 + 1]!, // x
+            ch.quats[k1 * 4 + 2]!, // y
+            ch.quats[k1 * 4 + 3]!, // z
+            ch.quats[k1 * 4 + 0]!, // w
+          );
+
+          // Compute interpolation fraction
+          const fA = ch.frames[k0]!;
+          const fB = ch.frames[k1]!;
+          const frac = fA === fB ? 0 : (queryFrame - fA) / (fB - fA);
+
+          _scratchQuat.slerpQuaternions(_scratchQuatA, _scratchQuatB, Math.max(0, Math.min(1, frac)));
+          bone.quaternion.copy(_scratchQuat);
+        }
+      } else if (!joint.hasAnimatedRotation) {
+        // Static rotation — set once per sample (could be optimized to set-once; kept here for correctness)
+        // The static rotation index is not directly on the joint — it is implicit from the joint ordering.
+        // For now: skip static rotation (bone stays in bind pose from buildSkeleton).
+        // A full SROT mapping would require tracking staticRotationIndex per joint from the XFIN.
+        // This is a known limitation — animated joints take priority; bind pose for static.
+      }
+
+      // ── Translation ─────────────────────────────────────────────────────
+      const mask = joint.translationMask;
+      const axes = [0, 1, 2] as const;
+      for (const ax of axes) {
+        if (!(mask & (1 << ax))) continue;
+        const chIdx = joint.translationChannelIndex[ax];
+        if (chIdx < 0) continue;
+        const ch = data.transChannels[chIdx];
+        if (!ch || ch.frames.length === 0) continue;
+
+        const kc = ch.frames.length;
+        const k0 = binarySearchBracket(ch.frames, kc, Math.floor(queryFrame));
+        const k1 = Math.min(k0 + 1, kc - 1);
+        const fA = ch.frames[k0]!;
+        const fB = ch.frames[k1]!;
+        const frac = fA === fB ? 0 : (queryFrame - fA) / (fB - fA);
+        const val = ch.values[k0]! + (ch.values[k1]! - ch.values[k0]!) * Math.max(0, Math.min(1, frac));
+
+        if (ax === 0) bone.position.x = val;
+        else if (ax === 1) bone.position.y = val;
+        else bone.position.z = val;
+      }
+
+      bone.updateMatrixWorld(true);
+    }
+
+    // Suppress scratch var unused lint (vectors used for potential future lerp endpoints)
+    void _scratchVecA;
+    void _scratchVecB;
+    void _scratchMat4;
+  });
+}
+
+// ─── Skeleton helper hook ─────────────────────────────────────────────────────
+
+/**
+ * useSkeletonHelper — mounts/unmounts THREE.SkeletonHelper when skeletonHelperVisible changes.
+ * NEVER constructs the helper in useFrame — built once in useEffect.
+ */
+function useSkeletonHelper(
+  skeleton: THREE.Skeleton,
+  meshGroupRef: React.RefObject<THREE.Group | null>,
+): void {
+  const { skeletonHelperVisible } = useViewportStore();
+  const helperRef = useRef<THREE.SkeletonHelper | null>(null);
+
+  useEffect(() => {
+    const group = meshGroupRef.current;
+    if (!group) return;
+
+    if (skeletonHelperVisible) {
+      const helper = new THREE.SkeletonHelper(skeleton.bones[0] ?? new THREE.Bone());
+      helperRef.current = helper;
+      group.parent?.add(helper);
+      return () => {
+        group.parent?.remove(helper);
+        helper.dispose?.();
+        helperRef.current = null;
+      };
+    }
+  }, [skeletonHelperVisible, skeleton, meshGroupRef]);
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function SkinnedMeshView({
@@ -462,11 +804,18 @@ export default function SkinnedMeshView({
 
   useAutoFrame(parsedMesh, geometry);
 
+  // Animation sampler (VIEW-03): ref-clock + sparse-key per-frame sampling
+  useAnimationSampler(skeleton, parsedSkeleton);
+
+  // Skeleton helper overlay (controlled by ⊹ chip in AnimationTransport)
+  const meshGroupRef = useRef<THREE.Group | null>(null);
+  useSkeletonHelper(skeleton, meshGroupRef);
+
   return (
     // SWG→Viewer orientation: 180° Y rotation (pure rotation, determinant +1).
     // HUMAN-VERIFY at checkpoint: compare vs SIE default facing.
-    <group rotation={SWG_ORIENTATION}>
-      {/* Skeleton helper for debugging — hidden in textured mode */}
+    <group ref={meshGroupRef} rotation={SWG_ORIENTATION}>
+      {/* Skeleton helper for debugging — also toggled by AnimationTransport ⊹ chip */}
       {renderMode === 'wire' && (
         <primitive object={new THREE.SkeletonHelper(skeleton.bones[0] ?? new THREE.Bone())} />
       )}

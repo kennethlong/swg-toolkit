@@ -73,6 +73,10 @@ const nativeCore = require('@swg/native-core') as {
     trailingBytes: { offset: number; count: number } | null;
     roundTrip: { passed: boolean; failOffset?: number };
   };
+  /** Substring/glob search across all VFS entries. Returns {entryIndex, archiveIndex} objects. */
+  searchMount: (handle: string, query: { text: string; mode: 'substring' | 'glob' }) => Array<{ entryIndex: number; archiveIndex: number }>;
+  /** List all entries in a single archive. */
+  listMountEntries: (handle: string, archiveIndex: number) => Array<{ path: string }>;
 };
 
 // Version string helper: map the native version string onto the TreVersion union.
@@ -279,6 +283,40 @@ export default function TreVfsBrowser(): React.ReactElement {
                 parsedMesh,
                 parsedSkeleton,
               );
+
+              // ── Populate ansPickerOptions from VFS heuristic (D-08 animation picker) ──
+              // When a skeleton resolves, search the TRE VFS for .ans files whose name prefix
+              // matches the skeleton (heuristic fallback — a full .lat parser is out of scope).
+              // The LATX → .lat → .ans chain would be authoritative; this is a documented
+              // heuristic that covers the common naming convention (e.g. 4lom.skt → 4lom_*.ans).
+              if (resolution.skeleton) {
+                const sktPath = resolution.skeleton.path;
+                // Extract the base name without extension (e.g. "4lom" from ".../4lom.skt")
+                const sktBase = sktPath.split('/').pop()?.replace(/\.skt$/i, '') ?? '';
+                if (sktBase && mountHandle) {
+                  try {
+                    // Search all archives for .ans entries matching the skeleton base name.
+                    const hits = nativeCore.searchMount(mountHandle, { text: `${sktBase}`, mode: 'substring' });
+                    const ansPaths: string[] = [];
+                    const seen = new Set<string>();
+                    for (const hit of hits) {
+                      try {
+                        const entries = nativeCore.listMountEntries(mountHandle, hit.archiveIndex);
+                        const ent = entries[hit.entryIndex];
+                        if (ent && ent.path.endsWith('.ans') && !seen.has(ent.path)) {
+                          seen.add(ent.path);
+                          ansPaths.push(ent.path);
+                        }
+                      } catch (_e) { /* skip broken entries */ }
+                    }
+                    if (ansPaths.length > 0) {
+                      viewportStore.setAnsPickerOptions(ansPaths);
+                    }
+                  } catch (_e) {
+                    // VFS search failed — picker stays empty; non-fatal
+                  }
+                }
+              }
             }).catch((err) => {
               const reason = err instanceof Error ? err.message : String(err);
               viewportStore.loadError(filename, reason);
