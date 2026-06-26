@@ -27,7 +27,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 file(GLOB AGENT_SOURCES "*.cpp")
 
-add_library(${PROJECT_NAME} SHARED ${AGENT_SOURCES})
+# exports.def forces the public export name for agent_init to its UNDECORATED
+# form. agent_init is __stdcall (WINAPI) as required by CreateRemoteThread, which
+# on x86 would otherwise decorate the export to `_agent_init@4`. The host injector
+# looks it up by the clean name `agent_init` via GetProcAddress, so the .def is
+# mandatory for injection to succeed. MSVC consumes a .def listed in the target
+# sources as its /DEF module-definition file.
+add_library(${PROJECT_NAME} SHARED ${AGENT_SOURCES} exports.def)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     PREFIX ""
     SUFFIX ".dll"

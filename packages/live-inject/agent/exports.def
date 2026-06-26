@@ -1,0 +1,12 @@
+; Module-definition file for the SWG Toolkit injected agent DLL.
+;
+; agent_init is declared `extern "C" __declspec(dllexport) DWORD WINAPI` in
+; agent_main.cpp. On x86, WINAPI/__stdcall decorates the exported symbol to
+; `_agent_init@4`. The host injector resolves the entry point by its UNDECORATED
+; name via GetProcAddress(localBase, "agent_init") (inject_binding.cpp). Without
+; this .def the lookup returns NULL and injection fails with
+; "agent_init export not found". This EXPORTS line forces the public export name
+; to the clean `agent_init` while the function keeps its required __stdcall
+; calling convention (CreateRemoteThread requires LPTHREAD_START_ROUTINE).
+EXPORTS
+    agent_init
