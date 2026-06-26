@@ -1,17 +1,21 @@
 /**
  * resolve.h — Engine hook point contract structs and resolver declarations.
  *
- * Contract structs copied verbatim from engine_hookpoints.h:77-93
+ * Contract structs verbatim from engine_hookpoints.h:77-93
  * (byte-identical in swg-client-v2 and Utinni repos).
  *
- * // Implementation in Plan 03-02
+ * LEAN-HEADER CONTRACT (mirrors Utinni endpoints.h design): includes only
+ * <cstddef> and <cstring> — no Windows.h, no injection headers.
+ * The pure lookupByName/resolve functions are Win32-free and can be
+ * unit-tested standalone without any DLL access (D-03b).
  */
 
 #pragma once
-#include <Windows.h>
+#include <cstddef>
+#include <cstring>
 
 // Contract structs — MUST match engine_advertise.cpp exactly.
-// engine_hookpoints.h:77-93
+// Verbatim from engine_hookpoints.h:77-93.
 struct EngineHookPoint  { const char* name; void* addr; };
 struct EngineHookPoints { unsigned version; unsigned count; const EngineHookPoint* entries; };
 #define ENGINE_HOOKPOINTS_VERSION 6
@@ -20,31 +24,46 @@ namespace swg {
 namespace endpoints {
 
 /**
- * In-process resolution: calls GetEngineHookPoints() from the EXE's export table.
- * Returns true if the advertised client table was found and applied.
- * Returns false if this is a legacy SWGEmu client (no GetEngineHookPoints export) —
- * in that case, RVA literals from rva_table.cpp remain active.
- *
- * Implementation in Plan 03-02.
+ * One binding: a stable contract name → the storage cell of the existing
+ * fn-pointer literal (void** so the resolver can overwrite any concrete typedef
+ * the subsystem declared — the cast back to the typed pointer is the subsystem's,
+ * unchanged). Ported from Utinni endpoints.h Binding struct.
+ */
+struct Binding {
+    const char* name;  // contract name, e.g. "object::getTransform_o2w"
+    void**      slot;  // &typed_fn_pointer — overwritten on the advertised-client path
+};
+
+/**
+ * Pure / Win32-free linear scan of table->entries for `name`.
+ * Returns the borrowed addr or nullptr if name not found or table is null/partial.
+ * A missing name NEVER nulls the caller's slot — graceful degrade only.
+ * (Ported from Utinni endpoints.cpp:114-130.)
+ */
+const void* lookupByName(const EngineHookPoints* table, const char* name);
+
+/**
+ * For each binding whose name is found in table with a non-null addr,
+ * overwrites *slot with that addr; a missing name leaves the RVA literal UNTOUCHED.
+ * A version mismatch logs a soft warning (OutputDebugStringA) but still resolves by name.
+ * Returns the count of names resolved.
+ * (Ported from Utinni endpoints.cpp:132-201.)
+ */
+int resolve(const EngineHookPoints* table, const Binding* bindings, size_t count);
+
+/**
+ * Win32 shell: GetModuleHandleA(nullptr) + GetProcAddress("GetEngineHookPoints").
+ * Found → s_advertisedClient=true, calls resolve() with g_agentBindings, returns true.
+ * Not found → s_advertisedClient=false, STRICT NO-OP, RVA literals unchanged, returns false.
+ * (Ported from Utinni endpoints_bindings.cpp:809-856.)
  */
 bool resolveFromExe();
 
 /**
- * Returns true if the loaded EXE exports GetEngineHookPoints (advertised client).
- * Returns false for legacy SWGEmu (no export).
- *
- * Implementation in Plan 03-02.
+ * Returns true if resolveFromExe() found the GetEngineHookPoints export (advertised client).
+ * Returns false for legacy SWGEmu (export absent — hardcoded RVA path active).
  */
 bool isAdvertisedClient();
-
-/**
- * Look up a single function pointer by name from the hook-points table.
- * A missing name returns nullptr — the caller leaves the slot unchanged (graceful).
- * Pure / Win32-free / testable standalone.
- *
- * Implementation in Plan 03-02.
- */
-void* lookupByName(const EngineHookPoints* table, const char* name);
 
 } // namespace endpoints
 } // namespace swg
