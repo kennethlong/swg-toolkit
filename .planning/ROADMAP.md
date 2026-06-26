@@ -114,11 +114,11 @@ Plans:
 **Requirements**: LIVE-01, LIVE-02, LIVE-04, LIVE-05
 **Success Criteria** (what must be TRUE):
   1. The user can attach the toolkit to a running SWG client process on Windows through a correctly-flagged process-handle lifecycle (`PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE` for inject; `PROCESS_VM_READ` for read-only RPM), with graceful failure messaging when not elevated.
-  2. The system resolves target addresses using deterministic, build-specific mechanisms — name-keyed `GetEngineHookPoints()` table for the advertised swg-client-v2 build, and known harvested RVAs from Utinni source for the legacy SWGEmu build. Both supported builds prove successful attach without AOB/signature scanning. (SC-2 rewritten per D-04 — the original AOB-scanning wording was falsified by ground truth.)
+  2. The system resolves target addresses using deterministic, build-specific mechanisms — name-keyed `GetEngineHookPoints()` table for the advertised swg-client-v2 build, and known harvested RVAs from Utinni source for the legacy SWGEmu build. Both supported builds prove successful attach using only these deterministic, build-specific endpoints. (D-04)
   3. The system read-verifies an object's live memory state (sane matrix / known sentinel) before any write, refusing to patch when validation fails.
   4. The system provides a live memory/packet inspector HUD that surfaces the verified object state.
   5. The editor remains fully usable in file-patch mode when injection is unavailable (no feature requires admin/injection to do core editing).
-**Plans**: 6 plans
+**Plans**: 7 plans
 Plans:
 **Wave 1**
 - [x] 03-01-PLAN.md — Package scaffold (packages/live-inject/), contracts/live-inject.ts, Wave-0 RED test stubs
@@ -134,7 +134,8 @@ Plans:
 - [x] 03-05-PLAN.md — inject_binding.cpp: LaunchAndInjectWorker (12-step) + AttachAndInjectWorker
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 03-06-PLAN.md — Renderer HUD (LiveInspectorPanel, StatusBar mode indicator, liveStore) + ROADMAP SC-2 doc fix + manual UAT checkpoint
+- [ ] 03-06-PLAN.md — Renderer HUD: liveStore.ts, LiveInspectorPanel (three states + HexInspector), StatusBar mode indicator, WorkspaceShell registration, ROADMAP SC-2 doc fix
+- [ ] 03-06b-PLAN.md — HUD wiring: useLiveService hook, useChannelReader, attach trigger UI, channel polling integration, manual UAT checkpoint
 
 ### Phase 4: Edit & Deploy Loop
 **Goal**: Turn the viewer into an editor that closes the modder loop — repack validated edits into a deployable `.tre` patch, activate it via the client `.cfg`, and provide changeset rollback and safe Git/LFS versioning of mod outputs only.

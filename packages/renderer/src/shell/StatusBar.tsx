@@ -31,6 +31,7 @@
 import React, { useEffect, useState } from 'react';
 import { SAB_LAYOUT } from '@swg/contracts';
 import { useTreStore } from '../state/treStore.ts';
+import { useLiveStore } from '../state/liveStore.ts';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -63,6 +64,9 @@ export default function StatusBar(): React.ReactElement {
   const [crossWriteState,     setCrossWriteState]     = useState<CrossWriteState>(null);
   const [addonStatus,         setAddonStatus]         = useState<string>('loading…');
   const [helloValue,          setHelloValue]          = useState<string | null>(null);
+
+  // Live injection mode from Zustand store (Plan 03-06)
+  const liveMode = useLiveStore((s) => s.mode);
 
   // TRE VFS mount status from Zustand store (Plan 01-02 additions)
   const treArchives    = useTreStore((s) => s.archives);
@@ -255,6 +259,15 @@ export default function StatusBar(): React.ReactElement {
           </span>
         </>
       )}
+
+      {/* Live injection mode indicator (D-08, Plan 03-06) */}
+      <Dot />
+      <span>
+        <span style={{ color: liveMode === 'live' ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
+          {liveMode === 'live' ? '● Live' : '○ File-patch'}
+        </span>
+      </span>
+      <Dot />
 
       {/* Right-aligned */}
       <div style={{ flex: 1 }} />
