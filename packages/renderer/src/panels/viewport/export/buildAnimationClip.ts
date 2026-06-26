@@ -292,6 +292,12 @@ export function buildAnimationClip(
     const boneData = parsedSkeleton.bones[boneIdx];
     if (!boneData) continue;
 
+    // Track path MUST use the actual skeleton bone name (camelCase, e.g. "lThigh"), NOT the
+    // .ans joint.name (often lowercase, e.g. "lthigh"). THREE.Bone.name is set from the skeleton
+    // bone name in SkinnedMeshView, and GLTFExporter binds tracks by EXACT node name
+    // (PropertyBinding.findNode). Using joint.name dropped 34/39 limb tracks → stiff legs (02-04 lesson).
+    const trackName = boneData.name;
+
     // Per-joint composition data (from parsedSkeleton RPRE/RPST/BPRO/BPTR)
     // Reorder from on-disk (w,x,y,z) to THREE.Quaternion (x,y,z,w).
     const preMul      = quatFromDisk(
@@ -347,7 +353,7 @@ export function buildAnimationClip(
         }
 
         tracks.push(new THREE.QuaternionKeyframeTrack(
-          `${boneName}.quaternion`,
+          `${trackName}.quaternion`,
           Array.from(times),
           Array.from(values),
         ));
@@ -367,7 +373,7 @@ export function buildAnimationClip(
         const composed = composeBoneQuat(rawKey, bindPoseRot, preMul, postMul);
         const mirrored = mirrorQuat(composed);
         tracks.push(new THREE.QuaternionKeyframeTrack(
-          `${boneName}.quaternion`,
+          `${trackName}.quaternion`,
           [0],
           [mirrored.x, mirrored.y, mirrored.z, mirrored.w],
         ));
@@ -422,7 +428,7 @@ export function buildAnimationClip(
         }
 
         tracks.push(new THREE.VectorKeyframeTrack(
-          `${boneName}.position`,
+          `${trackName}.position`,
           times,
           values,
         ));

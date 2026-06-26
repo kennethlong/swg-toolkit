@@ -150,21 +150,25 @@ export function toStandardMaterial(mat: THREE.Material): THREE.MeshStandardMater
   }
 
   const u = mat.uniforms;
-  const diffuseTex  = u['uDiffuseMap']?.value  as THREE.Texture | null | undefined;
-  const normalTex   = u['uNormalMap']?.value   as THREE.Texture | null | undefined;
-  const emissiveTex = u['uEmissiveMap']?.value as THREE.Texture | null | undefined;
 
-  const map        = prepareTexture(diffuseTex,  /* isSRGB */ true);
-  const normalMap  = prepareTexture(normalTex,   /* isSRGB */ false);
-  const emissiveMap = prepareTexture(emissiveTex, /* isSRGB */ true);
+  // The SWG shader ALWAYS populates uNormalMap with a 1×1 placeholder (white) when the material has
+  // no real normal slot. Reading it unconditionally exports bogus placeholder normals on every
+  // material. Gate on the shader's own bHasNormal flag so only a real normal map survives.
+  const hasNormal = u['bHasNormal']?.value === true;
+
+  const diffuseTex = u['uDiffuseMap']?.value as THREE.Texture | null | undefined;
+  const normalTex  = hasNormal ? (u['uNormalMap']?.value as THREE.Texture | null | undefined) : null;
+
+  const map       = prepareTexture(diffuseTex, /* isSRGB */ true);
+  const normalMap = prepareTexture(normalTex,  /* isSRGB */ false);
 
   const stdMat = new THREE.MeshStandardMaterial({
-    map:          map ?? undefined,
-    normalMap:    normalMap ?? undefined,
-    emissive:     emissiveMap ? new THREE.Color(1, 1, 1) : new THREE.Color(0, 0, 0),
-    emissiveMap:  emissiveMap ?? undefined,
-    // SWG specular is a gloss-mask texture; there is no direct glTF PBR equivalent
-    // (metalness-roughness workflow). Dropped this phase — deferred to material-fidelity pass.
+    map:       map ?? undefined,
+    normalMap: normalMap ?? undefined,
+    // EMISSIVE DEFERRED (same as specular / env): SWG's EMIS slot is a MASKED self-illumination the
+    // custom shader gates by NdotL/alpha. Exported as glTF emissiveFactor=[1,1,1]×emissiveMap it
+    // renders full-strength and blows parts white (e.g. protocol_droid_red mat1). Dropped this phase
+    // → VIEW-MAT-FIDELITY backlog. SWG specular (gloss mask, no glTF-PBR equivalent) — also dropped.
     roughness: 0.7,
     metalness: 0.0,
   });
