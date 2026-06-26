@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: phase-complete
-stopped_at: Phase 2 complete (VIEW-01..04 ✓); next = Phase 03 (not yet planned)
-last_updated: "2026-06-25"
-last_activity: 2026-06-25 -- 02-05 glTF export + Extract human-verified & approved; 4 export bugs fixed via crew (CONSULT-P2-05B); Phase 2 COMPLETE
+status: Phase 2 closed. Export ships glTF (.glb) rigged+animated+textured + raw Extract.
+stopped_at: Phase 03 context gathered
+last_updated: "2026-06-26T02:15:31.790Z"
+last_activity: 2026-06-25 -- Phase 2 complete; 4 export bugs found+fixed via crew round (CONSULT-P2-05B)
 progress:
   total_phases: 9
   completed_phases: 3
@@ -143,6 +143,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T23:21:27Z
-Stopped at: 02-05 Task 3 checkpoint:human-verify (gate="blocking") — glTF export + docs human verification
-Resume file: .planning/phases/02-3d-mesh-viewport-mvp-proof/02-05-SUMMARY.md
+Last session: 2026-06-26T02:15:31.769Z
+Stopped at: Phase 03 context gathered
+Resume file: .planning/phases/03-live-injection-foundation/03-CONTEXT.md
