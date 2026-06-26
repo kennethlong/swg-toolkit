@@ -113,12 +113,28 @@ Plans:
 **Depends on**: Phase 0 (Win32-only; independent of Phases 1-2)
 **Requirements**: LIVE-01, LIVE-02, LIVE-04, LIVE-05
 **Success Criteria** (what must be TRUE):
-  1. The user can attach the toolkit to a running SWG client process on Windows through a single, correctly-flagged process-handle lifecycle (`PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE`), with graceful failure messaging when not elevated.
-  2. The system resolves target addresses at runtime via signature/AOB scanning (mined from Utinni, build-hash-keyed), not hard-coded offsets — and attaches successfully on a different client build.
+  1. The user can attach the toolkit to a running SWG client process on Windows through a correctly-flagged process-handle lifecycle (`PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE` for inject; `PROCESS_VM_READ` for read-only RPM), with graceful failure messaging when not elevated.
+  2. The system resolves target addresses using deterministic, build-specific mechanisms — name-keyed `GetEngineHookPoints()` table for the advertised swg-client-v2 build, and known harvested RVAs from Utinni source for the legacy SWGEmu build. Both supported builds prove successful attach without AOB/signature scanning. (SC-2 rewritten per D-04 — the original AOB-scanning wording was falsified by ground truth.)
   3. The system read-verifies an object's live memory state (sane matrix / known sentinel) before any write, refusing to patch when validation fails.
   4. The system provides a live memory/packet inspector HUD that surfaces the verified object state.
   5. The editor remains fully usable in file-patch mode when injection is unavailable (no feature requires admin/injection to do core editing).
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+**Wave 1**
+- [ ] 03-01-PLAN.md — Package scaffold (packages/live-inject/), contracts/live-inject.ts, Wave-0 RED test stubs
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 03-02-PLAN.md — Agent DLL: resolver + RVA table (name-keyed + legacy gaps closed)
+- [ ] 03-03-PLAN.md — Agent DLL: 4-sentinel predicates + seqlock channel writer
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 03-04-PLAN.md — agent_main.cpp + host addon: procmem/channel bindings
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 03-05-PLAN.md — inject_binding.cpp: LaunchAndInjectWorker (12-step) + AttachAndInjectWorker
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 03-06-PLAN.md — Renderer HUD (LiveInspectorPanel, StatusBar mode indicator, liveStore) + ROADMAP SC-2 doc fix + manual UAT checkpoint
 
 ### Phase 4: Edit & Deploy Loop
 **Goal**: Turn the viewer into an editor that closes the modder loop — repack validated edits into a deployable `.tre` patch, activate it via the client `.cfg`, and provide changeset rollback and safe Git/LFS versioning of mod outputs only.
