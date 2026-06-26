@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 03 context gathered
-last_updated: "2026-06-26T13:08:18.154Z"
+last_updated: "2026-06-26T13:22:50.373Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 21
-  completed_plans: 16
-  percent: 76
+  completed_plans: 17
+  percent: 81
 ---
 
 # Project State
@@ -26,13 +26,13 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 03 (live-injection-foundation) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
         Residual lighting/gloss fidelity deferred → backlog export-lighting-fidelity, VIEW-MAT-FIDELITY.
 Next: Phase 03 (not yet planned) — run /gsd:plan-phase 03 when ready.
 Last activity: 2026-06-26
 
-Progress: [████████░░] 76%
+Progress: [████████░░] 81%
 
 ### 02-03 key facts (crew-verified)
 
@@ -78,6 +78,7 @@ Progress: [████████░░] 76%
 | Phase 02-3d-mesh-viewport-mvp-proof P02 | 240 | 2 tasks | 21 files |
 | Phase 03-live-injection-foundation P01 | 12 | 3 tasks | 22 files |
 | Phase 03-live-injection-foundation P02 | 20 | 2 tasks | 6 files |
+| Phase 03-live-injection-foundation P03 | 4 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 02, Plan 02]: TRE entries cross the bridge as ONE columnar ArrayBuffer (getMountEntriesColumnar, built off-thread), decoded in JS — NOT 250k Napi::Objects. Native mount of full 27-archive/244k-entry set ≈ 835ms.
 - [Phase 02, Plan 02]: VfsTree MUST be virtualized (ROW_HEIGHT=30, OVERSCAN=8) — unvirtualized render of 244k rows was the real >1min hang, NOT native. Same lesson as HexInspector.
 - [Phase 02, Plan 02]: .lod = FORM DTLA (DetailAppearanceTemplate), DISTINCT from MLOD/.lmg. parseDetailAppearance lands it; resolver follows .apt→.lod→mesh. LODs ordered HIGHEST-detail-first so selectedLod=0 = l0 (DTLA stores them far-descending = lowest first).
+- [Phase ?]: Vitest tests use TS port of C++ predicates
+- [Phase ?]: x86 struct packing for LiveState layout
+- [Phase ?]: DataView for unaligned BigInt64 in channel tests
 
 ### Pending Todos
 
@@ -152,6 +156,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T13:08:18.124Z
+Last session: 2026-06-26T13:22:50.343Z
 Stopped at: Phase 03 context gathered
 Resume file: None

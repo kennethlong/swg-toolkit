@@ -125,7 +125,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 03-02-PLAN.md — Agent DLL: resolver + RVA table (name-keyed + legacy gaps closed)
-- [ ] 03-03-PLAN.md — Agent DLL: 4-sentinel predicates + seqlock channel writer
+- [x] 03-03-PLAN.md — Agent DLL: 4-sentinel predicates + seqlock channel writer
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 03-04-PLAN.md — agent_main.cpp + host addon: procmem/channel bindings
