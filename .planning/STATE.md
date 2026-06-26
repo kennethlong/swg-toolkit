@@ -168,10 +168,11 @@ Roadmap-shaping decisions affecting current work:
   %TEMP%/swg-toolkit-agent/agent-<unique>.dll, prunes unlocked priors, falls back to canonical on copy
   failure); both launchAndInjectUI + attachToRunningUI use it. (b) agent accumulates one poll thread
   per attach — Phase 5 stop-signal should unload/clean; (c) legacy networkId 64-bit read deferred to
-  Phase 5; (d) closeChannel is NEVER called by the app — useChannelReader cleanup only
-  cancelAnimationFrame, liveStore.detach doesn't close the native channel. Leaks the file mapping +
-  agent writes to an orphaned mapping after detach (abrupt-exit form = the teardown segfault seen in
-  UAT). Wire closeChannel into detach/unmount with Phase-5 stop-signal.
+  Phase 5; (d) DONE — closeChannel wired: useLiveService closeActiveChannel() closes the prior session's
+  channel at the start of every attach (the leak actually bit on RE-ATTACH) and a new detachUI() export
+  closes + resets the store. Verified live: after re-attach, prior mappingName readChannelView -> null
+  (no leak); after detachUI, idle + null; node exit clean (this also fixed the open-channel teardown
+  segfault). A detach/disconnect UI control to call detachUI() is still TODO (no such button exists yet).
 - [Phase 03, UAT 2026-06-26]: APP-PATH validated — the REAL useLiveService.attachToRunningUI (transpiled
   via esbuild) against in-world swg-client-v2 (advertised, PID live) drove liveStore to
   {attached, mode:live, mappingName} and the channel streamed verified data (nid non-zero on advertised,

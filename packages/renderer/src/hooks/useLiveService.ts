@@ -3,11 +3,12 @@
  * Plain async functions (NOT a React hook) that bridge UI attach intent to
  * the native addon and route results to liveStore actions.
  *
- * Four exports:
+ * Five exports:
  *   getAgentDllPath()          — resolves the canonical agent DLL path (dev vs packaged)
  *   prepareAgentDllForInject() — copies it to a uniquely-named temp file per inject
  *   launchAndInjectUI()        — launch + inject path (primary, D-02)
  *   attachToRunningUI()        — attach-to-running path (secondary, D-02)
+ *   detachUI()                 — close the channel + reset store (also closed on re-attach)
  *
  * Phase 3 is READ-VERIFY ONLY. Neither function has any write path.
  * No useEffect — plain async functions so button handlers can await them.
@@ -27,10 +28,35 @@ import { useLiveStore } from '../state/liveStore';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const addon = require('@swg/live-inject') as {
   openChannel:     (name: string) => ArrayBuffer;
+  closeChannel:    (name: string) => void;
   launchAndInject: (clientExe: string, agentDll: string, mappingName: string) => Promise<{ pid: number }>;
   attachAndInject: (pid: number, agentDll: string, mappingName: string) => Promise<{ pid: number }>;
   readChannelView: (name: string) => ArrayBuffer | null;
 };
+
+/**
+ * Closes the file-mapping channel of the CURRENT attached session, if any.
+ * Without this, each new attach opens a fresh mapping while the prior one leaks
+ * and its agent poll thread keeps writing to an orphaned view. Must read the
+ * mappingName BEFORE beginAttach() flips status away from 'attached'.
+ */
+function closeActiveChannel(): void {
+  const status = useLiveStore.getState().status;
+  if (status.kind === 'attached') {
+    try { addon.closeChannel(status.mappingName); } catch { /* already gone — OS reclaims */ }
+  }
+}
+
+/**
+ * Detach the current live session: close the native channel and reset the store
+ * to idle/file-patch. Native agent + remote allocations are reclaimed by the OS
+ * on client-process exit (addon.detach is a Phase-3 no-op); Phase 5 adds an agent
+ * stop-signal. Exported for a detach/disconnect control + app teardown.
+ */
+export function detachUI(): void {
+  closeActiveChannel();
+  useLiveStore.getState().detach();
+}
 
 // ─── Agent DLL path ───────────────────────────────────────────────────────────
 
@@ -112,6 +138,7 @@ export function prepareAgentDllForInject(): string {
  * Phase 3 READ-VERIFY ONLY — no write path.
  */
 export async function launchAndInjectUI(clientExe: string): Promise<void> {
+  closeActiveChannel();  // close any prior session's channel before opening a new one
   // Scheme A: host generates mapping name; both openChannel and launchAndInject receive it.
   const mappingName = 'Local\\SwgToolkitLive_' + Math.random().toString(36).slice(2, 10);
 
@@ -146,6 +173,7 @@ export async function launchAndInjectUI(clientExe: string): Promise<void> {
  * Phase 3 READ-VERIFY ONLY — no write path.
  */
 export async function attachToRunningUI(pid: number): Promise<void> {
+  closeActiveChannel();  // close any prior session's channel before opening a new one
   const mappingName = 'Local\\SwgToolkitLive_' + Math.random().toString(36).slice(2, 10);
 
   useLiveStore.getState().beginAttach(String(pid));
