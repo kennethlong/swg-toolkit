@@ -131,7 +131,7 @@ Plans:
 - [x] 03-04-PLAN.md — agent_main.cpp + host addon: procmem/channel bindings
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 03-05-PLAN.md — inject_binding.cpp: LaunchAndInjectWorker (12-step) + AttachAndInjectWorker
+- [x] 03-05-PLAN.md — inject_binding.cpp: LaunchAndInjectWorker (12-step) + AttachAndInjectWorker
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 03-06-PLAN.md — Renderer HUD (LiveInspectorPanel, StatusBar mode indicator, liveStore) + ROADMAP SC-2 doc fix + manual UAT checkpoint

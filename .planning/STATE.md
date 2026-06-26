@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 03 context gathered
-last_updated: "2026-06-26T13:49:16.459Z"
+last_updated: "2026-06-26T14:06:58.781Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 21
-  completed_plans: 18
-  percent: 86
+  completed_plans: 19
+  percent: 90
 ---
 
 # Project State
@@ -26,13 +26,13 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 03 (live-injection-foundation) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
         Residual lighting/gloss fidelity deferred → backlog export-lighting-fidelity, VIEW-MAT-FIDELITY.
 Next: Phase 03 (not yet planned) — run /gsd:plan-phase 03 when ready.
 Last activity: 2026-06-26
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 90%
 
 ### 02-03 key facts (crew-verified)
 
@@ -80,6 +80,7 @@ Progress: [█████████░] 86%
 | Phase 03-live-injection-foundation P02 | 20 | 2 tasks | 6 files |
 | Phase 03-live-injection-foundation P03 | 4 | 2 tasks | 4 files |
 | Phase 03-live-injection-foundation P04 | 13m | 2 tasks | 7 files |
+| Phase 03 P05 | 9 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 03]: channel.h created to share LiveState struct between channel.cpp and agent_main.cpp without redefinition (Rule 2 — missing critical infrastructure) — C++ has no way to share a struct across TUs without a header; channel.h is the correct fix
 - [Phase 03]: extern const for k_mainLoopCounter_addr in rva_table.cpp — C++ const at namespace scope has internal linkage by default; extern needed for cross-TU access — Link error LNK2019 on k_mainLoopCounter_addr; static → const → extern const fixed it
 - [Phase 03]: UnmapViewOfFile only in ArrayBuffer finalizer in channel_binding.cpp — cleanupChannel only Reset()s the Napi::Reference and closes hMap; OS implicit reference keeps view valid until GC — Pitfall 5 design: finalizer owns view lifetime; CloseHandle(hMap) is safe before GC because OS holds implicit reference while view is open
+- [Phase 03, Plan 05]: WOW64_CONTEXT/Wow64GetThreadContext for ASLR base (Ebx+0x08) + EIP spin-poll — host addon is x64; SWG client is x86 under WOW64; standard CONTEXT on x64 lacks Ebx/Eip (has Rbx/Rip); Wow64GetThreadContext is the correct x64-to-x86 API — compiler C2039 on Ebx/Eip triggered the fix
+- [Phase 03, Plan 05]: DONT_RESOLVE_DLL_REFERENCES for x86 agent DLL export probe from x64 host — avoids running x86 DllMain in x64 process; GetProcAddress still resolves agent_init export offset from PE table
 
 ### Pending Todos
 
@@ -160,6 +163,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T13:47:55.335Z
+Last session: 2026-06-26T14:06:58.758Z
 Stopped at: Phase 03 context gathered
 Resume file: None
