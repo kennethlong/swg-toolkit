@@ -3,10 +3,11 @@
  * Plain async functions (NOT a React hook) that bridge UI attach intent to
  * the native addon and route results to liveStore actions.
  *
- * Three exports:
- *   getAgentDllPath()        — resolves the agent DLL path (dev vs packaged)
- *   launchAndInjectUI()      — launch + inject path (primary, D-02)
- *   attachToRunningUI()      — attach-to-running path (secondary, D-02)
+ * Four exports:
+ *   getAgentDllPath()          — resolves the canonical agent DLL path (dev vs packaged)
+ *   prepareAgentDllForInject() — copies it to a uniquely-named temp file per inject
+ *   launchAndInjectUI()        — launch + inject path (primary, D-02)
+ *   attachToRunningUI()        — attach-to-running path (secondary, D-02)
  *
  * Phase 3 is READ-VERIFY ONLY. Neither function has any write path.
  * No useEffect — plain async functions so button handlers can await them.
@@ -17,6 +18,8 @@
  */
 
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import { useLiveStore } from '../state/liveStore';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
@@ -57,6 +60,41 @@ export function getAgentDllPath(): string {
   );
 }
 
+/**
+ * Copies the canonical agent DLL to a uniquely-named temp file and returns that
+ * path, so every inject loads FRESH code.
+ *
+ * Why this is required (verified in Phase-03 live UAT — see STATE.md):
+ * LoadLibraryA matches an already-resident module by basename and just bumps its
+ * refcount. Injecting the fixed-name build output means a re-attach (or a rebuilt
+ * DLL) silently re-runs the OLD agent already mapped in the client, and the loaded
+ * file stays locked — blocking the next agent rebuild. A unique basename per inject
+ * sidesteps both. The agent reads only the mapping name passed to it, so the file
+ * name is free to vary.
+ *
+ * Best-effort: prunes prior copies that are no longer locked (a still-mapped copy
+ * in a live client throws on unlink — left for the OS to reclaim). On copy failure
+ * it falls back to the canonical path so the inject still attempts.
+ */
+export function prepareAgentDllForInject(): string {
+  const canonical = getAgentDllPath();
+  const dir = path.join(os.tmpdir(), 'swg-toolkit-agent');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    for (const f of fs.readdirSync(dir)) {
+      if (f.startsWith('agent-') && f.endsWith('.dll')) {
+        try { fs.unlinkSync(path.join(dir, f)); } catch { /* still mapped in a live client — leave it */ }
+      }
+    }
+    const unique = `agent-${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}.dll`;
+    const dest = path.join(dir, unique);
+    fs.copyFileSync(canonical, dest);
+    return dest;
+  } catch {
+    return canonical;
+  }
+}
+
 // ─── Launch & Inject (primary path) ──────────────────────────────────────────
 
 /**
@@ -87,7 +125,7 @@ export async function launchAndInjectUI(clientExe: string): Promise<void> {
     return;
   }
 
-  const agentDll = getAgentDllPath();
+  const agentDll = prepareAgentDllForInject();
 
   try {
     const result = await addon.launchAndInject(clientExe, agentDll, mappingName);
@@ -120,7 +158,7 @@ export async function attachToRunningUI(pid: number): Promise<void> {
     return;
   }
 
-  const agentDll = getAgentDllPath();
+  const agentDll = prepareAgentDllForInject();
 
   try {
     const result = await addon.attachAndInject(pid, agentDll, mappingName);

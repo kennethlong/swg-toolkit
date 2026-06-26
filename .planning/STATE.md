@@ -163,10 +163,12 @@ Roadmap-shaping decisions affecting current work:
   by name and returns stale code, so a rebuilt same-named DLL silently runs the OLD agent. transform +
   template + liveness flow; networkId=0 on legacy (Phase-5 x86 64-bit return convention). Movement
   tracked (~9.6m + ~78deg yaw).
-- [Phase 03, FOLLOW-UPS from UAT]: (a) HOST should inject a per-inject uniquely-named copy of the
-  agent (mirror the harness) so re-attach loads fresh code + avoids file-lock on rebuild; (b) agent
-  accumulates one poll thread per attach — Phase 5 stop-signal should unload/clean; (c) legacy
-  networkId 64-bit read deferred to Phase 5.
+- [Phase 03, FOLLOW-UPS from UAT]: (a) DONE — host injects a per-inject uniquely-named copy via
+  prepareAgentDllForInject() in useLiveService.ts (copies canonical agent DLL to
+  %TEMP%/swg-toolkit-agent/agent-<unique>.dll, prunes unlocked priors, falls back to canonical on copy
+  failure); both launchAndInjectUI + attachToRunningUI use it. (b) agent accumulates one poll thread
+  per attach — Phase 5 stop-signal should unload/clean; (c) legacy networkId 64-bit read deferred to
+  Phase 5.
 
 ### Pending Todos
 
