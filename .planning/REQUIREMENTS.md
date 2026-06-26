@@ -38,11 +38,11 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 - [ ] **DEPLOY-04**: User can version **mod-produced** assets via Git/LFS (never retail `.tre` dumps).
 
 ### Live In-Game Sync (LIVE) — *Windows-only differentiator*
-- [ ] **LIVE-01**: User can attach the toolkit to a running SWG client process on Windows.
-- [ ] **LIVE-02**: System read-verifies an object's live memory state before writing to it.
+- [x] **LIVE-01**: User can attach the toolkit to a running SWG client process on Windows.
+- [x] **LIVE-02**: System read-verifies an object's live memory state before writing to it.
 - [ ] **LIVE-03**: User can drag a viewport gizmo and see the object move in the running client in real time (zero restart).
-- [ ] **LIVE-04**: System provides a live memory/packet inspector HUD.
-- [ ] **LIVE-05**: The editor remains fully usable in file-patch mode when injection is unavailable.
+- [x] **LIVE-04**: System provides a live memory/packet inspector HUD.
+- [x] **LIVE-05**: The editor remains fully usable in file-patch mode when injection is unavailable.
 
 ### Typed Data Editors (DATA)
 - [ ] **DATA-01**: User can view and edit DTII datatables in a virtualized grid and save them back.
@@ -109,10 +109,10 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | VIEW-02 | Phase 2 | Complete |
 | VIEW-03 | Phase 2 | Pending |
 | VIEW-04 | Phase 2 | Pending |
-| LIVE-01 | Phase 3 | Pending |
-| LIVE-02 | Phase 3 | Pending |
-| LIVE-04 | Phase 3 | Pending |
-| LIVE-05 | Phase 3 | Pending |
+| LIVE-01 | Phase 3 | Complete |
+| LIVE-02 | Phase 3 | Complete |
+| LIVE-04 | Phase 3 | Complete |
+| LIVE-05 | Phase 3 | Complete |
 | DEPLOY-01 | Phase 4 | Pending |
 | DEPLOY-02 | Phase 4 | Pending |
 | DEPLOY-03 | Phase 4 | Pending |

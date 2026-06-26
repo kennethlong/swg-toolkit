@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 03 context gathered
-last_updated: "2026-06-26T04:11:19.431Z"
-last_activity: 2026-06-26 -- Phase 03 planning complete
+last_updated: "2026-06-26T12:45:32.317Z"
+last_activity: 2026-06-26
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 21
-  completed_plans: 14
-  percent: 67
+  completed_plans: 15
+  percent: 71
 ---
 
 # Project State
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 02 COMPLETE — next: Phase 03 (planning not yet started)
+**Current focus:** Phase 03 — live-injection-foundation
 
 ## Current Position
 
-Phase: 02 (3d-mesh-viewport-mvp-proof) — ✅ COMPLETE (all 5 plans; VIEW-01..04 ✓)
-Plan: 5 of 5 done — 02-05 glTF export + Extract human-verified & approved 2026-06-25
+Phase: 03 (live-injection-foundation) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
         Residual lighting/gloss fidelity deferred → backlog export-lighting-fidelity, VIEW-MAT-FIDELITY.
 Next: Phase 03 (not yet planned) — run /gsd:plan-phase 03 when ready.
-Last activity: 2026-06-26 -- Phase 03 planning complete
+Last activity: 2026-06-26
 
-Progress: [██████████] Phase 2 done (3/9 phases complete)
+Progress: [███████░░░] 71%
 
 ### 02-03 key facts (crew-verified)
 
@@ -76,6 +76,7 @@ Progress: [██████████] Phase 2 done (3/9 phases complete)
 | Phase 01 P04 | 120 | 2 tasks | 12 files |
 | Phase 02-3d-mesh-viewport-mvp-proof P01 | 3h | 3 tasks | 27 files |
 | Phase 02-3d-mesh-viewport-mvp-proof P02 | 240 | 2 tasks | 21 files |
+| Phase 03-live-injection-foundation P01 | 12 | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,10 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 01, Plan 03]: OPEN-3 RESOLVED — LIST and CAT  (trailing space) are containers; PROP is leaf (confirmed vs. swg-client-v2 Iff.cpp + Utinni IffReader)
 - [Phase 02, Plan 02 — VERIFIED via human-verify + SIE reference + io_scene_swg_msh cross-check]:
 - [Phase 02, Plan 02]: Mesh geometry verified byte-identical to io_scene_swg_msh (protocol_droid_red_l0: verts/tris/bbox match to 6 decimals). SWG display needs a PURE ROTATION, not a mirror (io_scene_swg_msh imports Scale(1) @ axis_conversion). Viewport default-facing-axis polish → folded into Plan 02-03.
+- [Phase 03, Plan 01]: vitest workspace:* invalid for root devDeps; use hoisted vitest with local vitest.config.ts per package (pnpm CWD issue)
+- [Phase 03, Plan 01]: Test files use .test.ts extension (project convention) not .spec.ts as plan spec'd
+- [Phase 03, Plan 01]: TRANSFORM.length=48 locked by passing test from day 1 (channel-layout.test.ts sanity check)
+- [Phase 03, Plan 01]: x86 MSVC toolset PRESENT: VS 2022 (17.14) + VS 2026 (18.6) both have VC.Tools.x86.x64; agent build unblocked
 - [Phase 02, Plan 02]: resolveEntry native contract = {winner, tombstone, archiveIndex, entryIndex} — NO `found` field. A hit = winner!==null && !tombstone. (Resolver had checked nonexistent .found → everything bucketed missing.)
 - [Phase 02, Plan 02]: TRE entries cross the bridge as ONE columnar ArrayBuffer (getMountEntriesColumnar, built off-thread), decoded in JS — NOT 250k Napi::Objects. Native mount of full 27-archive/244k-entry set ≈ 835ms.
 - [Phase 02, Plan 02]: VfsTree MUST be virtualized (ROW_HEIGHT=30, OVERSCAN=8) — unvirtualized render of 244k rows was the real >1min hang, NOT native. Same lesson as HexInspector.
@@ -143,6 +148,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T02:15:31.769Z
+Last session: 2026-06-26T12:45:32.281Z
 Stopped at: Phase 03 context gathered
-Resume file: .planning/phases/03-live-injection-foundation/03-CONTEXT.md
+Resume file: None

@@ -121,7 +121,7 @@ Plans:
 **Plans**: 6 plans
 Plans:
 **Wave 1**
-- [ ] 03-01-PLAN.md — Package scaffold (packages/live-inject/), contracts/live-inject.ts, Wave-0 RED test stubs
+- [x] 03-01-PLAN.md — Package scaffold (packages/live-inject/), contracts/live-inject.ts, Wave-0 RED test stubs
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 03-02-PLAN.md — Agent DLL: resolver + RVA table (name-keyed + legacy gaps closed)
@@ -211,7 +211,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 0. Toolchain De-risk & App Shell | 4/5 | In Progress|  |
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/5 | Not started | - |
-| 3. Live-Injection Foundation | 0/TBD | Not started | - |
+| 3. Live-Injection Foundation | 1/7 | In Progress|  |
 | 4. Edit & Deploy Loop | 0/TBD | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
