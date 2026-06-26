@@ -53,8 +53,11 @@ updated: 2026-06-25
 | 03-04-02 | 04 | 3 | LIVE-01/05 | T-03-05 | OpenProcess ACCESS_DENIED → structured file-patch error (no auto-escalate) | unit (mock) | `pnpm --filter @swg/live-inject test` | ❌ W0 | ⬜ pending |
 | 03-05-01 | 05 | 4 | LIVE-01 | T-03-01 | identity check (ProductName == SWG) before inject | build | `pnpm --filter @swg/live-inject build` | ❌ W0 | ⬜ pending |
 | 03-05-02 | 05 | 4 | LIVE-01 | T-03-02 | both FlushInstructionCache calls present; ASLR from EBX+0x08 | build | `pnpm --filter @swg/live-inject build` | ❌ W0 | ⬜ pending |
-| 03-06-01 | 06 | 5 | LIVE-04/05 | T-03-05 | ● Live / ○ File-patch visible; disabled state has reason | build | `pnpm --filter @swg/renderer build` | ❌ W0 | ⬜ pending |
-| 03-06-UAT | 06 | 5 | LIVE-01/02/04/05 | T-03-01/05/06 | real client UAT (both advertised + legacy); file-patch fallback | manual UAT | (checklist below) | N/A | ⬜ pending |
+| 03-06-01 | 06 | 5 | LIVE-04/05 | T-03-05 | liveStore actions correct; ● Live / ○ File-patch visible in StatusBar; ROADMAP SC-2 corrected | build | `pnpm --filter @swg/renderer build` | ❌ W0 | ⬜ pending |
+| 03-06-02 | 06 | 5 | LIVE-04/05 | T-03-04/06 | LiveInspectorPanel all 3 states render; HexInspector present; no write path | build | `pnpm --filter @swg/renderer build` | ❌ W0 | ⬜ pending |
+| 03-06b-01 | 06b | 6 | LIVE-04/05 | T-03-05/06 | useLiveService routes addon promise to liveStore; useChannelReader seqlock protocol present | build | `pnpm --filter @swg/renderer build` | ❌ W0 | ⬜ pending |
+| 03-06b-02 | 06b | 6 | LIVE-04 | T-03-01/06 | attach trigger UI in STATE 1; useChannelReader called unconditionally; read-verify only | build | `pnpm --filter @swg/renderer build` | ❌ W0 | ⬜ pending |
+| 03-06b-UAT | 06b | 6 | LIVE-01/02/04/05 | T-03-01/05/06 | real client UAT (both advertised + legacy); file-patch fallback | manual UAT | (checklist in 03-06b-PLAN.md) | N/A | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
