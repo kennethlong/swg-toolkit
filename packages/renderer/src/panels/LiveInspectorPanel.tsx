@@ -21,6 +21,8 @@ import React, { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 import { useLiveStore } from '../state/liveStore.ts';
 import HexInspector from './iff/HexInspector';
+import { launchAndInjectUI, attachToRunningUI } from '../hooks/useLiveService';
+import { useChannelReader } from '../hooks/useChannelReader';
 
 // VerifiedObjectState is used for type guidance only (flows through liveStore).
 import type { VerifiedObjectState } from '@swg/contracts';
@@ -33,12 +35,18 @@ export default function LiveInspectorPanel(_props: IDockviewPanelProps): React.R
   const [collapsed,    setCollapsed]   = useState(false);
   const [hexExpanded,  setHexExpanded] = useState(false);
   const [hoveredByte,  setHoveredByte] = useState<number | null>(null);
+  const [clientExe,    setClientExe]   = useState('');
+  const [attachPid,    setAttachPid]   = useState('');
 
   const status        = useLiveStore((s) => s.status);
   const mode          = useLiveStore((s) => s.mode);
   const disabledReason = useLiveStore((s) => s.disabledReason);
   const verifiedState = useLiveStore((s) => s.verifiedState);
   const regionBytes   = useLiveStore((s) => s.regionBytes);
+  const isConnecting  = useLiveStore((s) => s.status.kind === 'connecting');
+
+  // Activates RAF poll loop when status is 'attached'; no-ops otherwise (useChannelReader).
+  useChannelReader();
 
   // ── Derived display values ─────────────────────────────────────────────────
 
@@ -178,7 +186,67 @@ export default function LiveInspectorPanel(_props: IDockviewPanelProps): React.R
                   </span>
                 </>
               )}
-              {/* TODO: attach trigger UI added in Plan 03-06b Task 2 */}
+              {/* Attach form — only shown when not already connecting/attached */}
+              {status.kind !== 'connecting' && (
+                <div
+                  style={{
+                    display:       'flex',
+                    flexDirection: 'column',
+                    gap:           'var(--space-2)',
+                    width:         '100%',
+                    marginTop:     'var(--space-3)',
+                    textAlign:     'left',
+                  }}
+                >
+                  <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+                    Attach to SWG Client
+                  </span>
+
+                  {/* PRIMARY PATH — Launch & Inject */}
+                  <label style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>
+                    Client executable
+                  </label>
+                  <input
+                    type="text"
+                    value={clientExe}
+                    onChange={(e) => setClientExe(e.target.value)}
+                    placeholder="C:\path\to\SwgClient_r.exe"
+                    style={attachInputStyle}
+                  />
+                  <button
+                    style={attachBtnStyle}
+                    disabled={isConnecting || !clientExe.trim()}
+                    onClick={() => { void launchAndInjectUI(clientExe.trim()); }}
+                  >
+                    Launch &amp; Inject (read-verify)
+                  </button>
+
+                  {/* SECONDARY PATH — Attach to Running */}
+                  <label
+                    style={{
+                      color:     'var(--color-text-faint)',
+                      fontSize:  'var(--text-xs)',
+                      marginTop: 'var(--space-2)',
+                    }}
+                  >
+                    Running client PID
+                  </label>
+                  <input
+                    type="number"
+                    value={attachPid}
+                    onChange={(e) => setAttachPid(e.target.value)}
+                    placeholder="PID (e.g. 1234)"
+                    style={attachInputStyle}
+                  />
+                  <button
+                    style={attachBtnStyle}
+                    disabled={isConnecting || !attachPid.trim() || isNaN(Number(attachPid))}
+                    onClick={() => { void attachToRunningUI(Number(attachPid)); }}
+                  >
+                    Attach to Running (read-verify)
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -318,4 +386,32 @@ const hexToggleBtnStyle: React.CSSProperties = {
   textAlign:     'left',
   width:         '100%',
   transition:    'background 0.12s ease, color 0.12s ease',
+};
+
+/** Full-width button for the attach trigger actions (Phase 3 read-verify paths). */
+const attachBtnStyle: React.CSSProperties = {
+  background:    'transparent',
+  border:        '1px solid var(--color-border)',
+  borderRadius:  'var(--radius-sm)',
+  color:         'var(--color-text)',
+  cursor:        'pointer',
+  fontSize:      'var(--text-xs)',
+  fontFamily:    'var(--font-sans)',
+  padding:       'var(--space-1) var(--space-2)',
+  textAlign:     'center',
+  width:         '100%',
+  transition:    'background 0.12s ease, color 0.12s ease',
+};
+
+/** Text input style for clientExe and PID fields. */
+const attachInputStyle: React.CSSProperties = {
+  width:        '100%',
+  fontSize:     'var(--text-xs)',
+  background:   'var(--color-input)',
+  color:        'var(--color-text)',
+  border:       '1px solid var(--color-border)',
+  borderRadius: '2px',
+  padding:      'var(--space-1) var(--space-2)',
+  boxSizing:    'border-box',
+  fontFamily:   'var(--font-mono)',
 };
