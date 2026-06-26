@@ -168,7 +168,15 @@ Roadmap-shaping decisions affecting current work:
   %TEMP%/swg-toolkit-agent/agent-<unique>.dll, prunes unlocked priors, falls back to canonical on copy
   failure); both launchAndInjectUI + attachToRunningUI use it. (b) agent accumulates one poll thread
   per attach — Phase 5 stop-signal should unload/clean; (c) legacy networkId 64-bit read deferred to
-  Phase 5.
+  Phase 5; (d) closeChannel is NEVER called by the app — useChannelReader cleanup only
+  cancelAnimationFrame, liveStore.detach doesn't close the native channel. Leaks the file mapping +
+  agent writes to an orphaned mapping after detach (abrupt-exit form = the teardown segfault seen in
+  UAT). Wire closeChannel into detach/unmount with Phase-5 stop-signal.
+- [Phase 03, UAT 2026-06-26]: APP-PATH validated — the REAL useLiveService.attachToRunningUI (transpiled
+  via esbuild) against in-world swg-client-v2 (advertised, PID live) drove liveStore to
+  {attached, mode:live, mappingName} and the channel streamed verified data (nid non-zero on advertised,
+  shared_sullustan_male, Tatooine). Wiring fixes that made this possible (commit 35318ea): live-inject
+  needed index.js entry + root-package dependency to be require()-able from the renderer (Path B).
 
 ### Pending Todos
 
