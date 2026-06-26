@@ -3,6 +3,7 @@
  *
  * Exports:
  *   Inject/attach/detach  → inject_binding.cpp: launchAndInject, attachAndInject, detach
+ *   PID discovery         → inject_binding.cpp: listSWGClientPids
  *
  *   Process handle lifecycle → procmem_binding.cpp:
  *     openProcessHandle(pid, forInject) → {handleId, isAdvertisedClient}
@@ -26,6 +27,7 @@
 Napi::Value LaunchAndInject(const Napi::CallbackInfo& info);
 Napi::Value AttachAndInject(const Napi::CallbackInfo& info);
 Napi::Value Detach(const Napi::CallbackInfo& info);
+Napi::Value ListSWGClientPids(const Napi::CallbackInfo& info);
 
 // Test-utility resolver exports (Plan 03-02 TDD — implemented in inject_binding.cpp)
 Napi::Value LookupByNameInTable(const Napi::CallbackInfo& info);
@@ -46,10 +48,11 @@ Napi::Value CloseChannel(const Napi::CallbackInfo& info);
 Napi::Value ReadChannelView(const Napi::CallbackInfo& info);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
-    // Inject/attach/detach
-    exports.Set("launchAndInject", Napi::Function::New(env, LaunchAndInject));
-    exports.Set("attachAndInject", Napi::Function::New(env, AttachAndInject));
-    exports.Set("detach",          Napi::Function::New(env, Detach));
+    // Inject/attach/detach + PID discovery
+    exports.Set("launchAndInject",   Napi::Function::New(env, LaunchAndInject));
+    exports.Set("attachAndInject",   Napi::Function::New(env, AttachAndInject));
+    exports.Set("detach",            Napi::Function::New(env, Detach));
+    exports.Set("listSWGClientPids", Napi::Function::New(env, ListSWGClientPids));
 
     // Test-utility resolver exports (Plan 03-02 TDD)
     exports.Set("lookupByNameInTable",       Napi::Function::New(env, LookupByNameInTable));
