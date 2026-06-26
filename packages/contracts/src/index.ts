@@ -11,3 +11,4 @@ export * from './mesh.js';
 export * from './skeleton.js';
 export * from './animation.js';
 export * from './material.js';
+export * from './live-inject.js';
