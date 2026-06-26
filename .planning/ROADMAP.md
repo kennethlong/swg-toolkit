@@ -134,7 +134,7 @@ Plans:
 - [x] 03-05-PLAN.md — inject_binding.cpp: LaunchAndInjectWorker (12-step) + AttachAndInjectWorker
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 03-06-PLAN.md — Renderer HUD: liveStore.ts, LiveInspectorPanel (three states + HexInspector), StatusBar mode indicator, WorkspaceShell registration, ROADMAP SC-2 doc fix
+- [x] 03-06-PLAN.md — Renderer HUD: liveStore.ts, LiveInspectorPanel (three states + HexInspector), StatusBar mode indicator, WorkspaceShell registration, ROADMAP SC-2 doc fix
 - [ ] 03-06b-PLAN.md — HUD wiring: useLiveService hook, useChannelReader, attach trigger UI, channel polling integration, manual UAT checkpoint
 
 ### Phase 4: Edit & Deploy Loop
@@ -212,7 +212,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 0. Toolchain De-risk & App Shell | 4/5 | In Progress|  |
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/5 | Not started | - |
-| 3. Live-Injection Foundation | 4/7 | In Progress|  |
+| 3. Live-Injection Foundation | 6/7 | In Progress|  |
 | 4. Edit & Deploy Loop | 0/TBD | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
