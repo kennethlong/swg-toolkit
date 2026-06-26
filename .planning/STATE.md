@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 03 verified + closed out; ready to replan remaining milestone work
-last_updated: "2026-06-26T14:30:00.939Z"
+stopped_at: Phase 04 context gathered; ready for /gsd:plan-phase 04
+last_updated: "2026-06-26T15:30:00.000Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 21
   completed_plans: 21
-  percent: 100
+  percent: 44
 ---
 
 # Project State
@@ -21,22 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 03 — live-injection-foundation
+**Current focus:** Phase 04 — edit-deploy-loop (context gathered; planning next)
 
 ## Current Position
 
-Phase: 03 (live-injection-foundation) — VERIFIED ✓ (2026-06-26)
-Plan: 7 of 7 complete. Manual UAT PASSED on both builds (advertised swg-client-v2 + legacy
-      SWGEmu 0.0.119.798, attach path, live movement). VERIFICATION.md written; 03-VALIDATION.md approved.
-Status: Phase 3 closed out. Live connection proven on both clients; app wiring fixed (index.js entry +
-        root dep); per-connect agent copy + closeChannel landed. SC1-3 MET, SC4/5 MET (data path/by-design)
-        with residuals carried to Phase 5 (HUD visual confirm, not-elevated live trigger, detach button,
-        agent stop-signal, legacy 64-bit networkId).
-Next: REPLAN remaining milestone work (Phases 2, 4, 5, 6, 7, 8) per maintainer; fold the
-      live-world-terrain-sync idea (terrain-only vs broader; new Phase 9 vs 7.1) into that replan.
+Phase: 04 (edit-deploy-loop) — CONTEXT gathered (2026-06-26); ready to plan
+Plan: none yet. 04-CONTEXT.md + 04-DISCUSSION-LOG.md written (15 decisions D-04-01..15 across
+      workspace/staging, rollback, .cfg activation, Git/LFS).
+Status: Phases 0-3 all COMPLETE (ROADMAP bookkeeping corrected this session — Phase 2 was stale-marked
+        not-started but 02-05 export was human-verified 2026-06-25; Phase 0 table row corrected too).
+        Replan of remaining phases DEFERRED by maintainer — continuing forward into Phase 4 instead.
+        Key Phase-4 decisions: user-chosen workspace folder + explicit staging list; buildTre-of-deltas
+        patch; Base44 layered changeset rollback (maintainer experience-backed, non-destructive toggle);
+        auto-detect client + offer patch-prepend AND shadow-base; Git versions changeset store, patch
+        gitignored, retail bytes hard-banned via pre-commit guard.
+Next: /gsd:plan-phase 04 (pause-after-plan rule: offer cross-AI plan review before execute).
+      Parked for the eventual milestone replan: live-world-terrain-sync placement (Phase 9 vs 7.1);
+      REQUIREMENTS.md traceability is stale for VIEW-03/04 + CORE-02 (actually complete).
 Last activity: 2026-06-26
 
-Progress: [██████████] 100%
+Progress: [████░░░░░░] 44% (4/9 phases)
 
 ### 02-03 key facts (crew-verified)
 

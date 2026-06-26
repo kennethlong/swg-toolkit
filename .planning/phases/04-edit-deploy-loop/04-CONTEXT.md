@@ -1,0 +1,204 @@
+# Phase 04: Edit & Deploy Loop - Context
+
+**Gathered:** 2026-06-26
+**Status:** Ready for planning
+
+<domain>
+## Phase Boundary
+
+Turn the viewer into an editor that **closes the modder loop**: take mod edits, pack
+them into a deployable `.tre` patch (DEPLOY-01), activate the patch via the client `.cfg`
+search order (DEPLOY-02), provide changeset/snapshot **rollback** (DEPLOY-03), and version
+**mod-produced** assets via Git/LFS (DEPLOY-04).
+
+**Depends on Phase 1 only.** The native TRE engine (`buildTre`/`repackTre` with raw-slice
+identity) already exists from Phase 1 (Plan 01-04). This phase is the **workflow layer**
+around that engine — workspace, staging, packaging, `.cfg` activation, rollback, VCS — NOT
+new byte-level format work. Rich in-app/typed editors are Phase 5; in this phase, edits come
+from extract-and-modify (the in-app IFF editor is read-only per Phase 1 D-08).
+
+**In scope:** mod project workspace; explicit patch-staging; build deploy patch from staged
+deltas; locate client + safe `.cfg` activation; layered changeset rollback; Git/LFS for mod
+outputs.
+
+**Out of scope (boundaries):**
+- Typed/rich in-app editors (DTII grid, `.stf`, gizmo) — **Phase 5**.
+- **Remote differential CDN sync** (layer 4 of the version-control doc) — **v2/deferred**.
+- v6000 (encrypted) archives — enumerate-only, cannot be repacked/patched (Phase 1 decision).
+- Committing retail/extracted `.tre` bytes to any VCS — hard-banned (copyright + size).
+
+</domain>
+
+<decisions>
+## Implementation Decisions
+
+### Workspace & Staging
+- **D-04-01:** A **mod project workspace = a user-chosen project folder** (IDE-style "open
+  project"), located wherever the user wants. Holds a `.studio/` control dir + a Git repo.
+  One workspace per mod. (Not app-managed userData — chosen for clean per-mod Git/LFS remotes.)
+- **D-04-02:** Edits are staged via an **explicit "add to patch" staging list** (decouples
+  "edited" from "will ship"), NOT an implicit edit-the-tree-and-diff model.
+- **D-04-03:** A staged item = **virtual path + a replacement file on disk** (produced via
+  Extract→edit-externally / drop-in), plus support for **add-new** and **delete (tombstone)**.
+  This maps 1:1 onto the native `buildTre` entry shape (`path` + `data` + optional `tombstone`).
+  Phase 5 typed editors extend this by emitting their output as a staged entry's bytes — same model.
+- **D-04-04:** The deploy patch is built with **`buildTre` of only the staged deltas** — a small
+  standalone archive containing just changed/added/deleted entries, mounted at higher `.cfg`
+  priority to shadow retail (the standard SWG live-patch mechanism). Deletes are tombstone
+  entries (length-0 TOC). `repackTre` (full-base rebuild) is the wrong shape for a patch and
+  stays **unused** in this phase.
+
+### Rollback (DEPLOY-03)
+- **D-04-05:** Rollback uses a **layered changeset-stack ("Base44") model** — maintainer's
+  **experience-backed** choice (has used this pattern; considers it a good fit). NOT a tentative
+  AI-proposed selection. ⚠ Caveat scoped narrowly: validate the **exact manifest field schema**
+  in the AI-distilled doc against real use before locking it — the *architecture* is the
+  maintainer's decision, only the specific field layout needs ground-truth confirmation.
+- **D-04-06:** A changeset captures the **staging list + mod-produced replacement assets only**
+  — never the extracted retail base. Keeps history small and copyright-clean.
+- **D-04-07:** A new changeset layer is sealed on **both** triggers: a **manual checkpoint**
+  (user "commit changeset" anytime) **and** an **auto-seal on pack/deploy** (every deploy is
+  guaranteed a rollback point for the exact shipped state).
+- **D-04-08:** Rollback is a **non-destructive version toggle** — set the active-version pointer
+  down; higher layers remain on disk (greyed in the timeline) and are **re-activatable** (redo).
+  No `PurgeChangesetLayer`-style destructive delete on rollback. Work is never lost.
+
+### `.cfg` Activation (DEPLOY-02)
+- **D-04-09:** Client/`.cfg` discovery = **auto-detect known installs (SWG Infinity + SWGEmu)
+  + manual folder override**. **Reuse the client-detection logic already in `@swg/live-inject`**
+  (it locates running/installed clients for Phase 3) rather than writing new detection.
+- **D-04-10:** **Offer BOTH deploy/isolation models at workspace setup:**
+  - *Default:* **patch-prepend** — add the patch `.tre` at higher `searchTree=` priority; never
+    touch retail files. Originals stay pristine automatically and ARE the compare/reset baseline.
+    Reset = remove the one `.cfg` line + delete the patch.
+  - *Opt-in:* **shadow-base "isolated client"** — copy the client TRE base to a **local shadow
+    dir** (with a disk-space warning), repoint the client base at the shadow, apply patches there;
+    real install stays as the pristine reset/compare source. The shadow is **local-only, never
+    git-tracked**.
+- **D-04-11:** Workspace is **fully usable with no client detected** — authoring/extract/pack/
+  version all work offline; client detection + `.cfg` activation are **deploy-time only**.
+  Deploy is disabled behind a clear "point me at a client" prompt until a client is set.
+- **D-04-12 (locked by DEPLOY-02 itself):** `.cfg` write is **BOM-free, atomic**, **preserves
+  duplicate `searchTree=` entries in priority order**, **backs up** the `.cfg` before edit, and
+  **records the insertion** so rollback can cleanly remove it.
+
+### Git/LFS (DEPLOY-04)
+- **D-04-13:** The **Git repo lives in the workspace folder (one per mod)** and **versions the
+  changeset store** (`.studio/changesets/` + manifest + staging metadata). Git is the
+  collaboration/remote backbone *underneath* the in-app changeset rollback UX — **one history
+  system, not two competing ones**.
+- **D-04-14:** The **built patch `.tre` is gitignored** — it's a build artifact flattened from
+  the active changeset stack on demand, fully derivable, so it's not committed. A separate
+  "Release" action can export/attach it for distribution.
+- **D-04-15:** "Never commit retail/extracted bytes" is enforced with **defense in depth**:
+  auto-written `.gitignore` (`extracted_vanilla_base/`, the shadow TRE dir, build artifacts) +
+  auto-written `.gitattributes` (route mod-output binaries through LFS) + **explicit-path
+  staging** (never blind `git add .`) + a **pre-commit size/origin guard** that blocks
+  suspiciously large or retail-fingerprinted `.tre` files with a clear error. (Open-source tool —
+  forks/clones must stay clean and small.)
+
+### Claude's Discretion
+- Exact on-disk layout of `.studio/` (changesets dir naming, manifest filenames) — propose a
+  concrete layout in planning, grounded in the version-control doc's schema (validate fields).
+- The specific client install-path/registry keys used for auto-detection — derive from the
+  live-inject detection code + the installed clients (`D:\SWG Infinity`, `D:\SWGEmu Client`).
+- UI surfaces (staging panel, changeset timeline, deploy dialog, VCS panel) — the doc provides
+  reference React components; treat as starting designs, fit to the existing dockview shell.
+
+</decisions>
+
+<canonical_refs>
+## Canonical References
+
+**Downstream agents MUST read these before planning or implementing.**
+
+### Workflow — packaging, VCS, rollback (primary)
+- `docs/06-workflow/version-control-and-backup.md` — DEPLOY-03/04 source: Git/LFS pipeline +
+  `.gitattributes` rules, local snapshots, **Base44 changeset-stack VFS** (the chosen rollback
+  model), and the **retail-`.tre` no-commit WARNING**. ⚠ Manifest/interface schemas are
+  **AI-proposed — validate the exact fields** (per D-04-05) before locking.
+- `docs/06-workflow/packaging-and-distribution.md` — mostly app packaging (Electron Forge/
+  Squirrel, **out of scope here**); relevant bit = the `registerPatchInClientConfig(clientDir,
+  patchName)` **`.cfg` patch-registration hook** shape (DEPLOY-02).
+
+### Core engine — TRE build/flatten (the engine this phase drives)
+- `docs/01-core-engine/iff-and-tre.md` — `.tre` build/repack + flatten-changeset-stack-into-TRE
+  reference. The engine itself is already implemented in Phase 1.
+- `packages/native-core/index.d.ts` — **existing** `buildTre(entries, version)` and
+  `repackTre(sourcePath, edits, version)` API (with the raw-slice-identity contract +
+  tombstone support). DEPLOY-01 builds on `buildTre`.
+- `.planning/phases/01-core-engine-iff-tre-verification-harness/01-04-*` — TRE builder/repacker
+  plan + summary (block write order, zlib L6, MD5 trailer, determinism guarantees).
+
+### Client detection (reuse for `.cfg` locate)
+- `packages/live-inject/` — Phase 3 client-detection/launch-and-attach code; reuse its install/
+  process discovery for DEPLOY-02 auto-detect (D-04-09).
+
+### Project rules / constraints
+- `.planning/REQUIREMENTS.md` §Edit & Deploy Loop (DEPLOY-01..04) + Standing byte-exact gate.
+- `docs/00-overview/source-provenance.md` — why AI-distilled doc schemas must be verified.
+
+</canonical_refs>
+
+<code_context>
+## Existing Code Insights
+
+### Reusable Assets
+- **`buildTre` / `repackTre`** (`packages/native-core`, Phase 1 01-04): the deploy-patch builder.
+  `buildTre(entries[], version)` takes `{path, data, tombstone}` entries — exactly the staging
+  model (D-04-03/04). Determinism + raw-slice identity already proven.
+- **TRE mount/resolver** (Phase 1 01-02): priority/override resolution + shadow chains — the
+  conceptual basis for how a higher-priority patch shadows retail (informs `.cfg` search-order).
+- **`@swg/live-inject` client detection** (Phase 3): locating installed/running clients — reuse
+  for DEPLOY-02 auto-detect (D-04-09).
+- **Extract** (Phase 2 02-05): `readMountEntry` + viewportStore source-entry fields already
+  write byte-complete entries to disk — the front half of the extract→edit→stage flow.
+- **Dockview shell + virtualized panels** (Phase 0/1): host for the staging panel, changeset
+  timeline, deploy dialog, VCS panel.
+
+### Established Patterns
+- **Native binary work crosses the bridge zero-copy** (ArrayBuffer), heavy work off-thread —
+  packing a patch should follow this (AsyncWorker, not main-thread).
+- **Native↔contract conformance guards** (Phase 2): add a guard for any new native binding field
+  this phase introduces.
+- **Byte-exact round-trip standing gate**: a built patch `.tre` must round-trip / load correctly;
+  DEPLOY-01 inherits the gate (cite `swg-client-v2` loader, verify on a real built patch).
+
+### Integration Points
+- Git/`.cfg`/filesystem operations run in the **Node-capable renderer (Path B)** or main —
+  follow the existing process posture; shell out to system `git`/`git-lfs` via child_process
+  (per the doc's `SwgGitLfsService`).
+- New `contracts/` types for: workspace, staging list, changeset manifest, deploy/activation
+  result. Rebuild `@swg/contracts` after edits (Phase 2 build gotcha).
+
+</code_context>
+
+<specifics>
+## Specific Ideas
+
+- **Shadow-base reset/compare** (maintainer's idea, D-04-10): a local shadow copy of the client
+  TRE base lets the user reset the TRE base and diff "shadow vs pristine original." Folded in as
+  the opt-in isolated-client mode — local-only, never versioned (copyright/size).
+- **Base44 layered versioning** is the maintainer's deliberate, experience-backed pick for
+  rollback — not a default. Build the real layered-stack UX (active-version toggle, greyed
+  re-activatable layers), not a simpler snapshot substitute.
+
+</specifics>
+
+<deferred>
+## Deferred Ideas
+
+- **Remote differential CDN sync** (SHA-256 broadphase + targeted compressed delivery, layer 4 of
+  the version-control doc) — explicitly v2/deferred per REQUIREMENTS. Not in Phase 4.
+- **App auto-update / Squirrel / asset-template streaming** (packaging doc §6) — app distribution,
+  not mod deploy. Separate concern, not this phase.
+- **Reviewed Todos (not folded):** the `todo.match-phase` hits (`inapp-console-log-tabs-inactive`,
+  `tre-mount-perf-marshalling`, `viewport-shader-blend-mode`) were keyword false-positives — none
+  relate to edit/deploy/`.tre`-patch/`.cfg`. Not folded.
+
+</deferred>
+
+---
+
+*Phase: 04-edit-deploy-loop*
+*Context gathered: 2026-06-26*
