@@ -147,7 +147,19 @@ Plans:
   2. The system updates the client `.cfg` search order to activate a patch with a safe, BOM-free, atomic write that preserves duplicate `searchTree=` entries in priority order (with backup).
   3. The user can roll back changes via a changeset/snapshot history that reverts the workspace to a prior state.
   4. The user can version mod-produced assets via Git/LFS, and a fresh clone is small with no retail `.tre` in `git log` (base/extracted assets are ignored, never blind `git add .`).
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+**Wave 1**
+- [ ] 04-01-PLAN.md — Contract types (workspace/staging/changeset/deploy), Zustand stores (workspaceStore/stagingStore/changesetStore), workspaceService (scaffold .studio/, .gitignore, .gitattributes, pre-commit hook, git init)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 04-02-PLAN.md — WorkspaceEntry + ActionBadge (glyph+color+text Rule 1) + StatusBar extend + WorkspaceShell panel registration + StagingPanel (virtualized ROW_HEIGHT=30, Pack Patch auto-seal, path-traversal guard)
+- [ ] 04-03-PLAN.md — packPatch.ts (buildTre version=5000, tombstone, atomic output) + clientLocator.ts (registry + known paths, never throws) + cfgActivator.ts (scanSharedFile, chooseSlot, activatePatch, deactivatePatch, ensureInclude — BOM-free atomic, backup, never user.cfg/options.cfg)
+- [ ] 04-04-PLAN.md — changesetService.ts (sealLayer, setActiveVersion — non-destructive pointer only, atomic JSON, 6 tests GREEN) + ChangesetTimelinePanel (virtual list, active/rolled-back states, keyboard activation)
+- [ ] 04-05-PLAN.md — gitLfsService.ts (execFile arg arrays, never exec(), never git add ., explicit-path staging, message sanitized) + VcsPanel (commit/push/log/LFS status/guard surface)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 04-06-PLAN.md — DeployDialog (Sections A/B/C: client picker, patch-prepend/shadow-base, cfg slot preview; build+activate phases; success/fail/reset; in-client UAT checkpoint on SWG Infinity) [autonomous: false]
 **UI hint**: yes
 
 ### Phase 5: WYSIWYG Live-Sync & Typed Editors
@@ -213,7 +225,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
-| 4. Edit & Deploy Loop | 0/TBD | Not started | - |
+| 4. Edit & Deploy Loop | 0/6 | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
