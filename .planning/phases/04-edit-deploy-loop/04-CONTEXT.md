@@ -45,8 +45,12 @@ outputs.
 - **D-04-04:** The deploy patch is built with **`buildTre` of only the staged deltas** — a small
   standalone archive containing just changed/added/deleted entries, mounted at higher `.cfg`
   priority to shadow retail (the standard SWG live-patch mechanism). Deletes are tombstone
-  entries (length-0 TOC). `repackTre` (full-base rebuild) is the wrong shape for a patch and
-  stays **unused** in this phase.
+  entries (length-0 TOC) — verified to hide the retail file in-client (`find()` `!deleted` loop +
+  `TreeFile_SearchNode.cpp:397`). `repackTre` (full-base rebuild) is the wrong shape for a patch
+  and stays **unused** in this phase.
+  - ⚠ **CORRECTION (04-RESEARCH.md):** the live Infinity client mounts **`EERT5000` (v5000)**,
+    confirmed by hexdump — so the patch must be built **`version='5000'`**, NOT `buildTre`'s
+    `'0005'` default (or detect the base client's version and match it). A v0005 patch will not load.
 
 ### Rollback (DEPLOY-03)
 - **D-04-05:** Rollback uses a **layered changeset-stack ("Base44") model** — maintainer's
@@ -64,13 +68,16 @@ outputs.
   No `PurgeChangesetLayer`-style destructive delete on rollback. Work is never lost.
 
 ### `.cfg` Activation (DEPLOY-02)
-- **D-04-09:** Client/`.cfg` discovery = **auto-detect known installs (SWG Infinity + SWGEmu)
-  + manual folder override**. **Reuse the client-detection logic already in `@swg/live-inject`**
-  (it locates running/installed clients for Phase 3) rather than writing new detection.
+- **D-04-09 (CORRECTED by 04-RESEARCH.md — ground truth):** Client/`.cfg` discovery =
+  **auto-detect known installs (SWG Infinity + SWGEmu) + manual folder override** (intent stands).
+  ⚠ The "reuse `@swg/live-inject`" premise was **FALSE** — live-inject only has
+  `launchAndInject(clientExe)` / `attachAndInject(pid)`, **no install/`.cfg` discovery**. The
+  client locator is **NEW work** (Windows registry + known install paths + manual override).
+  Manual override keeps it non-blocking (OQ-1).
 - **D-04-10:** **Offer BOTH deploy/isolation models at workspace setup:**
-  - *Default:* **patch-prepend** — add the patch `.tre` at higher `searchTree=` priority; never
-    touch retail files. Originals stay pristine automatically and ARE the compare/reset baseline.
-    Reset = remove the one `.cfg` line + delete the patch.
+  - *Default:* **patch-prepend** — add the patch `.tre` at a **free higher `searchTree_<sku>_<NN>=`
+    priority slot** (see D-04-12); never touch retail files. Originals stay pristine automatically
+    and ARE the compare/reset baseline. Reset = remove the one `.cfg` key + delete the patch.
   - *Opt-in:* **shadow-base "isolated client"** — copy the client TRE base to a **local shadow
     dir** (with a disk-space warning), repoint the client base at the shadow, apply patches there;
     real install stays as the pristine reset/compare source. The shadow is **local-only, never
@@ -78,9 +85,17 @@ outputs.
 - **D-04-11:** Workspace is **fully usable with no client detected** — authoring/extract/pack/
   version all work offline; client detection + `.cfg` activation are **deploy-time only**.
   Deploy is disabled behind a clear "point me at a client" prompt until a client is set.
-- **D-04-12 (locked by DEPLOY-02 itself):** `.cfg` write is **BOM-free, atomic**, **preserves
-  duplicate `searchTree=` entries in priority order**, **backs up** the `.cfg` before edit, and
-  **records the insertion** so rollback can cleanly remove it.
+- **D-04-12 (CORRECTED by 04-RESEARCH.md — ground truth):** The real engine reads
+  **`searchTree_<sku>_<priority>=<file>.tre`** keys inside a **`[SharedFile]`** section
+  (`TreeFile.cpp:90-191`; `ConfigFile.cpp:359-518`). The numeric suffix **IS** the priority,
+  **higher number wins**, first-match (`searchNodePriorityOrder a>b`); `maxSearchPriority` gates
+  the scan. So "preserve duplicate entries" means: **keep all existing `searchTree_NN_MM=` keys
+  untouched and add the patch at a FREE higher-priority slot** below `maxSearchPriority` (real
+  Infinity `swgemu_live.cfg`: `maxSearchPriority=60`, slots `_00_30..54` used → use **55**).
+  Write **target = a toolkit-owned `swgtoolkit.cfg`** pulled in via **`.include "swgtoolkit.cfg"`**
+  added once to the stable root `swgemu.cfg` — **NEVER** edit launcher-clobbered
+  `user.cfg`/`options.cfg`. Write is **CRLF, BOM-free, atomic**, backs up the edited `.cfg`,
+  records the insertion for clean rollback. (Persistence-across-relaunch = UAT item OQ-2.)
 
 ### Git/LFS (DEPLOY-04)
 - **D-04-13:** The **Git repo lives in the workspace folder (one per mod)** and **versions the
@@ -96,12 +111,19 @@ outputs.
   staging** (never blind `git add .`) + a **pre-commit size/origin guard** that blocks
   suspiciously large or retail-fingerprinted `.tre` files with a clear error. (Open-source tool —
   forks/clones must stay clean and small.)
+- **D-04-16 (added from 04-RESEARCH.md — security):** All git/git-lfs shelling from Node MUST use
+  **`execFile` with argument arrays**, never `exec` with interpolated command strings (the
+  AI-distilled doc's `exec(\`git commit -m "${msg}"\`)` pattern is a **command-injection vector** on
+  attacker-influenced commit messages / paths). git 2.49 + git-lfs 3.6.1 confirmed present; check
+  git-lfs presence before LFS ops and surface a clear error if absent.
 
 ### Claude's Discretion
 - Exact on-disk layout of `.studio/` (changesets dir naming, manifest filenames) — propose a
   concrete layout in planning, grounded in the version-control doc's schema (validate fields).
-- The specific client install-path/registry keys used for auto-detection — derive from the
-  live-inject detection code + the installed clients (`D:\SWG Infinity`, `D:\SWGEmu Client`).
+- The specific client install-path/registry keys used for auto-detection — NEW component (not in
+  live-inject, per D-04-09); confirm registry keys + known install paths against the installed
+  clients (`D:\SWG Infinity`; note `D:\SWGEmu Client` is currently EMPTY — SWGEmu parity rests on
+  the shared swg-client-v2 engine, and stock `maxSearchPriority` defaults to 20 so may need bumping).
 - UI surfaces (staging panel, changeset timeline, deploy dialog, VCS panel) — the doc provides
   reference React components; treat as starting designs, fit to the existing dockview shell.
 
