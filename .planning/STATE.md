@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 03 context gathered
-last_updated: "2026-06-26T13:22:50.373Z"
+last_updated: "2026-06-26T13:49:16.459Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 21
-  completed_plans: 17
-  percent: 81
+  completed_plans: 18
+  percent: 86
 ---
 
 # Project State
@@ -26,13 +26,13 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 03 (live-injection-foundation) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
         Residual lighting/gloss fidelity deferred → backlog export-lighting-fidelity, VIEW-MAT-FIDELITY.
 Next: Phase 03 (not yet planned) — run /gsd:plan-phase 03 when ready.
 Last activity: 2026-06-26
 
-Progress: [████████░░] 81%
+Progress: [█████████░] 86%
 
 ### 02-03 key facts (crew-verified)
 
@@ -79,6 +79,7 @@ Progress: [████████░░] 81%
 | Phase 03-live-injection-foundation P01 | 12 | 3 tasks | 22 files |
 | Phase 03-live-injection-foundation P02 | 20 | 2 tasks | 6 files |
 | Phase 03-live-injection-foundation P03 | 4 | 2 tasks | 4 files |
+| Phase 03-live-injection-foundation P04 | 13m | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: Vitest tests use TS port of C++ predicates
 - [Phase ?]: x86 struct packing for LiveState layout
 - [Phase ?]: DataView for unaligned BigInt64 in channel tests
+- [Phase 03]: channel.h created to share LiveState struct between channel.cpp and agent_main.cpp without redefinition (Rule 2 — missing critical infrastructure) — C++ has no way to share a struct across TUs without a header; channel.h is the correct fix
+- [Phase 03]: extern const for k_mainLoopCounter_addr in rva_table.cpp — C++ const at namespace scope has internal linkage by default; extern needed for cross-TU access — Link error LNK2019 on k_mainLoopCounter_addr; static → const → extern const fixed it
+- [Phase 03]: UnmapViewOfFile only in ArrayBuffer finalizer in channel_binding.cpp — cleanupChannel only Reset()s the Napi::Reference and closes hMap; OS implicit reference keeps view valid until GC — Pitfall 5 design: finalizer owns view lifetime; CloseHandle(hMap) is safe before GC because OS holds implicit reference while view is open
 
 ### Pending Todos
 
@@ -156,6 +160,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T13:22:50.343Z
+Last session: 2026-06-26T13:47:55.335Z
 Stopped at: Phase 03 context gathered
 Resume file: None
