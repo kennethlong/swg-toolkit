@@ -181,8 +181,12 @@ export function decodeDxt(
         colorOff = blockOffset + 8;
       }
 
-      // Decode color block (always 8 bytes, starting at colorOff)
-      const colorPixels = decodeColorBlock(src, colorOff - offset);
+      // Decode color block (always 8 bytes, starting at colorOff).
+      // colorOff is already a 0-based index INTO `src` (which is new Uint8Array(bytes, offset, …)),
+      // so it must NOT be offset-adjusted again. The old `colorOff - offset` read color blocks
+      // ~offset bytes too early whenever offset != 0 (the exporter + S3TC-absent fallback both pass
+      // a nonzero DDS mip offset), garbling color while alpha stayed correct → scrambled textures.
+      const colorPixels = decodeColorBlock(src, colorOff);
 
       // Write the 4×4 block into the output image
       for (let py = 0; py < 4; py++) {
