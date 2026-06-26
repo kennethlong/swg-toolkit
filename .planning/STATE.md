@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-06-25T23:21:27Z"
-last_activity: 2026-06-25 -- 02-05 Tasks 1-2 done; paused at Task 3 human-verify checkpoint
+status: phase-complete
+stopped_at: Phase 2 complete (VIEW-01..04 ✓); next = Phase 03 (not yet planned)
+last_updated: "2026-06-25"
+last_activity: 2026-06-25 -- 02-05 glTF export + Extract human-verified & approved; 4 export bugs fixed via crew (CONSULT-P2-05B); Phase 2 COMPLETE
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 13
-  percent: 93
+  completed_plans: 14
+  percent: 100
 ---
 
 # Project State
@@ -21,17 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 02 — 3d-mesh-viewport-mvp-proof
+**Current focus:** Phase 02 COMPLETE — next: Phase 03 (planning not yet started)
 
 ## Current Position
 
-Phase: 02 (3d-mesh-viewport-mvp-proof) — EXECUTING
-Plan: 5 of 5 (Tasks 1-2 done; Task 3 = checkpoint:human-verify)
-Status: CHECKPOINT-PENDING — awaiting human verification of glTF export + docs
-Resume: Type "approved" (or describe issues) to finalize Phase 2
-Last activity: 2026-06-25 -- Phase 02 execution started
+Phase: 02 (3d-mesh-viewport-mvp-proof) — ✅ COMPLETE (all 5 plans; VIEW-01..04 ✓)
+Plan: 5 of 5 done — 02-05 glTF export + Extract human-verified & approved 2026-06-25
+Status: Phase 2 closed. Export ships glTF (.glb) rigged+animated+textured + raw Extract.
+        Residual lighting/gloss fidelity deferred → backlog export-lighting-fidelity, VIEW-MAT-FIDELITY.
+Next: Phase 03 (not yet planned) — run /gsd:plan-phase 03 when ready.
+Last activity: 2026-06-25 -- Phase 2 complete; 4 export bugs found+fixed via crew round (CONSULT-P2-05B)
 
-Progress: [████████░░] 79%
+Progress: [██████████] Phase 2 done (3/9 phases complete)
 
 ### 02-03 key facts (crew-verified)
 

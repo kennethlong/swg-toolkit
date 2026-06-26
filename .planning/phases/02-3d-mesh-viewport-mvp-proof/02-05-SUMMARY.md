@@ -2,7 +2,7 @@
 phase: 02-3d-mesh-viewport-mvp-proof
 plan: "05"
 subsystem: export-pipeline
-status: checkpoint-pending
+status: complete
 tags:
   - gltf-export
   - x-mirror
@@ -59,19 +59,23 @@ decisions:
 metrics:
   duration: "~3 hours"
   completed: "2026-06-25T23:21:27Z"
-  tasks_completed: 2
+  tasks_completed: 3
   tasks_total: 3
-  files_created: 6
+  files_created: 7
   files_modified: 9
+  human_verified: "2026-06-25 — glTF export (textures/skeleton/animation/orientation) + Extract (byte-complete SMAT IFF) approved by maintainer"
 ---
 
 # Phase 2 Plan 05: glTF Export Pipeline + Format Docs Corrections Summary
 
 **One-liner:** glTF (.glb) export with baked X-mirror (compose-then-mirror), ShaderMaterial→MeshStandardMaterial+DXT-decode conversion, raw Extract, and corrected format docs with precise provenance callouts.
 
-## Status: CHECKPOINT-PENDING (awaiting Task 3 human verification)
+## Status: COMPLETE — Task 3 human-verified & approved (2026-06-25)
 
-Tasks 1 and 2 are committed. Task 3 is a `checkpoint:human-verify gate="blocking"` — the executor STOPPED here per plan. Do not mark Phase 2 complete until the user approves.
+The maintainer verified the glTF export (correct orientation, textures, skeleton, animation, glowing
+eyes) and Extract (byte-complete `SMAT` IFF). Human-verification surfaced **4 real bugs**, all fixed
+post-checkpoint via a second 4-AI crew round (CONSULT-P2-05B) — see "Task 3" below. **Phase 2 complete:
+VIEW-01 ✓ (02-02), VIEW-02 ✓ (02-03), VIEW-03 ✓ (02-04), VIEW-04 ✓ (this plan).**
 
 ## Tasks Completed
 
@@ -80,25 +84,36 @@ Tasks 1 and 2 are committed. Task 3 is a `checkpoint:human-verify gate="blocking
 | 1 | glTF export pipeline (mirrorScene, exportMaterial, buildAnimationClip, buildExportScene, ExportDialog, Extract, store/viewport wiring) + harness test | 7f3fb2f |
 | 2 | Correct AI-distilled format docs (SKMG INFO 9×int32, BPMJ v0001/v0002, Skeleton.cpp composition formula, material.skinning r140 fix, glTF export note) | de1504d |
 
-## Task 3 (PENDING — Human Verification)
+## Task 3 — Human-Verified (APPROVED)
 
-**What was built:**
-- glTF (.glb, rigged+animated, textured) export with BAKED X-mirror on a deep-cloned export scene (ShaderMaterial→MeshStandardMaterial + DXT decompress)
-- Raw-asset Extract via `nativeCore.readMountEntry`
-- Corrected format docs
+Verified on `protocol_droid_red.sat`: glTF export opens in Blender 4.x with correct orientation, textures,
+skeleton, and animation; glowing eyes correct; **Extract** wrote a byte-complete `FORM…SMAT` IFF (285 B,
+self-declared length matches file). Approved by the maintainer.
 
-**How to verify (verbatim from plan Task 3):**
+### Bugs found during human-verification (fixed via crew round CONSULT-P2-05B)
 
-1. Open a loaded (textured, animated) .sat. Note pose/orientation.
-2. Export… → glTF (.glb), check Skeleton + Animation. Note 'Y-up · X-mirror applied'. Export.
-3. Confirm "Exporting glTF…" then "✓ exported {file.glb}".
-4. Open the .glb (gltf.report or Blender 4.x Import → glTF). Confirm: geometry upright; TEXTURED (diffuse + normal); NOT inside-out (toggle back-face culling in gltf.report — faces stay lit); skeleton present; animation plays.
-5. ASYMMETRIC asset (one-shoulder armor / asymmetric creature): confirm CHIRALITY — the asymmetric feature is on the correct side (matches in-game / SIE), normal-map highlights come from the right side (tangent.w check), no inside-out shading. THIS is the X-mirror's empirical proof.
-6. Animate an asymmetric limb (one arm): confirm it tracks its correct final position, no mirror-drift (the compose-then-mirror Rank-1 check).
-7. Extract… → choose a location → confirm raw bytes written (spot-check size vs source).
-8. Review docs: .sat no longer "Skeleton Animation Template"; CKAT/KFAT sparse per-channel; Skeleton.cpp composition documented; precise "(verified … 2026-06-23/25)" callouts; no Texture.cpp:115-129 DDS mis-citation.
+The renderer skinned/export path was being exercised on real assets for the first time; 4 bugs surfaced
+and were fixed with regression coverage. Crew (Codex/Cursor/Opus/Sonnet) converged from non-overlapping
+angles — Codex found the decisive DXT bug *against* the majority read (the de-anchoring win).
 
-**Resume signal:** Type "approved" to finalize Phase 2, or describe any export/docs issues (double-mirror, inside-out faces, inverted normal-map lighting, animation drift, lost textures, docs gaps).
+| # | Symptom | Root cause | Fix | Commit |
+|---|---------|-----------|-----|--------|
+| 1 | Stiff legs in exported animation | AnimationClip tracks named by lowercase `.ans` `joint.name`; GLTFExporter binds by EXACT node name → 34/39 limb tracks dropped | Key tracks by the resolved skeleton bone name (`boneData.name`, camelCase). Verified 5→36 animated joints | ec9576c |
+| 2 | Whole part glows white | Exported raw EMIS **RGB** (mostly-white); SWG EMIS is an **alpha mask** self-illuminating the diffuse (`swgMaterial.ts:234`) | Bake `emissiveMap.rgb = diffuse.rgb × emis.a`, `emissiveFactor=[1,1,1]` | ec9576c→ea0459b |
+| 3 | Placeholder normals/emissive on every material | Read `uNormalMap`/`uEmissiveMap` unconditionally (1×1 placeholder when slot absent) | Gate on `bHasNormal`/`bHasEmissive` shader flags | ec9576c |
+| 4 | **Scrambled "cat face"** (the big one) | DXT CPU decode `colorOff - offset` read color blocks ~offset bytes too early when offset≠0 (exporter passes DDS mip offset ~128) → correct alpha, **black/shifted color** | Drop the spurious `-offset`. **Regression test** `dxt-decode-offset.test.ts` (offset-invariance) | ea0459b |
+
+Geometry/mirror/skin were **provably ruled out** (Opus). Residual "lighter/less-glossy than the live
+render" is the **expected, deferred** SWG-lighting gap (no glTF-PBR slot for SWG spec/env/ambient model) —
+logged with 3 candidate approaches (PBR gloss-map, baked-unlit mode, Blender light rig) in backlog
+`export-lighting-fidelity.md`. Crew briefs: `.planning/research/CONSULT-P2-05B-*`.
+
+### Verification basis (standing gate satisfied)
+- Maintainer UAT: glTF export + Extract approved.
+- `npx vitest run` from repo root: **188/188 green** (incl. new `dxt-decode-offset` RED→GREEN regression
+  + `buildAnimationClip-composition` guard).
+- `tsc --noEmit` on renderer: clean.
+- Byte-level checks: exported `.glb` materials/textures/animation-channels inspected; Extract IFF validated.
 
 ---
 
