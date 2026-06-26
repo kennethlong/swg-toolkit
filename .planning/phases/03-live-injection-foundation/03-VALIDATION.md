@@ -1,11 +1,11 @@
 ---
 phase: 03
 slug: live-injection-foundation
-status: planned
+status: verified
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-06-25
-updated: 2026-06-25
+updated: 2026-06-26
 ---
 
 # Phase 03 — Validation Strategy
@@ -57,7 +57,7 @@ updated: 2026-06-25
 | 03-06-02 | 06 | 5 | LIVE-04/05 | T-03-04/06 | LiveInspectorPanel all 3 states render; HexInspector present; no write path | build | `pnpm --filter @swg/renderer build` | ❌ W0 | ⬜ pending |
 | 03-06b-01 | 06b | 6 | LIVE-04/05 | T-03-05/06 | useLiveService routes addon promise to liveStore; useChannelReader seqlock protocol present | build | `pnpm --filter @swg/renderer build` | ❌ W0 | ⬜ pending |
 | 03-06b-02 | 06b | 6 | LIVE-04 | T-03-01/06 | attach trigger UI in STATE 1; useChannelReader called unconditionally; read-verify only | build | `pnpm --filter @swg/renderer build` | ❌ W0 | ⬜ pending |
-| 03-06b-UAT | 06b | 6 | LIVE-01/02/04/05 | T-03-01/05/06 | real client UAT (both advertised + legacy); file-patch fallback | manual UAT | (checklist in 03-06b-PLAN.md) | N/A | ⬜ pending |
+| 03-06b-UAT | 06b | 6 | LIVE-01/02/04/05 | T-03-01/05/06 | real client UAT (both advertised + legacy); file-patch fallback | manual UAT | (checklist in 03-06b-PLAN.md) | N/A | ✅ PASS 2026-06-26 (both builds, attach path, live movement; see VERIFICATION.md) |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -69,8 +69,8 @@ updated: 2026-06-25
 - [x] `packages/live-inject/test/sentinels.spec.ts` — RED stubs for 4-sentinel predicate tests (Plan 03-01 Task 2)
 - [x] `packages/live-inject/test/channel-layout.spec.ts` — LIVE_CHANNEL_LAYOUT sanity (TRANSFORM=48 PASSES day 1) + seqlock round-trip RED stub (Plan 03-01 Task 2)
 - [x] `packages/live-inject/test/handle.spec.ts` — RED stubs for OpenProcess handle lifecycle (Plan 03-01 Task 2)
-- [ ] Captured byte fixtures in `packages/harness/fixtures-real/live/`: sane 48-byte transform (Float32Array), networkId sample, `object/...` template-name string — capture from a real client during Plan 03-02/03-03 execution; placeholder `.gitkeep` created in Plan 03-01
-- [ ] Manual-UAT checklist signed (LIVE-01/02/04/05 on both advertised and legacy clients) — gate for Plan 03-06 checkpoint
+- [~] Captured byte fixtures in `packages/harness/fixtures-real/live/` — NOT captured as files; superseded by direct live UAT against real clients (real transform/networkId/template observed on both builds, see VERIFICATION.md). Optional: snapshot bytes to fixtures to strengthen sentinel unit tests (sentinel tests currently pass on synthetic data). Non-blocking.
+- [x] Manual-UAT checklist signed (LIVE-01/02/04/05 on both advertised and legacy clients) — SIGNED 2026-06-26 (attach path; advertised swg-client-v2 + legacy SWGEmu 0.0.119.798; live movement tracked)
 
 ---
 
@@ -96,4 +96,4 @@ updated: 2026-06-25
 - [x] Feedback latency < 10s (unit run)
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending (requires Plan 03-06 manual UAT sign-off)
+**Approval:** APPROVED 2026-06-26 — manual UAT passed on both builds (attach path); see VERIFICATION.md. Residuals (HUD visual confirm, not-elevated live trigger, detach button) carried to Phase 5 / follow-ups, non-blocking.

@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 03 context gathered
+status: planning
+stopped_at: Phase 03 verified + closed out; ready to replan remaining milestone work
 last_updated: "2026-06-26T14:30:00.939Z"
 last_activity: 2026-06-26
 progress:
@@ -25,11 +25,15 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 03 (live-injection-foundation) — EXECUTING
-Plan: 7 of 7
-Status: Phase complete — ready for verification
-        Residual lighting/gloss fidelity deferred → backlog export-lighting-fidelity, VIEW-MAT-FIDELITY.
-Next: Phase 03 (not yet planned) — run /gsd:plan-phase 03 when ready.
+Phase: 03 (live-injection-foundation) — VERIFIED ✓ (2026-06-26)
+Plan: 7 of 7 complete. Manual UAT PASSED on both builds (advertised swg-client-v2 + legacy
+      SWGEmu 0.0.119.798, attach path, live movement). VERIFICATION.md written; 03-VALIDATION.md approved.
+Status: Phase 3 closed out. Live connection proven on both clients; app wiring fixed (index.js entry +
+        root dep); per-connect agent copy + closeChannel landed. SC1-3 MET, SC4/5 MET (data path/by-design)
+        with residuals carried to Phase 5 (HUD visual confirm, not-elevated live trigger, detach button,
+        agent stop-signal, legacy 64-bit networkId).
+Next: REPLAN remaining milestone work (Phases 2, 4, 5, 6, 7, 8) per maintainer; fold the
+      live-world-terrain-sync idea (terrain-only vs broader; new Phase 9 vs 7.1) into that replan.
 Last activity: 2026-06-26
 
 Progress: [██████████] 100%
