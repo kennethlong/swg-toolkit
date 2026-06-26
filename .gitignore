@@ -15,7 +15,10 @@ dist/
 # Native (N-API / cmake-js) addon build artifacts
 packages/native-core/build/
 packages/native-core/prebuilds/
+packages/live-inject/build/
+packages/live-inject/agent/build-agent/
 *.node
+*.dll
 
 # Test output
 playwright-report/
