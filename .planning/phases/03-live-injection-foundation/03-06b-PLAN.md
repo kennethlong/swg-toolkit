@@ -22,6 +22,7 @@ must_haves:
     - "Seqlock retry: reader returns null (skips frame) when seq is odd; re-reads seq after payload and returns null if seq changed"
     - "Manual UAT on advertised client: HUD shows read-verified state; resolved endpoint count ~97 (not ~40)"
     - "Manual UAT on legacy SWGEmu client: the RVA-table path attaches and shows state"
+    - "useChannelReader calls liveStore.updateRegion with the raw channel bytes on each successful poll, enabling the HexInspector (STATE 3) raw memory view (D-07)"
   artifacts:
     - path: packages/renderer/src/hooks/useLiveService.ts
       provides: "launchAndInjectUI(clientExe) async function; routes addon promise to liveStore actions"
@@ -49,6 +50,10 @@ must_haves:
       to: packages/contracts/src/live-inject.ts
       via: "LIVE_CHANNEL_LAYOUT offsets guide the DataView reads (seqlock + payload)"
       pattern: "LIVE_CHANNEL_LAYOUT"
+    - from: packages/renderer/src/hooks/useChannelReader.ts
+      to: packages/renderer/src/state/liveStore.ts
+      via: "useLiveStore.getState().updateRegion(new Uint8Array(buf)) called on each successful poll (D-07)"
+      pattern: "updateRegion"
 ---
 
 <objective>
@@ -82,6 +87,7 @@ useLiveStore.getState().beginAttach(clientExe: string): void
 useLiveStore.getState().attachComplete(pid: number, mappingName: string): void
 useLiveStore.getState().attachError(reason: string): void
 useLiveStore.getState().updateState(state: VerifiedObjectState | null): void
+useLiveStore.getState().updateRegion(bytes: Uint8Array): void
 // status: ConnectionStatus = { kind: 'idle' | 'connecting' | 'attached'; pid?; mappingName? } | { kind: 'error'; reason }
 
 <!-- native addon surface — from packages/live-inject/src/addon.cpp registrations (Plans 03-04/03-05) -->
@@ -193,6 +199,7 @@ addon.readChannelView(name: string): ArrayBuffer | null
         function poll() {
           const buf: ArrayBuffer | null = addon.readChannelView(mappingName);
           if (buf) {
+            useLiveStore.getState().updateRegion(new Uint8Array(buf));
             const state = parseChannelView(buf);
             if (state !== null) useLiveStore.getState().updateState(state);
           }
@@ -239,9 +246,10 @@ addon.readChannelView(name: string): ArrayBuffer | null
     grep -c "requestAnimationFrame" packages/renderer/src/hooks/useChannelReader.ts gives 2 (request + cancel).
     grep -c "LIVE_CHANNEL_LAYOUT" packages/renderer/src/hooks/useChannelReader.ts gives 1+.
     grep -c "seq1.*&.*1\|seqlock\|SEQ_COUNTER" packages/renderer/src/hooks/useChannelReader.ts gives 1+ (seqlock protocol present).
+    grep -c "updateRegion" packages/renderer/src/hooks/useChannelReader.ts gives 1 (raw bytes fed to HexInspector via liveStore).
     grep -v "^//" packages/renderer/src/hooks/useLiveService.ts | grep -c "WriteProcess\|write.*memory\|inject.*write" gives 0 (no write path).
   </acceptance_criteria>
-  <done>useLiveService.ts exports launchAndInjectUI/attachToRunningUI/getAgentDllPath; useChannelReader.ts polls channel with seqlock protocol; both files build without TS error</done>
+  <done>useLiveService.ts exports launchAndInjectUI/attachToRunningUI/getAgentDllPath; useChannelReader.ts polls channel with seqlock protocol and feeds raw bytes to updateRegion; both files build without TS error</done>
 </task>
 
 <task type="auto">
@@ -396,6 +404,7 @@ pnpm -r test: all 4 spec files GREEN (no regressions).
 grep -c "launchAndInjectUI" packages/renderer/src/panels/LiveInspectorPanel.tsx gives 1.
 grep -c "requestAnimationFrame" packages/renderer/src/hooks/useChannelReader.ts gives 2.
 grep -c "seq1.*&.*1\|SEQ_COUNTER" packages/renderer/src/hooks/useChannelReader.ts gives 1+.
+grep -c "updateRegion" packages/renderer/src/hooks/useChannelReader.ts gives 1.
 Manual UAT approved on advertised client (resolved count ~97, not ~40) and legacy SWGEmu client.
 </verification>
 
