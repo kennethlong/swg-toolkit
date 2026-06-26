@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 0: Toolchain De-risk & App Shell** - Prove the full native->renderer pipeline, lock Electron security/isolation, ship the dark dockable shell ✓ 2026-06-22 (Path B: native-in-renderer zero-copy)
 - [x] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate (completed 2026-06-23)
 - [ ] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export
-- [ ] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track)
+- [x] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track) (completed 2026-06-26)
 - [ ] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
 - [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
@@ -135,7 +135,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [x] 03-06-PLAN.md — Renderer HUD: liveStore.ts, LiveInspectorPanel (three states + HexInspector), StatusBar mode indicator, WorkspaceShell registration, ROADMAP SC-2 doc fix
-- [ ] 03-06b-PLAN.md — HUD wiring: useLiveService hook, useChannelReader, attach trigger UI, channel polling integration, manual UAT checkpoint
+- [x] 03-06b-PLAN.md — HUD wiring: useLiveService hook, useChannelReader, attach trigger UI, channel polling integration, manual UAT checkpoint
 
 ### Phase 4: Edit & Deploy Loop
 **Goal**: Turn the viewer into an editor that closes the modder loop — repack validated edits into a deployable `.tre` patch, activate it via the client `.cfg`, and provide changeset rollback and safe Git/LFS versioning of mod outputs only.
@@ -212,7 +212,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 0. Toolchain De-risk & App Shell | 4/5 | In Progress|  |
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 0/5 | Not started | - |
-| 3. Live-Injection Foundation | 6/7 | In Progress|  |
+| 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
 | 4. Edit & Deploy Loop | 0/TBD | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
