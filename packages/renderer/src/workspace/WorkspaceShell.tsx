@@ -14,18 +14,20 @@ import React, { useRef } from 'react';
 import { DockviewReact, DockviewReadyEvent, DockviewApi } from 'dockview';
 import type { IDockviewPanelProps } from 'dockview';
 import { LAYOUT_STORAGE_KEY, buildInitialLayout } from './workspace-config';
-import SidebarPanel   from '../panels/SidebarPanel';
-import ViewportPanel  from '../panels/ViewportPanel';
-import InspectorPanel from '../panels/InspectorPanel';
-import DataPanel      from '../panels/DataPanel';
+import SidebarPanel        from '../panels/SidebarPanel';
+import ViewportPanel       from '../panels/ViewportPanel';
+import InspectorPanel      from '../panels/InspectorPanel';
+import DataPanel           from '../panels/DataPanel';
+import LiveInspectorPanel  from '../panels/LiveInspectorPanel';
 
 // Panel component registry — all IDs registered before fromJSON (Pitfall 5)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const panelComponents: Record<string, React.FunctionComponent<IDockviewPanelProps<any>>> = {
-  sidebar:   SidebarPanel,
-  viewport:  ViewportPanel,
-  inspector: InspectorPanel,
-  data:      DataPanel,
+  sidebar:          SidebarPanel,
+  viewport:         ViewportPanel,
+  inspector:        InspectorPanel,
+  data:             DataPanel,
+  'live-inspector': LiveInspectorPanel,  // Phase 3: live injection HUD panel (03-06)
 };
 
 export default function WorkspaceShell(): React.ReactElement {
