@@ -11,6 +11,9 @@ importers:
 
   .:
     dependencies:
+      '@swg/live-inject':
+        specifier: workspace:*
+        version: link:packages/live-inject
       '@swg/native-core':
         specifier: workspace:*
         version: link:packages/native-core

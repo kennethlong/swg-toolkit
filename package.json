@@ -33,6 +33,7 @@
     "vitest": "4.1.9"
   },
   "dependencies": {
+    "@swg/live-inject": "workspace:*",
     "@swg/native-core": "workspace:*",
     "dockview": "6.6.1",
     "dockview-react": "6.6.1",
