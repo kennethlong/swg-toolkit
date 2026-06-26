@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 03 context gathered
-last_updated: "2026-06-26T12:45:32.317Z"
+last_updated: "2026-06-26T13:08:18.154Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 21
-  completed_plans: 15
-  percent: 71
+  completed_plans: 16
+  percent: 76
 ---
 
 # Project State
@@ -26,13 +26,13 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 03 (live-injection-foundation) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
         Residual lighting/gloss fidelity deferred → backlog export-lighting-fidelity, VIEW-MAT-FIDELITY.
 Next: Phase 03 (not yet planned) — run /gsd:plan-phase 03 when ready.
 Last activity: 2026-06-26
 
-Progress: [███████░░░] 71%
+Progress: [████████░░] 76%
 
 ### 02-03 key facts (crew-verified)
 
@@ -77,6 +77,7 @@ Progress: [███████░░░] 71%
 | Phase 02-3d-mesh-viewport-mvp-proof P01 | 3h | 3 tasks | 27 files |
 | Phase 02-3d-mesh-viewport-mvp-proof P02 | 240 | 2 tasks | 21 files |
 | Phase 03-live-injection-foundation P01 | 12 | 3 tasks | 22 files |
+| Phase 03-live-injection-foundation P02 | 20 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 03, Plan 01]: Test files use .test.ts extension (project convention) not .spec.ts as plan spec'd
 - [Phase 03, Plan 01]: TRANSFORM.length=48 locked by passing test from day 1 (channel-layout.test.ts sanity check)
 - [Phase 03, Plan 01]: x86 MSVC toolset PRESENT: VS 2022 (17.14) + VS 2026 (18.6) both have VC.Tools.x86.x64; agent build unblocked
+- [Phase 03, Plan 02]: resolver test utilities inline in inject_binding.cpp (x64 host avoids x86 agent cross-arch CMake linkage)
+- [Phase 03, Plan 02]: 2 UNVERIFIED legacy gaps documented — g_runningFlags + getNetworkId have no SWGEmu RVA (Utinni game.cpp:74-82, object.cpp:176-189); advertised-only; legacy fallback cited
+- [Phase 03, Plan 02]: rva_table.cpp uses (void**)&typed_fn_ptr binding pattern matching Utinni endpoints_bindings.cpp
 - [Phase 02, Plan 02]: resolveEntry native contract = {winner, tombstone, archiveIndex, entryIndex} — NO `found` field. A hit = winner!==null && !tombstone. (Resolver had checked nonexistent .found → everything bucketed missing.)
 - [Phase 02, Plan 02]: TRE entries cross the bridge as ONE columnar ArrayBuffer (getMountEntriesColumnar, built off-thread), decoded in JS — NOT 250k Napi::Objects. Native mount of full 27-archive/244k-entry set ≈ 835ms.
 - [Phase 02, Plan 02]: VfsTree MUST be virtualized (ROW_HEIGHT=30, OVERSCAN=8) — unvirtualized render of 244k rows was the real >1min hang, NOT native. Same lesson as HexInspector.
@@ -148,6 +152,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T12:45:32.281Z
+Last session: 2026-06-26T13:08:18.124Z
 Stopped at: Phase 03 context gathered
 Resume file: None
