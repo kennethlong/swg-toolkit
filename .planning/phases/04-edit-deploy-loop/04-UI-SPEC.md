@@ -1,10 +1,11 @@
 ---
 phase: 4
 slug: edit-deploy-loop
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-06-26
+reviewed_at: 2026-06-26
 ---
 
 # Phase 4 — UI Design Contract: Edit & Deploy Loop
