@@ -3,7 +3,7 @@
  *
  * The HOST creates the file-mapping (CreateFileMapping) before inject.
  * The agent opens it here (OpenFileMappingA, FILE_MAP_WRITE).
- * Naming convention: "Local\\SwgToolkitLive_<pid>"
+ * Naming convention: "Local\\SwgToolkitLive_<uuid-fragment>"
  * (mirrors Utinni main.cpp "Local\\UtinniReady_<pid>")
  *
  * Seqlock write protocol (T-03-03 tamper mitigation):
@@ -15,38 +15,13 @@
  *   retry if seq is odd or the two seq reads disagree.
  *
  * ARCH REQUIREMENT: This file is compiled as part of the x86 agent DLL.
- *   On x86 MSVC, uint64_t has 4-byte natural alignment.  Use #pragma pack(push, 4)
- *   to ensure the LiveState layout matches the contracts/live-inject.ts
- *   LIVE_CHANNEL_LAYOUT constants and its static_asserts.
+ *   LiveState layout and #pragma pack(push, 4) are defined in channel.h.
  */
 
-#include <Windows.h>
+#include "channel.h"
 #include <cstring>
-#include <cstddef>
-#include <cstdint>
 
-// ---------------------------------------------------------------------------
-// LiveState struct — must match LIVE_CHANNEL_LAYOUT in @swg/contracts/live-inject.ts
-//
-// Offsets (enforced by static_assert below):
-//   seqCounter:    offset   0 (LONG, 4 bytes  — seqlock managed by channelWrite)
-//   transform:     offset   4 (float[3][4], 48 bytes — row-major, translation at col 3)
-//   networkId:     offset  52 (uint64_t, 8 bytes)
-//   templateName:  offset  60 (char[256], null-terminated ASCII)
-//   liveness:      offset 316 (uint32_t, 4 bytes — bit0=playerNonNull, bit1=isOver)
-//   TOTAL:                320 bytes
-// ---------------------------------------------------------------------------
-
-#pragma pack(push, 4)
-struct LiveState {
-    LONG      seqCounter;        // offset   0
-    float     transform[3][4];   // offset   4
-    uint64_t  networkId;         // offset  52
-    char      templateName[256]; // offset  60
-    uint32_t  liveness;          // offset 316
-};
-#pragma pack(pop)
-
+// Layout verification — keep these in the .cpp to catch packing regressions early.
 static_assert(sizeof(LiveState) == 320,
     "LiveState must match LIVE_CHANNEL_LAYOUT.TOTAL_SIZE (320 bytes)");
 static_assert(offsetof(LiveState, transform) == 4,

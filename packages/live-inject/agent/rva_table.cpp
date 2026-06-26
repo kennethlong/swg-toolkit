@@ -65,7 +65,7 @@ pGetTemplateFilename getTemplateFilename = (pGetTemplateFilename)0x00B23C40;
 // VERIFIED: Utinni game.cpp:87,91 — SWGEmu: read the loop counter global at
 // k_mainLoopCounter_addr directly: *(int*)k_mainLoopCounter_addr.
 // Advertised client: slot resolves to &Game::getMainLoopCount (call-not-read accessor).
-static const uintptr_t k_mainLoopCounter_addr = 0x1908830;
+extern const uintptr_t k_mainLoopCounter_addr = 0x1908830;  // external linkage for agent_main.cpp
 pMainLoopCount g_mainLoopCounter = nullptr;  // null until advertised-client resolves it
 
 // --- game::g_runningFlags / isOver ---
