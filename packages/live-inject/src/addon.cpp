@@ -2,12 +2,22 @@
  * addon.cpp — NODE_API_MODULE registration for swg_live_inject.
  *
  * Exports:
- *   Inject/attach/detach  → inject_binding.cpp: LaunchAndInject, AttachAndInject, Detach
- *   Process handle lifecycle → procmem_binding.cpp: OpenProcessHandle, CloseProcessHandle,
- *                              ReadProcessRegion, IsProcessAlive
- *   File-mapping channel  → channel_binding.cpp: OpenChannel, CloseChannel, ReadChannelView
- *   Test-utility resolver → inject_binding.cpp: LookupByNameInTable, ResolveFromSyntheticTable,
- *                              ResolveFromExe, IsAdvertisedClient
+ *   Inject/attach/detach  → inject_binding.cpp: launchAndInject, attachAndInject, detach
+ *
+ *   Process handle lifecycle → procmem_binding.cpp:
+ *     openProcessHandle(pid, forInject) → {handleId, isAdvertisedClient}
+ *     closeProcessHandle(handleId)
+ *     readProcessRegion(handleId, addr, byteCount) → ArrayBuffer
+ *     isProcessAlive(handleId) → boolean
+ *     isAdvertisedClientProcess(handleId) → boolean
+ *
+ *   File-mapping channel → channel_binding.cpp:
+ *     openChannel(name) → ArrayBuffer
+ *     closeChannel(name)
+ *     readChannelView(name) → ArrayBuffer | null
+ *
+ *   Test-utility resolver (Plan 03-02 TDD) → inject_binding.cpp:
+ *     lookupByNameInTable, resolveFromSyntheticTable, resolveFromExe, isAdvertisedClient
  */
 
 #include <napi.h>
@@ -28,6 +38,7 @@ Napi::Value OpenProcessHandle(const Napi::CallbackInfo& info);
 Napi::Value CloseProcessHandle(const Napi::CallbackInfo& info);
 Napi::Value ReadProcessRegion(const Napi::CallbackInfo& info);
 Napi::Value IsProcessAlive(const Napi::CallbackInfo& info);
+Napi::Value IsAdvertisedClientProcess(const Napi::CallbackInfo& info);  // process-level probe
 
 // Forward declarations (implemented in channel_binding.cpp)
 Napi::Value OpenChannel(const Napi::CallbackInfo& info);
@@ -41,16 +52,17 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("detach",          Napi::Function::New(env, Detach));
 
     // Test-utility resolver exports (Plan 03-02 TDD)
-    exports.Set("lookupByNameInTable",      Napi::Function::New(env, LookupByNameInTable));
-    exports.Set("resolveFromSyntheticTable",Napi::Function::New(env, ResolveFromSyntheticTable));
-    exports.Set("resolveFromExe",           Napi::Function::New(env, ResolveFromExe));
-    exports.Set("isAdvertisedClient",       Napi::Function::New(env, IsAdvertisedClient));
+    exports.Set("lookupByNameInTable",       Napi::Function::New(env, LookupByNameInTable));
+    exports.Set("resolveFromSyntheticTable", Napi::Function::New(env, ResolveFromSyntheticTable));
+    exports.Set("resolveFromExe",            Napi::Function::New(env, ResolveFromExe));
+    exports.Set("isAdvertisedClient",        Napi::Function::New(env, IsAdvertisedClient));
 
     // Process handle lifecycle
-    exports.Set("openProcessHandle",  Napi::Function::New(env, OpenProcessHandle));
-    exports.Set("closeProcessHandle", Napi::Function::New(env, CloseProcessHandle));
-    exports.Set("readProcessRegion",  Napi::Function::New(env, ReadProcessRegion));
-    exports.Set("isProcessAlive",     Napi::Function::New(env, IsProcessAlive));
+    exports.Set("openProcessHandle",          Napi::Function::New(env, OpenProcessHandle));
+    exports.Set("closeProcessHandle",         Napi::Function::New(env, CloseProcessHandle));
+    exports.Set("readProcessRegion",          Napi::Function::New(env, ReadProcessRegion));
+    exports.Set("isProcessAlive",             Napi::Function::New(env, IsProcessAlive));
+    exports.Set("isAdvertisedClientProcess",  Napi::Function::New(env, IsAdvertisedClientProcess));
 
     // File-mapping channel
     exports.Set("openChannel",     Napi::Function::New(env, OpenChannel));
