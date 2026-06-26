@@ -237,11 +237,120 @@ static std::string checkProductName(const std::string& exePath)
     return "";
 }
 
+// ------------------------------------------------------------------------
+// WOW64-correct remote export resolution.
+//
+// The host addon is x64; the SWG client is x86 under WOW64. The host's own
+// kernel32 (x64) maps at a DIFFERENT base than the target's SysWOW64 kernel32
+// (x86), so GetProcAddress(GetModuleHandleA("kernel32"),"LoadLibraryA") in the
+// host yields the WRONG remote start address for CreateRemoteThread — the
+// remote LoadLibraryA never really runs and the load silently returns NULL.
+// (Utinni's launcher was x86, so its host LoadLibraryA matched the target and
+// this step was unnecessary; the cross-arch host is what makes it mandatory.)
+//
+// Fix: find the target's x86 kernel32 base via a TH32CS_SNAPMODULE32 snapshot,
+// then walk that module's export table directly out of the TARGET's memory
+// (RVA == in-memory offset for a loaded image) to get the true VA of the
+// requested export.
+// ------------------------------------------------------------------------
+
+// getRemoteModuleBase — base of a 32-bit module in a WOW64 target by name.
+// TH32CS_SNAPMODULE32 enumerates the 32-bit module list even from an x64 caller.
+// Retries on ERROR_BAD_LENGTH (documented transient failure of the snapshot).
+static uintptr_t getRemoteModuleBase(DWORD pid, const char* moduleName)
+{
+    HANDLE snap = INVALID_HANDLE_VALUE;
+    for (int tries = 0; tries < 8; ++tries)
+    {
+        snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+        if (snap != INVALID_HANDLE_VALUE) break;
+        if (GetLastError() != ERROR_BAD_LENGTH) break;
+    }
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+
+    MODULEENTRY32 me{};
+    me.dwSize = sizeof(me);
+    uintptr_t base = 0;
+    if (Module32First(snap, &me))
+    {
+        do {
+            if (_stricmp(me.szModule, moduleName) == 0)
+            {
+                base = reinterpret_cast<uintptr_t>(me.modBaseAddr);
+                break;
+            }
+        } while (Module32Next(snap, &me));
+    }
+    CloseHandle(snap);
+    return base;
+}
+
+// rpmRead — typed ReadProcessMemory helper; returns false on short/failed read.
+template <typename T>
+static bool rpmRead(HANDLE hProcess, uintptr_t addr, T* out, SIZE_T count = sizeof(T))
+{
+    SIZE_T got = 0;
+    return ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(addr), out, count, &got)
+        && got == count;
+}
+
+// getRemoteProcAddress — VA of an export in a loaded module in the target.
+// Reads the x86 PE headers explicitly (IMAGE_NT_HEADERS32, NOT the host's 64-bit
+// IMAGE_NT_HEADERS) and slurps the whole export directory region in one bounded
+// read, then resolves by name with RVA->offset arithmetic. Fully bounds-checked;
+// returns 0 on any failure or if the export is forwarded (LoadLibraryA is not).
+static uintptr_t getRemoteProcAddress(HANDLE hProcess, uintptr_t modBase, const char* exportName)
+{
+    IMAGE_DOS_HEADER dos{};
+    if (!rpmRead(hProcess, modBase, &dos) || dos.e_magic != IMAGE_DOS_SIGNATURE) return 0;
+
+    IMAGE_NT_HEADERS32 nt{};
+    if (!rpmRead(hProcess, modBase + dos.e_lfanew, &nt) || nt.Signature != IMAGE_NT_SIGNATURE) return 0;
+
+    const IMAGE_DATA_DIRECTORY dir =
+        nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    if (dir.VirtualAddress == 0 || dir.Size < sizeof(IMAGE_EXPORT_DIRECTORY)) return 0;
+
+    std::vector<char> blob(dir.Size);
+    if (!rpmRead(hProcess, modBase + dir.VirtualAddress, blob.data(), dir.Size)) return 0;
+
+    const DWORD baseRVA = dir.VirtualAddress;
+    // at(rva) -> pointer into blob, or nullptr if the RVA falls outside the region.
+    auto at = [&](DWORD rva) -> const char* {
+        if (rva < baseRVA || rva >= baseRVA + dir.Size) return nullptr;
+        return blob.data() + (rva - baseRVA);
+    };
+
+    const auto* exp = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(blob.data());
+    for (DWORD i = 0; i < exp->NumberOfNames; ++i)
+    {
+        const auto* pNameRVA =
+            reinterpret_cast<const DWORD*>(at(exp->AddressOfNames + i * sizeof(DWORD)));
+        if (!pNameRVA) return 0;
+        const char* nm = at(*pNameRVA);
+        if (!nm || std::strcmp(nm, exportName) != 0) continue;
+
+        const auto* pOrd =
+            reinterpret_cast<const WORD*>(at(exp->AddressOfNameOrdinals + i * sizeof(WORD)));
+        if (!pOrd) return 0;
+        const auto* pFunc =
+            reinterpret_cast<const DWORD*>(at(exp->AddressOfFunctions + (*pOrd) * sizeof(DWORD)));
+        if (!pFunc) return 0;
+
+        const DWORD funcRVA = *pFunc;
+        if (funcRVA >= baseRVA && funcRVA < baseRVA + dir.Size) return 0; // forwarder
+        return modBase + funcRVA;
+    }
+    return 0;
+}
+
 // classicDllInject — Pattern 2 (Utinni main.cpp:43-78 inject() inner step).
 // Injects agentDllPath into hProcess via VirtualAllocEx+WriteProcessMemory+CreateRemoteThread(LoadLibraryA).
 // Returns the remote module base (HMODULE truncated to DWORD on x86 — OK) on success,
 // or sets errorOut and returns 0 on failure.
+// pid is the target PID — required to resolve the target's x86 LoadLibraryA (cross-arch).
 static DWORD classicDllInject(HANDLE hProcess,
+                               DWORD pid,
                                const std::string& agentDllPath,
                                std::string& errorOut)
 {
@@ -265,16 +374,24 @@ static DWORD classicDllInject(HANDLE hProcess,
         return 0;
     }
 
-    // LoadLibraryA has the same VA in the target process (kernel32 maps at the same base
-    // across all processes on the same OS session — the standard classic inject assumption).
-    LPVOID pLoadLib = reinterpret_cast<LPVOID>(
-        GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA"));
-    if (!pLoadLib)
+    // WOW64-correct: resolve LoadLibraryA in the TARGET's x86 kernel32, NOT the
+    // host's x64 one. The two map at different bases, so the host VA would be an
+    // invalid remote start address (silent "DLL not loaded"). See getRemoteModuleBase.
+    const uintptr_t remoteK32 = getRemoteModuleBase(pid, "kernel32.dll");
+    if (!remoteK32)
     {
         VirtualFreeEx(hProcess, lpMem, 0, MEM_RELEASE);
-        errorOut = "GetProcAddress for LoadLibraryA failed";
+        errorOut = "could not locate kernel32.dll in target (TH32CS_SNAPMODULE32) — is it loaded yet?";
         return 0;
     }
+    const uintptr_t remoteLoadLib = getRemoteProcAddress(hProcess, remoteK32, "LoadLibraryA");
+    if (!remoteLoadLib)
+    {
+        VirtualFreeEx(hProcess, lpMem, 0, MEM_RELEASE);
+        errorOut = "could not resolve LoadLibraryA in target kernel32 export table";
+        return 0;
+    }
+    LPVOID pLoadLib = reinterpret_cast<LPVOID>(remoteLoadLib);
 
     HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0,
                                         reinterpret_cast<LPTHREAD_START_ROUTINE>(pLoadLib),
@@ -309,34 +426,9 @@ static DWORD classicDllInject(HANDLE hProcess,
     return hRemoteModule;
 }
 
-// resolveAgentInitOffset — load agentDllPath locally, get agent_init offset,
-// free immediately. Returns offset on success or sets errorOut and returns 0.
-// NOTE: On x64 host, LoadLibraryA loads the x86 agent DLL as a data-only image.
-//       DONT_RESOLVE_DLL_REFERENCES is used to avoid running x86 DllMain in x64 space.
-//       GetProcAddress still resolves exports from the export table.
-static SIZE_T resolveAgentInitOffset(const std::string& agentDllPath,
-                                     std::string& errorOut)
-{
-    HMODULE localBase = LoadLibraryExA(agentDllPath.c_str(), nullptr,
-                                       DONT_RESOLVE_DLL_REFERENCES);
-    if (!localBase)
-    {
-        errorOut = "Local LoadLibraryEx(" + agentDllPath + ") failed for agent_init resolution";
-        return 0;
-    }
-    FARPROC localProc = GetProcAddress(localBase, "agent_init");
-    if (!localProc)
-    {
-        FreeLibrary(localBase);
-        errorOut = "agent_init export not found in " + agentDllPath;
-        return 0;
-    }
-    // ptrdiff_t (signed __int64 on x64) -> SIZE_T via static_cast.
-    SIZE_T offset = static_cast<SIZE_T>(
-        reinterpret_cast<BYTE*>(localProc) - reinterpret_cast<BYTE*>(localBase));
-    FreeLibrary(localBase);
-    return offset;
-}
+// NOTE: agent_init is resolved directly in the TARGET via getRemoteProcAddress
+// after injection — the x64 host cannot LoadLibraryEx the x86 agent as an image
+// to compute an offset locally (ERROR_BAD_EXE_FORMAT). See both worker step-10s.
 
 // ============================================================
 // LaunchAndInjectWorker — 12-step CREATE_SUSPENDED launch recipe
@@ -565,7 +657,7 @@ public:
             //         GetExitCodeThread -> remoteModuleBase
             // ------------------------------------------------------------------
             std::string injectErr;
-            const DWORD remoteModuleBase = classicDllInject(pi.hProcess, m_agentDllPath, injectErr);
+            const DWORD remoteModuleBase = classicDllInject(pi.hProcess, pi.dwProcessId, m_agentDllPath, injectErr);
             if (remoteModuleBase == 0)
             {
                 SetError("Classic DLL inject failed: " + injectErr);
@@ -580,15 +672,16 @@ public:
             //          Do NOT WaitForSingleObject on this thread (it runs the poll loop forever).
             // ------------------------------------------------------------------
             {
-                std::string offErr;
-                const SIZE_T agentInitOffset = resolveAgentInitOffset(m_agentDllPath, offErr);
-                if (agentInitOffset == 0)
+                // Cross-arch: resolve agent_init's VA directly in the TARGET's export
+                // table (the agent is now loaded there). The host is x64 and cannot
+                // LoadLibraryEx the x86 agent as an image to compute an offset.
+                const uintptr_t remoteAgentInit = getRemoteProcAddress(
+                    pi.hProcess, static_cast<uintptr_t>(remoteModuleBase), "agent_init");
+                if (!remoteAgentInit)
                 {
-                    SetError("agent_init offset resolution failed: " + offErr);
+                    SetError("agent_init resolution failed: export not found in target agent module");
                     break;
                 }
-                LPVOID remoteAgentInit = reinterpret_cast<LPVOID>(
-                    static_cast<DWORD>(remoteModuleBase) + agentInitOffset);
                 HANDLE hInitThread = CreateRemoteThread(
                     pi.hProcess, nullptr, 0,
                     reinterpret_cast<LPTHREAD_START_ROUTINE>(remoteAgentInit),
@@ -830,7 +923,7 @@ public:
             // Same inner step as LaunchAndInjectWorker step 9.
             // ------------------------------------------------------------------
             std::string injectErr;
-            const DWORD remoteModuleBase = classicDllInject(hProcess, m_agentDllPath, injectErr);
+            const DWORD remoteModuleBase = classicDllInject(hProcess, m_pid, m_agentDllPath, injectErr);
             if (remoteModuleBase == 0)
             {
                 SetError("Classic DLL inject failed: " + injectErr);
@@ -844,15 +937,16 @@ public:
             // never reads the raw static array — sufficient for the attach path. (D-02.2)
             // ------------------------------------------------------------------
             {
-                std::string offErr;
-                const SIZE_T agentInitOffset = resolveAgentInitOffset(m_agentDllPath, offErr);
-                if (agentInitOffset == 0)
+                // Cross-arch: resolve agent_init's VA directly in the TARGET's export
+                // table (the agent is now loaded there). The host is x64 and cannot
+                // LoadLibraryEx the x86 agent as an image to compute an offset.
+                const uintptr_t remoteAgentInit = getRemoteProcAddress(
+                    hProcess, static_cast<uintptr_t>(remoteModuleBase), "agent_init");
+                if (!remoteAgentInit)
                 {
-                    SetError("agent_init offset resolution failed: " + offErr);
+                    SetError("agent_init resolution failed: export not found in target agent module");
                     break;
                 }
-                LPVOID remoteAgentInit = reinterpret_cast<LPVOID>(
-                    static_cast<DWORD>(remoteModuleBase) + agentInitOffset);
                 HANDLE hInitThread = CreateRemoteThread(
                     hProcess, nullptr, 0,
                     reinterpret_cast<LPTHREAD_START_ROUTINE>(remoteAgentInit),

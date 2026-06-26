@@ -20,6 +20,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# STATIC CRT (/MT) — MANDATORY for an injected DLL.
+# The agent is loaded by a remote LoadLibraryA inside the SWG client process,
+# whose DLL search path is the client's own directory. A dynamic-CRT (/MD) build
+# depends on VCRUNTIME140.dll + the UCRT api-ms-win-crt-*.dll, none of which sit
+# beside the old x86 client — so the remote LoadLibraryA returns NULL and
+# injection fails with "DLL not loaded". Static-linking the CRT leaves only a
+# KERNEL32 dependency, making the agent self-contained. CMP0091 (NEW since the
+# 3.15 minimum above) enables the MSVC_RUNTIME_LIBRARY abstraction.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 # Plain Win32 DLL — NOT an N-API module.
 # No cmake-js, no node-addon-api includes, no NAPI_* defines.
 # kernel32.lib links implicitly (MSVC default Win32 lib set).

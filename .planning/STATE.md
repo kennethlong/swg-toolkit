@@ -144,6 +144,29 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: D-03-06b-A: attachBtnStyle full-width variant (not 22x22 actionBtnStyle) for text attach buttons
 - [Phase ?]: D-03-06b-B: STATE 1 form hidden during 'connecting' state to prevent duplicate attach submits
 - [Phase ?]: D-03-06b-C: app.isPackaged via try/catch in renderer renderer — false fallback keeps dev path; phase 3 dev-only
+- [Phase 03, UAT 2026-06-26]: CORRECTS two false cross-arch assumptions found in first live UAT —
+  (1) classicDllInject used HOST x64 LoadLibraryA VA (comment "kernel32 same base" is false across
+  arch); (2) "[Plan 05] DONT_RESOLVE_DLL_REFERENCES export probe from x64 host" is FALSE — x86 DLL
+  can't load as image in x64 host (ERROR_BAD_EXE_FORMAT). Fix: resolve BOTH LoadLibraryA and
+  agent_init in the TARGET via TH32CS_SNAPMODULE32 + target export-table walk (getRemoteModuleBase /
+  getRemoteProcAddress in inject_binding.cpp). /MT agent change was NOT the fix (agent loads fine in
+  x86; kept as hygiene).
+- [Phase 03, UAT 2026-06-26]: 03-06b-UAT advertised path PASSED via attach to in-world
+  swg-client-v2 — seqlock ~30fps, no torn reads, liveness=0x1, real networkId, templateName
+  object/creature/player/shared_sullustan_male.iff, transform tracked real movement (~4.86m + ~80deg
+  yaw). LIVE-01/02/04 green.
+- [Phase 03, UAT 2026-06-26]: 03-06b-UAT LEGACY SWGEmu path PASSED via attach to in-world SWGEmu
+  build 0.0.119.798 (RVAs confirmed valid by maintainer — Utinni reads this build). Two MORE fixes,
+  both in OUR code not the RVAs: (1) networkId sentinel made not-applicable when getNetworkId slot is
+  null — it was an advertised-only field hard-gating EVERY legacy write (agent_main.cpp results[1]);
+  (2) re-inject must use a UNIQUELY-NAMED agent copy — LoadLibraryA matches an already-resident module
+  by name and returns stale code, so a rebuilt same-named DLL silently runs the OLD agent. transform +
+  template + liveness flow; networkId=0 on legacy (Phase-5 x86 64-bit return convention). Movement
+  tracked (~9.6m + ~78deg yaw).
+- [Phase 03, FOLLOW-UPS from UAT]: (a) HOST should inject a per-inject uniquely-named copy of the
+  agent (mirror the harness) so re-attach loads fresh code + avoids file-lock on rebuild; (b) agent
+  accumulates one poll thread per attach — Phase 5 stop-signal should unload/clean; (c) legacy
+  networkId 64-bit read deferred to Phase 5.
 
 ### Pending Todos
 

@@ -156,8 +156,9 @@ DWORD WINAPI agent_init(LPVOID lpReadyEventName) {
         // On x86, this captures the lower 32 bits of the return value only.
         // Full 64-bit NetworkId support is deferred to Phase 5 once the exact
         // x86 return convention (EDX:EAX vs hidden out-param) is confirmed.
-        // Legacy path: getNetworkId is null → netId stays 0 → networkId sentinel
-        // fails → write blocked ("3.5/4 sentinels" accepted for SWGEmu Phase 3).
+        // Legacy path: getNetworkId is null → netId stays 0. The networkId sentinel
+        // is made not-applicable in that case (see results[1] below) so it does not
+        // block the legacy write — transform/template/liveness are independently valid.
         uint64_t netId = 0;
         if (swg::endpoints::getNetworkId) {
             void* rawId = swg::endpoints::getNetworkId(player);
@@ -190,7 +191,14 @@ DWORD WINAPI agent_init(LPVOID lpReadyEventName) {
         // (f) Run all 4 sentinel checks (D-05: all must pass for a write)
         SentinelResult results[4];
         results[0] = checkTransform(&xform[0][0]);
-        results[1] = checkNetworkId(netId);
+        // networkId is advertised-path-only (getNetworkId has no legacy SWGEmu RVA).
+        // When the accessor is unavailable, the sentinel is not-applicable rather than a
+        // hard failure — otherwise it blocks EVERY legacy write even though
+        // transform/template/liveness are all valid. Ground truth: Utinni reads this exact
+        // SWGEmu build fine, so the gate (not the RVAs) was blocking the legacy path.
+        results[1] = swg::endpoints::getNetworkId
+                         ? checkNetworkId(netId)
+                         : SentinelResult{ true, nullptr };
         results[2] = checkTemplateName(tmplName, 256);
         results[3] = checkLiveness(player != nullptr, isOver, loopDelta);
 
