@@ -83,6 +83,19 @@ importers:
 
   packages/harness: {}
 
+  packages/live-inject:
+    dependencies:
+      node-addon-api:
+        specifier: ^8.8.0
+        version: 8.8.0
+      node-gyp-build:
+        specifier: ^4
+        version: 4.8.4
+    devDependencies:
+      cmake-js:
+        specifier: ^8
+        version: 8.0.0
+
   packages/native-core:
     dependencies:
       node-addon-api:

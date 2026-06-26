@@ -1,0 +1,18 @@
+{
+  "name": "@swg/live-inject",
+  "version": "0.0.1",
+  "description": "Live memory injection N-API addon — host x64 addon + x86 agent DLL skeleton",
+  "main": "index.js",
+  "scripts": {
+    "build": "cmake-js build --generator \"Visual Studio 17 2022\" --platform x64",
+    "rebuild": "cmake-js rebuild --generator \"Visual Studio 17 2022\" --platform x64",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.8.0",
+    "node-gyp-build": "^4"
+  },
+  "devDependencies": {
+    "cmake-js": "^8"
+  }
+}
