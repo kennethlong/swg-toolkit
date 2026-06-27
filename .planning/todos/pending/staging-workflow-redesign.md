@@ -35,6 +35,26 @@ The current add-to-staging flow is unintuitive and disconnected from how a user 
 - Dovetails with [[project-binds-and-automounts-client-tres]]: once a project auto-mounts its client's
   base TREs, "browse base TRE → stage override" becomes the natural primary loop.
 
+## Per-row requirements (maintainer, 2026-06-27)
+
+1. **Actually-changed indicator / badge.** When a file is staged, detect whether its bytes actually
+   DIFFER from the base archive's version at that virtual path, and show a badge (e.g. "changed" vs
+   "unchanged/identical"). Staging an identical file should read as a no-op, not a real edit. Builds on
+   what's already there: staging entries already carry `sha256`, and `changesetService` already does
+   diff-vs-parent (the N4 "nothing new" guard) — surface that at the ROW level, visually.
+   - DEPENDENCY: requires the **base archive's original bytes** to compare against → needs the base TRE
+     mounted/accessible per [[project-binds-and-automounts-client-tres]] (auto-mount the bound client).
+   - Distinct from the existing `ActionBadge` (which shows add/modify/delete = the *action*); this is
+     "does the staged content actually differ from the original."
+
+2. **Per-file actions parity with the TRE view (right-click context menu).** A staged row should
+   support the same per-file operations as a file in the TRE browser — **open in the appropriate editor**
+   (type-routed: mesh → viewport, texture → image viewer, `.iff` → structure/hex, etc.), **remove from
+   staging** (already a `×` button — also expose in the menu), and the other relevant TRE-view actions.
+   Reuse the TRE browser's action router / appearance-resolver so the two surfaces stay consistent (and
+   so a single menu definition serves both). This is the inverse direction of the TRE-browser→staging
+   "Add to patch" flow above — together they make staging and the TRE view feel like one coherent space.
+
 ## Interim fix already applied (UAT unblock — not the redesign)
 
 `window.prompt()` is **not supported in Electron's renderer** (threw
