@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 04.1-03-PLAN.md (DeployPanel + extracted bodies + pathSafety GREEN)
-last_updated: "2026-06-27T22:38:20.968Z"
+last_updated: "2026-06-27T22:53:59.270Z"
 last_activity: 2026-06-27
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 40
-  completed_plans: 32
-  percent: 80
+  completed_plans: 33
+  percent: 83
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.1 (deploy-project-ux) — EXECUTING
-Plan: 4 of 11
+Plan: 5 of 11
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
@@ -45,7 +45,7 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       REQUIREMENTS DEPLOY-01..04 → Complete).
 Last activity: 2026-06-27
 
-Progress: [████████░░] 80%
+Progress: [████████░░] 83%
 
 ### 02-03 key facts (crew-verified)
 
@@ -98,6 +98,7 @@ Progress: [████████░░] 80%
 | Phase 04.1 P01 | 7 | 2 tasks | 5 files |
 | Phase 04.1-deploy-project-ux P02 | 2 sessions | 3 tasks | 7 files |
 | Phase 04.1 P03 | 25 | 3 tasks | 7 files |
+| Phase 04.1-deploy-project-ux P04 | 7 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -229,6 +230,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T22:38:20.941Z
+Last session: 2026-06-27T22:53:59.248Z
 Stopped at: Completed 04.1-03-PLAN.md (DeployPanel + extracted bodies + pathSafety GREEN)
 Resume file: None

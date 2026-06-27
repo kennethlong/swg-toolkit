@@ -189,7 +189,7 @@ Plans:
 - [x] 04.1-02-PLAN.md — Project binding service + auto-mount (PROJ-01): projectBinding (detect/persist/auto-mount), extracted treMount routine, workspaceService persistence
 **Wave 3**
 - [x] 04.1-03-PLAN.md — Combined DeployPanel (DEPLOY-05): extract StagingPanelBody + VersionHistoryBody (Baseline + ▸deltas), compose one panel + sticky Deploy CTA, DeployDialog auto-select bound client (D-12)
-- [ ] 04.1-04-PLAN.md — Project front door UI (PROJ-01): ProjectBindingBar (＋Project + chip), NewProjectWizard (4-step, capture-only server, non-client branch), WorkspaceEntry first-run welcome
+- [x] 04.1-04-PLAN.md — Project front door UI (PROJ-01): ProjectBindingBar (＋Project + chip), NewProjectWizard (4-step, capture-only server, non-client branch), WorkspaceEntry first-run welcome
 **Wave 4**
 - [ ] 04.1-05-PLAN.md — Dock integration + layout-version guard (DEPLOY-05/07): workspace-config panel swap (deploy+vcs, LAYOUT_VERSION=2), WorkspaceShell register DeployPanel + version-mismatch migration
 **Wave 5**
@@ -268,7 +268,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
 | 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-06-27 |
-| 4.1 Deploy & Project UX *(INSERTED)* | 1/11 | In Progress|  |
+| 4.1 Deploy & Project UX *(INSERTED)* | 4/11 | In Progress|  |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
