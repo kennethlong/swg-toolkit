@@ -169,29 +169,39 @@ export function DeployDialog({
   // ── handleBrowse — manual client folder override ──────────────────────────
 
   const handleBrowse = useCallback(() => {
+    // workspace:pick-dir returns string[] (filePaths, or [] if cancelled) — NOT a
+    // single string. (Bug fix: the prior `string | null` typing made path.join throw
+    // on the array → caught silently → client never selected → Deploy stayed disabled.)
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { ipcRenderer } = require('electron') as {
-      ipcRenderer: { invoke(channel: 'workspace:pick-dir'): Promise<string | null> };
+      ipcRenderer: { invoke(channel: 'workspace:pick-dir'): Promise<string[]> };
     };
-    void ipcRenderer.invoke('workspace:pick-dir').then((folderPath) => {
-      if (!folderPath) return;
+    void ipcRenderer.invoke('workspace:pick-dir').then((paths) => {
+      const folderPath = paths[0];
+      if (!folderPath) return; // cancelled
       try {
         const cfgRootPath = path.join(folderPath, 'swgemu.cfg');
-        if (fs.existsSync(cfgRootPath)) {
-          const manual: DetectedClient = {
-            name: 'Manual Install',
-            installPath: folderPath,
-            cfgRootPath,
-            treVersion: 'unknown',
-          };
-          setClients((prev) => {
-            const deduped = prev.filter((c) => c.installPath !== folderPath);
-            return [...deduped, manual];
-          });
-          setSelectedClient(manual);
+        if (!fs.existsSync(cfgRootPath)) {
+          window.alert(
+            `No swgemu.cfg found in:\n\n${folderPath}\n\n` +
+              'Pick the SWG client folder that directly contains swgemu.cfg ' +
+              '(the install root — not the Live subfolder or its parent).',
+          );
+          return;
         }
-      } catch {
-        // silently ignore invalid paths
+        const manual: DetectedClient = {
+          name: 'Manual Install',
+          installPath: folderPath,
+          cfgRootPath,
+          treVersion: 'unknown',
+        };
+        setClients((prev) => {
+          const deduped = prev.filter((c) => c.installPath !== folderPath);
+          return [...deduped, manual];
+        });
+        setSelectedClient(manual);
+      } catch (err) {
+        window.alert('Could not use that folder: ' + String((err as Error)?.message ?? err));
       }
     });
   }, []);
@@ -315,9 +325,14 @@ export function DeployDialog({
       }
 
       // ── Patch-prepend path ───────────────────────────────────────────────
-      // 'Live' is hardcoded — this is Windows-only (no Linux placeholder).
-      const clientLiveDir = path.join(selectedClient!.installPath, 'Live');
-      const patchPathInLive = path.join(clientLiveDir, patchName);
+      // The client loads TREs (and resolves bare searchTree filenames) from its TRE
+      // directory. This VARIES by release: SWG Infinity uses a Live/ subfolder; stock
+      // SWGEmu keeps its .tre files in the install root. Prefer Live/ when it exists,
+      // else fall back to the install root. (Proper client-layout detection +
+      // manual override is the client-layout-detection todo.)
+      const liveDir = path.join(selectedClient!.installPath, 'Live');
+      const clientTreDir = fs.existsSync(liveDir) ? liveDir : selectedClient!.installPath;
+      const patchPathInLive = path.join(clientTreDir, patchName);
 
       // Step 1: Copy patch .tre to client Live/ dir
       try {

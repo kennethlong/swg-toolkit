@@ -7,10 +7,28 @@
  * Source: 04-04b-PLAN.md Task 2; 04-CONTEXT.md §D-04-06/07/08; sketch 002 winner A.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useChangesetStore } from '../../state/changesetStore';
+import { useWorkspaceStore } from '../../state/workspaceStore';
+import { useStagingStore }   from '../../state/stagingStore';
 import { selectVersion }     from '../../services/changesetService';
+import { DeployDialog }      from './DeployDialog';
 import type { SwgChangeset } from '@swg/contracts';
+
+/** Primary button style (local — mirrors the deploy panels). */
+function deployBtnStyle(disabled: boolean): React.CSSProperties {
+  return {
+    background:   disabled ? 'var(--color-widget)' : 'var(--color-accent)',
+    border:       'none',
+    color:        disabled ? 'var(--color-text-faint)' : 'var(--color-accent-text)',
+    borderRadius: 'var(--radius-sm)',
+    padding:      '4px 12px',
+    cursor:       disabled ? 'not-allowed' : 'pointer',
+    fontSize:     'var(--text-sm)',
+    fontWeight:   600,
+    opacity:      disabled ? 0.6 : 1,
+  };
+}
 
 /** Returns IDs of branch-start nodes: those whose parentId !== chronological predecessor. */
 function branchSet(cs: SwgChangeset[]): Set<string> {
@@ -29,6 +47,15 @@ export default function ChangesetTimelinePanel(): React.JSX.Element {
   const deployedVersionId = manifest?.deployedVersionId ?? null;
   const changesets        = manifest?.changesets ?? [];
 
+  // Deploy lives here (not on Staging): it deploys the SELECTED version
+  // (flatten(activeVersionId)), so its home is the version graph.
+  const [deployOpen, setDeployOpen] = useState(false);
+  const wsReady      = useWorkspaceStore((s) => s.status.kind === 'ready');
+  const stagingCount = useStagingStore((s) => s.entries.length);
+  // Enabled when there's a saved version OR uncommitted staging to deploy
+  // (DeployDialog auto-seals dirty staging before deploying).
+  const deployDisabled = !wsReady || (changesets.length === 0 && stagingCount === 0);
+
   const stale   = activeVersionId !== null && deployedVersionId !== null
     && activeVersionId !== deployedVersionId;
   const branches = branchSet(changesets);
@@ -36,10 +63,13 @@ export default function ChangesetTimelinePanel(): React.JSX.Element {
     a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0);
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-1)',
-      padding:'var(--space-2)', overflowY:'auto', height:'100%',
+    <div style={{ display:'flex', flexDirection:'column', height:'100%',
       background:'var(--color-surface)', color:'var(--color-text)',
       fontFamily:'var(--font-sans)', boxSizing:'border-box' }}>
+
+    <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-1)',
+      padding:'var(--space-2)', overflowY:'auto', flex:1, minHeight:0,
+      boxSizing:'border-box' }}>
 
       {stale && (
         <div className="stale-deploy-warning" style={{ fontSize:'var(--text-xs)',
@@ -85,6 +115,35 @@ export default function ChangesetTimelinePanel(): React.JSX.Element {
           </div>
         );
       })}
+
+      {sorted.length === 0 && (
+        <div style={{ color:'var(--color-text-faint)', fontSize:'var(--text-sm)',
+          padding:'var(--space-4)', textAlign:'center' }}>
+          No versions yet — stage changes and Save version to create one.
+        </div>
+      )}
+    </div>
+
+    {/* Bottom action bar — Deploy the selected (active) version */}
+    <div style={{ display:'flex', justifyContent:'flex-end', alignItems:'center',
+      gap:'var(--space-2)', padding:'var(--space-2) var(--space-3)',
+      borderTop:'1px solid var(--color-border)', background:'var(--color-header)',
+      flexShrink:0 }}>
+      <button
+        style={deployBtnStyle(deployDisabled)}
+        disabled={deployDisabled}
+        aria-disabled={deployDisabled}
+        onClick={deployDisabled ? undefined : () => setDeployOpen(true)}
+        aria-label="Deploy"
+        title={deployDisabled
+          ? 'Save a version (or stage changes) to deploy'
+          : 'Deploy the selected version to the client'}
+      >
+        Deploy…
+      </button>
+    </div>
+
+    <DeployDialog open={deployOpen} onClose={() => setDeployOpen(false)} />
     </div>
   );
 }

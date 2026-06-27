@@ -71,13 +71,31 @@ export default function WorkspaceEntry(): React.ReactElement {
   const status = useWorkspaceStore((s) => s.status);
 
   const handleOpen = useCallback(async () => {
+    let picked: string | undefined;
     try {
       const paths = await ipcRenderer.invoke('workspace:pick-dir');
       if (paths.length > 0 && paths[0]) {
-        await openWorkspace(paths[0]);
+        picked = paths[0];
+        await openWorkspace(picked);
       }
     } catch (err) {
+      const msg = String((err as Error)?.message ?? err);
       console.error('[WorkspaceEntry] openWorkspace error:', err);
+      // UX: don't silently fail when the folder isn't a workspace yet — offer to
+      // initialize one here (the error status also renders inline below).
+      if (picked && /Not a toolkit workspace/.test(msg)) {
+        const create = window.confirm(
+          `No toolkit workspace was found in:\n\n${picked}\n\n` +
+            'Would you like to create a new mod workspace here?',
+        );
+        if (create) {
+          try {
+            await createWorkspace(picked);
+          } catch (cerr) {
+            console.error('[WorkspaceEntry] createWorkspace error:', cerr);
+          }
+        }
+      }
     }
   }, []);
 
@@ -144,6 +162,23 @@ export default function WorkspaceEntry(): React.ReactElement {
       >
         Open or create a project folder to start a mod.
       </span>
+
+      {/* Inline error feedback — surfaces openError(reason) so a failed open is
+          never silent (e.g. invalid path, permission error). */}
+      {status.kind === 'error' && (
+        <span
+          role="alert"
+          style={{
+            marginTop: 'var(--space-2)',
+            maxWidth:  '420px',
+            color:     'var(--color-danger, #f87171)',
+            fontSize:  'var(--text-sm)',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {status.reason}
+        </span>
+      )}
 
       {/* Action buttons */}
       <div

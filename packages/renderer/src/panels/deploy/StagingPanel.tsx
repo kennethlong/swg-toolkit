@@ -38,10 +38,10 @@ import crypto from 'crypto';
 
 import ActionBadge    from './ActionBadge';
 import WorkspaceEntry from './WorkspaceEntry';
-import { DeployDialog } from './DeployDialog';
 
 import { useStagingStore }   from '../../state/stagingStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
+import { useChangesetStore } from '../../state/changesetStore';
 
 import { packPatch, buildPatchName } from '../../services/packPatch';
 import { sealVersion }              from '../../services/changesetService';
@@ -132,8 +132,6 @@ export default function StagingPanel(_props: IDockviewPanelProps): React.ReactEl
   const entries      = useStagingStore((s) => s.entries);
   const buildStatus  = useStagingStore((s) => s.buildStatus);
 
-  const [deployOpen, setDeployOpen] = useState(false);
-
   // ── Workspace gate ───────────────────────────────────────────────────────────
 
   if (status.kind !== 'ready') {
@@ -172,9 +170,6 @@ export default function StagingPanel(_props: IDockviewPanelProps): React.ReactEl
         entries={entries}
         buildStatus={buildStatus}
         workspaceName={workspaceName}
-        deployOpen={deployOpen}
-        onDeployOpen={() => setDeployOpen(true)}
-        onDeployClose={() => setDeployOpen(false)}
       />
     </div>
   );
@@ -186,24 +181,24 @@ interface StagingPanelBodyProps {
   entries:      StagingEntry[];
   buildStatus:  ReturnType<typeof useStagingStore.getState>['buildStatus'];
   workspaceName: string | null;
-  deployOpen:   boolean;
-  onDeployOpen: () => void;
-  onDeployClose: () => void;
 }
 
 function StagingPanelBody({
   entries,
   buildStatus,
   workspaceName,
-  deployOpen,
-  onDeployOpen,
-  onDeployClose,
 }: StagingPanelBodyProps): React.ReactElement {
   // ── Virtualization state ───────────────────────────────────────────────────
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop,  setScrollTop]  = useState(0);
   const [viewHeight, setViewHeight] = useState(400);
+
+  // Pending file awaiting a virtual-path before it can be staged. Electron's renderer
+  // does NOT implement window.prompt() (throws "prompt() is not supported"), so the
+  // virtual path is collected via VirtualPathModal below instead of prompt().
+  const [pendingFile, setPendingFile] =
+    useState<{ filePath: string; defaultVp: string } | null>(null);
 
   // ResizeObserver — mirrors VfsTree.tsx exactly
   useEffect(() => {
@@ -248,8 +243,12 @@ function StagingPanelBody({
 
   // ── Button state ───────────────────────────────────────────────────────────
 
-  const isBuilding = buildStatus.kind === 'building';
-  const deployDisabled = entries.length === 0 || isBuilding;
+  const isBuilding   = buildStatus.kind === 'building';
+  const saveDisabled = entries.length === 0 || isBuilding;
+
+  // Save-version modal state + default label (Version N, from changeset count).
+  const [savingOpen, setSavingOpen] = useState(false);
+  const changesetCount = useChangesetStore((s) => s.manifest?.changesets.length ?? 0);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -270,32 +269,43 @@ function StagingPanelBody({
 
         if (!isReplacementPathAbsolute(filePath)) return;
 
-        // Prompt user for virtual path (simplified — dialog for now)
-        const virtualPath = window.prompt(
-          'Enter the virtual archive path for this file (e.g. appearance/armor.mgn):',
-          path.basename(filePath),
-        );
-        if (!virtualPath) return;
-
-        if (!isVirtualPathSafe(virtualPath)) {
-          window.alert('Invalid virtual path — ".." and absolute paths are not allowed.');
-          return;
-        }
-
-        // R2-W5: Compute SHA-256 before adding entry
-        const sha256 = computeSha256(filePath);
-
-        useStagingStore.getState().addEntry({
-          virtualPath,
-          action: 'modify',
-          replacementFilePath: filePath,
-          sha256,
-        });
+        // Collect the virtual path via the in-app modal (window.prompt is unsupported
+        // in Electron's renderer).
+        setPendingFile({ filePath, defaultVp: path.basename(filePath) });
       } catch (err) {
         console.error('[StagingPanel] handleAdd error:', err);
       }
     })();
   }, []);
+
+  // Finalize staging once the user supplies/accepts a virtual path in the modal.
+  const handleConfirmVirtualPath = useCallback((virtualPath: string) => {
+    setPendingFile((pending) => {
+      if (!pending) return null;
+      if (!isVirtualPathSafe(virtualPath)) return pending; // modal blocks this, defensive
+      // R2-W5: Compute SHA-256 before adding entry
+      const sha256 = computeSha256(pending.filePath);
+      useStagingStore.getState().addEntry({
+        virtualPath,
+        action: 'modify',
+        replacementFilePath: pending.filePath,
+        sha256,
+      });
+      return null;
+    });
+  }, []);
+
+  // Seal the current staging set as a new version (changeset). sealVersion updates
+  // the changeset store, so the Changesets timeline refreshes automatically.
+  const handleSaveVersion = useCallback((label: string) => {
+    setSavingOpen(false);
+    void sealVersion({ sealedBy: 'manual', entries, label }).catch((err) => {
+      const msg = String((err as Error)?.message ?? err);
+      // N4 guard throws when staging == the active version — surface, don't crash.
+      window.alert(msg);
+      console.error('[StagingPanel] saveVersion error:', err);
+    });
+  }, [entries]);
 
   const handlePackPatch = useCallback(() => {
     if (entries.length === 0 || isBuilding) return;
@@ -336,34 +346,36 @@ function StagingPanelBody({
     const filePath: string | undefined = (file as any).path;
     if (!filePath || !isReplacementPathAbsolute(filePath)) return;
 
-    const virtualPath = window.prompt(
-      'Enter the virtual archive path for this file:',
-      path.basename(filePath),
-    );
-    if (!virtualPath) return;
-
-    if (!isVirtualPathSafe(virtualPath)) {
-      window.alert('Invalid virtual path — ".." and absolute paths are not allowed.');
-      return;
-    }
-
-    // R2-W5: Compute SHA-256 before adding entry
-    const sha256 = computeSha256(filePath);
-
-    useStagingStore.getState().addEntry({
-      virtualPath,
-      action: 'modify',
-      replacementFilePath: filePath,
-      sha256,
-    });
+    // Collect the virtual path via the in-app modal (window.prompt is unsupported
+    // in Electron's renderer).
+    setPendingFile({ filePath, defaultVp: path.basename(filePath) });
   }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* Deploy dialog — real modal (04-06); always mounted, controlled by `open` prop */}
-      <DeployDialog open={deployOpen} onClose={onDeployClose} />
+      {/* Virtual-path modal — replaces unsupported window.prompt() for staging a file */}
+      {pendingFile && (
+        <VirtualPathModal
+          defaultValue={pendingFile.defaultVp}
+          onConfirm={handleConfirmVirtualPath}
+          onCancel={() => setPendingFile(null)}
+        />
+      )}
+
+      {/* Save-version modal — collects a label, then seals the staging set as a changeset */}
+      {savingOpen && (
+        <VirtualPathModal
+          title="Save version"
+          subtitle="Name this version so you can find it in the timeline."
+          confirmLabel="Save version"
+          validate={(v) => v.trim().length > 0}
+          defaultValue={`Version ${changesetCount + 1}`}
+          onConfirm={handleSaveVersion}
+          onCancel={() => setSavingOpen(false)}
+        />
+      )}
 
       {/* Panel head */}
       <div
@@ -394,16 +406,17 @@ function StagingPanelBody({
           Add…
         </button>
 
-        {/* Deploy… button */}
+        {/* Save version button — seals the staging set as a changeset (version node).
+            Deploy lives on the Changesets tab (it deploys the selected version). */}
         <button
-          style={primaryBtnStyle(deployDisabled)}
-          disabled={deployDisabled}
-          aria-disabled={deployDisabled}
-          onClick={deployDisabled ? undefined : onDeployOpen}
-          aria-label="Deploy patch"
-          title={deployDisabled ? 'Stage at least one entry to deploy' : 'Build and deploy the patch'}
+          style={primaryBtnStyle(saveDisabled)}
+          disabled={saveDisabled}
+          aria-disabled={saveDisabled}
+          onClick={saveDisabled ? undefined : () => setSavingOpen(true)}
+          aria-label="Save version"
+          title={saveDisabled ? 'Stage at least one change to save a version' : 'Seal these changes as a new version'}
         >
-          Deploy…
+          Save version
         </button>
       </div>
 
@@ -437,6 +450,137 @@ function StagingPanelBody({
         buildStatus={buildStatus}
       />
     </>
+  );
+}
+
+// ─── Text-input modal (Electron-safe replacement for window.prompt) ─────────────
+
+interface VirtualPathModalProps {
+  defaultValue: string;
+  onConfirm:    (value: string) => void;
+  onCancel:     () => void;
+  /** Heading. Defaults to the virtual-path use. */
+  title?:        string;
+  /** Helper line under the heading. */
+  subtitle?:     string;
+  /** Confirm button label. Defaults to "Add to patch". */
+  confirmLabel?: string;
+  /** Validator; default = the virtual-path safety check. */
+  validate?:     (value: string) => boolean;
+  /** Message shown when invalid; default = the virtual-path rule. */
+  invalidMessage?: string;
+}
+
+/**
+ * Minimal single-input modal — collects a string (virtual archive path, version
+ * label, …). Electron's renderer does not implement window.prompt(), so this
+ * stands in. (The deploy surface is slated for redesign — sketch 005-B — so this
+ * is intentionally lightweight and shared between the Add… and Save-version flows.)
+ */
+function VirtualPathModal({
+  defaultValue,
+  onConfirm,
+  onCancel,
+  title          = 'Virtual archive path',
+  subtitle       = 'Where this file lands inside the patch — e.g. appearance/armor.mgn',
+  confirmLabel   = 'Add to patch',
+  validate       = isVirtualPathSafe,
+  invalidMessage = 'Invalid path — "..", leading slash, and drive letters are not allowed.',
+}: VirtualPathModalProps): React.ReactElement {
+  const [value, setValue] = useState(defaultValue);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const valid = validate(value);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }, []);
+
+  const submit = useCallback(() => {
+    if (valid) onConfirm(value);
+  }, [valid, value, onConfirm]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={onCancel}
+      style={{
+        position:       'fixed',
+        inset:          0,
+        background:     'rgba(0,0,0,0.5)',
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'center',
+        zIndex:         1000,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          display:       'flex',
+          flexDirection: 'column',
+          gap:           'var(--space-3)',
+          width:         440,
+          maxWidth:      '90vw',
+          padding:       'var(--space-4)',
+          background:    'var(--color-surface)',
+          border:        '1px solid var(--color-border)',
+          borderRadius:  'var(--radius-md)',
+          color:         'var(--color-text)',
+          fontFamily:    'var(--font-sans)',
+        }}
+      >
+        <span style={{ fontWeight: 600, fontSize: 'var(--text-md)' }}>
+          {title}
+        </span>
+        <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-sm)' }}>
+          {subtitle}
+        </span>
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => setValue(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+            else if (e.key === 'Escape') onCancel();
+          }}
+          spellCheck={false}
+          style={{
+            fontFamily:   'var(--font-mono)',
+            fontSize:     'var(--text-sm)',
+            padding:      '6px 8px',
+            background:   'var(--color-widget)',
+            color:        'var(--color-text)',
+            border:       `1px solid ${valid ? 'var(--color-border)' : 'var(--color-danger)'}`,
+            borderRadius: 'var(--radius-sm)',
+            outline:      'none',
+          }}
+        />
+        {!valid && (
+          <span style={{ color: 'var(--color-danger)', fontSize: 'var(--text-xs)' }}>
+            {invalidMessage}
+          </span>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+          <button style={secondaryBtnStyle} onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            style={primaryBtnStyle(!valid)}
+            disabled={!valid}
+            aria-disabled={!valid}
+            onClick={submit}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
