@@ -30,6 +30,7 @@
  */
 
 import fs from 'fs';
+import path from 'path';
 
 import type { CfgInsertionRecord } from '@swg/contracts';
 import { chooseSlot as _chooseSlot } from './clientLocator';
@@ -73,6 +74,66 @@ export function ensureInclude(rootCfgPath: string, includeFileName: string): voi
   fs.renameSync(tmp, rootCfgPath);
 }
 
+// ─── snapshotCfg ─────────────────────────────────────────────────────────────
+
+/**
+ * Capture the ROOT cfg (the file `ensureInclude` mutates — e.g. swgemu.cfg) into
+ * `.studio/snapshots/<basename>.bak` BEFORE the first mutation.
+ *
+ * D-06/D-07 compliance:
+ *   - Snapshot written into `.studio` (whitespace-free LOCALAPPDATA path, never into
+ *     the client dir).
+ *   - Idempotent per-deploy: if a snapshot already exists at the target path, it is NOT
+ *     overwritten. This preserves the PRE-MUTATION (pristine) content across multiple
+ *     deploys. A second deploy would write an already-mutated root cfg if we overwrote.
+ *
+ * `restoreCfg` with this path makes the client byte-pristine (removes .include + bumps).
+ *
+ * @param rootCfgPath  Absolute path to the ROOT cfg that `ensureInclude` mutates.
+ * @param studioDir    Absolute path to the workspace's .studio/ directory.
+ * @returns            Absolute path to the snapshot file.
+ */
+export function snapshotCfg(rootCfgPath: string, studioDir: string): string {
+  const snapshotDir = path.join(studioDir, 'snapshots');
+  fs.mkdirSync(snapshotDir, { recursive: true });
+
+  const snapshotPath = path.join(snapshotDir, path.basename(rootCfgPath) + '.bak');
+
+  // Idempotent: if the snapshot already exists, return its path WITHOUT overwriting.
+  // The first snapshot captures the pristine pre-mutation content; subsequent calls
+  // (e.g. a second deploy) must NOT overwrite it or the pristine backup is lost.
+  if (fs.existsSync(snapshotPath)) {
+    return snapshotPath;
+  }
+
+  // Copy the current ROOT cfg content as the snapshot (BOM-free, copyFileSync = byte-exact)
+  fs.copyFileSync(rootCfgPath, snapshotPath);
+  return snapshotPath;
+}
+
+// ─── restoreCfg ──────────────────────────────────────────────────────────────
+
+/**
+ * Whole-file restore of the ROOT cfg from its snapshot.
+ *
+ * D-07 primary Reset path:
+ *   - Atomic tmp+rename write (Pitfall 5 — same pattern as cfgActivator atomic writes).
+ *   - Restores the ROOT cfg to the EXACT bytes captured by `snapshotCfg` before the
+ *     first mutation. This removes the `.include "swgtoolkit.cfg"` line AND any
+ *     maxSearchPriority bumps written by activatePatch — the client becomes byte-pristine.
+ *   - Does NOT perform line-surgery — the whole file is replaced, which is the safest
+ *     approach (no risk of residual lines).
+ *
+ * @param rootCfgPath   Absolute path to the ROOT cfg to restore.
+ * @param snapshotPath  Absolute path to the snapshot (from snapshotCfg).
+ */
+export function restoreCfg(rootCfgPath: string, snapshotPath: string): void {
+  // Atomic tmp+rename — never leaves the cfg in a partial-write state
+  const tmp = rootCfgPath + '.tmp';
+  fs.copyFileSync(snapshotPath, tmp);
+  fs.renameSync(tmp, rootCfgPath);
+}
+
 // ─── activatePatch ────────────────────────────────────────────────────────────
 
 /**
@@ -101,10 +162,20 @@ export function activatePatch(
   cfgPath: string,
   patchName: string,
   scan: SharedFileScan,
+  studioSnapshotDir?: string,
 ): CfgInsertionRecord {
   // 1. Backup before ANY edit (T-04-11)
   // Write backup as safety net — deactivatePatch does NOT use this to restore (W9).
-  const backupPath = cfgPath + '.swgtoolkit.bak';
+  // D-06/D-07: if studioSnapshotDir is provided, write backup into .studio/snapshots;
+  // otherwise (legacy callers / tests without studioDir), write next to the cfg.
+  let backupPath: string;
+  if (studioSnapshotDir) {
+    const snapDir = path.join(studioSnapshotDir, 'snapshots');
+    fs.mkdirSync(snapDir, { recursive: true });
+    backupPath = path.join(snapDir, path.basename(cfgPath) + '.swgtoolkit.bak');
+  } else {
+    backupPath = cfgPath + '.swgtoolkit.bak';
+  }
   fs.writeFileSync(backupPath, fs.readFileSync(cfgPath));
 
   // 2. Read existing content + detect EOL
@@ -115,26 +186,34 @@ export function activatePatch(
   const slot = _chooseSlot(scan);
   const key = 'searchTree' + scan.skuSuffix + slot;
 
-  // Build the new block to append
+  // 4. Idempotent [SharedFile] header — Pitfall 4 fix.
+  // Only add [SharedFile] if the cfg does NOT already contain one. When called twice
+  // (e.g. two consecutive deploys, or shadow-base + patch-prepend), the second call
+  // must NOT add a second header — that causes "[SharedFile]\n[SharedFile]" which
+  // ConfigFile.cpp parses as two sections, confusing the engine.
+  const needsHeader = !existing.includes('[SharedFile]');
+
   let block = '';
 
   // If slot > maxSearchPriority, bump the limit so the engine will read our key.
   // (For Infinity with maxSearchPriority=60 and slot 55 this is not needed.)
   if (slot > scan.maxSearchPriority) {
-    block += '[SharedFile]' + eol + '\tmaxSearchPriority=' + (slot + 5) + eol;
+    if (needsHeader) block += '[SharedFile]' + eol;
+    block += '\tmaxSearchPriority=' + (slot + 5) + eol;
   }
 
-  // Append the searchTree key block
-  block += '[SharedFile]' + eol + '\t' + key + '=' + patchName + eol;
+  // Append the searchTree key block (with header only if needed)
+  if (needsHeader) block += '[SharedFile]' + eol;
+  block += '\t' + key + '=' + patchName + eol;
 
   const newContent = existing.trimEnd() + eol + block;
 
-  // 4. Atomic BOM-free write (Pitfall 5)
+  // 5. Atomic BOM-free write (Pitfall 5)
   const tmp = cfgPath + '.tmp';
   fs.writeFileSync(tmp, newContent, { encoding: 'utf8' });  // 'utf8' = no BOM
   fs.renameSync(tmp, cfgPath);
 
-  // 5. Return record for deactivatePatch and cross-session rollback (D-04-12)
+  // 6. Return record for deactivatePatch and cross-session rollback (D-04-12)
   return {
     cfgPath,
     includeTargetPath: '',
