@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 04.1 context gathered (CONTEXT.md written; 4 decisions locked)
-last_updated: "2026-06-27T21:55:39.289Z"
+last_updated: "2026-06-27T22:26:27.200Z"
 last_activity: 2026-06-27
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 40
-  completed_plans: 30
-  percent: 75
+  completed_plans: 31
+  percent: 78
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.1 (deploy-project-ux) — EXECUTING
-Plan: 2 of 11
+Plan: 3 of 11
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
@@ -45,7 +45,7 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       REQUIREMENTS DEPLOY-01..04 → Complete).
 Last activity: 2026-06-27
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 78%
 
 ### 02-03 key facts (crew-verified)
 
@@ -96,6 +96,7 @@ Progress: [████████░░] 75%
 | Phase 03 P05 | 9 | 2 tasks | 2 files |
 | Phase 03-live-injection-foundation P06b | 305 | 2 tasks | 3 files |
 | Phase 04.1 P01 | 7 | 2 tasks | 5 files |
+| Phase 04.1-deploy-project-ux P02 | 2 sessions | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -201,6 +202,9 @@ Roadmap-shaping decisions affecting current work:
   shared_sullustan_male, Tatooine). Wiring fixes that made this possible (commit 35318ea): live-inject
   needed index.js entry + root-package dependency to be require()-able from the renderer (Path B).
 
+- [Phase ?]: vi.mock intercepts ESM not CJS require()
+- [Phase ?]: avoids A→B→A circular import with projectBinding
+
 ### Pending Todos
 
 - tre-mount-perf-marshalling (DONE — columnar bridge + VfsTree virtualization)
@@ -223,6 +227,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T21:55:39.268Z
+Last session: 2026-06-27T22:26:27.175Z
 Stopped at: Phase 04.1 context gathered (CONTEXT.md written; 4 decisions locked)
 Resume file: None

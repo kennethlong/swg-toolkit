@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate (completed 2026-06-23)
 - [x] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export ✓ 2026-06-25 (VIEW-01..04; glTF export + Extract human-verified)
 - [x] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track) (completed 2026-06-26)
-- [ ] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs
+- [x] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs (completed 2026-06-27)
 - [ ] **Phase 4.1: Deploy & Project UX** *(INSERTED)* - Project↔client binding front door, one combined Deploy tab, stage-from-TRE, lazy/virtual shadow sandbox (build approved sketches 005-B/006-D/007/008)
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
 - [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
@@ -164,7 +164,7 @@ Plans:
 - [x] 04-06b-PLAN.md — shadowBaseService.ts (estimateTreSize, checkFreeDisk — free-space guard, atomic TRE copy to .studio/shadow/, shadow searchTree entries at higher slots than originals; resetShadow backup-restore; in-client UAT) [autonomous: false]
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 04-06-PLAN.md — DeployDialog (Sections A/B/C: client picker, patch-prepend/shadow-base, cfg slot preview; handleDeploy branches on deployModel — dispatches to deployShadowBase or cfgActivator 6-step sequence; in-client UAT checkpoint on SWG Infinity) [autonomous: false]
+- [x] 04-06-PLAN.md — DeployDialog (Sections A/B/C: client picker, patch-prepend/shadow-base, cfg slot preview; handleDeploy branches on deployModel — dispatches to deployShadowBase or cfgActivator 6-step sequence; in-client UAT checkpoint on SWG Infinity) [autonomous: false]
 **UI hint**: yes
 
 ### Phase 04.1: Deploy & Project UX (INSERTED)
@@ -267,7 +267,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
-| 4. Edit & Deploy Loop | 8/8 | Code-complete (plumbing UAT ✓; close-out/verify pending) | - |
+| 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-06-27 |
 | 4.1 Deploy & Project UX *(INSERTED)* | 1/11 | In Progress|  |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
