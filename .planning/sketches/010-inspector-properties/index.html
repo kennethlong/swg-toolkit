@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWG Toolkit — Sketch 010: Inspector Properties</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans); font-size: var(--text-base);
+    color: var(--color-text); background: var(--color-bg);
+    padding-top: 40px; overflow: hidden;
+  }
+  /* ---- variant switcher (sketch chrome) ---- */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 40px;
+    background: #101010; border-bottom: 1px solid #000;
+    display: flex; align-items: center; gap: 6px; padding: 0 12px; font-family: system-ui;
+  }
+  #variant-nav .brand { color: #777; font-size: 12px; margin-right: 8px; letter-spacing: .04em; }
+  .variant-tab {
+    background: #222; color: #bbb; border: 1px solid #333; border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all .15s ease;
+  }
+  .variant-tab:hover { background: #2c2c2c; color: #eee; }
+  .variant-tab.active { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+  .variant { height: calc(100vh - 40px); display: none; }
+  .variant.active { display: block; }
+
+  /* ---- app frame ---- */
+  .app { display: flex; flex-direction: column; height: 100%; background: var(--color-bg); }
+  .titlebar {
+    height: var(--titlebar-h); flex: 0 0 auto; display: flex; align-items: center;
+    background: #1c1c1c; border-bottom: 1px solid var(--color-border); padding: 0 10px; gap: 14px; user-select: none;
+  }
+  .titlebar .logo { width: 16px; height: 16px; border-radius: 4px;
+    background: linear-gradient(135deg, var(--color-accent), #3a7a1f); flex: 0 0 auto; }
+  .titlebar .app-name { font-size: var(--text-sm); font-weight: 600; letter-spacing: .03em; }
+  .titlebar .menu { display: flex; gap: 2px; }
+  .titlebar .menu span { padding: 3px 8px; font-size: var(--text-sm); color: var(--color-text-muted);
+    border-radius: var(--radius-sm); cursor: default; transition: all .12s; }
+  .titlebar .menu span:hover { background: var(--color-widget); color: var(--color-text); }
+  .app-theme-ctl { margin-left: auto; display: flex; align-items: center; gap: 5px;
+    font-size: var(--text-xs); color: var(--color-text-muted); }
+  .app-theme-ctl > span { color: var(--color-accent); }
+  .app-theme-ctl select { background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 2px 6px; font-size: var(--text-xs); cursor: pointer; }
+  .app-theme-ctl select:focus { outline: none; box-shadow: var(--focus-ring); }
+  .winctl { display: flex; gap: 4px; margin-left: 14px; }
+  .winctl b { width: 13px; height: 13px; border-radius: 50%; display: inline-block; }
+  .winctl .c1 { background: #e0584f; } .winctl .c2 { background: #e0a13a; } .winctl .c3 { background: #7ec94e; }
+
+  .statusbar {
+    height: var(--statusbar-h); flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+    background: #1c1c1c; border-top: 1px solid var(--color-border); padding: 0 12px;
+    font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono);
+  }
+  .statusbar .ok { color: var(--color-accent); } .statusbar .sep { color: var(--color-text-faint); }
+
+  /* ---- panel ---- */
+  .panel { background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: var(--shadow-panel); min-height: 0; min-width: 0; position: relative; }
+  .panel.collapsed .panel-body, .panel.collapsed .panel-tabs { display: none; }
+  .panel-head { height: var(--tabstrip-h); flex: 0 0 auto; display: flex; align-items: stretch;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border); }
+  .drag-dots { width: 18px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: grab; font-size: 11px; letter-spacing: -1px; }
+  .drag-dots:hover { color: var(--color-text-muted); }
+  .panel-tabs { display: flex; align-items: stretch; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; }
+  .ptab { display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: var(--text-sm);
+    color: var(--color-text-muted); cursor: pointer; border-right: 1px solid var(--color-border);
+    transition: all .12s; white-space: nowrap; position: relative; }
+  .ptab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-faint); }
+  .ptab:hover { background: var(--color-header-2); color: var(--color-text); }
+  .ptab.active { background: var(--color-surface); color: var(--color-text); }
+  .ptab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--color-accent); }
+  .ptab.active .dot { background: var(--color-accent); }
+  .panel-actions { display: flex; align-items: center; gap: 2px; padding: 0 6px; margin-left: auto; }
+  .pbtn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: var(--radius-sm); font-size: 13px; transition: all .12s; }
+  .pbtn:hover { background: var(--color-widget); color: var(--color-text); }
+  .panel-body { flex: 1; overflow: auto; min-height: 0; }
+  .tab-pane { display: none; height: 100%; } .tab-pane.active { display: block; }
+
+  /* ---- inspector accordion + fields ---- */
+  .accordion { border-bottom: 1px solid var(--color-border-soft); }
+  .acc-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: pointer;
+    background: var(--color-surface); font-size: var(--text-sm); font-weight: 600; user-select: none; transition: background .1s; }
+  .acc-head:hover { background: var(--color-surface-2); }
+  .acc-head .chev { color: var(--color-text-faint); transition: transform .15s; font-size: 10px; width: 12px; }
+  .accordion.open .acc-head .chev { transform: rotate(90deg); }
+  .acc-head .ico { color: var(--color-accent); opacity: .9; }
+  .acc-head .count { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); font-weight: 400; }
+  .acc-body { display: none; padding: 6px 10px 10px; } .accordion.open .acc-body { display: block; }
+  .field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; margin: 4px 0; }
+  .field > label { font-size: var(--text-xs); color: var(--color-text-muted); }
+  .vec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .numbox { background: var(--color-widget); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    padding: 3px 7px; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); width: 100%; transition: all .12s; }
+  .numbox:hover { background: var(--color-widget-hover); } .numbox:focus { outline: none; box-shadow: var(--focus-ring); }
+  .kv { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: var(--text-xs); }
+  .kv .k { color: var(--color-text-muted); flex: 0 0 auto; } .kv .v { font-family: var(--font-mono); color: var(--color-text); text-align: right; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---- generic button ---- */
+  .btn { background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 4px 10px; font-size: var(--text-xs); cursor: pointer; transition: all .12s; font-family: var(--font-sans); }
+  .btn:hover { background: var(--color-widget-hover); }
+
+  /* ---- annotation mode ---- */
+  body.annotate .panel { outline: 1px solid var(--color-accent-line); outline-offset: -1px; }
+  body.annotate .panel-head::after { content: attr(data-note); position: absolute; right: 4px; top: 26px;
+    background: var(--color-accent); color: var(--color-accent-text); font-size: 9px; font-family: var(--font-mono);
+    padding: 1px 4px; border-radius: 3px; z-index: 60; pointer-events: none; }
+
+  /* ---- sketch toolbar ---- */
+  #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 10px; border-radius: 8px; opacity: .45; transition: opacity .2s;
+    display: flex; align-items: center; gap: 10px; }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button { background: #2a2a2a; color: #eee; border: 1px solid #444;
+    border-radius: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+  #sketch-tools button.on { background: var(--color-accent); color: #122005; border-color: var(--color-accent); }
+  #sketch-tools .lbl { color: #888; font-size: 10px; }
+
+  /* ================= SKETCH-010 SPECIFIC ================= */
+  /* stage: sliver viewport + the inspector dock at a realistic width */
+  .insp-stage { --insp-w: 300px; display: flex; height: 100%; padding: 5px; gap: 5px; }
+  body.wide-dock .insp-stage { --insp-w: 440px; }
+  .insp-dock { width: var(--insp-w); flex: 0 0 auto; transition: width .18s ease; }
+  .vp-sliver { flex: 1; min-width: 0; }
+
+  /* viewport (sliver) */
+  .viewport { height: 100%; position: relative; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 42%, #20322f 0%, #1b1b1b 60%, #141414 100%); }
+  .viewport .grid { position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 28px 28px; mask-image: radial-gradient(ellipse at center, #000 40%, transparent 80%); }
+  .viewport .model { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+  .vp-stats { position: absolute; bottom: 10px; left: 12px; font-family: var(--font-mono);
+    font-size: var(--text-xs); color: var(--color-text-faint); }
+  .vp-tag { position: absolute; top: 8px; left: 8px; background: rgba(20,20,20,.7); border: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted); border-radius: var(--radius-sm); padding: 3px 8px; font-size: var(--text-xs); }
+
+  /* pinned identity / summary header */
+  .insp-header { position: sticky; top: 0; z-index: 6; background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border-soft); padding: 8px 10px; }
+  .insp-header .ih-row { display: flex; align-items: center; gap: 7px; }
+  .insp-header .ih-ico { width: 22px; height: 22px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+    background: var(--color-accent-dim); border: 1px solid var(--color-accent-line); border-radius: var(--radius-sm);
+    color: var(--color-accent); font-size: 13px; }
+  .insp-name { font-weight: 600; font-size: var(--text-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .insp-type { color: var(--color-text-muted); font-size: var(--text-xs); margin-top: 1px; }
+  .summary-strip { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+  .stat-chip { display: inline-flex; align-items: baseline; gap: 4px; background: var(--color-surface-2);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm); padding: 2px 7px; }
+  .stat-chip .sv { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
+  .stat-chip .sk { font-size: 9px; color: var(--color-text-faint); text-transform: uppercase; letter-spacing: .04em; }
+
+  /* status / format tags — glyph + border + bg + label (never colour alone) */
+  .tag { display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-mono); font-size: 10px;
+    padding: 1px 6px; border-radius: var(--radius-sm); border: 1px solid var(--color-border-soft);
+    background: var(--color-widget); color: var(--color-text-muted); white-space: nowrap; }
+  .tag.ok   { border-color: var(--color-accent-line); color: var(--color-accent); background: var(--color-accent-dim); }
+  .tag.warn { border-color: rgba(224,161,58,.5); color: var(--color-warn); background: rgba(224,161,58,.12); }
+
+  /* mini list rows (LODs, clips) */
+  .list-row { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: var(--text-xs);
+    border-bottom: 1px solid var(--color-border-soft); }
+  .list-row:last-child { border-bottom: none; }
+  .list-row .idx { font-family: var(--font-mono); color: var(--color-text-faint); width: 30px; flex: 0 0 auto; }
+  .list-row .nm  { color: var(--color-text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list-row .num { font-family: var(--font-mono); color: var(--color-text-muted); flex: 0 0 auto; }
+  .list-row .play { width: 18px; height: 18px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm); cursor: pointer; font-size: 9px; }
+  .list-row .play:hover { color: var(--color-accent); border-color: var(--color-accent-line); }
+  .subhead { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-faint);
+    margin: 9px 0 3px; padding-bottom: 3px; border-bottom: 1px solid var(--color-border-soft); }
+
+  /* shader card */
+  .shader-card { background: var(--color-surface-2); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); padding: 8px; margin: 7px 0; }
+  .sc-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .sc-head .sc-ix { font-family: var(--font-mono); font-size: 9px; color: var(--color-accent-text);
+    background: var(--color-accent); border-radius: var(--radius-sm); padding: 0 4px; flex: 0 0 auto; }
+  .sc-head .sc-name { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
+  .sc-chain { font-family: var(--font-mono); font-size: 9px; color: var(--color-text-faint); margin-bottom: 7px; }
+  .sc-chain b { color: var(--color-text-muted); font-weight: 400; }
+
+  /* texture slot mini-grid */
+  .tex-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .tex-slot { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .swatch { height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); position: relative; overflow: hidden; }
+  .swatch .sw-fmt { position: absolute; left: 3px; bottom: 3px; font-family: var(--font-mono); font-size: 8px;
+    background: rgba(0,0,0,.62); color: #fff; padding: 0 3px; border-radius: 2px; }
+  .sw-diffuse  { background: linear-gradient(135deg, #c79a6e 0%, #a06b44 100%); }
+  .sw-normal   { background: linear-gradient(135deg, #8a7fd6 0%, #b06fb0 100%); }   /* violet/magenta — BGRA tangent-space */
+  .sw-specular { background: linear-gradient(135deg, #6a6a6a 0%, #2b2b2b 100%); }
+  .tex-slot .sl-name { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--color-text-muted); }
+  .tex-slot .sl-name .dotg { width: 7px; height: 7px; border-radius: 2px; flex: 0 0 auto; }
+  .tex-slot .sl-file { font-family: var(--font-mono); font-size: 9px; color: var(--color-text-faint);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tex-note { margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<!-- ============ VARIANT SWITCHER ============ -->
+<div id="variant-nav">
+  <span class="brand">SKETCH 010 · inspector-properties · ★ WINNER: C (Hybrid)</span>
+  <button class="variant-tab" onclick="showVariant('a', this)">A · Accordion Stack</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B · Tabbed Groups</button>
+  <button class="variant-tab active" onclick="showVariant('c', this)">C · Hybrid ★</button>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT A — Accordion stack (Blender-style, fully populated)   -->
+<!-- ============================================================= -->
+<div id="variant-a" class="variant">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <label class="app-theme-ctl" title="Accent &amp; contrast — an accessibility setting">
+        <span aria-hidden="true">◐</span> Theme
+        <select id="app-theme" onchange="setTheme(this.value)">
+          <optgroup label="Accent">
+            <option value="cyan" selected>Hologram cyan</option>
+            <option value="default">SWG green</option>
+            <option value="amber">Amber</option>
+            <option value="blue">IDE blue</option>
+          </optgroup>
+          <optgroup label="Accessibility"><option value="high-contrast">High contrast</option></optgroup>
+        </select>
+      </label>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="insp-stage">
+      <!-- sliver viewport (context) -->
+      <div class="panel vp-sliver" data-note="R3F viewport">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport</div></div>
+          <div class="panel-actions"><div class="pbtn" title="Maximize">⤢</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+          <div class="vp-tag">player_human_male.mgn · skinned</div>
+          <div class="model">
+            <svg width="120" height="220" viewBox="0 0 120 220" fill="none" stroke="var(--color-accent)" stroke-width="1.3" opacity="0.85">
+              <circle cx="60" cy="30" r="16" fill="rgba(56,190,201,0.06)"/>
+              <line x1="60" y1="46" x2="60" y2="120"/>
+              <line x1="60" y1="60" x2="26" y2="100"/><line x1="60" y1="60" x2="94" y2="100"/>
+              <line x1="60" y1="120" x2="38" y2="200"/><line x1="60" y1="120" x2="82" y2="200"/>
+              <rect x="44" y="58" width="32" height="64" rx="8" fill="rgba(56,190,201,0.05)"/>
+              <circle cx="60" cy="30" r="2" fill="var(--color-accent)" stroke="none"/>
+            </svg>
+          </div>
+          <div class="vp-stats">persp · bind pose · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+
+      <!-- INSPECTOR DOCK -->
+      <div class="panel insp-dock" data-note="Inspect tab · accordion stack">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Inspect</div></div>
+          <div class="panel-actions"><div class="pbtn collapse-btn" title="Collapse">▾</div></div>
+        </div>
+        <div class="panel-body">
+          <!-- pinned identity -->
+          <div class="insp-header">
+            <div class="ih-row">
+              <div class="ih-ico">◳</div>
+              <div style="min-width:0">
+                <div class="insp-name">player_human_male.mgn</div>
+                <div class="insp-type">Skinned Mesh (MGN)</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Transform -->
+          <div class="accordion open">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">✥</span>Transform</div>
+            <div class="acc-body">
+              <div class="field"><label>Position</label><div class="vec"><input class="numbox" value="0.000"><input class="numbox" value="0.000"><input class="numbox" value="0.000"></div></div>
+              <div class="field"><label>Rotation</label><div class="vec"><input class="numbox" value="0.0"><input class="numbox" value="0.0"><input class="numbox" value="0.0"></div></div>
+              <div class="field"><label>Scale</label><div class="vec"><input class="numbox" value="1.000"><input class="numbox" value="1.000"><input class="numbox" value="1.000"></div></div>
+            </div>
+          </div>
+
+          <!-- Mesh -->
+          <div class="accordion open">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◳</span>Mesh<span class="count">12,044 v</span></div>
+            <div class="acc-body">
+              <div class="kv"><span class="k">Vertices</span><span class="v">12,044</span></div>
+              <div class="kv"><span class="k">Triangles</span><span class="v">8,510</span></div>
+              <div class="kv"><span class="k">UV sets</span><span class="v">1</span></div>
+              <div class="kv"><span class="k">Bounding r</span><span class="v">1.12</span></div>
+              <div class="kv"><span class="k">Shaders</span><span class="v">2</span></div>
+              <div class="subhead">Levels of Detail · 4</div>
+              <div class="list-row"><span class="idx">L0</span><span class="nm">full</span><span class="num">12,044 v · 8,510 t</span></div>
+              <div class="list-row"><span class="idx">L1</span><span class="nm">—</span><span class="num">6,420 v · 4,512 t</span></div>
+              <div class="list-row"><span class="idx">L2</span><span class="nm">—</span><span class="num">2,930 v · 2,044 t</span></div>
+              <div class="list-row"><span class="idx">L3</span><span class="nm">—</span><span class="num">1,180 v · 818 t</span></div>
+            </div>
+          </div>
+
+          <!-- Materials / Shaders -->
+          <div class="accordion open">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◐</span>Materials / Shaders<span class="count">2</span></div>
+            <div class="acc-body">
+              <div class="shader-card">
+                <div class="sc-head"><span class="sc-ix">0</span><span class="sc-name">a_human_skin.sht</span><span class="tag">opaque</span></div>
+                <div class="sc-chain">CSHD <b>→</b> SSHT · effect a_human_skin</div>
+                <div class="tex-grid">
+                  <div class="tex-slot">
+                    <div class="swatch sw-diffuse"><span class="sw-fmt">DXT5</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#a06b44"></span>diffuse</div>
+                    <div class="sl-file">human_male_body.dds</div>
+                  </div>
+                  <div class="tex-slot">
+                    <div class="swatch sw-normal"><span class="sw-fmt">RGBA8</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#8a7fd6"></span>normal</div>
+                    <div class="sl-file">human_male_body_n.dds</div>
+                  </div>
+                  <div class="tex-slot">
+                    <div class="swatch sw-specular"><span class="sw-fmt">DXT5</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#6a6a6a"></span>spec / env</div>
+                    <div class="sl-file">human_male_spec.dds</div>
+                  </div>
+                </div>
+                <div class="tex-note"><span class="tag warn">⚠ normal = BGRA tangent-space</span></div>
+              </div>
+              <div class="shader-card">
+                <div class="sc-head"><span class="sc-ix">1</span><span class="sc-name">a_human_skin.sht</span><span class="tag">opaque</span></div>
+                <div class="sc-chain">CSHD <b>→</b> SSHT · submesh 1 (hands / feet)</div>
+                <div class="tex-grid">
+                  <div class="tex-slot">
+                    <div class="swatch sw-diffuse"><span class="sw-fmt">DXT5</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#a06b44"></span>diffuse</div>
+                    <div class="sl-file">human_male_body.dds</div>
+                  </div>
+                  <div class="tex-slot">
+                    <div class="swatch sw-normal"><span class="sw-fmt">RGBA8</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#8a7fd6"></span>normal</div>
+                    <div class="sl-file">human_male_body_n.dds</div>
+                  </div>
+                  <div class="tex-slot" style="opacity:.5">
+                    <div class="swatch" style="background:repeating-linear-gradient(45deg,#2b2b2b 0 6px,#222 6px 12px)"><span class="sw-fmt">—</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#444"></span>spec / env</div>
+                    <div class="sl-file">(none)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Skeleton -->
+          <div class="accordion">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">⦙</span>Skeleton<span class="count">74 bones</span></div>
+            <div class="acc-body">
+              <div class="kv"><span class="k">Skeleton</span><span class="v">all_b.skt</span></div>
+              <div class="kv"><span class="k">Path</span><span class="v" title="appearance/skeleton/all_b.skt">…/skeleton/all_b.skt</span></div>
+              <div class="kv"><span class="k">Bones</span><span class="v">74</span></div>
+              <div class="kv"><span class="k">Attach point</span><span class="v">root</span></div>
+              <div class="kv"><span class="k">Bind pose</span><span class="v"><span class="tag ok">✓ loaded</span></span></div>
+            </div>
+          </div>
+
+          <!-- Animation -->
+          <div class="accordion">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">▷</span>Animation<span class="count">4 clips</span></div>
+            <div class="acc-body">
+              <div class="list-row"><span class="play">▶</span><span class="nm">stand</span><span class="num">2.0 s</span></div>
+              <div class="list-row"><span class="play">▶</span><span class="nm">walk</span><span class="num">1.2 s</span></div>
+              <div class="list-row"><span class="play">▶</span><span class="nm">run</span><span class="num">0.9 s</span></div>
+              <div class="list-row"><span class="play">▶</span><span class="nm">combat_idle</span><span class="num">3.4 s</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span><span class="ok">player_human_male.mgn</span></span>
+      <span class="sep">·</span><span>12,044 v · 8,510 t</span>
+      <span class="sep">·</span><span>2 shaders · 4 LODs</span>
+      <span class="sep">·</span><span>skel all_b.skt · bind <span class="ok">✓</span></span>
+      <span style="margin-left:auto">inspect · accordion stack</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT B — Tabbed groups (one group at a time)               -->
+<!-- ============================================================= -->
+<div id="variant-b" class="variant">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="insp-stage">
+      <div class="panel vp-sliver" data-note="R3F viewport">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+          <div class="vp-tag">player_human_male.mgn · skinned</div>
+          <div class="model">
+            <svg width="120" height="220" viewBox="0 0 120 220" fill="none" stroke="var(--color-accent)" stroke-width="1.3" opacity="0.85">
+              <circle cx="60" cy="30" r="16" fill="rgba(56,190,201,0.06)"/>
+              <line x1="60" y1="46" x2="60" y2="120"/>
+              <line x1="60" y1="60" x2="26" y2="100"/><line x1="60" y1="60" x2="94" y2="100"/>
+              <line x1="60" y1="120" x2="38" y2="200"/><line x1="60" y1="120" x2="82" y2="200"/>
+              <rect x="44" y="58" width="32" height="64" rx="8" fill="rgba(56,190,201,0.05)"/>
+            </svg>
+          </div>
+          <div class="vp-stats">persp · bind pose · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+
+      <!-- INSPECTOR DOCK — group sub-tabs in the head -->
+      <div class="panel insp-dock" data-note="Inspect · tabbed groups">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchTab(this,0)"><span class="dot"></span>Transform</div>
+            <div class="ptab" onclick="switchTab(this,1)"><span class="dot"></span>Mesh</div>
+            <div class="ptab" onclick="switchTab(this,2)"><span class="dot"></span>Material</div>
+            <div class="ptab" onclick="switchTab(this,3)"><span class="dot"></span>Skeleton</div>
+            <div class="ptab" onclick="switchTab(this,4)"><span class="dot"></span>Anim</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <!-- pinned identity (above the group panes) -->
+          <div class="insp-header">
+            <div class="ih-row">
+              <div class="ih-ico">◳</div>
+              <div style="min-width:0">
+                <div class="insp-name">player_human_male.mgn</div>
+                <div class="insp-type">Skinned Mesh (MGN)</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TRANSFORM -->
+          <div class="tab-pane active" style="padding:8px 10px;">
+            <div class="field"><label>Position</label><div class="vec"><input class="numbox" value="0.000"><input class="numbox" value="0.000"><input class="numbox" value="0.000"></div></div>
+            <div class="field"><label>Rotation</label><div class="vec"><input class="numbox" value="0.0"><input class="numbox" value="0.0"><input class="numbox" value="0.0"></div></div>
+            <div class="field"><label>Scale</label><div class="vec"><input class="numbox" value="1.000"><input class="numbox" value="1.000"><input class="numbox" value="1.000"></div></div>
+          </div>
+
+          <!-- MESH -->
+          <div class="tab-pane" style="padding:8px 10px;">
+            <div class="kv"><span class="k">Vertices</span><span class="v">12,044</span></div>
+            <div class="kv"><span class="k">Triangles</span><span class="v">8,510</span></div>
+            <div class="kv"><span class="k">UV sets</span><span class="v">1</span></div>
+            <div class="kv"><span class="k">Bounding r</span><span class="v">1.12</span></div>
+            <div class="kv"><span class="k">Shaders</span><span class="v">2</span></div>
+            <div class="subhead">Levels of Detail · 4</div>
+            <div class="list-row"><span class="idx">L0</span><span class="nm">full</span><span class="num">12,044 v · 8,510 t</span></div>
+            <div class="list-row"><span class="idx">L1</span><span class="nm">—</span><span class="num">6,420 v · 4,512 t</span></div>
+            <div class="list-row"><span class="idx">L2</span><span class="nm">—</span><span class="num">2,930 v · 2,044 t</span></div>
+            <div class="list-row"><span class="idx">L3</span><span class="nm">—</span><span class="num">1,180 v · 818 t</span></div>
+          </div>
+
+          <!-- MATERIAL -->
+          <div class="tab-pane" style="padding:8px 10px;">
+            <div class="shader-card">
+              <div class="sc-head"><span class="sc-ix">0</span><span class="sc-name">a_human_skin.sht</span><span class="tag">opaque</span></div>
+              <div class="sc-chain">CSHD <b>→</b> SSHT · effect a_human_skin</div>
+              <div class="tex-grid">
+                <div class="tex-slot">
+                  <div class="swatch sw-diffuse"><span class="sw-fmt">DXT5</span></div>
+                  <div class="sl-name"><span class="dotg" style="background:#a06b44"></span>diffuse</div>
+                  <div class="sl-file">human_male_body.dds</div>
+                </div>
+                <div class="tex-slot">
+                  <div class="swatch sw-normal"><span class="sw-fmt">RGBA8</span></div>
+                  <div class="sl-name"><span class="dotg" style="background:#8a7fd6"></span>normal</div>
+                  <div class="sl-file">human_male_body_n.dds</div>
+                </div>
+                <div class="tex-slot">
+                  <div class="swatch sw-specular"><span class="sw-fmt">DXT5</span></div>
+                  <div class="sl-name"><span class="dotg" style="background:#6a6a6a"></span>spec / env</div>
+                  <div class="sl-file">human_male_spec.dds</div>
+                </div>
+              </div>
+              <div class="tex-note"><span class="tag warn">⚠ normal = BGRA tangent-space</span></div>
+            </div>
+            <div class="shader-card">
+              <div class="sc-head"><span class="sc-ix">1</span><span class="sc-name">a_human_skin.sht</span><span class="tag">opaque</span></div>
+              <div class="sc-chain">CSHD <b>→</b> SSHT · submesh 1 (hands / feet)</div>
+              <div class="tex-grid">
+                <div class="tex-slot">
+                  <div class="swatch sw-diffuse"><span class="sw-fmt">DXT5</span></div>
+                  <div class="sl-name"><span class="dotg" style="background:#a06b44"></span>diffuse</div>
+                  <div class="sl-file">human_male_body.dds</div>
+                </div>
+                <div class="tex-slot">
+                  <div class="swatch sw-normal"><span class="sw-fmt">RGBA8</span></div>
+                  <div class="sl-name"><span class="dotg" style="background:#8a7fd6"></span>normal</div>
+                  <div class="sl-file">human_male_body_n.dds</div>
+                </div>
+                <div class="tex-slot" style="opacity:.5">
+                  <div class="swatch" style="background:repeating-linear-gradient(45deg,#2b2b2b 0 6px,#222 6px 12px)"><span class="sw-fmt">—</span></div>
+                  <div class="sl-name"><span class="dotg" style="background:#444"></span>spec / env</div>
+                  <div class="sl-file">(none)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SKELETON -->
+          <div class="tab-pane" style="padding:8px 10px;">
+            <div class="kv"><span class="k">Skeleton</span><span class="v">all_b.skt</span></div>
+            <div class="kv"><span class="k">Path</span><span class="v" title="appearance/skeleton/all_b.skt">…/skeleton/all_b.skt</span></div>
+            <div class="kv"><span class="k">Bones</span><span class="v">74</span></div>
+            <div class="kv"><span class="k">Attach point</span><span class="v">root</span></div>
+            <div class="kv"><span class="k">Bind pose</span><span class="v"><span class="tag ok">✓ loaded</span></span></div>
+          </div>
+
+          <!-- ANIM -->
+          <div class="tab-pane" style="padding:8px 10px;">
+            <div class="subhead">Clips · 4</div>
+            <div class="list-row"><span class="play">▶</span><span class="nm">stand</span><span class="num">2.0 s</span></div>
+            <div class="list-row"><span class="play">▶</span><span class="nm">walk</span><span class="num">1.2 s</span></div>
+            <div class="list-row"><span class="play">▶</span><span class="nm">run</span><span class="num">0.9 s</span></div>
+            <div class="list-row"><span class="play">▶</span><span class="nm">combat_idle</span><span class="num">3.4 s</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>tabbed groups</span><span class="sep">·</span>
+      <span>one group visible · no long scroll</span>
+      <span style="margin-left:auto">skel all_b.skt · bind <span class="ok">✓</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT C — Hybrid (summary header + 2 open + nested cards)    -->
+<!-- ============================================================= -->
+<div id="variant-c" class="variant active">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="insp-stage">
+      <div class="panel vp-sliver" data-note="R3F viewport">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+          <div class="vp-tag">player_human_male.mgn · skinned</div>
+          <div class="model">
+            <svg width="120" height="220" viewBox="0 0 120 220" fill="none" stroke="var(--color-accent)" stroke-width="1.3" opacity="0.85">
+              <circle cx="60" cy="30" r="16" fill="rgba(56,190,201,0.06)"/>
+              <line x1="60" y1="46" x2="60" y2="120"/>
+              <line x1="60" y1="60" x2="26" y2="100"/><line x1="60" y1="60" x2="94" y2="100"/>
+              <line x1="60" y1="120" x2="38" y2="200"/><line x1="60" y1="120" x2="82" y2="200"/>
+              <rect x="44" y="58" width="32" height="64" rx="8" fill="rgba(56,190,201,0.05)"/>
+            </svg>
+          </div>
+          <div class="vp-stats">persp · bind pose · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+
+      <!-- INSPECTOR DOCK — hybrid -->
+      <div class="panel insp-dock" data-note="Inspect · hybrid summary + key accordions">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Inspect</div></div>
+          <div class="panel-actions"><div class="pbtn collapse-btn" title="Collapse">▾</div></div>
+        </div>
+        <div class="panel-body">
+          <!-- pinned summary header with stat chips -->
+          <div class="insp-header">
+            <div class="ih-row">
+              <div class="ih-ico">◳</div>
+              <div style="min-width:0">
+                <div class="insp-name">player_human_male.mgn</div>
+                <div class="insp-type">Skinned Mesh (MGN)</div>
+              </div>
+            </div>
+            <div class="summary-strip">
+              <span class="stat-chip"><span class="sv">12,044</span><span class="sk">verts</span></span>
+              <span class="stat-chip"><span class="sv">8,510</span><span class="sk">tris</span></span>
+              <span class="stat-chip"><span class="sv">4</span><span class="sk">LOD</span></span>
+              <span class="stat-chip"><span class="sv">2</span><span class="sk">shd</span></span>
+              <span class="stat-chip"><span class="sv">74</span><span class="sk">bones</span></span>
+              <span class="tag ok">✓ bind pose</span>
+            </div>
+          </div>
+
+          <!-- Transform (open) -->
+          <div class="accordion open">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">✥</span>Transform</div>
+            <div class="acc-body">
+              <div class="field"><label>Position</label><div class="vec"><input class="numbox" value="0.000"><input class="numbox" value="0.000"><input class="numbox" value="0.000"></div></div>
+              <div class="field"><label>Rotation</label><div class="vec"><input class="numbox" value="0.0"><input class="numbox" value="0.0"><input class="numbox" value="0.0"></div></div>
+              <div class="field"><label>Scale</label><div class="vec"><input class="numbox" value="1.000"><input class="numbox" value="1.000"><input class="numbox" value="1.000"></div></div>
+            </div>
+          </div>
+
+          <!-- Materials (open) — nested cards w/ texture mini-grid -->
+          <div class="accordion open">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◐</span>Materials / Shaders<span class="count">2</span></div>
+            <div class="acc-body">
+              <div class="shader-card">
+                <div class="sc-head"><span class="sc-ix">0</span><span class="sc-name">a_human_skin.sht</span><span class="tag">opaque</span></div>
+                <div class="sc-chain">CSHD <b>→</b> SSHT · effect a_human_skin</div>
+                <div class="tex-grid">
+                  <div class="tex-slot">
+                    <div class="swatch sw-diffuse"><span class="sw-fmt">DXT5</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#a06b44"></span>diffuse</div>
+                    <div class="sl-file">human_male_body.dds</div>
+                  </div>
+                  <div class="tex-slot">
+                    <div class="swatch sw-normal"><span class="sw-fmt">RGBA8</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#8a7fd6"></span>normal</div>
+                    <div class="sl-file">human_male_body_n.dds</div>
+                  </div>
+                  <div class="tex-slot">
+                    <div class="swatch sw-specular"><span class="sw-fmt">DXT5</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#6a6a6a"></span>spec / env</div>
+                    <div class="sl-file">human_male_spec.dds</div>
+                  </div>
+                </div>
+                <div class="tex-note"><span class="tag warn">⚠ normal = BGRA tangent-space</span></div>
+              </div>
+              <div class="shader-card">
+                <div class="sc-head"><span class="sc-ix">1</span><span class="sc-name">a_human_skin.sht</span><span class="tag">opaque</span></div>
+                <div class="sc-chain">CSHD <b>→</b> SSHT · submesh 1 (hands / feet)</div>
+                <div class="tex-grid">
+                  <div class="tex-slot">
+                    <div class="swatch sw-diffuse"><span class="sw-fmt">DXT5</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#a06b44"></span>diffuse</div>
+                    <div class="sl-file">human_male_body.dds</div>
+                  </div>
+                  <div class="tex-slot">
+                    <div class="swatch sw-normal"><span class="sw-fmt">RGBA8</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#8a7fd6"></span>normal</div>
+                    <div class="sl-file">human_male_body_n.dds</div>
+                  </div>
+                  <div class="tex-slot" style="opacity:.5">
+                    <div class="swatch" style="background:repeating-linear-gradient(45deg,#2b2b2b 0 6px,#222 6px 12px)"><span class="sw-fmt">—</span></div>
+                    <div class="sl-name"><span class="dotg" style="background:#444"></span>spec / env</div>
+                    <div class="sl-file">(none)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mesh (collapsed) -->
+          <div class="accordion">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◳</span>Mesh<span class="count">12,044 v</span></div>
+            <div class="acc-body">
+              <div class="kv"><span class="k">Vertices</span><span class="v">12,044</span></div>
+              <div class="kv"><span class="k">Triangles</span><span class="v">8,510</span></div>
+              <div class="kv"><span class="k">UV sets</span><span class="v">1</span></div>
+              <div class="kv"><span class="k">Bounding r</span><span class="v">1.12</span></div>
+              <div class="subhead">Levels of Detail · 4</div>
+              <div class="list-row"><span class="idx">L0</span><span class="nm">full</span><span class="num">12,044 v · 8,510 t</span></div>
+              <div class="list-row"><span class="idx">L1</span><span class="nm">—</span><span class="num">6,420 v · 4,512 t</span></div>
+              <div class="list-row"><span class="idx">L2</span><span class="nm">—</span><span class="num">2,930 v · 2,044 t</span></div>
+              <div class="list-row"><span class="idx">L3</span><span class="nm">—</span><span class="num">1,180 v · 818 t</span></div>
+            </div>
+          </div>
+
+          <!-- Skeleton (collapsed) -->
+          <div class="accordion">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">⦙</span>Skeleton<span class="count">74 bones</span></div>
+            <div class="acc-body">
+              <div class="kv"><span class="k">Skeleton</span><span class="v">all_b.skt</span></div>
+              <div class="kv"><span class="k">Path</span><span class="v" title="appearance/skeleton/all_b.skt">…/skeleton/all_b.skt</span></div>
+              <div class="kv"><span class="k">Bones</span><span class="v">74</span></div>
+              <div class="kv"><span class="k">Attach point</span><span class="v">root</span></div>
+              <div class="kv"><span class="k">Bind pose</span><span class="v"><span class="tag ok">✓ loaded</span></span></div>
+            </div>
+          </div>
+
+          <!-- Animation (collapsed) -->
+          <div class="accordion">
+            <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">▷</span>Animation<span class="count">4 clips</span></div>
+            <div class="acc-body">
+              <div class="list-row"><span class="play">▶</span><span class="nm">stand</span><span class="num">2.0 s</span></div>
+              <div class="list-row"><span class="play">▶</span><span class="nm">walk</span><span class="num">1.2 s</span></div>
+              <div class="list-row"><span class="play">▶</span><span class="nm">run</span><span class="num">0.9 s</span></div>
+              <div class="list-row"><span class="play">▶</span><span class="nm">combat_idle</span><span class="num">3.4 s</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>hybrid</span><span class="sep">·</span>
+      <span>summary header + Transform &amp; Materials open</span>
+      <span style="margin-left:auto">skel all_b.skt · bind <span class="ok">✓</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SKETCH TOOLBAR ============ -->
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select id="tb-theme" onchange="setTheme(this.value)">
+    <option value="cyan" selected>Cyan</option>
+    <option value="default">SWG green</option>
+    <option value="amber">Amber</option>
+    <option value="blue">IDE blue</option>
+    <option value="high-contrast">High contrast</option>
+  </select>
+  <button id="btn-width" onclick="toggleWidth(this)">⇆ dock 300px</button>
+  <button id="btn-annot" onclick="toggleAnnot(this)">⊙ annotate</button>
+</div>
+
+<script>
+  function setTheme(name) {
+    document.querySelector('link[href*=themes]').href = '../themes/' + name + '.css';
+    const a = document.getElementById('app-theme'); if (a) a.value = name;
+    const t = document.getElementById('tb-theme'); if (t) t.value = name;
+  }
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).classList.add('active');
+    btn.classList.add('active');
+  }
+  function switchTab(tabEl, idx) {
+    const panel = tabEl.closest('.panel');
+    panel.querySelectorAll('.panel-tabs .ptab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    panel.querySelectorAll('.panel-body > .tab-pane').forEach((p, i) => p.classList.toggle('active', i === idx));
+  }
+  function toggleAcc(headEl) { headEl.closest('.accordion').classList.toggle('open'); }
+  function toggleAnnot(btn) { btn.classList.toggle('on'); document.body.classList.toggle('annotate', btn.classList.contains('on')); }
+  function toggleWidth(btn) {
+    const wide = document.body.classList.toggle('wide-dock');
+    btn.classList.toggle('on', wide);
+    btn.textContent = wide ? '⇆ dock 440px' : '⇆ dock 300px';
+  }
+  document.querySelectorAll('.collapse-btn').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); const p = btn.closest('.panel'); p.classList.toggle('collapsed');
+      btn.textContent = p.classList.contains('collapsed') ? '▸' : '▾'; });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWG Toolkit — Sketch 008: Shell Composition</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  /* ============================================================
+     SHARED CHROME KIT (verbatim from 001 / CHROME-KIT.md)
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans); font-size: var(--text-base);
+    color: var(--color-text); background: var(--color-bg);
+    padding-top: 40px; overflow: hidden;
+  }
+  /* ---- variant switcher ---- */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 40px;
+    background: #101010; border-bottom: 1px solid #000;
+    display: flex; align-items: center; gap: 6px; padding: 0 12px; font-family: system-ui;
+  }
+  #variant-nav .brand { color: #777; font-size: 12px; margin-right: 8px; letter-spacing: .04em; }
+  .variant-tab {
+    background: #222; color: #bbb; border: 1px solid #333; border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all .15s ease;
+  }
+  .variant-tab:hover { background: #2c2c2c; color: #eee; }
+  .variant-tab.active { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+  .variant-tab .star { color: #ffd24a; }
+  .variant { height: calc(100vh - 40px); display: none; }
+  .variant.active { display: block; }
+
+  /* ---- app frame ---- */
+  .app { display: flex; flex-direction: column; height: 100%; background: var(--color-bg); }
+  .titlebar {
+    height: var(--titlebar-h); flex: 0 0 auto; display: flex; align-items: center;
+    background: #1c1c1c; border-bottom: 1px solid var(--color-border); padding: 0 10px; gap: 14px; user-select: none;
+  }
+  .titlebar .logo { width: 16px; height: 16px; border-radius: 4px;
+    background: linear-gradient(135deg, var(--color-accent), #3a7a1f); flex: 0 0 auto; }
+  .titlebar .app-name { font-size: var(--text-sm); font-weight: 600; letter-spacing: .03em; }
+  .titlebar .menu { display: flex; gap: 2px; }
+  .titlebar .menu span { padding: 3px 8px; font-size: var(--text-sm); color: var(--color-text-muted);
+    border-radius: var(--radius-sm); cursor: default; transition: all .12s; }
+  .titlebar .menu span:hover { background: var(--color-widget); color: var(--color-text); }
+  .app-theme-ctl { margin-left: auto; display: flex; align-items: center; gap: 5px;
+    font-size: var(--text-xs); color: var(--color-text-muted); }
+  .app-theme-ctl > span { color: var(--color-accent); }
+  .app-theme-ctl select { background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 2px 6px; font-size: var(--text-xs); cursor: pointer; }
+  .app-theme-ctl select:focus { outline: none; box-shadow: var(--focus-ring); }
+  .winctl { display: flex; gap: 4px; margin-left: 14px; }
+  .winctl b { width: 13px; height: 13px; border-radius: 50%; display: inline-block; }
+  .winctl .c1 { background: #e0584f; } .winctl .c2 { background: #e0a13a; } .winctl .c3 { background: #7ec94e; }
+
+  .statusbar {
+    height: var(--statusbar-h); flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+    background: #1c1c1c; border-top: 1px solid var(--color-border); padding: 0 12px;
+    font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono);
+  }
+  .statusbar .ok { color: var(--color-accent); } .statusbar .sep { color: var(--color-text-faint); }
+
+  /* ---- workspace grid (3-col + bottom; right col width is a variable) ---- */
+  .workspace { flex: 1; min-height: 0; padding: 5px; gap: 5px; display: grid; }
+  .ws-3col {
+    grid-template-columns: 240px 1fr var(--rdock-w, 290px);
+    grid-template-rows: 1fr 200px;
+    grid-template-areas: "left center right" "bottom bottom bottom";
+    transition: grid-template-columns .2s ease;
+  }
+  .area-left   { grid-area: left; }
+  .area-center { grid-area: center; }
+  .area-right  { grid-area: right; }
+  .area-bottom { grid-area: bottom; }
+
+  /* ---- panel ---- */
+  .panel { background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: var(--shadow-panel); min-height: 0; min-width: 0; position: relative; }
+  .panel.collapsed .panel-body, .panel.collapsed .panel-tabs { display: none; }
+  .panel-head { height: var(--tabstrip-h); flex: 0 0 auto; display: flex; align-items: stretch;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border); }
+  .drag-dots { width: 18px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: grab; font-size: 11px; letter-spacing: -1px; }
+  .drag-dots:hover { color: var(--color-text-muted); }
+  .panel-tabs { display: flex; align-items: stretch; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; }
+  .ptab { display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: var(--text-sm);
+    color: var(--color-text-muted); cursor: pointer; border-right: 1px solid var(--color-border);
+    transition: all .12s; white-space: nowrap; position: relative; }
+  .ptab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-faint); }
+  .ptab:hover { background: var(--color-header-2); color: var(--color-text); }
+  .ptab.active { background: var(--color-surface); color: var(--color-text); }
+  .ptab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--color-accent); }
+  .ptab.active .dot { background: var(--color-accent); }
+  .ptab .x { color: var(--color-text-faint); font-size: 13px; } .ptab .x:hover { color: var(--color-text); }
+  .tab-add { width: 26px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; font-size: 15px; }
+  .tab-add:hover { color: var(--color-accent); }
+  .panel-actions { display: flex; align-items: center; gap: 2px; padding: 0 6px; margin-left: auto; }
+  .pbtn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: var(--radius-sm); font-size: 13px; transition: all .12s; }
+  .pbtn:hover { background: var(--color-widget); color: var(--color-text); }
+  .panel-body { flex: 1; overflow: auto; min-height: 0; }
+  .tab-pane { display: none; height: 100%; } .tab-pane.active { display: block; }
+
+  /* ---- tree ---- */
+  .tree { padding: 4px 0; font-size: var(--text-sm); }
+  .tree-row { display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 0; cursor: pointer;
+    white-space: nowrap; border-left: 2px solid transparent; transition: background .1s; }
+  .tree-row:hover { background: var(--color-surface-2); }
+  .tree-row.selected { background: var(--color-accent-dim); border-left-color: var(--color-accent); }
+  .tree-row .chev { width: 14px; text-align: center; color: var(--color-text-faint); transition: transform .15s; flex: 0 0 auto; font-size: 10px; }
+  .tree-item.open > .tree-row .chev { transform: rotate(90deg); }
+  .tree-row .ico { width: 14px; text-align: center; flex: 0 0 auto; opacity: .85; }
+  .tree-row .lbl { overflow: hidden; text-overflow: ellipsis; }
+  .tree-row .badge { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); padding-left: 8px; }
+  .tree-children { display: none; } .tree-item.open > .tree-children { display: block; }
+  .tree-children .tree-row { padding-left: 16px; }
+  .tree-children .tree-children .tree-row { padding-left: 32px; }
+  .tree-children .tree-children .tree-children .tree-row { padding-left: 48px; }
+
+  /* ---- viewport ---- */
+  .viewport { height: 100%; position: relative; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 40%, #2a2e26 0%, #1b1b1b 60%, #141414 100%); }
+  .viewport .grid { position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 28px 28px; mask-image: radial-gradient(ellipse at center, #000 40%, transparent 80%); }
+  .viewport .model { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+  .vp-overlay { position: absolute; display: flex; gap: 4px; }
+  .vp-overlay.tl { top: 8px; left: 8px; } .vp-overlay.tr { top: 8px; right: 8px; }
+  .vp-chip { background: rgba(20,20,20,.7); border: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted); border-radius: var(--radius-sm); padding: 3px 8px;
+    font-size: var(--text-xs); cursor: pointer; backdrop-filter: blur(4px); transition: all .12s; }
+  .vp-chip:hover { color: var(--color-text); border-color: var(--color-accent-line); }
+  .vp-chip.on { color: var(--color-accent-text); background: var(--color-accent); border-color: var(--color-accent); }
+  .gizmo { position: absolute; bottom: 12px; right: 12px; width: 48px; height: 48px; opacity: .8; }
+  .vp-stats { position: absolute; bottom: 10px; left: 12px; font-family: var(--font-mono);
+    font-size: var(--text-xs); color: var(--color-text-faint); }
+
+  /* ---- inspector accordion + fields ---- */
+  .accordion { border-bottom: 1px solid var(--color-border-soft); }
+  .acc-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: pointer;
+    background: var(--color-surface); font-size: var(--text-sm); font-weight: 600; user-select: none; transition: background .1s; }
+  .acc-head:hover { background: var(--color-surface-2); }
+  .acc-head .chev { color: var(--color-text-faint); transition: transform .15s; font-size: 10px; width: 12px; }
+  .accordion.open .acc-head .chev { transform: rotate(90deg); }
+  .acc-head .ico { color: var(--color-accent); opacity: .9; }
+  .acc-body { display: none; padding: 6px 10px 10px; } .accordion.open .acc-body { display: block; }
+  .field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; margin: 4px 0; }
+  .field > label { font-size: var(--text-xs); color: var(--color-text-muted); }
+  .vec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .numbox { background: var(--color-widget); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    padding: 3px 7px; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); width: 100%; transition: all .12s; }
+  .numbox:hover { background: var(--color-widget-hover); } .numbox:focus { outline: none; box-shadow: var(--focus-ring); }
+  .kv { display: flex; justify-content: space-between; padding: 3px 0; font-size: var(--text-xs); }
+  .kv .k { color: var(--color-text-muted); } .kv .v { font-family: var(--font-mono); color: var(--color-text); }
+
+  /* ---- data table ---- */
+  .dt { width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+  .dt thead th { position: sticky; top: 0; background: var(--color-header); text-align: left; padding: 5px 10px;
+    font-weight: 600; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); }
+  .dt tbody td { padding: 4px 10px; border-bottom: 1px solid var(--color-border-soft); font-family: var(--font-mono); }
+  .dt tbody tr { cursor: pointer; transition: background .1s; }
+  .dt tbody tr:nth-child(even) { background: rgba(255,255,255,.015); }
+  .dt tbody tr:hover { background: var(--color-surface-2); }
+  .dt tbody tr.selected { background: var(--color-accent-dim); box-shadow: inset 2px 0 0 var(--color-accent); }
+  .console { font-family: var(--font-mono); font-size: var(--text-xs); padding: 8px 12px; line-height: 1.7; }
+  .console .t { color: var(--color-text-faint); } .console .g { color: var(--color-accent); } .console .w { color: var(--color-warn); }
+
+  /* ---- generic button ---- */
+  .btn { background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 4px 10px; font-size: var(--text-xs); cursor: pointer; transition: all .12s; font-family: var(--font-sans); }
+  .btn:hover { background: var(--color-widget-hover); }
+
+  /* ============================================================
+     DEPLOY PANEL — faithful 006-D, dropped into the right dock
+     ============================================================ */
+  /* the right dock body becomes a flex column so the Deploy pane can own
+     a fixed staging section + resizable splitter + scrolling history + sticky footer */
+  .area-right .panel-body { display: flex; flex-direction: column; overflow: hidden; }
+  .area-right .tab-pane { display: none; flex: 1; min-height: 0; height: auto; }
+  .area-right .inspect-pane.active { display: block; overflow: auto; }
+  .area-right .deploy-pane.active { display: flex; flex-direction: column; }
+
+  .deploy-foot { flex: 0 0 auto; padding: 8px 10px; border-top: 1px solid var(--color-border); background: var(--color-header); }
+  .btn-primary { width: 100%; background: var(--color-accent); color: var(--color-accent-text); border: none;
+    border-radius: var(--radius-sm); padding: 7px 0; font-size: var(--text-sm); font-weight: 600; cursor: pointer; font-family: inherit; transition: all .12s; }
+  .btn-primary:hover { background: var(--color-accent-hover); }
+  .deploy-hint { font-size: 10px; color: var(--color-text-faint); text-align: center; margin-top: 4px; font-family: var(--font-mono); }
+  .deploy-hint b { color: var(--color-accent); font-weight: 600; }
+
+  /* sections */
+  .section-head { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted); padding: 6px 10px;
+    display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--color-border-soft); user-select: none; flex: 0 0 auto; }
+  .section-head.clickable { cursor: pointer; }
+  .section-head.clickable:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .caret { font-size: 9px; color: var(--color-text-faint); width: 10px; display: inline-block; transition: transform .12s; }
+  .collapsed .caret { transform: rotate(-90deg); }
+
+  /* deploy badges — renamed (.dbadge) so they never collide with the tree's .badge */
+  .dbadge { display: inline-flex; align-items: center; font-size: 10px; padding: 1px 5px; border-radius: 999px; white-space: nowrap; flex: 0 0 auto; }
+  .dbadge.bm { color: var(--color-text-muted); background: rgba(255,255,255,.05); border: 1px solid var(--color-border-soft); }
+  .dbadge.ba { color: var(--color-info); background: rgba(74,140,255,.12); border: 1px solid rgba(74,140,255,.3); }
+  .dbadge.bd { color: var(--color-warn); background: rgba(224,161,58,.12); border: 1px solid rgba(224,161,58,.3); }
+
+  /* change-vs-base indicator (glyph shape carries meaning, not color alone) */
+  .chg { flex: 0 0 auto; font-size: 11px; width: 12px; text-align: center; line-height: 1; }
+  .chg-changed { color: var(--color-success, #43c267); }   /* ● content differs from base */
+  .chg-same    { color: var(--color-text-faint); }          /* ○ identical to base — no-op */
+
+  .staging-row { height: 30px; display: flex; align-items: center; gap: 5px; padding: 0 6px 0 8px;
+    border-bottom: 1px solid var(--color-border-soft); cursor: pointer; position: relative; transition: background .1s; }
+  .staging-row:hover { background: var(--color-surface-2); }
+  .staging-row.selected { background: var(--color-accent-dim); box-shadow: inset 2px 0 0 var(--color-accent); }
+  .staging-row.is-same { opacity: .62; }
+  .row-path { font-family: var(--font-mono); font-size: 10px; color: var(--color-text); flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-same-tag { font-family: var(--font-mono); font-size: 9px; color: var(--color-text-faint); flex: 0 0 auto; }
+  .row-src { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); white-space: nowrap; flex: 0 0 auto; }
+  .row-actbtn { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: 3px; font-size: 12px; flex: 0 0 16px;
+    background: none; border: none; font-family: inherit; opacity: 0; transition: opacity .1s, color .1s, background .1s; }
+  .staging-row:hover .row-actbtn { opacity: 1; }
+  .row-actbtn:hover { background: var(--color-surface); color: var(--color-text); }
+  .row-actbtn.row-rm:hover { color: #e0584f; }
+
+  .staging-footer { padding: 5px 10px; border-top: 1px solid var(--color-border-soft); background: var(--color-header);
+    font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); display: flex; flex-wrap: wrap; gap: 5px; flex: 0 0 auto; }
+
+  /* shared per-row context menu (TRE-view parity) */
+  .ctx-pop { position: fixed; z-index: 9990; background: var(--color-header); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); padding: 3px; box-shadow: 0 6px 20px rgba(0,0,0,.55); display: none; flex-direction: column; min-width: 168px; }
+  .ctx-pop.open { display: flex; }
+  .ctx-pop button { background: none; border: none; color: var(--color-text-muted); font-size: 11px; cursor: pointer;
+    padding: 5px 9px; text-align: left; border-radius: 3px; white-space: nowrap; font-family: var(--font-sans);
+    transition: all .1s; width: 100%; display: flex; align-items: center; gap: 8px; }
+  .ctx-pop button:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .ctx-pop button .ico { width: 14px; text-align: center; color: var(--color-text-faint); }
+  .ctx-pop button:hover .ico { color: var(--color-accent); }
+  .ctx-pop .sep { height: 1px; background: var(--color-border-soft); margin: 3px 2px; }
+  .ctx-pop button.danger:hover { color: #e0584f; }
+  .ctx-pop button.danger:hover .ico { color: #e0584f; }
+
+  /* section frames */
+  .sec { display: flex; flex-direction: column; min-height: 0; }
+  .sec-body { min-height: 0; overflow-y: auto; }
+  .sec.collapsed .sec-body { display: none; }
+
+  /* D: collapsible staging + resizable splitter + collapsible history */
+  .d-staging { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 30px; }
+  .d-staging.collapsed { flex: 0 0 auto !important; height: auto !important; }
+  .d-splitter { height: 7px; flex: 0 0 auto; background: var(--color-header); border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border); cursor: row-resize; position: relative; transition: background .1s; }
+  .d-splitter:hover, .d-splitter.dragging { background: var(--color-accent-line, #2b6); }
+  .d-splitter::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 30px; height: 2px; border-radius: 2px; background: var(--color-text-faint); opacity: .5; }
+  .d-splitter.hidden { display: none; }
+  .d-graph { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .d-graph.collapsed { flex: 0 0 auto; }
+  .d-graph .sec-body { flex: 1; overflow-y: auto; }
+
+  /* expandable version row (reveals the changeset's own changed-file list) */
+  .vrow { border-bottom: 1px solid var(--color-border-soft); }
+  .vrow-head { height: 46px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; cursor: pointer;
+    position: relative; border-left: 2px solid transparent; transition: background .1s; }
+  .vrow-head:hover { background: var(--color-surface-2); }
+  .vrow.is-active .vrow-head { background: var(--color-accent-dim); border-left-color: var(--color-accent); }
+  /* git-graph lane gutter (002-A nod): vertical connector behind the nodes */
+  .vlane { position: absolute; left: 25px; top: 0; bottom: 0; width: 2px; background: var(--color-border-soft); pointer-events: none; }
+  .vlane.lane-branch { background: var(--color-accent); opacity: .55; }
+  .vcaret { font-size: 9px; color: var(--color-text-faint); width: 10px; flex: 0 0 10px; transition: transform .12s; position: relative; z-index: 1; }
+  .vrow.open .vcaret { transform: rotate(90deg); }
+  .vnode { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; border: 2px solid var(--color-text-faint);
+    background: var(--color-surface); box-sizing: border-box; position: relative; z-index: 1; }
+  .vnode.n-active { border-color: var(--color-accent); background: var(--color-accent); }
+  .vnode.n-dep { border-color: var(--color-info); }
+  .vnode.n-base { border-radius: 2px; border-style: dashed; }
+  .vrow-main { flex: 1; min-width: 0; }
+  .vrow-title { font-size: var(--text-sm); color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vrow.is-baseline .vrow-title { color: var(--color-text-muted); font-style: italic; }
+  .vrow-meta { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vrow-pip { font-size: 10px; flex: 0 0 auto; }
+  .vrow-pip.p-active { color: var(--color-accent); font-weight: 600; }
+  .vrow-pip.p-dep { color: var(--color-info); }
+  .vrow-pip.p-base { color: var(--color-text-faint); border: 1px dashed var(--color-border-soft); border-radius: 3px; padding: 0 4px; }
+  .vrow-files { display: none; padding: 2px 0 6px 0; background: var(--color-bg); }
+  .vrow.open .vrow-files { display: block; }
+  .cfile { display: flex; align-items: center; gap: 6px; height: 23px; padding: 0 8px 0 36px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); cursor: pointer; }
+  .cfile:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .cfile .cf-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cfile-empty { padding: 6px 8px 8px 36px; font-size: 10px; color: var(--color-text-faint); font-style: italic; }
+  .graph-status { padding: 5px 10px; border-top: 1px solid var(--color-border-soft); background: var(--color-header);
+    font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); display: flex; flex-wrap: wrap; gap: 8px; flex: 0 0 auto; }
+
+  /* ---- NARROW stress mode (variant C): collapse per-row actions to one ⋯, drop sizes, truncate ---- */
+  .deploy-pane.narrow .row-rm { display: none; }
+  .deploy-pane.narrow .row-actbtn { opacity: 1; }
+  .deploy-pane.narrow .row-src { display: none; }
+  .deploy-pane.narrow .cfile .cf-size { display: none; }
+
+  /* ============================================================
+     DEPLOY MODAL (003-A pattern, via 006-D markup)
+     ============================================================ */
+  #deploy-modal { position: fixed; inset: 40px 0 0 0; z-index: 9999; align-items: center; justify-content: center; display: none; }
+  #deploy-modal.open { display: flex; }
+  .modal-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  .dialog { position: relative; z-index: 1; width: 344px; max-width: 92vw; background: var(--color-surface);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-md); box-shadow: 0 8px 32px rgba(0,0,0,.6);
+    display: flex; flex-direction: column; max-height: calc(100vh - 100px); overflow: hidden; }
+  .dlg-head { height: 40px; flex: 0 0 auto; display: flex; align-items: center; padding: 0 12px; background: var(--color-header); border-bottom: 1px solid var(--color-border); }
+  .dlg-title { font-size: var(--text-md); font-weight: 600; flex: 1; }
+  .dlg-close { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: var(--color-text-faint);
+    cursor: pointer; border-radius: var(--radius-sm); font-size: 15px; background: none; border: none; font-family: inherit; transition: all .12s; }
+  .dlg-close:hover { background: var(--color-widget); color: var(--color-text); }
+  .dlg-body { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+  .dlg-sec { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase;
+    letter-spacing: .06em; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1px solid var(--color-border-soft); }
+  .client-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm); cursor: pointer;
+    border: 1px solid var(--color-border-soft); margin-bottom: 6px; background: var(--color-surface-2); transition: all .12s; }
+  .client-row:hover { border-color: var(--color-accent-line); }
+  .client-row.selected { border-color: var(--color-accent); background: var(--color-accent-dim); box-shadow: 0 0 0 1px var(--color-accent); }
+  .c-radio { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--color-text-faint); flex: 0 0 auto; position: relative; }
+  .client-row.selected .c-radio { border-color: var(--color-accent); }
+  .client-row.selected .c-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--color-accent); }
+  .c-name { font-size: var(--text-sm); font-weight: 600; }
+  .c-path { font-family: var(--font-mono); font-size: 10px; color: var(--color-info); }
+  .c-ver { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); }
+  .model-opt { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
+    border: 1px solid var(--color-border-soft); margin-bottom: 6px; transition: all .12s; }
+  .model-opt:hover { border-color: var(--color-accent-line); }
+  .model-opt.selected { border-color: var(--color-accent); background: var(--color-accent-dim); box-shadow: 0 0 0 1px var(--color-accent); }
+  .m-radio { width: 13px; height: 13px; border-radius: 50%; flex: 0 0 13px; margin-top: 2px; border: 2px solid var(--color-text-faint); position: relative; }
+  .model-opt.selected .m-radio { border-color: var(--color-accent); }
+  .model-opt.selected .m-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--color-accent); }
+  .m-label { font-size: var(--text-sm); font-weight: 600; }
+  .m-cap { font-size: 10px; color: var(--color-text-muted); margin-top: 2px; }
+  .slot-preview { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    padding: 8px 10px; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); line-height: 1.7; }
+  .slot-preview .sk { color: var(--color-text); } .slot-preview .sv { color: var(--color-accent); }
+  .dlg-acts { flex: 0 0 auto; display: flex; gap: 6px; justify-content: flex-end; padding: 10px 12px; background: var(--color-header); border-top: 1px solid var(--color-border); }
+  .btn-cancel { background: var(--color-widget); color: var(--color-text-muted); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); padding: 5px 12px; font-size: var(--text-sm); cursor: pointer; font-family: inherit; transition: all .1s; }
+  .btn-cancel:hover { color: var(--color-text); }
+  .btn-dlg-deploy { background: var(--color-accent); color: var(--color-accent-text); border: none; border-radius: var(--radius-sm);
+    padding: 5px 14px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; font-family: inherit; transition: all .1s; }
+  .btn-dlg-deploy:hover { background: var(--color-accent-hover); }
+  .btn-save-ver { background: var(--color-accent); color: var(--color-accent-text); border: none; border-radius: 3px;
+    padding: 2px 8px; font-size: 10px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; transition: all .12s; }
+  .btn-save-ver:hover { background: var(--color-accent-hover); }
+  .btn-add { background: var(--color-widget); color: var(--color-text-muted); border: 1px solid var(--color-border-soft);
+    border-radius: 3px; padding: 2px 8px; font-size: 10px; cursor: pointer; font-family: inherit; white-space: nowrap; transition: all .12s; }
+  .btn-add:hover { color: var(--color-text); border-color: var(--color-accent-line); }
+
+  /* ---- annotation mode ---- */
+  body.annotate .panel { outline: 1px solid var(--color-accent-line); outline-offset: -1px; }
+  body.annotate .panel-head::after { content: attr(data-note); position: absolute; right: 4px; top: 26px;
+    background: var(--color-accent); color: var(--color-accent-text); font-size: 9px; font-family: var(--font-mono);
+    padding: 1px 4px; border-radius: 3px; z-index: 60; pointer-events: none; }
+
+  /* ---- sketch toolbar ---- */
+  #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9997; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 10px; border-radius: 8px; opacity: .45; transition: opacity .2s;
+    display: flex; align-items: center; gap: 10px; }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button { background: #2a2a2a; color: #eee; border: 1px solid #444;
+    border-radius: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+  #sketch-tools button.on { background: var(--color-accent); color: #122005; border-color: var(--color-accent); }
+  #sketch-tools .lbl { color: #888; font-size: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ============ VARIANT SWITCHER ============ -->
+<div id="variant-nav">
+  <span class="brand">SKETCH 008 · shell-composition · ★ WINNER: A + B (Deploy wide ~440px)</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A · Inspect active ★</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B · Deploy active · wide ★</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C · Deploy active · narrow</button>
+</div>
+
+<!-- the three variants are identical full shells; JS clones the template into each -->
+<div id="variant-a" class="variant active"></div>
+<div id="variant-b" class="variant"></div>
+<div id="variant-c" class="variant"></div>
+
+<!-- ============================================================
+     SHELL TEMPLATE — full 001-A workspace with a 2-tab right dock
+     (Inspect | Deploy). Cloned into each variant, then configured.
+     ============================================================ -->
+<template id="shell-tpl">
+  <div class="app">
+    <!-- titlebar -->
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Deploy</span><span>Window</span><span>Help</span></div>
+      <label class="app-theme-ctl" title="Accent &amp; contrast — an accessibility setting">
+        <span aria-hidden="true">◐</span> Theme
+        <select onchange="setTheme(this.value)">
+          <optgroup label="Accent">
+            <option value="cyan" selected>Hologram cyan</option>
+            <option value="default">SWG green</option>
+            <option value="amber">Amber</option>
+            <option value="blue">IDE blue</option>
+          </optgroup>
+          <optgroup label="Accessibility"><option value="high-contrast">High contrast</option></optgroup>
+        </select>
+      </label>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace ws-3col">
+      <!-- LEFT: asset tree -->
+      <div class="panel area-left" data-note="dockview panel">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Assets</div></div>
+          <div class="panel-actions"><div class="pbtn" title="Split">⊟</div><div class="pbtn collapse-btn" title="Collapse">▾</div></div>
+        </div>
+        <div class="panel-body"><div class="tree">
+          <div class="tree-item open">
+            <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">appearance</span></div>
+            <div class="tree-children">
+              <div class="tree-item open">
+                <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">mesh</span></div>
+                <div class="tree-children">
+                  <div class="tree-row asset selected" onclick="pick(this)" data-name="shared_landspeeder.msh" data-type="Static Mesh (MSH)" data-verts="4,812" data-tris="3,104"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_landspeeder.msh</span></div>
+                  <div class="tree-row asset" onclick="pick(this)" data-name="shared_bantha.msh" data-type="Static Mesh (MSH)" data-verts="9,330" data-tris="6,118"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_bantha.msh</span></div>
+                  <div class="tree-row asset" onclick="pick(this)" data-name="new_blaster_l0.msh" data-type="Static Mesh (MSH)" data-verts="1,204" data-tris="812"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">new_blaster_l0.msh</span><span class="badge">＋</span></div>
+                </div>
+              </div>
+              <div class="tree-item">
+                <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">texture</span><span class="badge">42</span></div>
+                <div class="tree-children">
+                  <div class="tree-row asset" onclick="pick(this)" data-name="stormtrooper_armor.dds" data-type="Texture (DDS)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">🖼</span><span class="lbl">stormtrooper_armor.dds</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tree-item open">
+            <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">datatables</span></div>
+            <div class="tree-children">
+              <div class="tree-row" onclick="pick(this)" data-name="weapon.iff" data-type="Datatable (IFF)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">▦</span><span class="lbl">weapon.iff</span></div>
+              <div class="tree-row" onclick="pick(this)" data-name="creature_names.iff" data-type="Datatable (IFF)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">▦</span><span class="lbl">creature_names.iff</span></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- CENTER: viewport -->
+      <div class="panel area-center" data-note="utility-proc render">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport<span class="x" onclick="event.stopPropagation()">×</span></div></div>
+          <div class="panel-actions"><div class="pbtn" title="Maximize">⤢</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+          <div class="vp-overlay tl">
+            <div class="vp-chip" onclick="toggleChip(this)">Solid</div>
+            <div class="vp-chip on" onclick="toggleChip(this)">Wire</div>
+            <div class="vp-chip" onclick="toggleChip(this)">Textured</div>
+          </div>
+          <div class="vp-overlay tr">
+            <div class="vp-chip" title="Orbit">⟲</div><div class="vp-chip" title="Pan">✥</div><div class="vp-chip" title="Frame">⛶</div>
+          </div>
+          <div class="model">
+            <svg width="260" height="180" viewBox="0 0 260 180" fill="none" stroke="var(--color-accent)" stroke-width="1.4" opacity="0.9">
+              <polygon points="60,120 160,120 200,80 100,80" fill="rgba(126,201,78,0.06)"/>
+              <polygon points="60,120 60,90 100,50 100,80" fill="rgba(126,201,78,0.10)"/>
+              <polygon points="100,80 200,80 200,50 100,50" fill="rgba(126,201,78,0.04)"/>
+              <line x1="60" y1="120" x2="60" y2="90"/><line x1="160" y1="120" x2="200" y2="80"/>
+              <line x1="200" y1="80" x2="200" y2="50"/><line x1="100" y1="50" x2="100" y2="80"/>
+              <circle cx="130" cy="100" r="2.5" fill="var(--color-accent)" stroke="none"/>
+            </svg>
+          </div>
+          <svg class="gizmo" viewBox="0 0 60 60"><line x1="30" y1="30" x2="30" y2="6" stroke="#6db33f" stroke-width="2"/><line x1="30" y1="30" x2="52" y2="40" stroke="#e0584f" stroke-width="2"/><line x1="30" y1="30" x2="10" y2="42" stroke="#4a8cff" stroke-width="2"/></svg>
+          <div class="vp-stats">persp · 1280×720 · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+
+      <!-- RIGHT: Inspect | Deploy tab GROUP (exactly two tabs) -->
+      <div class="panel area-right" data-note="tab group: Inspect | Deploy">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchDock(this,0)"><span class="dot"></span>Inspect</div>
+            <div class="ptab" onclick="switchDock(this,1)"><span class="dot"></span>Deploy</div>
+          </div>
+          <div class="panel-actions"><div class="pbtn collapse-btn" title="Collapse">▾</div></div>
+        </div>
+        <div class="panel-body">
+
+          <!-- ===== TAB 0: INSPECT (001 accordions) ===== -->
+          <div class="tab-pane inspect-pane active">
+            <div style="padding:9px 10px; border-bottom:1px solid var(--color-border-soft);">
+              <div class="insp-name" style="font-weight:600; font-size:var(--text-md);">shared_landspeeder.msh</div>
+              <div class="insp-type" style="color:var(--color-text-muted); font-size:var(--text-xs); margin-top:2px;">Static Mesh (MSH)</div>
+            </div>
+            <div class="accordion open">
+              <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">✥</span>Transform</div>
+              <div class="acc-body">
+                <div class="field"><label>Position</label><div class="vec"><input class="numbox" value="0.000"><input class="numbox" value="0.000"><input class="numbox" value="0.000"></div></div>
+                <div class="field"><label>Rotation</label><div class="vec"><input class="numbox" value="0.0"><input class="numbox" value="90.0"><input class="numbox" value="0.0"></div></div>
+                <div class="field"><label>Scale</label><div class="vec"><input class="numbox" value="1.000"><input class="numbox" value="1.000"><input class="numbox" value="1.000"></div></div>
+              </div>
+            </div>
+            <div class="accordion open">
+              <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◳</span>Mesh</div>
+              <div class="acc-body">
+                <div class="kv"><span class="k">Vertices</span><span class="v insp-verts">4,812</span></div>
+                <div class="kv"><span class="k">Triangles</span><span class="v insp-tris">3,104</span></div>
+                <div class="kv"><span class="k">Shaders</span><span class="v">2</span></div>
+                <div class="kv"><span class="k">Bounding r</span><span class="v">3.46</span></div>
+              </div>
+            </div>
+            <div class="accordion">
+              <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◐</span>Material</div>
+              <div class="acc-body">
+                <div class="kv"><span class="k">Shader</span><span class="v">a_speeder.sht</span></div>
+                <div class="kv"><span class="k">Texture</span><span class="v">speeder_body.dds</span></div>
+                <div class="kv"><span class="k">Blend</span><span class="v">opaque</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== TAB 1: DEPLOY (faithful 006-D DeployPanel) ===== -->
+          <div class="tab-pane deploy-pane">
+
+            <!-- WORKING CHANGES (collapsible + resizable) -->
+            <div class="d-staging sec" style="height:182px;">
+              <div class="section-head clickable" onclick="dToggle(this)">
+                <span class="caret">▼</span><span style="color:var(--color-accent);" aria-hidden="true">●</span> Working changes
+                <span style="margin-left:auto;font-weight:400;color:var(--color-text-faint);">5 files</span>
+                <button class="btn-save-ver" onclick="event.stopPropagation();toast('Save version… (names a changeset)')">Save version…</button>
+                <button class="btn-add" onclick="event.stopPropagation();toast('Add files to staging…')">Add…</button>
+              </div>
+              <div class="sec-body" style="flex:1;overflow-y:auto;">
+                <div class="staging-row" oncontextmenu="rowCtx(event,this)" onclick="pickStage(this)">
+                  <span class="chg chg-changed" title="content differs from base" aria-hidden="true">●</span>
+                  <span class="dbadge bm">~ modify</span>
+                  <span class="row-path">appearance/tt8l_y7.sat</span>
+                  <span class="row-src">18 kB</span>
+                  <button class="row-actbtn" title="More…" onclick="rowMenuBtn(event,this)">⋯</button>
+                  <button class="row-actbtn row-rm" title="Remove from staging" onclick="rmRow(event,this)">×</button>
+                </div>
+                <div class="staging-row" oncontextmenu="rowCtx(event,this)" onclick="pickStage(this)">
+                  <span class="chg chg-changed" title="content differs from base" aria-hidden="true">●</span>
+                  <span class="dbadge bm">~ modify</span>
+                  <span class="row-path">texture/stormtrooper_armor.dds</span>
+                  <span class="row-src">512 kB</span>
+                  <button class="row-actbtn" title="More…" onclick="rowMenuBtn(event,this)">⋯</button>
+                  <button class="row-actbtn row-rm" title="Remove from staging" onclick="rmRow(event,this)">×</button>
+                </div>
+                <div class="staging-row is-same" oncontextmenu="rowCtx(event,this)" onclick="pickStage(this)">
+                  <span class="chg chg-same" title="identical to base — no actual change" aria-hidden="true">○</span>
+                  <span class="dbadge bm">~ modify</span>
+                  <span class="row-path">datatables/weapon/weapon.iff</span>
+                  <span class="row-same-tag">identical to base</span>
+                  <button class="row-actbtn" title="More…" onclick="rowMenuBtn(event,this)">⋯</button>
+                  <button class="row-actbtn row-rm" title="Remove from staging" onclick="rmRow(event,this)">×</button>
+                </div>
+                <div class="staging-row" oncontextmenu="rowCtx(event,this)" onclick="pickStage(this)">
+                  <span class="chg chg-changed" title="removal differs from base" aria-hidden="true">●</span>
+                  <span class="dbadge bd">⊘ delete</span>
+                  <span class="row-path">appearance/old_emitter.apt</span>
+                  <span class="row-src">tombstone</span>
+                  <button class="row-actbtn" title="More…" onclick="rowMenuBtn(event,this)">⋯</button>
+                  <button class="row-actbtn row-rm" title="Remove from staging" onclick="rmRow(event,this)">×</button>
+                </div>
+                <div class="staging-row selected" oncontextmenu="rowCtx(event,this)" onclick="pickStage(this)">
+                  <span class="chg chg-changed" title="content differs from base" aria-hidden="true">●</span>
+                  <span class="dbadge ba">＋ add</span>
+                  <span class="row-path">appearance/new_blaster_l0.msh</span>
+                  <span class="row-src">96 kB</span>
+                  <button class="row-actbtn" title="More…" onclick="rowMenuBtn(event,this)">⋯</button>
+                  <button class="row-actbtn row-rm" title="Remove from staging" onclick="rmRow(event,this)">×</button>
+                </div>
+                <div class="staging-footer">
+                  <span>5 staged</span><span>·</span>
+                  <span style="color:var(--color-success,#43c267);">4 changed</span><span>·</span>
+                  <span>1 identical</span>
+                  <span style="margin-left:auto;">668 kB payload</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- RESIZABLE SPLITTER (auto-hidden when a section collapses) -->
+            <div class="d-splitter" onmousedown="dStartSplit(event,this)" title="Drag to resize"></div>
+
+            <!-- VERSION HISTORY (collapsible; rows expand ▸ to the changeset's files) -->
+            <div class="d-graph sec">
+              <div class="section-head clickable" onclick="dToggle(this)">
+                <span class="caret">▼</span> Version history
+                <span style="margin-left:auto;font-weight:400;color:var(--color-text-faint);">5 nodes · 1 branch · click ▸ for files</span>
+              </div>
+              <div class="sec-body">
+                <!-- v4 ACTIVE (branch) — open by default to show its changeset -->
+                <div class="vrow is-active open">
+                  <div class="vrow-head" onclick="toggleVer(this)">
+                    <span class="vlane lane-branch"></span>
+                    <span class="vcaret">▸</span><span class="vnode n-active"></span>
+                    <div class="vrow-main"><div class="vrow-title">Alt: heavier blaster</div><div class="vrow-meta">v4 · 2026-06-26 · 2 files · ⌥ branch from v3</div></div>
+                    <span class="vrow-pip p-active">● active</span>
+                  </div>
+                  <div class="vrow-files">
+                    <div class="cfile" onclick="toast('Open appearance/new_blaster_l0.msh')"><span class="chg chg-changed" aria-hidden="true">●</span><span class="dbadge ba">＋</span><span class="cf-path">appearance/new_blaster_l0.msh</span><span class="cf-size" style="color:var(--color-text-faint);">96 kB</span></div>
+                    <div class="cfile" onclick="toast('Open appearance/tt8l_y7.sat')"><span class="chg chg-changed" aria-hidden="true">●</span><span class="dbadge bm">~</span><span class="cf-path">appearance/tt8l_y7.sat</span><span class="cf-size" style="color:var(--color-text-faint);">18 kB</span></div>
+                  </div>
+                </div>
+                <!-- v3 main -->
+                <div class="vrow">
+                  <div class="vrow-head" onclick="toggleVer(this)">
+                    <span class="vlane"></span>
+                    <span class="vcaret">▸</span><span class="vnode"></span>
+                    <div class="vrow-main"><div class="vrow-title">Recolor stormtrooper armor</div><div class="vrow-meta">v3 · 2026-06-26 · 3 files · ↑ main</div></div>
+                    <span class="vrow-pip" style="color:var(--color-text-faint);">↑ main</span>
+                  </div>
+                  <div class="vrow-files">
+                    <div class="cfile"><span class="chg chg-changed" aria-hidden="true">●</span><span class="dbadge bm">~</span><span class="cf-path">texture/stormtrooper_armor.dds</span><span class="cf-size" style="color:var(--color-text-faint);">512 kB</span></div>
+                    <div class="cfile"><span class="chg chg-changed" aria-hidden="true">●</span><span class="dbadge bm">~</span><span class="cf-path">texture/st_helmet.dds</span><span class="cf-size" style="color:var(--color-text-faint);">256 kB</span></div>
+                    <div class="cfile"><span class="chg chg-changed" aria-hidden="true">●</span><span class="dbadge bm">~</span><span class="cf-path">appearance/trooper.sat</span><span class="cf-size" style="color:var(--color-text-faint);">9 kB</span></div>
+                  </div>
+                </div>
+                <!-- v2 DEPLOYED / live -->
+                <div class="vrow">
+                  <div class="vrow-head" onclick="toggleVer(this)">
+                    <span class="vlane"></span>
+                    <span class="vcaret">▸</span><span class="vnode n-dep"></span>
+                    <div class="vrow-main"><div class="vrow-title">Buffed DL-44 damage</div><div class="vrow-meta">v2 · 2026-06-25 · 5 files · ⤓ deployed to client</div></div>
+                    <span class="vrow-pip p-dep">⤓ live · deployed</span>
+                  </div>
+                  <div class="vrow-files">
+                    <div class="cfile"><span class="chg chg-changed" aria-hidden="true">●</span><span class="dbadge bm">~</span><span class="cf-path">datatables/weapon/weapon.iff</span><span class="cf-size" style="color:var(--color-text-faint);">42 kB</span></div>
+                    <div class="cfile"><span class="chg chg-changed" aria-hidden="true">●</span><span class="dbadge bm">~</span><span class="cf-path">datatables/weapon/ranged.iff</span><span class="cf-size" style="color:var(--color-text-faint);">38 kB</span></div>
+                    <div class="cfile" style="color:var(--color-text-faint);">…3 more</div>
+                  </div>
+                </div>
+                <!-- v1 -->
+                <div class="vrow">
+                  <div class="vrow-head" onclick="toggleVer(this)">
+                    <span class="vlane"></span>
+                    <span class="vcaret">▸</span><span class="vnode"></span>
+                    <div class="vrow-main"><div class="vrow-title">Initial creature tweaks</div><div class="vrow-meta">v1 · 2026-06-24 · 1 file · first version</div></div>
+                    <span class="vrow-pip" style="color:var(--color-text-faint);">v1</span>
+                  </div>
+                  <div class="vrow-files">
+                    <div class="cfile"><span class="chg chg-changed" aria-hidden="true">●</span><span class="dbadge bm">~</span><span class="cf-path">datatables/creature_names.iff</span><span class="cf-size" style="color:var(--color-text-faint);">12 kB</span></div>
+                  </div>
+                </div>
+                <!-- Baseline (pristine) root -->
+                <div class="vrow is-baseline">
+                  <div class="vrow-head" onclick="toggleVer(this)">
+                    <span class="vcaret">▸</span><span class="vnode n-base"></span>
+                    <div class="vrow-main"><div class="vrow-title">Baseline (pristine)</div><div class="vrow-meta">0 deltas · shadow ≡ source · Deploy (reset to stock)</div></div>
+                    <span class="vrow-pip p-base">baseline</span>
+                  </div>
+                  <div class="vrow-files"><div class="cfile-empty">No changes — unmodified client. Deploy here = reset to stock.</div></div>
+                </div>
+              </div>
+              <div class="graph-status">
+                <span>5 nodes · 1 branch</span>
+                <span style="margin-left:auto;">active: <span style="color:var(--color-accent);">v4</span> · live: <span style="color:var(--color-info);">v2</span></span>
+              </div>
+            </div>
+
+            <!-- sticky Deploy… footer -->
+            <div class="deploy-foot">
+              <button class="btn-primary" onclick="openModal()">Deploy v4 — Alt: heavier blaster…</button>
+              <div class="deploy-hint">deploys the <b>selected</b> version → <b>flatten(active)</b>, not the working-changes list</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- BOTTOM: data pane -->
+      <div class="panel area-bottom" data-note="dockview panel">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchTab(this,0)"><span class="dot"></span>Datatable</div>
+            <div class="ptab" onclick="switchTab(this,1)"><span class="dot"></span>Console</div>
+            <div class="ptab" onclick="switchTab(this,2)"><span class="dot"></span>Log</div>
+            <div class="tab-add" title="New tab">＋</div>
+          </div>
+          <div class="panel-actions"><div class="pbtn collapse-btn" title="Collapse">▾</div></div>
+        </div>
+        <div class="panel-body">
+          <div class="tab-pane active">
+            <table class="dt">
+              <thead><tr><th>row</th><th>object</th><th>hit_points</th><th>armor</th><th>speed</th></tr></thead>
+              <tbody>
+                <tr onclick="pickRow(this)"><td>0</td><td>bantha</td><td>14000</td><td>40</td><td>1.0</td></tr>
+                <tr class="selected" onclick="pickRow(this)"><td>1</td><td>ronto</td><td>9000</td><td>25</td><td>1.2</td></tr>
+                <tr onclick="pickRow(this)"><td>2</td><td>dewback</td><td>11000</td><td>32</td><td>1.1</td></tr>
+                <tr onclick="pickRow(this)"><td>3</td><td>rancor</td><td>52000</td><td>70</td><td>0.8</td></tr>
+                <tr onclick="pickRow(this)"><td>4</td><td>krayt_dragon</td><td>180000</td><td>95</td><td>0.9</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tab-pane"><div class="console">
+            <div><span class="t">[12:04:01]</span> <span class="g">native-core</span> addon loaded in utility process (pid 8841)</div>
+            <div><span class="t">[12:04:02]</span> COOP/COEP set · <span class="g">crossOriginIsolated = true</span></div>
+            <div><span class="t">[12:04:03]</span> staging: 5 entries · <span class="g">4 differ</span> · 1 identical-to-base (skipped on build)</div>
+            <div><span class="t">[12:04:04]</span> version graph: 5 nodes · active <span class="g">v4</span> · live <span class="g">v2</span></div>
+            <div><span class="t">[12:04:05]</span> <span class="w">warn</span> Forge Vite plugin: experimental — watching addon reload</div>
+          </div></div>
+          <div class="tab-pane"><div class="console"><div><span class="t">[log]</span> contracts/ types compiled · renderer + backend in sync</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- statusbar -->
+    <div class="statusbar">
+      <span><span class="insp-name">shared_landspeeder.msh</span></span>
+      <span class="sep">·</span><span class="sb-state">Inspect active · dock 290px</span>
+      <span class="sep">·</span><span>active: <span class="ok">v4</span></span>
+      <span class="sep">·</span><span>live: <span class="ok">v2</span></span>
+      <span class="sep">·</span><span>crossOriginIsolated: <span class="ok">true</span></span>
+      <span style="margin-left:auto">pnpm · contracts ✓</span>
+    </div>
+  </div>
+</template>
+
+<!-- ============ SHARED PER-ROW CONTEXT MENU (TRE-view parity) ============ -->
+<div class="ctx-pop" id="row-ctx">
+  <button onclick="ctxAct('open')"><span class="ico">◳</span> Open in editor</button>
+  <button onclick="ctxAct('viewport')"><span class="ico">◉</span> Open in viewport</button>
+  <button onclick="ctxAct('reveal')"><span class="ico">⌖</span> Reveal in TRE browser</button>
+  <button onclick="ctxAct('diff')"><span class="ico">≢</span> Compare to base…</button>
+  <div class="sep"></div>
+  <button class="danger" onclick="ctxAct('remove')"><span class="ico">×</span> Remove from staging</button>
+</div>
+
+<!-- ============ SHARED DEPLOY MODAL (003-A) ============ -->
+<div id="deploy-modal">
+  <div class="modal-scrim" onclick="closeModal()"></div>
+  <div class="dialog">
+    <div class="dlg-head"><span class="dlg-title">Deploy v4 — Alt: heavier blaster</span><button class="dlg-close" onclick="closeModal()">×</button></div>
+    <div class="dlg-body">
+      <div>
+        <div class="dlg-sec">Target client</div>
+        <div class="client-row selected" onclick="pickClient(this)">
+          <div class="c-radio"></div>
+          <div style="flex:1;min-width:0;"><div class="c-name">SWG Infinity</div><div class="c-path">D:\SWG Infinity\SWG Infinity</div><div class="c-ver">EERT5000 · Live/ · maxPriority 60</div></div>
+          <span style="font-size:10px;color:var(--color-accent);">bound</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;font-size:var(--text-sm);color:var(--color-text-muted);cursor:pointer;border-radius:var(--radius-sm);" onclick="toast('Browse for client folder…')"><span style="color:var(--color-text-faint);">⊕</span> Browse…</div>
+      </div>
+      <div>
+        <div class="dlg-sec">Deploy model</div>
+        <div class="model-opt selected" onclick="pickModel(this)">
+          <div class="m-radio"></div>
+          <div><div class="m-label">Patch (absolute) <span style="font-weight:400;font-size:10px;color:var(--color-accent);">(recommended)</span></div><div class="m-cap">override stays in .studio, registered by absolute path — nothing copied into the client</div></div>
+        </div>
+        <div class="model-opt" onclick="pickModel(this)">
+          <div class="m-radio"></div>
+          <div><div class="m-label">Shadow (isolated client)</div><div class="m-cap">hardlinked base mirror — total isolation; opt-in</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="dlg-sec">Config slot preview</div>
+        <div class="slot-preview">
+          [SharedFile]<br>
+          <span class="sk">searchTree_00_55</span>=<span class="sv">D:\studio\.studio\build\mymod.tre</span><br>
+          maxSearchPriority=60 <span style="color:var(--color-accent);">✓</span> (slot 55 ≤ 60)<br>
+          <span style="color:var(--color-info);display:block;margin-top:4px;">↳ original cfg snapshotted to .studio — undo = restore</span>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-acts"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-dlg-deploy" onclick="toast('Building patch v5000 → writing cfg…');closeModal()">Deploy patch</button></div>
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div id="toast" style="position:fixed;bottom:54px;left:50%;transform:translateX(-50%);z-index:99999;background:var(--color-accent);color:var(--color-accent-text);font-family:system-ui;font-size:12px;font-weight:600;padding:8px 16px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.5);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;"></div>
+
+<!-- ============ SKETCH TOOLBAR ============ -->
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select id="tb-theme" onchange="setTheme(this.value)">
+    <option value="cyan" selected>Cyan</option>
+    <option value="default">SWG green</option>
+    <option value="amber">Amber</option>
+    <option value="blue">IDE blue</option>
+    <option value="high-contrast">High contrast</option>
+  </select>
+  <button id="btn-width" onclick="toggleWidth(this)">dock: wide ⇄ narrow</button>
+  <button id="btn-annot" onclick="toggleAnnot(this)">⊙ annotate</button>
+</div>
+
+<script>
+  /* ---- clone the shell template into each variant, then configure right-dock state ---- */
+  const tpl = document.getElementById('shell-tpl');
+  ['a', 'b', 'c'].forEach(id => document.getElementById('variant-' + id).appendChild(tpl.content.cloneNode(true)));
+  configVariant('a', { width: '290px', deploy: false });
+  configVariant('b', { width: '440px', deploy: true });
+  configVariant('c', { width: '300px', deploy: true, lock: true, narrow: true });
+  bindCollapse();
+
+  function configVariant(id, opt) {
+    const v = document.getElementById('variant-' + id);
+    const ws = v.querySelector('.workspace');
+    ws.style.setProperty('--rdock-w', opt.width);
+    if (opt.lock) ws.dataset.lockWidth = '1';
+    const dock = v.querySelector('.area-right');
+    if (opt.deploy) {
+      const tabs = dock.querySelectorAll('.panel-tabs .ptab');
+      const panes = dock.querySelectorAll('.panel-body > .tab-pane');
+      tabs[0].classList.remove('active'); tabs[1].classList.add('active');
+      panes[0].classList.remove('active'); panes[1].classList.add('active');
+    }
+    if (opt.narrow) dock.querySelector('.deploy-pane').classList.add('narrow');
+    const note = v.querySelector('.sb-state');
+    if (note) note.textContent = opt.deploy
+      ? ('Deploy active · dock ' + opt.width + (opt.lock ? ' (narrow stress)' : ' (auto-widened)'))
+      : ('Inspect active · dock ' + opt.width);
+  }
+
+  /* ---- chrome helpers (kit) ---- */
+  function setTheme(name) {
+    document.querySelector('link[href*=themes]').href = '../themes/' + name + '.css';
+    document.querySelectorAll('.app-theme-ctl select').forEach(s => s.value = name);
+    const t = document.getElementById('tb-theme'); if (t) t.value = name;
+  }
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).classList.add('active');
+    btn.classList.add('active'); closeCtx();
+  }
+  function bindCollapse() {
+    document.querySelectorAll('.collapse-btn').forEach(btn => {
+      if (btn._bound) return; btn._bound = true;
+      btn.addEventListener('click', e => {
+        e.stopPropagation(); const p = btn.closest('.panel'); p.classList.toggle('collapsed');
+        btn.textContent = p.classList.contains('collapsed') ? '▸' : '▾';
+      });
+    });
+  }
+  function toggleAnnot(btn) { btn.classList.toggle('on'); document.body.classList.toggle('annotate', btn.classList.contains('on')); }
+
+  /* ---- sketch-toolbar: manual dock width stress toggle (active variant) ---- */
+  function toggleWidth(btn) {
+    const ws = document.querySelector('.variant.active .workspace');
+    if (!ws) return;
+    const cur = parseInt(getComputedStyle(ws).getPropertyValue('--rdock-w')) || 290;
+    const wide = cur >= 440;
+    ws.style.setProperty('--rdock-w', wide ? '300px' : '440px');
+    btn.classList.toggle('on', !wide);
+    btn.textContent = 'dock: ' + (wide ? 'wide ⇄ narrow' : 'narrow ⇄ wide');
+    const note = ws.closest('.variant').querySelector('.sb-state');
+    if (note) note.textContent = note.textContent.replace(/dock \d+px/, 'dock ' + (wide ? '300px' : '440px'));
+  }
+
+  /* ---- shell interactions (001) ---- */
+  function toggleTree(rowEl) { rowEl.closest('.tree-item').classList.toggle('open'); }
+  function pick(rowEl) {
+    const v = rowEl.closest('.variant');
+    v.querySelectorAll('.tree-row.asset, .tree-row[data-name]').forEach(r => r.classList.remove('selected'));
+    rowEl.classList.add('selected');
+    const d = rowEl.dataset;
+    v.querySelectorAll('.insp-name').forEach(e => e.textContent = d.name);
+    v.querySelectorAll('.insp-type').forEach(e => e.textContent = d.type);
+    if (d.verts) v.querySelectorAll('.insp-verts').forEach(e => e.textContent = d.verts);
+    if (d.tris)  v.querySelectorAll('.insp-tris').forEach(e => e.textContent = d.tris);
+  }
+  function pickRow(tr) { tr.closest('tbody').querySelectorAll('tr').forEach(r => r.classList.remove('selected')); tr.classList.add('selected'); }
+  function switchTab(tabEl, idx) {
+    const panel = tabEl.closest('.panel');
+    panel.querySelectorAll('.panel-tabs .ptab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    panel.querySelectorAll('.panel-body > .tab-pane').forEach((p, i) => p.classList.toggle('active', i === idx));
+  }
+  /* right dock: switch tab AND adjust width (Deploy → widen) unless the variant locks width */
+  function switchDock(tabEl, idx) {
+    switchTab(tabEl, idx);
+    const ws = tabEl.closest('.workspace');
+    const note = ws.closest('.variant').querySelector('.sb-state');
+    if (ws.dataset.lockWidth) {
+      if (note) note.textContent = (idx === 1 ? 'Deploy active' : 'Inspect active') + ' · dock 300px (narrow stress)';
+      return;
+    }
+    ws.style.setProperty('--rdock-w', idx === 1 ? '440px' : '290px');
+    if (note) note.textContent = idx === 1 ? 'Deploy active · dock 440px (auto-widened)' : 'Inspect active · dock 290px';
+  }
+  function toggleAcc(headEl) { headEl.closest('.accordion').classList.toggle('open'); }
+  function toggleChip(chip) { chip.parentElement.querySelectorAll('.vp-chip').forEach(c => c.classList.remove('on')); chip.classList.add('on'); }
+
+  /* ---- staging (006) ---- */
+  function pickStage(el) { el.closest('.tab-pane').querySelectorAll('.staging-row').forEach(r => r.classList.remove('selected')); el.classList.add('selected'); }
+  function rmRow(e, btn) { e.stopPropagation(); const r = btn.closest('.staging-row'); r.style.transition = 'opacity .15s'; r.style.opacity = '0'; setTimeout(() => r.remove(), 150); }
+
+  /* per-row context menu (right-click OR ⋯) */
+  let ctxRow = null;
+  function openCtxAt(x, y, row) {
+    ctxRow = row; const pop = document.getElementById('row-ctx');
+    pop.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+    pop.style.top = Math.min(y, window.innerHeight - 200) + 'px';
+    pop.classList.add('open');
+  }
+  function rowCtx(e, row) { e.preventDefault(); e.stopPropagation(); openCtxAt(e.clientX, e.clientY, row); }
+  function rowMenuBtn(e, btn) { e.stopPropagation(); const r = btn.getBoundingClientRect(); openCtxAt(r.left - 150, r.bottom + 2, btn.closest('.staging-row')); }
+  function ctxAct(a) {
+    const path = ctxRow ? (ctxRow.querySelector('.row-path')?.textContent || 'entry') : 'entry';
+    if (a === 'remove' && ctxRow) { ctxRow.style.opacity = '0'; setTimeout(() => ctxRow.remove(), 150); }
+    else toast({ open: 'Open ' + path + ' in editor', viewport: 'Open ' + path + ' in viewport', reveal: 'Reveal ' + path + ' in TRE browser', diff: 'Diff ' + path + ' vs base' }[a]);
+    closeCtx();
+  }
+  function closeCtx() { document.getElementById('row-ctx').classList.remove('open'); ctxRow = null; }
+  document.addEventListener('click', closeCtx);
+
+  /* ---- D: collapse a section; splitter only meaningful when both expanded ---- */
+  function dToggle(head) {
+    const sec = head.closest('.sec'); sec.classList.toggle('collapsed');
+    const pane = head.closest('.tab-pane');
+    const staging = pane.querySelector('.d-staging'), graph = pane.querySelector('.d-graph'), split = pane.querySelector('.d-splitter');
+    split.classList.toggle('hidden', staging.classList.contains('collapsed') || graph.classList.contains('collapsed'));
+    graph.style.flex = graph.classList.contains('collapsed') ? '0 0 auto' : '1';
+  }
+  function dStartSplit(e, sp) {
+    e.preventDefault(); const staging = sp.previousElementSibling;
+    if (staging.classList.contains('collapsed')) return;
+    const startY = e.clientY, startH = staging.offsetHeight; sp.classList.add('dragging');
+    function mv(ev) { let h = Math.max(60, Math.min(startH + (ev.clientY - startY), staging.parentElement.offsetHeight - 150)); staging.style.height = h + 'px'; }
+    function up() { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); sp.classList.remove('dragging'); }
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+  }
+  /* expand a version row → list its changeset's files + set it as the deploy target */
+  function toggleVer(head) {
+    const row = head.closest('.vrow'), pane = head.closest('.tab-pane');
+    pane.querySelectorAll('.vrow').forEach(r => r.classList.remove('is-active'));
+    row.classList.add('is-active'); row.classList.toggle('open');
+    const title = row.querySelector('.vrow-title').textContent;
+    const ver = row.querySelector('.vrow-meta').textContent.split('·')[0].trim();
+    pane.querySelector('.btn-primary').textContent = 'Deploy ' + ver + ' — ' + title + '…';
+  }
+
+  /* ---- modal (003-A) ---- */
+  function openModal() { document.getElementById('deploy-modal').classList.add('open'); }
+  function closeModal() { document.getElementById('deploy-modal').classList.remove('open'); }
+  function pickClient(el) { el.closest('.dlg-body').querySelectorAll('.client-row').forEach(r => r.classList.remove('selected')); el.classList.add('selected'); }
+  function pickModel(el) { el.closest('.dlg-body').querySelectorAll('.model-opt').forEach(o => o.classList.remove('selected')); el.classList.add('selected'); }
+
+  /* ---- toast ---- */
+  let toastT;
+  function toast(msg) {
+    const t = document.getElementById('toast'); t.textContent = msg; t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(-4px)';
+    clearTimeout(toastT); toastT = setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(-50%)'; }, 1600);
+  }
+</script>
+</body>
+</html>

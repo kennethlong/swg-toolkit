@@ -96,7 +96,7 @@
   .drag-dots { width: 18px; display: flex; align-items: center; justify-content: center;
     color: var(--color-text-faint); cursor: grab; font-size: 11px; letter-spacing: -1px; }
   .drag-dots:hover { color: var(--color-text-muted); }
-  .panel-tabs { display: flex; align-items: stretch; flex: 1; overflow-x: auto; }
+  .panel-tabs { display: flex; align-items: stretch; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; }
   .ptab {
     display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: var(--text-sm);
     color: var(--color-text-muted); cursor: pointer; border-right: 1px solid var(--color-border);
@@ -105,7 +105,7 @@
   .ptab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-faint); }
   .ptab:hover { background: var(--color-header-2); color: var(--color-text); }
   .ptab.active { background: var(--color-surface); color: var(--color-text); }
-  .ptab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  .ptab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0;
     height: 2px; background: var(--color-accent); }
   .ptab.active .dot { background: var(--color-accent); }
   .ptab .x { color: var(--color-text-faint); font-size: 13px; }

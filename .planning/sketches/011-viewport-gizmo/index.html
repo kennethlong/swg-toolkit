@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWG Toolkit — Sketch 011: Viewport Gizmo + Live-Sync</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans); font-size: var(--text-base);
+    color: var(--color-text); background: var(--color-bg);
+    padding-top: 40px; overflow: hidden;
+  }
+  /* ---- variant switcher (sketch chrome) ---- */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 40px;
+    background: #101010; border-bottom: 1px solid #000;
+    display: flex; align-items: center; gap: 6px; padding: 0 12px; font-family: system-ui;
+  }
+  #variant-nav .brand { color: #777; font-size: 12px; margin-right: 8px; letter-spacing: .04em; }
+  .variant-tab {
+    background: #222; color: #bbb; border: 1px solid #333; border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all .15s ease;
+  }
+  .variant-tab:hover { background: #2c2c2c; color: #eee; }
+  .variant-tab.active { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+  .variant { height: calc(100vh - 40px); display: none; }
+  .variant.active { display: block; }
+
+  /* ---- app frame ---- */
+  .app { display: flex; flex-direction: column; height: 100%; background: var(--color-bg); }
+  .titlebar {
+    height: var(--titlebar-h); flex: 0 0 auto; display: flex; align-items: center;
+    background: #1c1c1c; border-bottom: 1px solid var(--color-border); padding: 0 10px; gap: 14px; user-select: none;
+  }
+  .titlebar .logo { width: 16px; height: 16px; border-radius: 4px;
+    background: linear-gradient(135deg, var(--color-accent), #3a7a1f); flex: 0 0 auto; }
+  .titlebar .app-name { font-size: var(--text-sm); font-weight: 600; letter-spacing: .03em; }
+  .titlebar .menu { display: flex; gap: 2px; }
+  .titlebar .menu span { padding: 3px 8px; font-size: var(--text-sm); color: var(--color-text-muted);
+    border-radius: var(--radius-sm); cursor: default; transition: all .12s; }
+  .titlebar .menu span:hover { background: var(--color-widget); color: var(--color-text); }
+  .app-theme-ctl { margin-left: auto; display: flex; align-items: center; gap: 5px;
+    font-size: var(--text-xs); color: var(--color-text-muted); }
+  .app-theme-ctl > span { color: var(--color-accent); }
+  .app-theme-ctl select { background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 2px 6px; font-size: var(--text-xs); cursor: pointer; }
+  .app-theme-ctl select:focus { outline: none; box-shadow: var(--focus-ring); }
+  .winctl { display: flex; gap: 4px; margin-left: 14px; }
+  .winctl b { width: 13px; height: 13px; border-radius: 50%; display: inline-block; }
+  .winctl .c1 { background: #e0584f; } .winctl .c2 { background: #e0a13a; } .winctl .c3 { background: #7ec94e; }
+
+  .statusbar {
+    height: var(--statusbar-h); flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+    background: #1c1c1c; border-top: 1px solid var(--color-border); padding: 0 12px;
+    font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono);
+  }
+  .statusbar .ok { color: var(--color-accent); } .statusbar .sep { color: var(--color-text-faint); }
+  .statusbar .warn { color: var(--color-warn); }
+
+  /* ---- panel ---- */
+  .panel { background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: var(--shadow-panel); min-height: 0; min-width: 0; position: relative; }
+  .panel-head { height: var(--tabstrip-h); flex: 0 0 auto; display: flex; align-items: stretch;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border); }
+  .drag-dots { width: 18px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: grab; font-size: 11px; letter-spacing: -1px; }
+  .drag-dots:hover { color: var(--color-text-muted); }
+  .panel-tabs { display: flex; align-items: stretch; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; }
+  .ptab { display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: var(--text-sm);
+    color: var(--color-text-muted); cursor: pointer; border-right: 1px solid var(--color-border);
+    transition: all .12s; white-space: nowrap; position: relative; }
+  .ptab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-faint); }
+  .ptab.active { background: var(--color-surface); color: var(--color-text); }
+  .ptab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--color-accent); }
+  .ptab.active .dot { background: var(--color-accent); }
+  .ptab .x { color: var(--color-text-faint); font-size: 13px; } .ptab .x:hover { color: var(--color-text); }
+  .panel-actions { display: flex; align-items: center; gap: 2px; padding: 0 6px; margin-left: auto; }
+  .pbtn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: var(--radius-sm); font-size: 13px; transition: all .12s; }
+  .pbtn:hover { background: var(--color-widget); color: var(--color-text); }
+  .panel-body { flex: 1; overflow: hidden; min-height: 0; }
+
+  .numbox { background: var(--color-widget); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    padding: 3px 7px; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); width: 100%; transition: all .12s; }
+  .numbox:hover { background: var(--color-widget-hover); } .numbox:focus { outline: none; box-shadow: var(--focus-ring); }
+
+  /* ---- workspace: viewport-dominant ---- */
+  .workspace { flex: 1; min-height: 0; padding: 5px; gap: 5px; display: grid;
+    grid-template-columns: 1fr; grid-template-rows: 1fr; }
+
+  /* ========================================================= */
+  /* VIEWPORT (reused from sketch 001, extended)               */
+  /* ========================================================= */
+  .viewport { height: 100%; position: relative; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 42%, #1c2a2c 0%, #1b1b1b 60%, #141414 100%); }
+  .viewport .grid { position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 28px 28px; mask-image: radial-gradient(ellipse at center, #000 40%, transparent 80%); }
+  .viewport .model { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    transition: filter .2s; }
+  .vp-overlay { position: absolute; display: flex; gap: 4px; z-index: 14; }
+  .vp-overlay.tl { top: 8px; left: 8px; } .vp-overlay.tr { top: 8px; right: 8px; align-items: flex-start; }
+  .vp-chip { background: rgba(20,20,20,.7); border: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted); border-radius: var(--radius-sm); padding: 3px 8px;
+    font-size: var(--text-xs); cursor: pointer; backdrop-filter: blur(4px); transition: all .12s; }
+  .vp-chip:hover { color: var(--color-text); border-color: var(--color-accent-line); }
+  .vp-chip.on { color: var(--color-accent-text); background: var(--color-accent); border-color: var(--color-accent); }
+  .gizmo { position: absolute; bottom: 12px; right: 12px; width: 48px; height: 48px; opacity: .8; z-index: 14; }
+  .vp-stats { position: absolute; bottom: 10px; left: 12px; font-family: var(--font-mono);
+    font-size: var(--text-xs); color: var(--color-text-faint); z-index: 14; }
+
+  /* ---- live-sync chip (glyph + border + label; never color alone) ---- */
+  .live-chip { display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(16,20,20,.78); border: 1px solid var(--color-accent-line); color: var(--color-text);
+    border-radius: var(--radius-sm); padding: 3px 9px; font-size: var(--text-xs); font-family: var(--font-mono);
+    backdrop-filter: blur(4px); white-space: nowrap; }
+  .live-chip .lc-glyph { color: var(--color-accent); }
+  .live-chip.offline { border-style: dashed; border-color: var(--color-warn); color: var(--color-text-muted); }
+  .live-chip.offline .lc-glyph { color: var(--color-warn); }
+
+  /* ---- transform gizmo ON the model (X red / Y green / Z blue, each labelled) ---- */
+  .giz { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 12; pointer-events: none; }
+  .giz svg { width: 200px; height: 200px; overflow: visible; }
+  .giz.lg svg { width: 300px; height: 300px; }
+  .giz .giz-axis { pointer-events: auto; cursor: grab; }
+  .variant.dragging .giz .giz-axis { cursor: grabbing; }
+  .giz .giz-hit { stroke: transparent; stroke-width: 16; }
+  .giz .giz-line { stroke-width: 2.6; transition: stroke-width .1s; }
+  .giz .giz-axis:hover .giz-line { stroke-width: 4.2; }
+  .giz .giz-label { font: 700 12px var(--font-mono); }
+  .giz .giz-axis:hover .giz-label { font-size: 14px; }
+
+  /* ---- delta readout ---- */
+  .delta-readout { display: inline-flex; gap: 10px; align-items: center;
+    background: rgba(10,13,13,.88); border: 1px solid var(--color-accent-line); border-radius: var(--radius-sm);
+    padding: 4px 12px; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text); }
+  .delta-readout .dr-axis { color: var(--color-accent); font-weight: 700; }
+  .delta-readout .sync-target { color: var(--color-accent); }
+  body.sync-offline .delta-readout { border-color: var(--color-warn); }
+  body.sync-offline .delta-readout .sync-target { color: var(--color-warn); }
+  .delta-readout.floating { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 16;
+    opacity: 0; pointer-events: none; transition: opacity .12s; }
+  .variant.dragging .delta-readout.floating { opacity: 1; }
+
+  /* ---- VARIANT B: client card (top-right) ---- */
+  .client-card { width: 224px; background: rgba(16,20,20,.82); border: 1px solid var(--color-accent-line);
+    border-radius: var(--radius-md); backdrop-filter: blur(5px); overflow: hidden; }
+  body.sync-offline .client-card { border-color: var(--color-warn); border-style: dashed; }
+  .client-card .cc-head { display: flex; align-items: center; gap: 6px; padding: 6px 9px;
+    border-bottom: 1px solid var(--color-border-soft); background: rgba(255,255,255,.03); }
+  .client-card .cc-body { padding: 6px 9px; font-family: var(--font-mono); font-size: var(--text-xs); }
+  .cc-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .cc-row .k { color: var(--color-text-muted); } .cc-row .v { color: var(--color-text); }
+  .cc-row .v.ok { color: var(--color-accent); } .cc-row .v.warn { color: var(--color-warn); }
+
+  /* ---- VARIANT B: left-edge gizmo-mode toolbar ---- */
+  .mode-rail { position: absolute; top: 50%; left: 8px; transform: translateY(-50%); z-index: 14;
+    display: flex; flex-direction: column; gap: 4px; background: rgba(16,16,16,.78); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md); padding: 5px; backdrop-filter: blur(4px); }
+  .mode-btn { display: flex; flex-direction: column; align-items: center; gap: 1px; width: 40px; padding: 5px 0;
+    border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--color-text-muted); cursor: pointer; transition: all .12s; }
+  .mode-btn .mb-ico { font-size: 16px; } .mode-btn .mb-key { font-size: 9px; font-family: var(--font-mono); color: var(--color-text-faint); }
+  .mode-btn:hover { background: var(--color-widget); color: var(--color-text); }
+  .mode-btn.on { background: var(--color-accent-dim); border-color: var(--color-accent); color: var(--color-accent); }
+  .mode-btn.on .mb-key { color: var(--color-accent); }
+
+  /* ---- VARIANT B: bottom transform readout bar ---- */
+  .vp-readout { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 16;
+    display: flex; align-items: center; gap: 14px; background: rgba(12,15,15,.9); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md); padding: 7px 14px; backdrop-filter: blur(5px); }
+  .ro-group { display: flex; align-items: center; gap: 6px; }
+  .ro-group .ro-lbl { font-size: var(--text-xs); color: var(--color-text-muted); font-weight: 600; }
+  .ro-group .ro-vec { display: flex; gap: 4px; }
+  .ro-group .numbox { width: 52px; text-align: right; }
+  .ro-axis { display: flex; align-items: center; gap: 3px; }
+  .ro-axis .ax-tag { font: 700 9px var(--font-mono); width: 11px; text-align: center; border-radius: 2px; color: #111; }
+  .ax-x { background: #e0584f; } .ax-y { background: #6db33f; } .ax-z { background: #4a8cff; }
+  .ro-write { display: flex; align-items: center; gap: 6px; padding-left: 6px; border-left: 1px solid var(--color-border);
+    font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
+  .ro-write .sync-target { color: var(--color-accent); }
+  body.sync-offline .ro-write .sync-target { color: var(--color-warn); }
+
+  /* ---- VARIANT C: mode switch + snapping ---- */
+  .gmode-bar { display: flex; gap: 4px; }
+  .snap-bar { display: flex; gap: 4px; margin-left: 10px; }
+  .pulse-label { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 16;
+    display: none; align-items: center; gap: 8px; background: rgba(10,13,13,.9); border: 1px solid var(--color-accent);
+    border-radius: var(--radius-sm); padding: 4px 12px; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-accent); }
+  .variant.dragging .pulse-label { display: inline-flex; }
+  body.sync-offline .variant.dragging .pulse-label { border-color: var(--color-warn); color: var(--color-warn); }
+
+  /* ---- "writing to client memory" pulse (variant C) ---- */
+  @keyframes syncPulse {
+    0%   { box-shadow: 0 0 0 0 var(--color-accent-line); }
+    70%  { box-shadow: 0 0 0 11px rgba(56,190,201,0); }
+    100% { box-shadow: 0 0 0 0 rgba(56,190,201,0); }
+  }
+  .live-chip.syncing { animation: syncPulse 1s ease-out infinite; }
+  body.sync-offline .live-chip.syncing { animation: none; }
+  .model.syncing { filter: drop-shadow(0 0 10px var(--color-accent-line)); }
+  body.sync-offline .model.syncing { filter: drop-shadow(0 0 8px rgba(224,161,58,.5)); }
+
+  /* ---- annotation mode ---- */
+  body.annotate .panel { outline: 1px solid var(--color-accent-line); outline-offset: -1px; }
+  body.annotate .panel-head::after { content: attr(data-note); position: absolute; right: 4px; top: 26px;
+    background: var(--color-accent); color: var(--color-accent-text); font-size: 9px; font-family: var(--font-mono);
+    padding: 1px 4px; border-radius: 3px; z-index: 60; pointer-events: none; }
+
+  /* ---- sketch toolbar ---- */
+  #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 10px; border-radius: 8px; opacity: .55; transition: opacity .2s;
+    display: flex; align-items: center; gap: 10px; }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button { background: #2a2a2a; color: #eee; border: 1px solid #444;
+    border-radius: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+  #sketch-tools button.on { background: var(--color-accent); color: #04201f; border-color: var(--color-accent); }
+  #sketch-tools .lbl { color: #888; font-size: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ============ VARIANT SWITCHER ============ -->
+<div id="variant-nav">
+  <span class="brand">SKETCH 011 · viewport-gizmo · ★ WINNER: B (Full overlay HUD)</span>
+  <button class="variant-tab" onclick="showVariant('a', this)">A · Minimal HUD</button>
+  <button class="variant-tab active" onclick="showVariant('b', this)">B · Full overlay ★</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C · Gizmo-focused</button>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT A — Minimal HUD                                        -->
+<!-- ============================================================= -->
+<div id="variant-a" class="variant">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <label class="app-theme-ctl" title="Accent &amp; contrast — an accessibility setting">
+        <span aria-hidden="true">◐</span> Theme
+        <select id="app-theme" onchange="setTheme(this.value)">
+          <optgroup label="Accent">
+            <option value="cyan" selected>Hologram cyan</option>
+            <option value="default">SWG green</option>
+            <option value="amber">Amber</option>
+            <option value="blue">IDE blue</option>
+          </optgroup>
+          <optgroup label="Accessibility"><option value="high-contrast">High contrast</option></optgroup>
+        </select>
+      </label>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace">
+      <div class="panel" data-note="R3F viewport · gizmo + live-sync HUD">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport — shared_landspeeder.msh<span class="x" onclick="event.stopPropagation()">×</span></div></div>
+          <div class="panel-actions"><div class="pbtn" title="Maximize">⤢</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+
+          <!-- shading chips top-left -->
+          <div class="vp-overlay tl">
+            <div class="vp-chip on" onclick="toggleChip(this)">Solid</div>
+            <div class="vp-chip" onclick="toggleChip(this)">Wire</div>
+            <div class="vp-chip" onclick="toggleChip(this)">Textured</div>
+          </div>
+
+          <!-- nav chips + compact live-sync chip top-right -->
+          <div class="vp-overlay tr">
+            <div class="vp-chip" title="Orbit">⟲</div>
+            <div class="vp-chip" title="Pan">✥</div>
+            <div class="vp-chip" title="Frame selected">⛶</div>
+            <div class="live-chip" data-live="Live · pid 8841" data-offline="Offline · file-patch" title="Live memory injection state — toggle with #btn-sync">
+              <span class="lc-glyph" aria-hidden="true">●</span><span class="lc-label">Live · pid 8841</span>
+            </div>
+          </div>
+
+          <!-- model -->
+          <div class="model">
+            <svg width="260" height="180" viewBox="0 0 260 180" fill="none" stroke="var(--color-accent)" stroke-width="1.4" opacity="0.9">
+              <polygon points="60,120 160,120 200,80 100,80" fill="rgba(56,190,201,0.06)"/>
+              <polygon points="60,120 60,90 100,50 100,80" fill="rgba(56,190,201,0.10)"/>
+              <polygon points="100,80 200,80 200,50 100,50" fill="rgba(56,190,201,0.04)"/>
+              <line x1="60" y1="120" x2="60" y2="90"/><line x1="160" y1="120" x2="200" y2="80"/>
+              <line x1="200" y1="80" x2="200" y2="50"/><line x1="100" y1="50" x2="100" y2="80"/>
+            </svg>
+          </div>
+
+          <!-- transform gizmo on the model -->
+          <div class="giz">
+            <svg viewBox="0 0 200 200">
+              <g class="giz-axis" data-axis="Z" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="44" y2="150"/>
+                <line class="giz-line" x1="100" y1="100" x2="50" y2="145" stroke="#4a8cff"/>
+                <polygon class="giz-head" points="56,140 44,150 60,150" fill="#4a8cff"/>
+                <text class="giz-label" x="30" y="164" fill="#4a8cff">Z</text>
+              </g>
+              <g class="giz-axis" data-axis="X" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="184" y2="100"/>
+                <line class="giz-line" x1="100" y1="100" x2="176" y2="100" stroke="#e0584f"/>
+                <polygon class="giz-head" points="176,94 188,100 176,106" fill="#e0584f"/>
+                <text class="giz-label" x="192" y="104" fill="#e0584f">X</text>
+              </g>
+              <g class="giz-axis" data-axis="Y" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="100" y2="16"/>
+                <line class="giz-line" x1="100" y1="100" x2="100" y2="24" stroke="#6db33f"/>
+                <polygon class="giz-head" points="94,24 100,12 106,24" fill="#6db33f"/>
+                <text class="giz-label" x="96" y="8" fill="#6db33f">Y</text>
+              </g>
+              <circle cx="100" cy="100" r="3.5" fill="var(--color-accent)"/>
+            </svg>
+          </div>
+
+          <!-- delta readout (only while dragging) -->
+          <div class="delta-readout floating">
+            <span class="dr-axis">Δ pos.x</span><span class="dr-val">+0.00m</span><span class="sync-target">→ client ✓</span>
+          </div>
+
+          <!-- corner axis gizmo -->
+          <svg class="gizmo" viewBox="0 0 60 60"><line x1="30" y1="30" x2="30" y2="6" stroke="#6db33f" stroke-width="2"/><line x1="30" y1="30" x2="52" y2="40" stroke="#e0584f" stroke-width="2"/><line x1="30" y1="30" x2="10" y2="42" stroke="#4a8cff" stroke-width="2"/></svg>
+          <div class="vp-stats">persp · 1280×720 · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>shared_landspeeder.msh</span>
+      <span class="sep">·</span><span>gizmo: <span class="ok">Move (W)</span></span>
+      <span class="sep">·</span><span class="sb-sync">sync: <span class="ok">● Live · pid 8841</span></span>
+      <span style="margin-left:auto">drag an axis arrow → writes <span class="sb-target ok">→ client</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT B — Full overlay HUD                                   -->
+<!-- ============================================================= -->
+<div id="variant-b" class="variant active">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace">
+      <div class="panel" data-note="full-HUD: client card + mode rail + readout bar">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport — shared_landspeeder.msh</div></div>
+          <div class="panel-actions"><div class="pbtn" title="Maximize">⤢</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+
+          <!-- shading + nav chips top-left -->
+          <div class="vp-overlay tl">
+            <div class="vp-chip on" onclick="toggleChip(this)">Solid</div>
+            <div class="vp-chip" onclick="toggleChip(this)">Wire</div>
+            <div class="vp-chip" onclick="toggleChip(this)">Textured</div>
+            <div class="vp-chip" title="Orbit">⟲</div>
+            <div class="vp-chip" title="Frame">⛶</div>
+          </div>
+
+          <!-- live-sync client card top-right -->
+          <div class="vp-overlay tr">
+            <div class="client-card">
+              <div class="cc-head">
+                <div class="live-chip" data-live="Live · injected" data-offline="Offline" title="Live memory injection state">
+                  <span class="lc-glyph" aria-hidden="true">●</span><span class="lc-label">Live · injected</span>
+                </div>
+              </div>
+              <div class="cc-body">
+                <div class="cc-row"><span class="k">client</span><span class="v">SWG Infinity</span></div>
+                <div class="cc-row"><span class="k">pid</span><span class="v cc-pid">8841</span></div>
+                <div class="cc-row"><span class="k">fps</span><span class="v"><span class="when-live">60</span><span class="when-offline">—</span></span></div>
+                <div class="cc-row"><span class="k">last sync</span><span class="v"><span class="when-live">0.2s ago</span><span class="when-offline">n/a</span></span></div>
+                <div class="cc-row"><span class="k">COW snapshot</span><span class="v ok when-live">✓ saved</span><span class="v warn when-offline">○ staged</span></div>
+                <div class="cc-row when-offline"><span class="k">mode</span><span class="v warn">file-patch fallback</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- left-edge gizmo-mode toolbar -->
+          <div class="mode-rail">
+            <div class="mode-btn on" onclick="setMode(this)" title="Move"><span class="mb-ico">✥</span><span class="mb-key">W</span></div>
+            <div class="mode-btn" onclick="setMode(this)" title="Rotate"><span class="mb-ico">⟳</span><span class="mb-key">E</span></div>
+            <div class="mode-btn" onclick="setMode(this)" title="Scale"><span class="mb-ico">⤢</span><span class="mb-key">R</span></div>
+            <div class="mode-btn" onclick="setMode(this)" title="Universal"><span class="mb-ico">✛</span><span class="mb-key">Q</span></div>
+          </div>
+
+          <!-- model -->
+          <div class="model">
+            <svg width="260" height="180" viewBox="0 0 260 180" fill="none" stroke="var(--color-accent)" stroke-width="1.4" opacity="0.9">
+              <polygon points="60,120 160,120 200,80 100,80" fill="rgba(56,190,201,0.06)"/>
+              <polygon points="60,120 60,90 100,50 100,80" fill="rgba(56,190,201,0.10)"/>
+              <polygon points="100,80 200,80 200,50 100,50" fill="rgba(56,190,201,0.04)"/>
+              <line x1="60" y1="120" x2="60" y2="90"/><line x1="160" y1="120" x2="200" y2="80"/>
+              <line x1="200" y1="80" x2="200" y2="50"/><line x1="100" y1="50" x2="100" y2="80"/>
+            </svg>
+          </div>
+
+          <!-- transform gizmo on the model -->
+          <div class="giz">
+            <svg viewBox="0 0 200 200">
+              <g class="giz-axis" data-axis="Z" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="44" y2="150"/>
+                <line class="giz-line" x1="100" y1="100" x2="50" y2="145" stroke="#4a8cff"/>
+                <polygon class="giz-head" points="56,140 44,150 60,150" fill="#4a8cff"/>
+                <text class="giz-label" x="30" y="164" fill="#4a8cff">Z</text>
+              </g>
+              <g class="giz-axis" data-axis="X" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="184" y2="100"/>
+                <line class="giz-line" x1="100" y1="100" x2="176" y2="100" stroke="#e0584f"/>
+                <polygon class="giz-head" points="176,94 188,100 176,106" fill="#e0584f"/>
+                <text class="giz-label" x="192" y="104" fill="#e0584f">X</text>
+              </g>
+              <g class="giz-axis" data-axis="Y" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="100" y2="16"/>
+                <line class="giz-line" x1="100" y1="100" x2="100" y2="24" stroke="#6db33f"/>
+                <polygon class="giz-head" points="94,24 100,12 106,24" fill="#6db33f"/>
+                <text class="giz-label" x="96" y="8" fill="#6db33f">Y</text>
+              </g>
+              <circle cx="100" cy="100" r="3.5" fill="var(--color-accent)"/>
+            </svg>
+          </div>
+
+          <!-- bottom transform readout bar -->
+          <div class="vp-readout">
+            <div class="ro-group tf-pos">
+              <span class="ro-lbl">Pos</span>
+              <div class="ro-vec">
+                <span class="ro-axis"><span class="ax-tag ax-x">X</span><input class="numbox" value="+0.000"></span>
+                <span class="ro-axis"><span class="ax-tag ax-y">Y</span><input class="numbox" value="0.000"></span>
+                <span class="ro-axis"><span class="ax-tag ax-z">Z</span><input class="numbox" value="0.000"></span>
+              </div>
+            </div>
+            <div class="ro-group">
+              <span class="ro-lbl">Rot</span>
+              <div class="ro-vec"><input class="numbox" value="0.0"><input class="numbox" value="90.0"><input class="numbox" value="0.0"></div>
+            </div>
+            <div class="ro-group">
+              <span class="ro-lbl">Scale</span>
+              <div class="ro-vec"><input class="numbox" value="1.000"><input class="numbox" value="1.000"><input class="numbox" value="1.000"></div>
+            </div>
+            <div class="ro-write">
+              <span class="lc-glyph" aria-hidden="true" style="color:var(--color-accent)">⇄</span>
+              <span><span class="when-live">writing to client</span><span class="when-offline">staging patch</span></span>
+              <span class="sync-target">→ client ✓</span>
+            </div>
+          </div>
+
+          <svg class="gizmo" viewBox="0 0 60 60"><line x1="30" y1="30" x2="30" y2="6" stroke="#6db33f" stroke-width="2"/><line x1="30" y1="30" x2="52" y2="40" stroke="#e0584f" stroke-width="2"/><line x1="30" y1="30" x2="10" y2="42" stroke="#4a8cff" stroke-width="2"/></svg>
+          <div class="vp-stats">persp · 1280×720 · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>shared_landspeeder.msh</span>
+      <span class="sep">·</span><span>mode: <span class="ok">Move (W)</span></span>
+      <span class="sep">·</span><span class="sb-sync">sync: <span class="ok">● Live · injected · pid 8841</span></span>
+      <span class="sep">·</span><span>COW snapshot <span class="ok">✓</span></span>
+      <span style="margin-left:auto">at-a-glance HUD · everything on-screen</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- VARIANT C — Gizmo-focused                                      -->
+<!-- ============================================================= -->
+<div id="variant-c" class="variant">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace">
+      <div class="panel" data-note="gizmo-focused: mode switch + snap + write pulse">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>shared_landspeeder.msh</div></div>
+          <div class="panel-actions"><div class="pbtn" title="Maximize">⤢</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+
+          <!-- mode switch + snapping top-left -->
+          <div class="vp-overlay tl">
+            <div class="gmode-bar">
+              <div class="vp-chip on" onclick="toggleChip(this)" title="Move (G)">Move <b style="opacity:.6">G</b></div>
+              <div class="vp-chip" onclick="toggleChip(this)" title="Rotate (R)">Rotate <b style="opacity:.6">R</b></div>
+              <div class="vp-chip" onclick="toggleChip(this)" title="Scale (S)">Scale <b style="opacity:.6">S</b></div>
+            </div>
+            <div class="snap-bar">
+              <div class="vp-chip" onclick="toggleSnap(this)" title="Grid snap (0.25m)">⌗ grid snap</div>
+              <div class="vp-chip" onclick="toggleSnap(this)" title="Angle snap (15°)">∡ angle snap</div>
+            </div>
+          </div>
+
+          <!-- live-sync chip top-right (pulses while writing) -->
+          <div class="vp-overlay tr">
+            <div class="live-chip" data-live="Live · pid 8841" data-offline="Offline · file-patch" title="Live memory injection state">
+              <span class="lc-glyph" aria-hidden="true">●</span><span class="lc-label">Live · pid 8841</span>
+            </div>
+          </div>
+
+          <!-- larger model (pulses while writing) -->
+          <div class="model">
+            <svg width="320" height="222" viewBox="0 0 260 180" fill="none" stroke="var(--color-accent)" stroke-width="1.4" opacity="0.9">
+              <polygon points="60,120 160,120 200,80 100,80" fill="rgba(56,190,201,0.06)"/>
+              <polygon points="60,120 60,90 100,50 100,80" fill="rgba(56,190,201,0.10)"/>
+              <polygon points="100,80 200,80 200,50 100,50" fill="rgba(56,190,201,0.04)"/>
+              <line x1="60" y1="120" x2="60" y2="90"/><line x1="160" y1="120" x2="200" y2="80"/>
+              <line x1="200" y1="80" x2="200" y2="50"/><line x1="100" y1="50" x2="100" y2="80"/>
+            </svg>
+          </div>
+
+          <!-- larger transform gizmo on the model -->
+          <div class="giz lg">
+            <svg viewBox="0 0 200 200">
+              <g class="giz-axis" data-axis="Z" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="44" y2="150"/>
+                <line class="giz-line" x1="100" y1="100" x2="50" y2="145" stroke="#4a8cff"/>
+                <polygon class="giz-head" points="56,140 44,150 60,150" fill="#4a8cff"/>
+                <text class="giz-label" x="30" y="164" fill="#4a8cff">Z</text>
+              </g>
+              <g class="giz-axis" data-axis="X" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="184" y2="100"/>
+                <line class="giz-line" x1="100" y1="100" x2="176" y2="100" stroke="#e0584f"/>
+                <polygon class="giz-head" points="176,94 188,100 176,106" fill="#e0584f"/>
+                <text class="giz-label" x="192" y="104" fill="#e0584f">X</text>
+              </g>
+              <g class="giz-axis" data-axis="Y" onmousedown="gizmoDown(event,this)">
+                <line class="giz-hit" x1="100" y1="100" x2="100" y2="16"/>
+                <line class="giz-line" x1="100" y1="100" x2="100" y2="24" stroke="#6db33f"/>
+                <polygon class="giz-head" points="94,24 100,12 106,24" fill="#6db33f"/>
+                <text class="giz-label" x="96" y="8" fill="#6db33f">Y</text>
+              </g>
+              <circle cx="100" cy="100" r="4.5" fill="var(--color-accent)"/>
+            </svg>
+          </div>
+
+          <!-- "writing to client memory" pulse label (while dragging) -->
+          <div class="pulse-label">
+            <span aria-hidden="true">⇄</span>
+            <span class="pl-text">writing to client memory</span>
+            <span class="dr-val">+0.00m</span>
+          </div>
+
+          <svg class="gizmo" viewBox="0 0 60 60"><line x1="30" y1="30" x2="30" y2="6" stroke="#6db33f" stroke-width="2"/><line x1="30" y1="30" x2="52" y2="40" stroke="#e0584f" stroke-width="2"/><line x1="30" y1="30" x2="10" y2="42" stroke="#4a8cff" stroke-width="2"/></svg>
+          <div class="vp-stats">persp · 1280×720 · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>shared_landspeeder.msh</span>
+      <span class="sep">·</span><span>tool: <span class="ok">Move (G)</span></span>
+      <span class="sep">·</span><span class="sb-sync">sync: <span class="ok">● Live · pid 8841</span></span>
+      <span style="margin-left:auto">drag an axis → it moves <em>in-game</em>, live</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SKETCH TOOLBAR ============ -->
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select id="tb-theme" onchange="setTheme(this.value)">
+    <option value="cyan" selected>Cyan</option>
+    <option value="default">SWG green</option>
+    <option value="amber">Amber</option>
+    <option value="blue">IDE blue</option>
+    <option value="high-contrast">High contrast</option>
+  </select>
+  <button id="btn-sync" class="on" onclick="toggleSync()" title="Flip live memory injection ⇄ file-patch fallback">● Live (injected)</button>
+  <button id="btn-annot" onclick="toggleAnnot(this)">⊙ annotate</button>
+</div>
+
+<script>
+  // ---- shared chrome helpers ----
+  function setTheme(name) {
+    document.querySelector('link[href*=themes]').href = '../themes/' + name + '.css';
+    const a = document.getElementById('app-theme'); if (a) a.value = name;
+    const t = document.getElementById('tb-theme'); if (t) t.value = name;
+  }
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).classList.add('active');
+    btn.classList.add('active');
+  }
+  function toggleChip(chip) {
+    chip.parentElement.querySelectorAll('.vp-chip').forEach(c => c.classList.remove('on'));
+    chip.classList.add('on');
+  }
+  function toggleSnap(chip) { chip.classList.toggle('on'); }
+  function setMode(btn) {
+    btn.parentElement.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+  }
+  function toggleAnnot(btn) { btn.classList.toggle('on'); document.body.classList.toggle('annotate', btn.classList.contains('on')); }
+
+  // ---- live-sync state (gated, explicit — Phase 5 injection vs Phase 3 file-patch fallback) ----
+  let syncLive = true;
+  function targetText() { return syncLive ? '→ client ✓' : '→ staged (patch)'; }
+  function toggleSync() { setSync(!syncLive); }
+  function setSync(live) {
+    syncLive = live;
+    document.body.classList.toggle('sync-offline', !live);
+    document.querySelectorAll('.live-chip').forEach(chip => {
+      chip.classList.toggle('offline', !live);
+      const g = chip.querySelector('.lc-glyph'); if (g) g.textContent = live ? '●' : '○';
+      const l = chip.querySelector('.lc-label'); if (l) l.textContent = live ? chip.dataset.live : chip.dataset.offline;
+    });
+    document.querySelectorAll('.sync-target').forEach(t => t.textContent = targetText());
+    // statusbar mirrors
+    document.querySelectorAll('.sb-sync').forEach(s => {
+      s.innerHTML = live
+        ? 'sync: <span class="ok">● Live · injected · pid 8841</span>'
+        : 'sync: <span class="warn">○ Offline — file-patch fallback</span>';
+    });
+    document.querySelectorAll('.sb-target').forEach(s => {
+      s.textContent = live ? '→ client' : '→ staged (patch)';
+      s.className = 'sb-target ' + (live ? 'ok' : 'warn');
+    });
+    const b = document.getElementById('btn-sync');
+    b.classList.toggle('on', live);
+    b.textContent = live ? '● Live (injected)' : '○ Offline — file-patch';
+  }
+
+  // ---- transform gizmo drag → live Δ readout ----
+  let drag = null;
+  function gizmoDown(e, axisEl) {
+    e.preventDefault();
+    const v = axisEl.closest('.variant');
+    drag = { v, axis: axisEl.dataset.axis, sx: e.clientX, sy: e.clientY };
+    v.classList.add('dragging');
+    v.querySelectorAll('.live-chip, .model').forEach(el => el.classList.add('syncing')); // Variant C pulse (harmless elsewhere)
+    showReadout(0);
+    window.addEventListener('mousemove', gizmoMove);
+    window.addEventListener('mouseup', gizmoUp);
+  }
+  function gizmoMove(e) {
+    if (!drag) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    const d = (drag.axis === 'Y' ? -dy : dx) / 48; // px → metres
+    showReadout(d);
+  }
+  function gizmoUp() {
+    if (!drag) return;
+    drag.v.classList.remove('dragging');
+    drag.v.querySelectorAll('.syncing').forEach(el => el.classList.remove('syncing'));
+    window.removeEventListener('mousemove', gizmoMove);
+    window.removeEventListener('mouseup', gizmoUp);
+    drag = null;
+  }
+  function fmt(d) { return (d >= 0 ? '+' : '') + d.toFixed(2) + 'm'; }
+  function showReadout(d) {
+    if (!drag) return;
+    const v = drag.v, ax = drag.axis;
+    // floating / pulse delta readouts
+    v.querySelectorAll('.delta-readout').forEach(r => {
+      const a = r.querySelector('.dr-axis'); if (a) a.textContent = 'Δ pos.' + ax.toLowerCase();
+      const val = r.querySelector('.dr-val'); if (val) val.textContent = fmt(d);
+      const t = r.querySelector('.sync-target'); if (t) t.textContent = targetText();
+    });
+    v.querySelectorAll('.pulse-label .dr-val').forEach(el => el.textContent = 'Δ pos.' + ax.toLowerCase() + ' ' + fmt(d));
+    // Variant B readout bar position numbox
+    const bar = v.querySelector('.vp-readout .tf-pos .ro-vec');
+    if (bar) {
+      const idx = { X: 0, Y: 1, Z: 2 }[ax];
+      const inp = bar.querySelectorAll('input')[idx];
+      if (inp) inp.value = (d >= 0 ? '+' : '') + d.toFixed(3);
+    }
+  }
+</script>
+</body>
+</html>

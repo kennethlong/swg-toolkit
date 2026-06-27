@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWG Toolkit — Sketch 007: Project Entry</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans); font-size: var(--text-base);
+    color: var(--color-text); background: var(--color-bg);
+    padding-top: 40px; overflow: hidden;
+  }
+  /* ---- variant switcher (sketch chrome) ---- */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 40px;
+    background: #101010; border-bottom: 1px solid #000;
+    display: flex; align-items: center; gap: 6px; padding: 0 12px; font-family: system-ui;
+  }
+  #variant-nav .brand { color: #777; font-size: 12px; margin-right: 8px; letter-spacing: .04em; }
+  .variant-tab {
+    background: #222; color: #bbb; border: 1px solid #333; border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all .15s ease;
+  }
+  .variant-tab:hover { background: #2c2c2c; color: #eee; }
+  .variant-tab.active { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+  .variant { height: calc(100vh - 40px); display: none; }
+  .variant.active { display: block; }
+
+  /* ---- app frame ---- */
+  .app { display: flex; flex-direction: column; height: 100%; background: var(--color-bg); }
+  .titlebar {
+    height: var(--titlebar-h); flex: 0 0 auto; display: flex; align-items: center;
+    background: #1c1c1c; border-bottom: 1px solid var(--color-border); padding: 0 10px; gap: 14px; user-select: none;
+  }
+  .titlebar .logo { width: 16px; height: 16px; border-radius: 4px;
+    background: linear-gradient(135deg, var(--color-accent), #3a7a1f); flex: 0 0 auto; }
+  .titlebar .app-name { font-size: var(--text-sm); font-weight: 600; letter-spacing: .03em; }
+  .titlebar .menu { display: flex; gap: 2px; }
+  .titlebar .menu span { padding: 3px 8px; font-size: var(--text-sm); color: var(--color-text-muted);
+    border-radius: var(--radius-sm); cursor: default; transition: all .12s; }
+  .titlebar .menu span:hover { background: var(--color-widget); color: var(--color-text); }
+  .app-theme-ctl { margin-left: auto; display: flex; align-items: center; gap: 5px;
+    font-size: var(--text-xs); color: var(--color-text-muted); }
+  .app-theme-ctl > span { color: var(--color-accent); }
+  .app-theme-ctl select { background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 2px 6px; font-size: var(--text-xs); cursor: pointer; }
+  .app-theme-ctl select:focus { outline: none; box-shadow: var(--focus-ring); }
+  .winctl { display: flex; gap: 4px; margin-left: 14px; }
+  .winctl b { width: 13px; height: 13px; border-radius: 50%; display: inline-block; }
+  .winctl .c1 { background: #e0584f; } .winctl .c2 { background: #e0a13a; } .winctl .c3 { background: #7ec94e; }
+
+  .statusbar {
+    height: var(--statusbar-h); flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+    background: #1c1c1c; border-top: 1px solid var(--color-border); padding: 0 12px;
+    font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono);
+  }
+  .statusbar .ok { color: var(--color-accent); } .statusbar .sep { color: var(--color-text-faint); }
+
+  /* ---- workspace grid ---- */
+  .workspace { flex: 1; min-height: 0; padding: 5px; gap: 5px; display: grid;
+    grid-template-columns: 280px 1fr 280px; grid-template-rows: 1fr 180px;
+    grid-template-areas: "left center right" "bottom bottom bottom"; }
+  .area-left { grid-area: left; } .area-center { grid-area: center; }
+  .area-right { grid-area: right; } .area-bottom { grid-area: bottom; }
+
+  /* ---- panel ---- */
+  .panel { background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: var(--shadow-panel); min-height: 0; min-width: 0; position: relative; }
+  .panel.collapsed .panel-body, .panel.collapsed .panel-tabs { display: none; }
+  .panel-head { height: var(--tabstrip-h); flex: 0 0 auto; display: flex; align-items: stretch;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border); }
+  .drag-dots { width: 18px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: grab; font-size: 11px; letter-spacing: -1px; }
+  .drag-dots:hover { color: var(--color-text-muted); }
+  .panel-tabs { display: flex; align-items: stretch; flex: 1; min-width: 0; overflow: hidden; }
+  .ptab { display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: var(--text-sm);
+    color: var(--color-text-muted); cursor: pointer; border-right: 1px solid var(--color-border);
+    transition: all .12s; white-space: nowrap; position: relative; }
+  .ptab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-faint); }
+  .ptab:hover { background: var(--color-header-2); color: var(--color-text); }
+  .ptab.active { background: var(--color-surface); color: var(--color-text); }
+  .ptab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--color-accent); }
+  .ptab.active .dot { background: var(--color-accent); }
+  .panel-actions { display: flex; align-items: center; gap: 2px; padding: 0 6px; margin-left: auto; }
+  .pbtn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: var(--radius-sm); font-size: 13px; transition: all .12s; }
+  .pbtn:hover { background: var(--color-widget); color: var(--color-text); }
+  .panel-body { flex: 1; overflow: auto; min-height: 0; }
+  .tab-pane { display: none; height: 100%; } .tab-pane.active { display: block; }
+
+  /* ---- tree ---- */
+  .tree { padding: 4px 0; font-size: var(--text-sm); }
+  .tree-row { display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 0; cursor: pointer;
+    white-space: nowrap; border-left: 2px solid transparent; transition: background .1s; }
+  .tree-row:hover { background: var(--color-surface-2); }
+  .tree-row.selected { background: var(--color-accent-dim); border-left-color: var(--color-accent); }
+  .tree-row .chev { width: 14px; text-align: center; color: var(--color-text-faint); transition: transform .15s; flex: 0 0 auto; font-size: 10px; }
+  .tree-item.open > .tree-row .chev { transform: rotate(90deg); }
+  .tree-row .ico { width: 14px; text-align: center; flex: 0 0 auto; opacity: .85; }
+  .tree-row .lbl { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+  .tree-row .badge { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); padding-left: 8px; }
+  .tree-children { display: none; } .tree-item.open > .tree-children { display: block; }
+  .tree-children .tree-row { padding-left: 16px; }
+  .tree-children .tree-children .tree-row { padding-left: 32px; }
+
+  /* ---- inspector / fields ---- */
+  .accordion { border-bottom: 1px solid var(--color-border-soft); }
+  .acc-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: pointer;
+    background: var(--color-surface); font-size: var(--text-sm); font-weight: 600; user-select: none; transition: background .1s; }
+  .acc-head:hover { background: var(--color-surface-2); }
+  .acc-head .chev { color: var(--color-text-faint); transition: transform .15s; font-size: 10px; width: 12px; }
+  .accordion.open .acc-head .chev { transform: rotate(90deg); }
+  .acc-head .ico { color: var(--color-accent); opacity: .9; }
+  .acc-body { display: none; padding: 6px 10px 10px; } .accordion.open .acc-body { display: block; }
+  .kv { display: flex; justify-content: space-between; padding: 3px 0; font-size: var(--text-xs); }
+  .kv .k { color: var(--color-text-muted); } .kv .v { font-family: var(--font-mono); color: var(--color-text); }
+
+  /* ---- viewport ---- */
+  .viewport { height: 100%; position: relative; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 40%, #2a2e26 0%, #1b1b1b 60%, #141414 100%); }
+  .viewport .grid { position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 28px 28px; mask-image: radial-gradient(ellipse at center, #000 40%, transparent 80%); }
+  .viewport .model { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+  .vp-stats { position: absolute; bottom: 10px; left: 12px; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint); }
+  .vp-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: var(--space-2); color: var(--color-text-faint); font-size: var(--text-sm); }
+
+  /* ---- data table ---- */
+  .dt { width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+  .dt thead th { position: sticky; top: 0; background: var(--color-header); text-align: left; padding: 5px 10px;
+    font-weight: 600; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); }
+  .dt tbody td { padding: 4px 10px; border-bottom: 1px solid var(--color-border-soft); font-family: var(--font-mono); }
+  .dt tbody tr { cursor: pointer; transition: background .1s; }
+  .dt tbody tr:nth-child(even) { background: rgba(255,255,255,.015); }
+  .dt tbody tr:hover { background: var(--color-surface-2); }
+  .dt tbody tr.selected { background: var(--color-accent-dim); box-shadow: inset 2px 0 0 var(--color-accent); }
+  .console { font-family: var(--font-mono); font-size: var(--text-xs); padding: 8px 12px; line-height: 1.7; }
+  .console .t { color: var(--color-text-faint); } .console .g { color: var(--color-accent); } .console .w { color: var(--color-warn); }
+
+  /* ---- generic button ---- */
+  .btn { background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 4px 10px; font-size: var(--text-xs); cursor: pointer; transition: all .12s; font-family: var(--font-sans); }
+  .btn:hover { background: var(--color-widget-hover); }
+  .btn.primary { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+  .btn.primary:hover { background: var(--color-accent-hover); }
+
+  /* =====================================================================
+     SKETCH 007 — project-entry specific styles
+     ===================================================================== */
+
+  /* --- Assets panel head: project split-button + Mount Archive --- */
+  .head-tools { display: flex; align-items: center; gap: 4px; padding: 0 5px; margin-left: auto; flex: 0 0 auto; }
+  .hbtn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 21px; padding: 0 7px;
+    background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); font-size: var(--text-xs); cursor: pointer; font-family: var(--font-sans);
+    white-space: nowrap; transition: all .12s; }
+  .hbtn:hover { background: var(--color-widget-hover); }
+  .hbtn .gl { font-size: 12px; line-height: 1; }
+  /* split-button: primary segment + caret segment */
+  .split { display: inline-flex; position: relative; }
+  .split .hbtn.primary { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+  .split .hbtn.primary:hover { background: var(--color-accent-hover); }
+  .split .hbtn.seg-main { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; flex: 1; }
+  .split .hbtn.seg-caret { border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 0 6px; flex: 0 0 auto; }
+  /* equal-width front-door buttons (Project split === Mount), content centred */
+  .head-tools .split, .head-tools > .hbtn { min-width: 88px; }
+  /* dropdown menu */
+  .menu-pop { position: absolute; top: 25px; right: 0; z-index: 70; min-width: 220px;
+    background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    box-shadow: var(--shadow-pop); padding: 4px; display: none; }
+  .menu-pop.open { display: block; }
+  .mi { display: flex; align-items: center; gap: 8px; padding: 6px 9px; font-size: var(--text-sm);
+    color: var(--color-text); border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
+  .mi:hover { background: var(--color-surface-2); }
+  .mi .gl { width: 16px; text-align: center; color: var(--color-text-muted); }
+  .mi.sub { color: var(--color-text-muted); }
+  .mi-sep { height: 1px; background: var(--color-border-soft); margin: 4px 2px; }
+  .mi-group { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--color-text-faint);
+    padding: 5px 9px 2px; }
+  .mi-recent { display: flex; flex-direction: column; gap: 1px; padding: 3px 9px 6px 33px; }
+  .mi-recent a { font-size: var(--text-sm); color: var(--color-accent); cursor: pointer; text-decoration: none; }
+  .mi-recent a:hover { text-decoration: underline; }
+
+  /* --- bound project bar (below assets head) --- */
+  .proj-bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: var(--color-surface-2); border-bottom: 1px solid var(--color-border-soft); }
+  .proj-name { font-weight: 600; font-size: var(--text-sm); display: flex; align-items: center; gap: 6px; }
+  .proj-name .gl { color: var(--color-accent); }
+  /* bound-client chip: glyph + text + bg + border (never colour alone) */
+  .client-chip { display: inline-flex; align-items: center; gap: 5px; margin-left: auto;
+    padding: 2px 8px; font-size: var(--text-xs); font-family: var(--font-mono);
+    background: var(--color-accent-dim); border: 1px solid var(--color-accent-line);
+    border-radius: var(--radius-full); color: var(--color-text); white-space: nowrap; }
+  .client-chip .gl { color: var(--color-accent); }
+  .client-chip .ver { color: var(--color-text-muted); }
+
+  /* --- empty-state card (variants A + C, no project) --- */
+  /* Fill the panel body so the card centres identically in A (wrapped in .a-empty-only) and C
+     (direct child); overflow:hidden guarantees the Assets panel never shows a scrollbar. */
+  .panel-body > .a-empty-only { height: 100%; }
+  .empty-wrap { height: 100%; min-height: 0; display: flex; align-items: center; justify-content: center;
+    padding: var(--space-4); overflow: hidden; }
+  .empty-card { width: 100%; max-width: 250px; text-align: center; display: flex; flex-direction: column; align-items: center;
+    gap: var(--space-3); padding: var(--space-6) var(--space-4); background: var(--color-surface-2);
+    border: 1px dashed var(--color-border-soft); border-radius: var(--radius-md); }
+  .empty-card .glyph { font-size: 30px; opacity: .5; color: var(--color-accent); }
+  .empty-card .et { font-weight: 600; font-size: var(--text-md); }
+  .empty-card .es { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.5; }
+  .empty-card .ea { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; margin-top: var(--space-2); }
+  .empty-card .ea .btn { width: 100%; padding: 6px 10px; font-size: var(--text-sm); }
+
+  /* --- welcome view (variant B) --- */
+  .welcome { padding: var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-6); height: 100%; overflow: auto; }
+  .wel-hero { display: flex; flex-direction: column; gap: var(--space-1); }
+  .wel-hero h1 { font-size: var(--text-lg); font-weight: 600; }
+  .wel-hero p { font-size: var(--text-xs); color: var(--color-text-muted); }
+  .wel-sec-title { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted);
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: var(--space-2);
+    padding-bottom: var(--space-1); border-bottom: 1px solid var(--color-border-soft); }
+  .recent-item, .detect-item { display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    margin-bottom: var(--space-2); cursor: pointer; background: var(--color-surface-2); transition: all .12s; }
+  .recent-item:hover { border-color: var(--color-accent-line); }
+  .recent-item .ico, .detect-item .ico { font-size: 16px; flex: 0 0 auto; color: var(--color-text-muted); }
+  .recent-item .meta, .detect-item .meta { flex: 1; min-width: 0; }
+  .recent-item .nm, .detect-item .nm { font-size: var(--text-sm); font-weight: 600; }
+  .recent-item .sub, .detect-item .sub { font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono); }
+  .recent-item .ago { font-size: var(--text-xs); color: var(--color-text-faint); flex: 0 0 auto; }
+  .detect-item.notfound { opacity: .55; cursor: not-allowed; }
+  /* status pills — glyph + bg + border + label, never colour alone */
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; font-size: var(--text-xs);
+    border-radius: var(--radius-full); white-space: nowrap; flex: 0 0 auto; }
+  .pill.ok { background: var(--color-accent-dim); border: 1px solid var(--color-accent-line); color: var(--color-accent); }
+  .pill.bad { background: rgba(224,88,79,.12); border: 1px solid rgba(224,88,79,.40); color: var(--color-danger); }
+  .pill.bound { background: rgba(74,140,255,.12); border: 1px solid rgba(74,140,255,.40); color: var(--color-info); }
+  .wel-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
+  .wel-actions .btn { padding: 7px 14px; font-size: var(--text-sm); }
+  .dimmed { opacity: .32; pointer-events: none; }
+  .dim-empty { height: 100%; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); font-size: var(--text-sm); }
+
+  /* =====================================================================
+     Modal wizard (variant C) — reuses sketch-003 overlay pattern
+     ===================================================================== */
+  .overlay-dim { position: absolute; inset: 0; background: rgba(0,0,0,0.55); z-index: 9; display: none; }
+  .overlay-dim.open { display: block; }
+  .modal-wrap { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; z-index: 10; }
+  .modal-wrap.open { display: flex; }
+  .dialog { width: 400px; max-width: 92vw; background: var(--color-surface);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-md);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6); display: flex; flex-direction: column;
+    overflow: hidden; max-height: calc(100vh - 120px); }
+  .dialog-header { height: 40px; flex: 0 0 auto; display: flex; align-items: center; padding: 0 var(--space-4);
+    background: var(--color-header); border-bottom: 1px solid var(--color-border); }
+  .dialog-title { font-size: var(--text-md); font-weight: 600; flex: 1; }
+  .dialog-close { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: var(--radius-sm); font-size: 15px;
+    transition: all .12s; background: none; border: none; font-family: inherit; }
+  .dialog-close:hover { background: var(--color-widget); color: var(--color-text); }
+  .dialog-body { flex: 1; overflow: auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+
+  /* wizard steps */
+  .wstep { display: flex; flex-direction: column; gap: var(--space-2); }
+  .wstep-head { display: flex; align-items: center; gap: var(--space-2); }
+  .wstep-num { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; background: var(--color-accent);
+    color: var(--color-accent-text); }
+  .wstep-title { font-size: var(--text-sm); font-weight: 600; }
+  .wstep-body { padding-left: 26px; display: flex; flex-direction: column; gap: var(--space-2); }
+  .fld-label { font-size: var(--text-xs); color: var(--color-text-muted); }
+  .txtbox { width: 100%; background: var(--color-widget); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 5px 8px; font-size: var(--text-sm); color: var(--color-text); font-family: var(--font-sans); }
+  .txtbox:focus { outline: none; box-shadow: var(--focus-ring); }
+  .folder-row { display: flex; gap: var(--space-2); }
+  .folder-row .txtbox { font-family: var(--font-mono); font-size: var(--text-xs); }
+
+  /* radio rows (client + seed) */
+  .opt-row { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm); cursor: pointer;
+    background: var(--color-surface-2); transition: all .12s; }
+  .opt-row:hover { border-color: var(--color-accent-line); }
+  .opt-row.selected { border-color: var(--color-accent); background: var(--color-accent-dim); box-shadow: 0 0 0 1px var(--color-accent); }
+  .opt-row.disabled { opacity: .5; cursor: not-allowed; }
+  .opt-radio { width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto; margin-top: 1px;
+    border: 2px solid var(--color-text-faint); position: relative; }
+  .opt-row.selected .opt-radio { border-color: var(--color-accent); }
+  .opt-row.selected .opt-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--color-accent); }
+  .opt-main { flex: 1; min-width: 0; }
+  .opt-name { font-size: var(--text-sm); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .opt-path { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-info); }
+  .opt-sub { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 1px; }
+  .opt-row .pill { margin-left: auto; align-self: center; }
+
+  /* unconfirmed-client confirm card (step 2 — browsed a dir we can't verify) */
+  .browse-row.linkish:hover { color: var(--color-text); }
+  .confirm-card { display: none; flex-direction: column; gap: var(--space-2);
+    border: 1px solid var(--color-warn); background: rgba(224,161,58,.10);
+    border-radius: var(--radius-sm); padding: var(--space-3); margin-top: var(--space-1); }
+  .confirm-card.open { display: flex; }
+  .confirm-card .ch { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 600; }
+  .confirm-card .ch .gl { color: var(--color-warn); }
+  .confirm-card .cpath { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
+  .confirm-card .cs { font-size: var(--text-xs); color: var(--color-text-muted); }
+  .confirm-card .cq { font-size: var(--text-sm); margin-top: 2px; }
+  .confirm-card .cbtns { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .confirm-card .note { font-size: var(--text-xs); color: var(--color-text-muted); font-style: italic; }
+
+  /* local-server step (step 3) */
+  .srv-q { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+  .srv-q .ql { font-size: var(--text-sm); }
+  .srv-toggle { display: inline-flex; gap: 4px; }
+  .srv-toggle .btn { padding: 3px 12px; }
+  .srv-toggle .btn.on { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+  .srv-fields { display: none; flex-direction: column; gap: var(--space-2); margin-top: var(--space-1);
+    padding-top: var(--space-2); border-top: 1px dashed var(--color-border-soft); }
+  .srv-fields.open { display: flex; }
+  .hostport { display: grid; grid-template-columns: 1fr 84px; gap: var(--space-2); }
+  .srv-note { font-size: var(--text-xs); color: var(--color-text-muted); display: flex; align-items: center; gap: 5px; }
+  .srv-note .gl { color: var(--color-accent); }
+
+  .dialog-actions { flex: 0 0 auto; display: flex; gap: var(--space-2); justify-content: flex-end;
+    padding: var(--space-3) var(--space-4); background: var(--color-header); border-top: 1px solid var(--color-border); }
+  .btn-cancel { background: var(--color-widget); color: var(--color-text-muted); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); padding: 5px 14px; font-size: var(--text-sm); cursor: pointer; font-family: inherit; transition: all .1s; }
+  .btn-cancel:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .btn-create { background: var(--color-accent); color: var(--color-accent-text); border: 1px solid var(--color-accent);
+    border-radius: var(--radius-sm); padding: 5px 16px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; font-family: inherit; transition: all .1s; }
+  .btn-create:hover { background: var(--color-accent-hover); }
+
+  /* ---- annotation mode ---- */
+  body.annotate .panel { outline: 1px solid var(--color-accent-line); outline-offset: -1px; }
+  body.annotate .panel-head::after { content: attr(data-note); position: absolute; right: 4px; top: 26px;
+    background: var(--color-accent); color: var(--color-accent-text); font-size: 9px; font-family: var(--font-mono);
+    padding: 1px 4px; border-radius: 3px; z-index: 60; pointer-events: none; }
+
+  /* ---- sketch toolbar ---- */
+  #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 10px; border-radius: 8px; opacity: .45; transition: opacity .2s;
+    display: flex; align-items: center; gap: 10px; }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button { background: #2a2a2a; color: #eee; border: 1px solid #444;
+    border-radius: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+  #sketch-tools button.on { background: var(--color-accent); color: #122005; border-color: var(--color-accent); }
+  #sketch-tools .lbl { color: #888; font-size: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ============ VARIANT SWITCHER ============ -->
+<div id="variant-nav">
+  <span class="brand">SKETCH 007 · project entry · ★ WINNER: synthesis (A header + C wizard + B first-run)</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A · Header split-button ★</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B · First-run welcome ★</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C · New-Project wizard ★</button>
+</div>
+
+
+<!-- ============================================================= -->
+<!-- VARIANT A — Header split-button (empty ⇄ bound toggle)        -->
+<!-- ============================================================= -->
+<div id="variant-a" class="variant active">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <label class="app-theme-ctl" title="Accent &amp; contrast — an accessibility setting">
+        <span aria-hidden="true">◐</span> Theme
+        <select id="app-theme" onchange="setTheme(this.value)">
+          <optgroup label="Accent">
+            <option value="cyan" selected>Hologram cyan</option>
+            <option value="default">SWG green</option>
+            <option value="amber">Amber</option>
+            <option value="blue">IDE blue</option>
+          </optgroup>
+          <optgroup label="Accessibility"><option value="high-contrast">High contrast</option></optgroup>
+        </select>
+      </label>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace" id="ws-a">
+      <!-- LEFT: Assets panel — the front door lives here -->
+      <div class="panel area-left" data-note="front door: split-button + Mount">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Assets</div></div>
+          <div class="head-tools">
+            <!-- split-button: New Project ▾ -->
+            <div class="split">
+              <button class="hbtn primary seg-main" onclick="aProjMenu(false)" title="New project"><span class="gl">＋</span>Project</button>
+              <button class="hbtn primary seg-caret" onclick="aProjMenu()" title="Project menu" aria-haspopup="true">▾</button>
+              <div class="menu-pop" id="a-proj-menu">
+                <div class="mi" onclick="aProjMenu(false)"><span class="gl">＋</span>New Project…</div>
+                <div class="mi" onclick="aProjMenu(false)"><span class="gl">⌂</span>Open…</div>
+                <div class="mi-sep"></div>
+                <div class="mi-group">Open Recent</div>
+                <div class="mi-recent">
+                  <a onclick="aSetState('bound')">DL-44 Overhaul</a>
+                  <a onclick="aSetState('bound')">Stormtrooper Recolor</a>
+                </div>
+              </div>
+            </div>
+            <!-- Mount archive (independent of project) -->
+            <button class="hbtn" title="Mount a loose .tre / .toc archive"><span class="gl">🗄</span>Mount</button>
+          </div>
+        </div>
+
+        <!-- BOUND-ONLY: project bar (project name + bound-client chip) -->
+        <div class="proj-bar a-bound-only">
+          <div class="proj-name"><span class="gl">◆</span>DL-44 Overhaul</div>
+          <span class="client-chip" title="Deploy target — bound client">
+            <span class="gl" aria-hidden="true">⛁</span>SWG Infinity<span class="ver">· EERT5000</span>
+          </span>
+        </div>
+
+        <div class="panel-body">
+          <!-- EMPTY STATE -->
+          <div class="a-empty-only">
+            <div class="empty-wrap">
+              <div class="empty-card">
+                <div class="glyph" aria-hidden="true">◆</div>
+                <div class="et">No project open</div>
+                <div class="es">Create or open a project to begin. A project binds to one client install for deploy.</div>
+                <div class="ea">
+                  <button class="btn primary" onclick="aSetState('bound')"><span aria-hidden="true">＋ </span>New Project</button>
+                  <button class="btn" onclick="aSetState('bound')"><span aria-hidden="true">⌂ </span>Open…</button>
+                  <button class="btn"><span aria-hidden="true">🗄 </span>Mount loose archive</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- BOUND STATE: populated asset tree (reuse 001) -->
+          <div class="a-bound-only"><div class="tree">
+            <div class="tree-item open">
+              <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">appearance</span></div>
+              <div class="tree-children">
+                <div class="tree-item open">
+                  <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">mesh</span></div>
+                  <div class="tree-children">
+                    <div class="tree-row asset selected" onclick="pick(this)" data-name="shared_dl44.msh" data-type="Static Mesh (MSH)" data-verts="2,118" data-tris="1,402"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_dl44.msh</span></div>
+                    <div class="tree-row asset" onclick="pick(this)" data-name="shared_landspeeder.msh" data-type="Static Mesh (MSH)" data-verts="4,812" data-tris="3,104"><span class="chev" style="visibility:hidden">▶</span><span class="ico">◳</span><span class="lbl">shared_landspeeder.msh</span></div>
+                  </div>
+                </div>
+                <div class="tree-item">
+                  <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">texture</span><span class="badge">12</span></div>
+                  <div class="tree-children">
+                    <div class="tree-row asset" onclick="pick(this)" data-name="dl44_body.dds" data-type="Texture (DDS)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">🖼</span><span class="lbl">dl44_body.dds</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="tree-item">
+              <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">object/weapon</span></div>
+              <div class="tree-children">
+                <div class="tree-row" onclick="pick(this)" data-name="shared_dl44.iff" data-type="Weapon Template (IFF)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">📄</span><span class="lbl">shared_dl44.iff</span></div>
+              </div>
+            </div>
+            <div class="tree-item open">
+              <div class="tree-row" onclick="toggleTree(this)"><span class="chev">▶</span><span class="ico">📁</span><span class="lbl">datatables</span></div>
+              <div class="tree-children">
+                <div class="tree-row" onclick="pick(this)" data-name="weapon.iff" data-type="Datatable (IFF)" data-verts="—" data-tris="—"><span class="chev" style="visibility:hidden">▶</span><span class="ico">▦</span><span class="lbl">weapon.iff</span></div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- CENTER: viewport -->
+      <div class="panel area-center" data-note="viewport">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport</div></div>
+          <div class="panel-actions"><div class="pbtn" title="Maximize">⤢</div></div>
+        </div>
+        <div class="panel-body"><div class="viewport">
+          <div class="grid"></div>
+          <div class="a-bound-only model">
+            <svg width="240" height="170" viewBox="0 0 260 180" fill="none" stroke="var(--color-accent)" stroke-width="1.4" opacity="0.9">
+              <polygon points="60,120 160,120 200,80 100,80" fill="rgba(56,190,201,0.06)"/>
+              <polygon points="60,120 60,90 100,50 100,80" fill="rgba(56,190,201,0.10)"/>
+              <polygon points="100,80 200,80 200,50 100,50" fill="rgba(56,190,201,0.04)"/>
+            </svg>
+          </div>
+          <div class="a-empty-only vp-empty"><span style="font-size:26px;opacity:.4">◆</span><span>Open a project to view assets</span></div>
+          <div class="a-bound-only vp-stats">persp · 1280×720 · 60 fps · SAB ✓</div>
+        </div></div>
+      </div>
+
+      <!-- RIGHT: inspector -->
+      <div class="panel area-right" data-note="inspector">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Inspector</div></div>
+        </div>
+        <div class="panel-body">
+          <div class="a-empty-only dim-empty">No selection</div>
+          <div class="a-bound-only">
+            <div style="padding:9px 10px; border-bottom:1px solid var(--color-border-soft);">
+              <div class="insp-name" style="font-weight:600; font-size:var(--text-md);">shared_dl44.msh</div>
+              <div class="insp-type" style="color:var(--color-text-muted); font-size:var(--text-xs); margin-top:2px;">Static Mesh (MSH)</div>
+            </div>
+            <div class="accordion open">
+              <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">◳</span>Mesh</div>
+              <div class="acc-body">
+                <div class="kv"><span class="k">Vertices</span><span class="v insp-verts">2,118</span></div>
+                <div class="kv"><span class="k">Triangles</span><span class="v insp-tris">1,402</span></div>
+                <div class="kv"><span class="k">Shaders</span><span class="v">1</span></div>
+              </div>
+            </div>
+            <div class="accordion open">
+              <div class="acc-head" onclick="toggleAcc(this)"><span class="chev">▶</span><span class="ico">⛁</span>Project binding</div>
+              <div class="acc-body">
+                <div class="kv"><span class="k">Project</span><span class="v">DL-44 Overhaul</span></div>
+                <div class="kv"><span class="k">Bound client</span><span class="v">SWG Infinity</span></div>
+                <div class="kv"><span class="k">Version</span><span class="v">EERT5000 / v5000</span></div>
+                <div class="kv"><span class="k">Seed source</span><span class="v">client TRE set</span></div>
+                <div class="kv"><span class="k">Local server</span><span class="v">Core3 · 127.0.0.1:44463</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM: data pane -->
+      <div class="panel area-bottom" data-note="datatable / console">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs">
+            <div class="ptab active" onclick="switchTab(this,0)"><span class="dot"></span>Datatable</div>
+            <div class="ptab" onclick="switchTab(this,1)"><span class="dot"></span>Console</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="tab-pane active">
+            <div class="a-empty-only dim-empty">No datatable open</div>
+            <table class="dt a-bound-only">
+              <thead><tr><th>row</th><th>weapon</th><th>min_dmg</th><th>max_dmg</th><th>speed</th></tr></thead>
+              <tbody>
+                <tr class="selected" onclick="pickRow(this)"><td>0</td><td>dl44_blaster</td><td>65</td><td>120</td><td>2.1</td></tr>
+                <tr onclick="pickRow(this)"><td>1</td><td>dh17_carbine</td><td>40</td><td>85</td><td>1.4</td></tr>
+                <tr onclick="pickRow(this)"><td>2</td><td>t21_rifle</td><td>90</td><td>160</td><td>3.0</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tab-pane"><div class="console">
+            <div class="a-empty-only"><span class="t">[idle]</span> no project — open or create one to index assets</div>
+            <div class="a-bound-only"><span class="t">[12:04:01]</span> project <span class="g">DL-44 Overhaul</span> bound to SWG Infinity (EERT5000)</div>
+            <div class="a-bound-only"><span class="t">[12:04:01]</span> indexed asset set from client TRE set: <span class="g">8 archives · 14,022 entries</span></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar" id="status-a">
+      <span class="a-empty-only">no project</span>
+      <span class="a-bound-only"><span class="ok">DL-44 Overhaul</span></span>
+      <span class="sep">·</span>
+      <span class="a-empty-only">bound client: <span style="color:var(--color-text-faint)">—</span></span>
+      <span class="a-bound-only">bound: <span class="ok">SWG Infinity · EERT5000</span></span>
+      <span class="sep">·</span><span>seed: <span class="a-empty-only">—</span><span class="a-bound-only ok">client TRE set</span></span>
+      <span style="margin-left:auto">crossOriginIsolated: <span class="ok">true</span></span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================= -->
+<!-- VARIANT B — First-run welcome (full-panel takeover)           -->
+<!-- ============================================================= -->
+<div id="variant-b" class="variant">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace">
+      <!-- LEFT: Assets panel takes over with the welcome view -->
+      <div class="panel area-left" style="grid-column: left;" data-note="welcome takeover (no project)">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Welcome</div></div>
+          <div class="head-tools">
+            <button class="hbtn"><span class="gl">🗄</span>Mount</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="welcome">
+            <div class="wel-hero">
+              <h1>Open a project</h1>
+              <p>A project binds to one client install for deploy. Seed its assets from the client's TRE set, or start empty and mount loose archives.</p>
+            </div>
+
+            <div>
+              <div class="wel-sec-title">Recent projects</div>
+              <div class="recent-item" onclick="alert('Open DL-44 Overhaul')">
+                <span class="ico" aria-hidden="true">◆</span>
+                <div class="meta">
+                  <div class="nm">DL-44 Overhaul</div>
+                  <div class="sub">bound · SWG Infinity</div>
+                </div>
+                <span class="pill bound"><span aria-hidden="true">⛁</span>bound</span>
+                <span class="ago">2 days ago</span>
+              </div>
+              <div class="recent-item" onclick="alert('Open Stormtrooper Recolor')">
+                <span class="ico" aria-hidden="true">◆</span>
+                <div class="meta">
+                  <div class="nm">Stormtrooper Recolor</div>
+                  <div class="sub">bound · SWGEmu</div>
+                </div>
+                <span class="pill bound"><span aria-hidden="true">⛁</span>bound</span>
+                <span class="ago">last week</span>
+              </div>
+            </div>
+
+            <div>
+              <div class="wel-sec-title">Detected clients <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--color-text-faint)">· auto-scan</span></div>
+              <div class="detect-item">
+                <span class="ico" aria-hidden="true">⛁</span>
+                <div class="meta">
+                  <div class="nm">SWG Infinity</div>
+                  <div class="sub">D:\SWG Infinity · EERT5000 / v5000</div>
+                </div>
+                <span class="pill ok"><span aria-hidden="true">✓</span>ready</span>
+              </div>
+              <div class="detect-item notfound">
+                <span class="ico" aria-hidden="true">⛁</span>
+                <div class="meta">
+                  <div class="nm">SWGEmu</div>
+                  <div class="sub">not found on disk</div>
+                </div>
+                <span class="pill bad"><span aria-hidden="true">✗</span>not found</span>
+              </div>
+            </div>
+
+            <div class="wel-actions">
+              <button class="btn primary"><span aria-hidden="true">＋ </span>New Project</button>
+              <button class="btn"><span aria-hidden="true">⌂ </span>Open Project…</button>
+              <button class="btn"><span aria-hidden="true">🗄 </span>Mount loose archive…</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: dimmed/empty until project loads -->
+      <div class="panel area-center dimmed" data-note="dimmed until project loads">
+        <div class="panel-head"><div class="drag-dots">⠿</div><div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport</div></div></div>
+        <div class="panel-body"><div class="viewport"><div class="grid"></div>
+          <div class="vp-empty"><span style="font-size:26px;opacity:.4">◆</span><span>No project loaded</span></div>
+        </div></div>
+      </div>
+
+      <!-- RIGHT: dimmed -->
+      <div class="panel area-right dimmed" data-note="dimmed until project loads">
+        <div class="panel-head"><div class="drag-dots">⠿</div><div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Inspector</div></div></div>
+        <div class="panel-body"><div class="dim-empty">No selection</div></div>
+      </div>
+
+      <!-- BOTTOM: dimmed -->
+      <div class="panel area-bottom dimmed" data-note="dimmed until project loads">
+        <div class="panel-head"><div class="drag-dots">⠿</div><div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Datatable</div></div></div>
+        <div class="panel-body"><div class="dim-empty">No datatable open</div></div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>first run — no project open</span>
+      <span class="sep">·</span><span>detected: <span class="ok">SWG Infinity ✓</span> · SWGEmu ✗</span>
+      <span style="margin-left:auto">auto-scan: <span class="ok">D:\ complete</span></span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================= -->
+<!-- VARIANT C — New-Project modal wizard                          -->
+<!-- ============================================================= -->
+<div id="variant-c" class="variant" style="position:relative;">
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="workspace">
+      <!-- LEFT: Assets panel with the same buttons; empty state behind the modal -->
+      <div class="panel area-left" data-note="front door buttons → opens wizard">
+        <div class="panel-head">
+          <div class="drag-dots">⠿</div>
+          <div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Assets</div></div>
+          <div class="head-tools">
+            <button class="hbtn primary" onclick="openWizard()" title="New project"><span class="gl">＋</span>Project</button>
+            <button class="hbtn" title="Mount a loose .tre / .toc archive"><span class="gl">🗄</span>Mount</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="empty-wrap">
+            <div class="empty-card">
+              <div class="glyph" aria-hidden="true">◆</div>
+              <div class="et">No project open</div>
+              <div class="es">Create a project — the wizard binds it to a client and seeds its asset set.</div>
+              <div class="ea">
+                <button class="btn primary" onclick="openWizard()"><span aria-hidden="true">＋ </span>New Project</button>
+                <button class="btn"><span aria-hidden="true">⌂ </span>Open…</button>
+                <button class="btn"><span aria-hidden="true">🗄 </span>Mount loose archive</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel area-center dimmed" data-note="dimmed under modal">
+        <div class="panel-head"><div class="drag-dots">⠿</div><div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Viewport</div></div></div>
+        <div class="panel-body"><div class="viewport"><div class="grid"></div>
+          <div class="vp-empty"><span style="font-size:26px;opacity:.4">◆</span><span>No project loaded</span></div></div></div>
+      </div>
+      <div class="panel area-right dimmed" data-note="dimmed">
+        <div class="panel-head"><div class="drag-dots">⠿</div><div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Inspector</div></div></div>
+        <div class="panel-body"><div class="dim-empty">No selection</div></div>
+      </div>
+      <div class="panel area-bottom dimmed" data-note="dimmed">
+        <div class="panel-head"><div class="drag-dots">⠿</div><div class="panel-tabs"><div class="ptab active"><span class="dot"></span>Datatable</div></div></div>
+        <div class="panel-body"><div class="dim-empty">No datatable open</div></div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>no project</span><span class="sep">·</span><span>New Project wizard</span>
+      <span style="margin-left:auto"><button class="btn" onclick="openWizard()" style="padding:1px 8px">reopen wizard</button></span>
+    </div>
+
+    <!-- MODAL OVERLAY (reuses sketch-003 pattern) -->
+    <div class="overlay-dim open" id="c-dim" onclick="closeWizard()"></div>
+    <div class="modal-wrap open" id="c-modal">
+      <div class="dialog">
+        <div class="dialog-header">
+          <span class="dialog-title">New Project</span>
+          <button class="dialog-close" aria-label="Close wizard" title="Close" onclick="closeWizard()">×</button>
+        </div>
+        <div class="dialog-body">
+
+          <!-- STEP 1 — name & location -->
+          <div class="wstep">
+            <div class="wstep-head"><span class="wstep-num">1</span><span class="wstep-title">Name &amp; location</span></div>
+            <div class="wstep-body">
+              <div class="fld-label">Project name</div>
+              <input class="txtbox" value="DL-44 Overhaul">
+              <div class="fld-label" style="margin-top:4px">Project folder</div>
+              <div class="folder-row">
+                <input class="txtbox" value="D:\SWG-Projects\dl44-overhaul">
+                <button class="btn" title="Browse for folder">⊕ Browse…</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 2 — bind client -->
+          <div class="wstep">
+            <div class="wstep-head"><span class="wstep-num">2</span><span class="wstep-title">Bind client <span style="font-weight:400;color:var(--color-text-muted);font-size:var(--text-xs)">— deploy target</span></span></div>
+            <div class="wstep-body">
+              <div class="opt-row selected" onclick="selectClient(this)">
+                <div class="opt-radio"></div>
+                <div class="opt-main">
+                  <div class="opt-name"><span class="gl" style="color:var(--color-accent)" aria-hidden="true">⛁</span>SWG Infinity</div>
+                  <div class="opt-path">D:\SWG Infinity</div>
+                  <div class="opt-sub">EERT5000 / v5000</div>
+                </div>
+                <span class="pill ok"><span aria-hidden="true">✓</span>detected</span>
+              </div>
+              <div class="opt-row disabled">
+                <div class="opt-radio"></div>
+                <div class="opt-main">
+                  <div class="opt-name"><span class="gl" style="color:var(--color-text-faint)" aria-hidden="true">⛁</span>SWGEmu</div>
+                  <div class="opt-sub">not found on disk</div>
+                </div>
+                <span class="pill bad"><span aria-hidden="true">✗</span>not found</span>
+              </div>
+              <div class="browse-row linkish" onclick="toggleUnconfirmed(event)" style="display:flex;align-items:center;gap:6px;padding:4px 3px;font-size:var(--text-sm);color:var(--color-text-muted);cursor:pointer">
+                <span style="color:var(--color-text-faint)">⊕</span><span>Browse for client folder…</span>
+              </div>
+              <!-- Unconfirmed-directory branch: browsed a folder we can't verify as a client install -->
+              <div class="confirm-card" id="c-unconf">
+                <div class="ch"><span class="gl" aria-hidden="true">⚠</span>Couldn't confirm an SWG client here</div>
+                <div class="cpath">E:\Games\MySWG</div>
+                <div class="cs">No EERT5000 <code>.tre</code> set or client executable detected at this path.</div>
+                <div class="cq">Is this a client install?</div>
+                <div class="cbtns">
+                  <button class="btn primary" onclick="confirmClient(true, event)">Yes — treat as client</button>
+                  <button class="btn" onclick="confirmClient(false, event)">No — non-client project</button>
+                </div>
+                <div class="note" id="c-unconf-note">“No” creates a project with no bound client — deploy-to-client is disabled (assets / server-only).</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 3 — local server (optional) -->
+          <div class="wstep">
+            <div class="wstep-head"><span class="wstep-num">3</span><span class="wstep-title">Local server <span style="font-weight:400;color:var(--color-text-muted);font-size:var(--text-xs)">— optional; for server-side deploy &amp; parity</span></span></div>
+            <div class="wstep-body">
+              <div class="srv-q">
+                <span class="ql">Are you running a local server for this project?</span>
+                <div class="srv-toggle">
+                  <button class="btn on" onclick="toggleServer(true, this)">Yes</button>
+                  <button class="btn" onclick="toggleServer(false, this)">No</button>
+                </div>
+              </div>
+              <div class="srv-fields open" id="c-srv-fields">
+                <div class="fld-label">Server type</div>
+                <div class="opt-row selected" onclick="selectSrvType(this)">
+                  <div class="opt-radio"></div>
+                  <div class="opt-main">
+                    <div class="opt-name">Core3 <span style="font-weight:400;color:var(--color-text-muted);font-size:var(--text-xs)">— SWGEmu cleanroom (WSL2)</span></div>
+                    <div class="opt-sub">Lua / object templates · client↔server parity</div>
+                  </div>
+                </div>
+                <div class="opt-row" onclick="selectSrvType(this)">
+                  <div class="opt-radio"></div>
+                  <div class="opt-main">
+                    <div class="opt-name">SWG Source <span style="font-weight:400;color:var(--color-text-muted);font-size:var(--text-xs)">— server (Docker)</span></div>
+                    <div class="opt-sub">server templates · datatables</div>
+                  </div>
+                </div>
+                <div class="fld-label" style="margin-top:4px">Server path</div>
+                <div class="folder-row">
+                  <input class="txtbox" value="\\wsl$\Ubuntu\home\swg\Core3\MMOCoreORB" style="font-family:var(--font-mono);font-size:var(--text-xs)">
+                  <button class="btn" title="Browse for server folder">⊕ Browse…</button>
+                </div>
+                <div class="fld-label" style="margin-top:4px">Host : Port <span style="color:var(--color-text-faint)">— live status / reload</span></div>
+                <div class="hostport">
+                  <input class="txtbox" value="127.0.0.1" style="font-family:var(--font-mono);font-size:var(--text-xs)">
+                  <input class="txtbox" value="44463" style="font-family:var(--font-mono);font-size:var(--text-xs)">
+                </div>
+                <div class="srv-note"><span class="gl" aria-hidden="true">↻</span>Wires server-side deploy (datatables, Lua / object templates) and client↔server parity checks.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 4 — seed assets -->
+          <div class="wstep">
+            <div class="wstep-head"><span class="wstep-num">4</span><span class="wstep-title">Seed assets <span style="font-weight:400;color:var(--color-text-muted);font-size:var(--text-xs)">— client TRE set vs empty</span></span></div>
+            <div class="wstep-body">
+              <div class="opt-row selected" onclick="selectSeed(this)">
+                <div class="opt-radio"></div>
+                <div class="opt-main">
+                  <div class="opt-name">Index from bound client's TRE set <span style="font-weight:400;color:var(--color-accent);font-size:var(--text-xs)">(recommended)</span></div>
+                  <div class="opt-sub">reads the bound client's .tre / .toc set — ~8 archives, 14,022 entries</div>
+                </div>
+              </div>
+              <div class="opt-row" onclick="selectSeed(this)">
+                <div class="opt-radio"></div>
+                <div class="opt-main">
+                  <div class="opt-name">Start empty</div>
+                  <div class="opt-sub">no asset index — mount loose archives manually later</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="dialog-actions">
+          <button class="btn-cancel" onclick="closeWizard()">Cancel</button>
+          <button class="btn-create" onclick="closeWizard()">Create Project ▸</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============ SKETCH TOOLBAR ============ -->
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select id="tb-theme" onchange="setTheme(this.value)">
+    <option value="cyan" selected>Cyan</option>
+    <option value="default">SWG green</option>
+    <option value="amber">Amber</option>
+    <option value="blue">IDE blue</option>
+    <option value="high-contrast">High contrast</option>
+  </select>
+  <button id="btn-state" onclick="aToggleState(this)">toggle: empty ⇄ bound</button>
+  <button id="btn-annot" onclick="toggleAnnot(this)">⊙ annotate</button>
+</div>
+
+<script>
+  function setTheme(name) {
+    document.querySelector('link[href*=themes]').href = '../themes/' + name + '.css';
+    const a = document.getElementById('app-theme'); if (a) a.value = name;
+    const t = document.getElementById('tb-theme'); if (t) t.value = name;
+  }
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).classList.add('active');
+    btn.classList.add('active');
+  }
+  function toggleTree(rowEl) { rowEl.closest('.tree-item').classList.toggle('open'); }
+  function pick(rowEl) {
+    const v = rowEl.closest('.variant');
+    v.querySelectorAll('.tree-row.asset, .tree-row[data-name]').forEach(r => r.classList.remove('selected'));
+    rowEl.classList.add('selected');
+    const d = rowEl.dataset;
+    v.querySelectorAll('.insp-name').forEach(e => e.textContent = d.name);
+    v.querySelectorAll('.insp-type').forEach(e => e.textContent = d.type);
+    if (d.verts) v.querySelectorAll('.insp-verts').forEach(e => e.textContent = d.verts);
+    if (d.tris)  v.querySelectorAll('.insp-tris').forEach(e => e.textContent = d.tris);
+  }
+  function pickRow(tr) { tr.closest('tbody').querySelectorAll('tr').forEach(r => r.classList.remove('selected')); tr.classList.add('selected'); }
+  function switchTab(tabEl, idx) {
+    const panel = tabEl.closest('.panel');
+    panel.querySelectorAll('.panel-tabs .ptab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    panel.querySelectorAll('.panel-body > .tab-pane').forEach((p, i) => p.classList.toggle('active', i === idx));
+  }
+  function toggleAcc(headEl) { headEl.closest('.accordion').classList.toggle('open'); }
+  function toggleAnnot(btn) { btn.classList.toggle('on'); document.body.classList.toggle('annotate', btn.classList.contains('on')); }
+
+  /* ---- Variant A: empty ⇄ bound state ---- */
+  function applyStateA() {
+    const bound = document.getElementById('ws-a').classList.contains('bound') ||
+                  document.getElementById('variant-a').classList.contains('bound');
+    document.querySelectorAll('#variant-a .a-bound-only').forEach(e => e.style.display = bound ? '' : 'none');
+    document.querySelectorAll('#variant-a .a-empty-only').forEach(e => e.style.display = bound ? 'none' : '');
+  }
+  function aSetState(state) {
+    document.getElementById('variant-a').classList.toggle('bound', state === 'bound');
+    applyStateA();
+    aProjMenu(true); // close menu if open
+  }
+  function aToggleState(btn) {
+    const v = document.getElementById('variant-a');
+    v.classList.toggle('bound');
+    applyStateA();
+    btn.classList.toggle('on', v.classList.contains('bound'));
+    // make sure variant A is visible so the toggle is observable
+    if (!v.classList.contains('active')) {
+      document.querySelector('#variant-nav .variant-tab').click();
+    }
+  }
+  function aProjMenu(forceClose) {
+    const m = document.getElementById('a-proj-menu');
+    if (forceClose === true) { m.classList.remove('open'); return; }
+    if (forceClose === false) { m.classList.remove('open'); return; }
+    m.classList.toggle('open');
+  }
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.split')) document.getElementById('a-proj-menu')?.classList.remove('open');
+  });
+
+  /* ---- Variant C: wizard modal ---- */
+  function openWizard() {
+    document.getElementById('c-dim').classList.add('open');
+    document.getElementById('c-modal').classList.add('open');
+  }
+  function closeWizard() {
+    document.getElementById('c-dim').classList.remove('open');
+    document.getElementById('c-modal').classList.remove('open');
+  }
+  function selectClient(row) {
+    row.closest('.wstep-body').querySelectorAll('.opt-row:not(.disabled)').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+  }
+  function selectSeed(row) {
+    row.closest('.wstep-body').querySelectorAll('.opt-row').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+  }
+  /* Step 3 — local server */
+  function toggleServer(on, btn) {
+    document.getElementById('c-srv-fields').classList.toggle('open', on);
+    btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+  }
+  function selectSrvType(row) {
+    row.closest('.srv-fields').querySelectorAll('.opt-row').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+  }
+  /* Step 2 — unconfirmed-directory branch */
+  function toggleUnconfirmed(e) { if (e) e.stopPropagation(); document.getElementById('c-unconf').classList.add('open'); }
+  function confirmClient(isClient, e) {
+    if (e) e.stopPropagation();
+    const card = document.getElementById('c-unconf');
+    const note = document.getElementById('c-unconf-note');
+    if (isClient) {
+      card.style.borderColor = 'var(--color-accent)';
+      card.style.background = 'var(--color-accent-dim)';
+      card.querySelector('.ch').innerHTML = '<span class="gl" aria-hidden="true" style="color:var(--color-accent)">✓</span>Using this folder as the bound client';
+      note.textContent = 'Marked as a client install — deploy-to-client enabled. (Detection was inconclusive; you confirmed it.)';
+    } else {
+      card.style.borderColor = 'var(--color-border-soft)';
+      card.style.background = 'var(--color-surface-2)';
+      card.querySelector('.ch').innerHTML = '<span class="gl" aria-hidden="true">◇</span>Non-client project';
+      note.textContent = 'No bound client — deploy-to-client disabled. You can still edit assets and deploy server-side.';
+    }
+  }
+
+  // init
+  applyStateA();
+</script>
+</body>
+</html>

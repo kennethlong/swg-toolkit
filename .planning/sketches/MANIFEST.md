@@ -33,6 +33,12 @@ hardcoded brand color.** Exposed via an in-app titlebar picker.
 | 004 | staging-panel | How does the "add to patch" staging list read, and how does "save a set of changes → new version" surface? | **B · Working-vs-Saved Split** | staging, patch, versioning, save-version, list, phase-4 |
 | 005 | deploy-inspect-tab | Does staging + version-graph + deploy fit inside the Inspect panel as a `Deploy` tab at dock width? | **B · Widened (~480px)** | layout, tabs, inspector, composition, phase-4 |
 | 006 | combined-deploy-tab | How do staging + version-graph + deploy compose in ONE Deploy tab (vertical-space mgmt), and where do Save version / change badges / per-file actions / Baseline / changeset file-lists land? | **D · Collapse + splitter + changeset file-lists** | layout, deploy, staging, version-graph, composition, phase-4, redesign |
+| 007 | project-entry | What does the project front door (Open/Create beside Mount) surface — project↔client binding, optional **local-server** wiring, and the **unconfirmed-directory** ("is this a client install?") branch? | **Synthesis · A header + C wizard + B first-run** | onboarding, project, client-binding, local-server, front-door, mount, phase-4, phase-8 |
+| 008 | shell-composition | Does the FINAL 006-D Deploy tab read right *inside* the real 001 shell, and does `Inspect`\|`Deploy` cohere with the rest of the workspace? (consistency check) | **A + B · compose coheres; Deploy widens to ~440px (not narrow C)** | layout, shell, composition, deploy, inspector, consistency, phase-4 |
+| 009 | iff-tree-hex | How does the IFF chunk tree + hex/struct inspector read — the SIE-successor core editing surface? | **B · Tree + Typed Fields (+ DATA grid; full grid editor = 014)** | iff, editor, hex, chunk-tree, sie-successor, phase-1, phase-5 |
+| 010 | inspector-properties | What do the Blender-style property accordions contain for a real asset (mesh / material / skeleton / anim)? | **C · Hybrid (pinned stat-chip summary + key groups open)** | inspector, properties, accordion, material, skeleton, phase-5 |
+| 011 | viewport-gizmo | How do the viewport HUD + transform gizmo + live-sync state read — the Phase-5 WYSIWYG "drag a gizmo → moves in client" surface? | **B · Full overlay HUD (live-sync card + gizmo-mode bar + transform readout)** | viewport, gizmo, live-sync, hud, wysiwyg, phase-5, phase-3 |
+| 016 | new-object-from-template | How to create a new object — pick item **type** (fixed engine set) → **derive** from a base/existing template (`@base`) → name/path → scaffold client+server (Core3) sides → open in IFF editor? (types are engine-defined; you derive instances, never author types) | **A · Type-grid wizard modal (type → derive → name/path → client+server → open in 009)** | object-templates, creation, derivation, item-types, core3, phase-4, phase-8 |
 
 ## Layout decision (from 002–006) — FINAL
 
@@ -46,8 +52,11 @@ The Phase-4 deploy UI lives **inside the Inspect panel as a tabbed group** (`Ins
 
 ## Proposed follow-ups
 
-> **Note:** The original "002 docking affordances" / "003 panel chrome & density" ideas are **superseded** by the Phase-4 sketches above. They remain open but deprioritized; renumbered 007+ (006 is now `combined-deploy-tab`).
+> **Note:** 007–011 (project front door + the editing-surface frontier: shell-composition, IFF/hex editor,
+> inspector properties, viewport+gizmo) are now **built** and pending review. The remaining items below are
+> still open, renumbered to avoid colliding with the built set.
 
-- **007 project-entry-in-Assets** — Open/Create Project button next to Mount Archive in the Assets tab; client-vs-TRE-set detection; the project↔client binding front door.
-- **008 docking affordances** — drag preview, live 5-way drop zones, split/merge feel (interaction, not static layout).
-- **009 panel chrome & density** — header/tab/accordion treatment, number-drag fields, hit targets at real density.
+- **012 docking affordances** — drag preview, live 5-way drop zones, split/merge feel (interaction, not static layout).
+- **013 panel chrome & density** — header/tab/accordion treatment, number-drag fields, hit targets at real density.
+- **014 datatable / DTII grid editor** — the spreadsheet surface for editing datatables (Phase 5/8 + Core3 parity); referenced by 009's `DATA` chunk but not yet sketched as a full grid editor.
+- **015 compare-to-base / diff view** — the diff surface referenced by 006 ("Compare to base") and 009 ("Compare to base") but never designed.

@@ -67,6 +67,27 @@ what the nameplate/tooltip read — wiring together [meshes & appearances](meshe
 editor, a "what does this template point at?" inspector, and the client↔server parity flow all sit on
 top of this format.
 
+### Template *types* are engine-defined — modders derive *instances*
+
+A practical constraint that shapes the object-creation UI (and Core3 parity): **the set of object
+template *types* is fixed and engine-defined — you do not author new types at the modding layer.**
+Core3 enumerates the closed universe of base classes — `SharedWeaponObjectTemplate`,
+`SharedTangibleObjectTemplate`, `SharedCreatureObjectTemplate`, `SharedBuildingObjectTemplate`,
+`SharedShipObjectTemplate`, `SharedInstallationObjectTemplate`, `SharedDraftSchematicObjectTemplate`,
+`SharedResourceContainerObjectTemplate`, `SharedStaticObjectTemplate`, `SharedIntangibleObjectTemplate`,
+… (~26 classes) — compiled into both client and server. (Verified against
+`../Core3/MMOCoreORB/bin/scripts/object/Shared*ObjectTemplate.lua`.)
+
+What a modder creates is a new **instance** that **derives** from an existing template via the `@base`
+derivation chain — e.g. `object/weapon/ranged/pistol/shared_pistol_dl44_mando.iff` `@base →
+shared_pistol_dl44.iff → … → SharedWeaponObjectTemplate`. Creating a genuinely new *type* (template
+class) is an engine + Core3 change, out of normal modding scope.
+
+**Toolkit implication:** the "New Object" flow is **pick a known type → derive from a base/existing
+template → set type-specific fields**, never "define a new type." The type list should be **harvested**
+from Core3's `Shared*ObjectTemplate` set + the client's template definitions, not hardcoded. See the
+design sketch `.planning/sketches/016-new-object-from-template/` (winner: type-grid wizard modal).
+
 ### Implementation status
 
 **Not yet specified at the byte level** — the research source describes the *roles* but no parser
