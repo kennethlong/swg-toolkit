@@ -48,6 +48,7 @@ vi.mock('@swg/native-core', () => nativeMocks);
 // Import AFTER vi.mock — vitest hoists vi.mock to the top of the file, so the mock
 // is guaranteed active before the imports below resolve.
 import { detectFolderKind, readWorkspaceJson, writeWorkspaceJson, initProject } from './projectBinding';
+import { getStudioDir } from './workspaceService';
 
 // ─── Temp-dir lifecycle ───────────────────────────────────────────────────────
 
@@ -130,7 +131,8 @@ describe('initProject', () => {
     expect(useWorkspaceStore.getState().clientPath).toBe(path.resolve(tmpBase));
 
     // workspace.json must have been written with the correct binding meta
-    const studioDir = path.join(path.resolve(tmpBase), '.studio');
+    // Use getStudioDir (not a hardcoded .studio path) — D-06 relocated studio to app-root
+    const studioDir = getStudioDir(path.resolve(tmpBase));
     const written = readWorkspaceJson(studioDir);
     expect(written.kind).toBe('client');
     expect(written.clientPath).toBe(path.resolve(tmpBase));

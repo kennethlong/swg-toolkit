@@ -28,18 +28,71 @@ import { promisify } from 'util';
 
 import { useWorkspaceStore } from '../state/workspaceStore';
 import { useChangesetStore } from '../state/changesetStore';
-import type { WorkspaceChangesetManifest, WorkspaceBindingMeta } from '@swg/contracts';
+import type { WorkspaceBindingMeta } from '@swg/contracts';
+import { seedBaseline } from './changesetService';
 
 const execFileAsync = promisify(execFile);
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 /**
- * Returns the absolute path to the .studio/ control directory for a workspace root.
- * Always folderPath + '/.studio' — never configurable.
+ * Whitespace-free app-root base for all per-project studio dirs (D-06 / T-04.1-12).
+ *
+ * Resolved once at module load from LOCALAPPDATA (Windows) or HOME (*nix).
+ * Using a fixed app-root keeps absolute searchTree= values free of spaces that
+ * would truncate the path at the first whitespace character (Pitfall 1).
+ */
+const APP_ROOT_STUDIO = path.join(
+  process.env['LOCALAPPDATA'] ?? process.env['HOME'] ?? '.',
+  'swg-toolkit',
+  'studios',
+);
+
+/**
+ * Returns the absolute path to the studio control directory for a workspace root.
+ *
+ * D-06: relocated from `<folderPath>/.studio` to a whitespace-free app-root path
+ * keyed by a sanitized project basename so that absolute searchTree= values written
+ * into the client cfg never truncate at a space (Pitfall 1).
+ *
+ * Formula: APP_ROOT_STUDIO / sanitizedProjectId
+ * where sanitizedProjectId = basename(folderPath).replace(/\s+/g, '_')
+ *
+ * T-04.1-13: basename-only (no path-separator traversal); space→_ sanitization
+ * ensures the derived path is free of whitespace and valid as a directory name.
  */
 export function getStudioDir(folderPath: string): string {
+  const projectId = path.basename(folderPath).replace(/\s+/g, '_');
+  return path.join(APP_ROOT_STUDIO, projectId);
+}
+
+/**
+ * Legacy studio dir path (Phase-4 location — inside the project folder).
+ * Used by the M2 non-destructive migration probe in openWorkspace.
+ */
+function getLegacyStudioDir(folderPath: string): string {
   return path.join(folderPath, '.studio');
+}
+
+/**
+ * Non-destructive recursive directory copy — used for the M2 legacy migration.
+ * Never deletes the source; skips if src does not exist.
+ */
+function copyDirRecursive(src: string, dst: string): void {
+  if (!fs.existsSync(src)) return;
+  fs.mkdirSync(dst, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const dstPath = path.join(dst, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, dstPath);
+    } else {
+      // copy, never overwrite if already present in the new location
+      if (!fs.existsSync(dstPath)) {
+        fs.copyFileSync(srcPath, dstPath);
+      }
+    }
+  }
 }
 
 // ─── LFS check ───────────────────────────────────────────────────────────────
@@ -57,16 +110,6 @@ export async function checkLfsInstalled(repoPath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-// ─── Manifest helpers ─────────────────────────────────────────────────────────
-
-function readManifest(studioDir: string): WorkspaceChangesetManifest {
-  const p = path.join(studioDir, 'changesets', 'manifest.json');
-  if (!fs.existsSync(p)) {
-    return { activeVersionId: null, deployedVersionId: null, changesets: [] };
-  }
-  return JSON.parse(fs.readFileSync(p, 'utf8')) as WorkspaceChangesetManifest;
 }
 
 // ─── Path validation (W4 fix) ─────────────────────────────────────────────────
@@ -153,14 +196,23 @@ export async function openWorkspace(folderPath: string): Promise<void> {
 
     const studioDir = getStudioDir(normalized);
 
-    // Must already be a toolkit workspace
+    // M2: one-time non-destructive migration from Phase-4 legacy path (.studio inside
+    // the project folder).  If the NEW studioDir has no manifest.json but the legacy
+    // <folderPath>/.studio DOES, copy the legacy tree into the new location so that an
+    // existing project's changesets are not abandoned.  The old .studio is never deleted.
+    const legacyStudioDir = getLegacyStudioDir(normalized);
+    const newManifestPath  = path.join(studioDir, 'changesets', 'manifest.json');
+    const legManifestPath  = path.join(legacyStudioDir, 'changesets', 'manifest.json');
+    if (!fs.existsSync(newManifestPath) && fs.existsSync(legManifestPath)) {
+      copyDirRecursive(legacyStudioDir, studioDir);
+    }
+
+    // Must be a recognized workspace (new location OR legacy-now-migrated).
     if (!fs.existsSync(studioDir)) {
       throw new Error(
         `Not a toolkit workspace — use createWorkspace to initialize: ${normalized}`,
       );
     }
-
-    const manifest = readManifest(studioDir);
 
     // D-10: read binding meta from workspace.json (written by initProject) so that
     // openWorkspace always reflects the real kind + clientPath set during project binding.
@@ -185,7 +237,13 @@ export async function openWorkspace(folderPath: string): Promise<void> {
       cfgPath:       bindingMeta.cfgPath,
       treDir:        bindingMeta.treDir,
     });
-    useChangesetStore.getState().setManifest(manifest);
+
+    // H2a: mandatory idempotent Baseline seed — adds the Baseline root node when absent,
+    // leaves existing changesets + activeVersionId untouched when it is already present.
+    // This guarantees selectVersion(BASELINE_ID) and "Deploy Baseline" never fail on
+    // re-opened projects, including those created before plan 06.
+    const manifestWithBaseline = seedBaseline(studioDir);
+    useChangesetStore.getState().setManifest(manifestWithBaseline);
   } catch (err) {
     const reason = String((err as Error)?.message ?? err);
     useWorkspaceStore.getState().openError(reason);
@@ -228,12 +286,14 @@ export async function createWorkspace(folderPath: string): Promise<void> {
     fs.mkdirSync(path.join(studioDir, 'build'),                     { recursive: true });
     fs.mkdirSync(path.join(studioDir, 'shadow'),                    { recursive: true });
 
-    // ── Write manifest.json ───────────────────────────────────────────────────
+    // ── Write empty manifest scaffold ────────────────────────────────────────
+    // Writes the skeleton manifest.json; seedBaseline() immediately below seeds
+    // the Baseline root node (D-08) and returns the final manifest for store hydration.
     const manifestPath = path.join(studioDir, 'changesets', 'manifest.json');
-    const emptyManifest: WorkspaceChangesetManifest = {
-      activeVersionId:   null,
-      deployedVersionId: null,
-      changesets:        [],
+    const emptyManifest = {
+      activeVersionId:   null as string | null,
+      deployedVersionId: null as string | null,
+      changesets:        [] as unknown[],
     };
     fs.writeFileSync(
       manifestPath,
@@ -347,7 +407,12 @@ export async function createWorkspace(folderPath: string): Promise<void> {
       clientPath:    createBindingMeta.clientPath,
       kind:          createBindingMeta.kind,
     });
-    useChangesetStore.getState().setManifest(emptyManifest);
+
+    // D-08: seed the Baseline root node immediately after scaffolding so that
+    // selectVersion(BASELINE_ID) and "Deploy Baseline" work on the very first open.
+    // (replaces setManifest(emptyManifest) — the Baseline manifest is the initial state)
+    const manifestWithBaseline = seedBaseline(studioDir);
+    useChangesetStore.getState().setManifest(manifestWithBaseline);
   } catch (err) {
     const reason = String((err as Error)?.message ?? err);
     useWorkspaceStore.getState().openError(reason);

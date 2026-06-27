@@ -34,6 +34,7 @@ import {
   readManifest,
   seedBaseline,
 } from '../src/services/changesetService';
+import { getStudioDir } from '../src/services/workspaceService';
 
 // ─── Test context ─────────────────────────────────────────────────────────────
 
@@ -469,5 +470,13 @@ describe('changeset DEPLOY-06 — seedBaseline + BASELINE_ID-safe selectVersion 
         label: 'unsafe-drive',
       })
     ).rejects.toThrow();
+  });
+
+  // ─── GSD-1: getStudioDir is whitespace-free (D-06 / T-04.1-12) ──────────
+  it('GSD-1: getStudioDir returns a path with no whitespace even for project names containing spaces', () => {
+    const result = getStudioDir('/some/path/My Project With Spaces');
+    expect(result).not.toMatch(/\s/);
+    // The sanitized project id (basename with spaces→_) must appear in the path
+    expect(result).toContain('My_Project_With_Spaces');
   });
 });
