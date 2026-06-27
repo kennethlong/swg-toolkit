@@ -25,6 +25,6 @@
     "@types/three": "0.184.1",
     "jsdom": "^25.0.0",
     "tailwindcss": "^4",
-    "vitest": "^2.0.0"
+    "vitest": "4.1.9"
   }
 }
