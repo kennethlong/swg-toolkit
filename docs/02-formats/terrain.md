@@ -1,8 +1,21 @@
 # SWG Procedural Terrain System (.trn)
 
-> Covers: SWG procedural terrain (.trn) — LAYR layer tree, BPOLY/BCIR boundaries, FRAC fractals, splat rendering, serialization. Source: research doc lines 784–2147.
+> Covers: SWG procedural terrain (`.trn`) — the `PTAT` appearance template, the Layer →
+> Boundary/Filter/Affector rule tree, shared resource groups (incl. the `FractalGroup` MultiFractal),
+> and what a third-party-terrain importer would have to emit.
 
-> **Accuracy caveat:** chunk tags (`TRN `, `LAYR`, `FRAC`, `BPOLY`, `BCIR`, `ADAT`, `MATR`, `NAME`, `MAPP`, `VERT`), field offsets, and field order within DATA blocks are AI-proposed and **must be validated** against the real `swg-client-v2` terrain source before being treated as authoritative. See [source provenance](../00-overview/source-provenance.md).
+> ## ⚠️ GROUND-TRUTH CORRECTION (verified 2026-06-27 vs `swg-client-v2/.../sharedTerrain/` + Core3)
+>
+> **§§2, 4, 5.1, 6, 9, 10 of the original draft below are FALSIFIED.** The format/tags/noise/serializer
+> they describe (`FORM "TRN "`, `MATR/NAME/ADAT/FRAC/BPOLY/MAPP/VERT`, inline per-layer fractal params,
+> a custom noise hash, a `"TRN "` writer) **do not exist in the real loader.** They were AI-generated and
+> must not be implemented. The verified model is in §1–§2 (rewritten) and the **Verified tag taxonomy**
+> table; everything from §3 onward is the original draft, **retained for history only — do NOT implement
+> from it.** Ground truth = `ProceduralTerrainAppearanceTemplate.{cpp,h}`, `TerrainGenerator.{cpp,h}`,
+> `TerrainGeneratorLoader.cpp`, `AffectorHeight.cpp`, `Filter.cpp`, `BitmapGroup.cpp`,
+> `sharedFractal/MultiFractal.h`, and Core3 `MMOCoreORB/src/terrain/ProceduralTerrainAppearance.cpp`.
+> When implementing, read byte offsets directly from `ProceduralTerrainAppearanceTemplate::write/_load`
+> and validate against a real shipped `.trn` hexdump. See [source provenance](../00-overview/source-provenance.md).
 
 ---
 
@@ -23,38 +36,91 @@
 
 ---
 
-## 1. Overview
+## 1. Overview (verified)
 
-SWG planet maps (Tatooine, Corellia, etc.) use no static 3D mesh or pre-baked heightmap. A `.trn` file stores a **procedural tree** of fractal noise generators and spatial rules. The SWG client evaluates these formulas on the fly to generate, deform, and blend terrain chunks dynamically around the player.
+SWG planet maps (Tatooine, Corellia, etc.) use **no static 3D mesh and no pre-baked heightmap**. One
+file per planet — `terrain/<planetName>.trn` (`LocationManager.cpp:204`) — stores a **procedural rule
+tree**. Height, vertex color, texturing (shaders), and flora placement are all **generated at runtime
+per chunk** by evaluating that tree: `TerrainGenerator::generateChunk(GeneratorChunkData&)` fills a
+`heightMap` + `colorMap` + `shaderMap` + flora maps for the requested window (`TerrainGenerator.h:564`).
 
-Key properties:
-- Terrain is **infinite and deterministic** — the same `(x, z)` always yields the same height given the same rule tree.
-- A LAYR tree provides **layered, weighted height contributions**; child layers override or add to parent layers, clipped to boundary shapes.
-- FRAC blocks drive **Fractal Brownian Motion (fBm)** noise, making every layer's shape unique yet mathematically reproducible.
+Verified properties:
+- **Deterministic & procedural** — the same world `(x, z)` yields the same height given the same tree.
+- **Layered, weighted compositing** — an ordered list of recursive `Layer`s; each layer's boundaries
+  produce a `[0,1]` weight, filters gate it, and affectors write into the chunk maps scaled by that
+  weight (`Layer::affect`; op enum `TGO_replace/add/subtract/multiply`, `AffectorHeight.cpp:58–93`).
+- **Fractal noise via a SHARED group, not inline** — height-fractal affectors store a `familyId` and
+  look up a `MultiFractal` from the `FractalGroup` by id (`AffectorHeight.cpp:225–230`). The noise is
+  SWG's `sharedFractal` MultiFractal (seed/octaves/frequency/amplitude/gain/bias/CombinationRule —
+  `MultiFractal.h`), NOT a custom hash.
 
 ---
 
-## 2. IFF Structure
+## 2. IFF Structure (verified — `PTAT`, not `"TRN "`)
 
-The `.trn` file is a modified IFF container. All integers and sizes are **little-endian** (SWG deviation from the canonical big-endian IFF spec). For generic IFF chunk-walking helpers (`ReadTag` / `ReadUint32` / `ReadFloat` / `WriteTag` / `PackChunk` / `IffBinaryWriter`), see [../01-core-engine/iff-and-tre.md](../01-core-engine/iff-and-tre.md).
+`.trn` is only the file **extension**. The IFF top-level FORM type is **`PTAT`** (`TAG(P,T,A,T)`),
+versions `0013`–`0015`, current write version **`0015`** (`ProceduralTerrainAppearanceTemplate.cpp:828,
+836, 1039`). Core3 parses the same server-side (`MMOCoreORB/src/terrain/ProceduralTerrainAppearance.cpp:32`
+→ `getNextFormType() == 'PTAT'`). Byte order / chunk-walking helpers: see
+[../01-core-engine/iff-and-tre.md](../01-core-engine/iff-and-tre.md).
 
 ```
-FORM "TRN "
-  FORM "MATR"          — Material matrix: string list pointing to planet diffuse textures (.dds)
-  FORM "LAYR"          — Root layer (recursive; child LAYR forms nest arbitrarily deep)
-    CHUNK "NAME"       — Null-terminated ASCII layer name, e.g. "tatooine_desert"
-    CHUNK "ADAT"       — Layer config: id, blendMode, featherDistance, isActive
-    FORM  "BPOLY"      — Polygon boundary shape (may repeat)
-    FORM  "BCIR"       — Circle boundary shape (may repeat)
-    FORM  "FRAC"       — Fractal noise rule (may repeat)
-      CHUNK "NAME"
-      CHUNK "DATA"     — seed, octaves, frequency, amplitude, gain, lacunarity
-      CHUNK "MAPP"     — combinationType (Add/Multiply/Replace)
-    FORM  "LAYR"       — Nested child layer (recursive)
-    ...
+FORM PTAT (version 0014/0015)
+  CHUNK DATA            — name, mapWidthInMeters, chunkWidthInMeters, numberOfTilesPerChunk,
+                          global water-table height + shader, environment cycle time,
+                          collidable/non-collidable/radial/far-radial flora distances + seeds,
+                          legacyMap flag   (exact field order: ...Template.cpp:1043–1072)
+  FORM  TGEN            — TerrainGenerator: the procedural rule tree (below)
+  FORM  BakedTerrain    — baked passability / water-boundary data (collision)
+  <two PackedIntegerMap / PackedFixedPointMap>  — static-collidable-flora maps
 ```
 
-**Chunk tags noted here are AI-proposed** — cross-check with `swg-client-v2` source.
+### TerrainGenerator (`TGEN`) = six shared groups + an ordered Layer list
+
+Groups (`TerrainGenerator.h:479–484`): `ShaderGroup`, `FloraGroup`, `RadialGroup`, `EnvironmentGroup`,
+**`FractalGroup`** (the MultiFractal families affectors reference by id), `BitmapGroup` (loose `.tga`
+masks). Then a list of recursive **`Layer`**s (`:486`); each `Layer` holds four ordered lists
+(`:355–358`): **Boundaries → Filters → Affectors → sub-Layers**.
+
+### Verified tag taxonomy (authoritative dispatch = `TerrainGeneratorLoader.cpp`)
+
+| Kind | Real tags | Notes |
+|---|---|---|
+| **Boundary** (`createBoundary :62`) | `BCIR` circle · `BREC` rectangle · `BPOL` polygon · `BPLN` polyline | `BALL`,`BSPL` are dead-skipped. (Draft's `BPOLY` is wrong → `BPOL`.) |
+| **Filter** (`createFilter :137`) | `FHGT` height · `FFRA` fractal · `FBIT` bitmap · `FSLP` slope · `FDIR` direction · `FSHD` shader | `FBIT` = the only surviving raster path (a MASK, see §heightmaps). |
+| **Affector — height** (`createAffector :220`) | `AHCN` constant · `AHFR` fractal · `AHTR` terrace | `AHFR` = `scaleY × FractalGroup[familyId]`. |
+| **Affector — color** | `ACCN` constant · `ACRH` ramp-by-height · `ACRF` ramp-by-fractal | |
+| **Affector — shader (texture)** | `ASCN` constant · `ASRP` replace | this is SWG's "splat"/texturing, done in the affector tree, not a GLSL shader doc invented. |
+| **Affector — flora** | static `AFSC`/`AFCN`/`AFSN` · radial `AFDN`/`ARCN`/`AFDF` | |
+| **Affector — other** | `ARIB` ribbon · `AROA` road · `ARIV` river · `AEXC` exclude · `APAS` passable · `AENV` environment | |
+| **DEAD / removed** | `AHBM` (height-bitmap — *"no longer exists"*), `ACBM`/`ASBM`/`AFBM`, `AHSM` | `...Loader.cpp:226–264`. |
+
+### Heightmaps: there is NO raster→elevation path
+
+Height is purely procedural (fractal + constant + terrace affectors). The height-from-bitmap affector
+`AHBM` was **removed** — you cannot inject a raster heightmap as elevation. The one surviving raster
+path is `FBIT`: an **8-bit grayscale `.tga`** (`terrain/<name>.tga`, `Image::PF_w_8`) sampled bilinearly
+and normalized `value/255` as a layer **weight/mask** (`Filter.cpp:1081–1125`, `BitmapGroup.cpp`) — it
+gates *where* procedural affectors apply, not the elevation itself.
+
+### Authoring + importer surface
+
+Original authoring tool: the client's **TerrainEditor** (MFC,
+`client/application/TerrainEditor/`); the loader even instructs "load and save in the TerrainEditor"
+(`...Template.cpp:833`). To bring external terrain in, a tool must emit a byte-compatible **`PTAT/0015`**
+via `ProceduralTerrainAppearanceTemplate::write` (`:1035–1113`): the `DATA` config + a `TerrainGenerator`
+(FractalGroup families + ShaderGroup + a Layer/affector tree) + a (possibly minimal) `BakedTerrain` +
+the two packed flora maps. The natural fit is a **procedural→procedural** mapping (noise bands →
+`FractalGroup` MultiFractal families → `AHFR`/`AHCN` layers); the hard part is **fractal parity** with
+SWG's `sharedFractal` MultiFractal, and **server parity** (Core3 re-parses the same `PTAT`). See the
+ProceduralTerrains feasibility note in `.planning/todos/pending/`.
+
+---
+
+> **Everything below (§3–§12) is the ORIGINAL AI-FABRICATED DRAFT. It is FALSIFIED and retained for
+> history only — do NOT implement from it.** Its tags (`"TRN "`, `BPOLY`, inline `FRAC`), its
+> `CustomNoise2D` hash, its parsers and its `"TRN "` serializer are inventions. Implement against the
+> real loader cited in §1–§2.
 
 ---
 
