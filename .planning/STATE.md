@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 04 context gathered; ready for /gsd:plan-phase 04
-last_updated: "2026-06-26T15:30:00.000Z"
+stopped_at: Phase 04 PLANNED + verified (7 plans / 4 waves); paused for cross-AI plan review before execute
+last_updated: "2026-06-26T16:15:00.000Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 9
@@ -25,22 +25,24 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 04 (edit-deploy-loop) — CONTEXT gathered (2026-06-26); ready to plan
-Plan: none yet. 04-CONTEXT.md + 04-DISCUSSION-LOG.md written (15 decisions D-04-01..15 across
-      workspace/staging, rollback, .cfg activation, Git/LFS).
-Status: Phases 0-3 all COMPLETE (ROADMAP bookkeeping corrected this session — Phase 2 was stale-marked
-        not-started but 02-05 export was human-verified 2026-06-25; Phase 0 table row corrected too).
-        Replan of remaining phases DEFERRED by maintainer — continuing forward into Phase 4 instead.
-        Key Phase-4 decisions: user-chosen workspace folder + explicit staging list; buildTre-of-deltas
-        patch; Base44 layered changeset rollback (maintainer experience-backed, non-destructive toggle);
-        auto-detect client + offer patch-prepend AND shadow-base; Git versions changeset store, patch
-        gitignored, retail bytes hard-banned via pre-commit guard.
-Next: /gsd:plan-phase 04 (pause-after-plan rule: offer cross-AI plan review before execute).
-      Parked for the eventual milestone replan: live-world-terrain-sync placement (Phase 9 vs 7.1);
-      REQUIREMENTS.md traceability is stale for VIEW-03/04 + CORE-02 (actually complete).
+Phase: 04 (edit-deploy-loop) — PLANNED + plan-checker VERIFIED (2026-06-26); paused pre-execute
+Plan: 7 plans / 4 waves. Full GSD planning chain done: CONTEXT (16 decisions D-04-01..16, research-
+      corrected) → RESEARCH (HIGH, ground-truth) → VALIDATION (Nyquist) → UI-SPEC (6/6 PASS) →
+      PATTERNS (26 files, 25 analogs) → 7 PLANs → plan-checker PASS (1 blocker + 7 warnings fixed in
+      revision; 3 follow-up warnings resolved/noted). Wave1: 04-01. Wave2: 04-02/03/04/05.
+      Wave3: 04-06b (shadow-base, autonomous:false). Wave4: 04-06 (deploy dialog + in-client UAT).
+Status: Phases 0-3 COMPLETE (ROADMAP bookkeeping corrected this session). Phase 4 fully planned.
+        Key ground-truth corrections baked in: patch built version='5000' (client mounts EERT5000);
+        .cfg writes searchTree_<sku>_<NN>= in [SharedFile] of a toolkit-owned swgtoolkit.cfg via
+        .include from root swgemu.cfg (free slot, e.g. 55), never user.cfg/options.cfg; clientLocator
+        is NEW work (live-inject has no install discovery); banned PurgeChangesetLayer/.tar.gz/exec().
+        Both deploy models implemented (patch-prepend default + shadow-base opt-in, 04-06b).
+Next: PAUSE — offer cross-AI plan review (feedback-pause-after-plan-phase) BEFORE /gsd:execute-phase 04.
+      Do NOT auto-advance to execute. Parked for milestone replan: live-world-terrain-sync placement
+      (Phase 9 vs 7.1); REQUIREMENTS.md traceability stale for VIEW-03/04 + CORE-02 (actually complete).
 Last activity: 2026-06-26
 
-Progress: [████░░░░░░] 44% (4/9 phases)
+Progress: [████░░░░░░] 44% (4/9 phases) — Phase 4 planned, not executed
 
 ### 02-03 key facts (crew-verified)
 
