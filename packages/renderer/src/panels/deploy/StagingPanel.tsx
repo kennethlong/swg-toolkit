@@ -362,8 +362,8 @@ function StagingPanelBody({
 
   return (
     <>
-      {/* Deploy dialog (stub until 04-06) */}
-      {deployOpen && <DeployDialog onClose={onDeployClose} />}
+      {/* Deploy dialog — real modal (04-06); always mounted, controlled by `open` prop */}
+      <DeployDialog open={deployOpen} onClose={onDeployClose} />
 
       {/* Panel head */}
       <div
