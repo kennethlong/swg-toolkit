@@ -35,10 +35,12 @@ import type {
   StagingAction,
   CfgDeployRecord,
 } from '@swg/contracts';
+import { BASELINE_ID } from '@swg/contracts';
 
 import { useChangesetStore } from '../state/changesetStore';
 import { useStagingStore } from '../state/stagingStore';
 import { useWorkspaceStore } from '../state/workspaceStore';
+import { isVirtualPathSafe } from './pathSafety';
 
 // ─── Manifest I/O ─────────────────────────────────────────────────────────────
 
@@ -70,6 +72,50 @@ export function writeManifest(studioDir: string, manifest: WorkspaceChangesetMan
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2), 'utf8');
   fs.renameSync(tmp, p); // atomic on same-volume rename
+}
+
+// ─── seedBaseline ─────────────────────────────────────────────────────────────
+
+/**
+ * Seed a Baseline (pristine) root changeset node into the manifest.
+ *
+ * D-08 / H2a: Every project graph must have a Baseline root so that
+ * selectVersion(BASELINE_ID) and "Deploy Baseline" (reset-to-stock) never fail.
+ *
+ * Contract:
+ *   - Idempotent: if a changeset with id BASELINE_ID already exists, returns the
+ *     manifest unchanged (no duplicate node ever written).
+ *   - Direct manifest write (NOT via sealVersion): the N4 "nothing to commit" guard
+ *     at sealVersion:225-230 throws on zero deltas, so Baseline must bypass it.
+ *   - Sets activeVersionId to BASELINE_ID only when no active version was previously
+ *     set (never overwrites an existing selection).
+ *   - Atomic write using the established tmp+rename pattern (lines 67-73).
+ *
+ * Source: 04.1-06-PLAN.md Task 2; PATTERNS.md §changesetService.ts §seedBaseline.
+ */
+export function seedBaseline(studioDir: string): WorkspaceChangesetManifest {
+  const existing = readManifest(studioDir);
+
+  // Idempotent — never double-seed
+  if (existing.changesets.some(c => c.id === BASELINE_ID)) return existing;
+
+  const baseline: SwgChangeset = {
+    id:        BASELINE_ID,
+    parentId:  null,
+    label:     'Baseline (pristine)',
+    timestamp: new Date().toISOString(),
+    sealedBy:  'manual',
+    deltas:    [],
+  };
+
+  const manifest: WorkspaceChangesetManifest = {
+    ...existing,
+    changesets:      [baseline, ...existing.changesets],
+    activeVersionId: existing.activeVersionId ?? BASELINE_ID,
+  };
+
+  writeManifest(studioDir, manifest);
+  return manifest;
 }
 
 // ─── flatten ──────────────────────────────────────────────────────────────────
@@ -279,6 +325,16 @@ export async function sealVersion(params: SealVersionParams): Promise<void> {
 
     if (!changed) continue; // unchanged vs parent — do NOT copy, do NOT store
 
+    // M1: validate virtualPath before any file system operation (T-04.1-27).
+    // Rejects '..', absolute paths, and Windows drive-letter paths via the shared
+    // validator (imported from pathSafety.ts — do NOT inline a second copy).
+    if (!isVirtualPathSafe(entry.virtualPath)) {
+      useChangesetStore.getState().sealError('Unsafe virtual path: ' + entry.virtualPath);
+      throw new Error(
+        `sealVersion: virtualPath is unsafe and cannot be stored: "${entry.virtualPath}"`,
+      );
+    }
+
     // Copy ONLY changed files into the changeset dir.
     const normalizedPath = entry.virtualPath.replace(/\\/g, '/');
     const destPath = path.join(csDir, ...normalizedPath.split('/'));
@@ -345,7 +401,12 @@ export function selectVersion(id: string | null): void {
   const manifest = readManifest(studioDir);
 
   // T-04-15: validate id exists before writing.
-  if (id !== null && !manifest.changesets.some(c => c.id === id)) {
+  // H2c: BASELINE_ID is special — if it is absent from changesets[], treat it as
+  // pristine (zero overrides) rather than throwing "Version not found".  This ensures
+  // that "Deploy Baseline" and selectVersion(BASELINE_ID) never fail on projects that
+  // were created before seedBaseline was introduced (open-time migration catches most
+  // cases, but this guard is a belt-and-suspenders safety net).
+  if (id !== null && id !== BASELINE_ID && !manifest.changesets.some(c => c.id === id)) {
     throw new Error('Version not found: ' + id);
   }
 
