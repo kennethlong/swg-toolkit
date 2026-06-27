@@ -39,6 +39,8 @@ import MountedArchivesList from './MountedArchivesList.tsx';
 import VfsSearchField from './VfsSearchField.tsx';
 import VfsTree from './VfsTree.tsx';
 import AsyncProgress from '../../shared/AsyncProgress.tsx';
+import ProjectBindingBar from '../deploy/ProjectBindingBar.tsx';
+import NewProjectWizard from '../deploy/NewProjectWizard.tsx';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
 // Source: packages/renderer/src/shell/StatusBar.tsx:34-41.
@@ -89,6 +91,9 @@ export default function TreVfsBrowser(): React.ReactElement {
   const store = useTreStore();
   const iffStore = useIffStore();
   const viewportStore = useViewportStore();
+
+  // ── New-project wizard state ─────────────────────────────────────────────────
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   // ── Mount handler ───────────────────────────────────────────────────────────
 
@@ -387,78 +392,22 @@ export default function TreVfsBrowser(): React.ReactElement {
         color: 'var(--color-text)',
       }}
     >
-      {/* Mount toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-2)',
-          padding: 'var(--space-3) var(--space-4)',
-          background: 'var(--color-header)',
-          borderBottom: '1px solid var(--color-border)',
-          flexShrink: 0,
-        }}
-      >
-        {/* Mount Archive… button */}
-        <button
-          aria-label="Mount archive"
-          title="Mount archive"
-          onClick={() => void handleMountClick()}
-          disabled={isMounting}
-          style={{
-            background: 'var(--color-accent-dim)',
-            border: '1px solid var(--color-accent-line)',
-            borderRadius: 'var(--radius-sm)',
-            color: 'var(--color-accent)',
-            cursor: isMounting ? 'not-allowed' : 'pointer',
-            fontFamily: 'var(--font-sans)',
-            fontSize: 'var(--text-sm)',
-            padding: 'var(--space-1) var(--space-3)',
-            opacity: isMounting ? 0.5 : 1,
-          }}
-        >
-          Mount Archive…
-        </button>
+      {/* ── Assets panel-head: ＋ Project ▾ + Mount Archive… + bound-client chip ── */}
+      {/* ProjectBindingBar replaces the previous mount toolbar, incorporating     */}
+      {/* Mount Archive… so no functionality is lost (04.1-04-PLAN.md Task 1).    */}
+      <ProjectBindingBar
+        onNewProject={() => setWizardOpen(true)}
+        onMount={() => void handleMountClick()}
+        archiveCount={archives.length}
+      />
 
-        {/* Archive count chip */}
-        {hasArchives && (
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-faint)',
-            }}
-          >
-            {archives.length} archive{archives.length !== 1 ? 's' : ''}
-          </span>
-        )}
-
-        <div style={{ flex: 1 }} />
-
-        {/* Mount options overflow */}
-        {/* Accessibility Rule 5: aria-label + title */}
-        <button
-          aria-label="Mount options"
-          title="Mount options"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--color-text-faint)',
-            cursor: 'pointer',
-            fontSize: 'var(--text-sm)',
-            width: 22,
-            height: 22,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 'var(--radius-sm)',
-            padding: 0,
-          }}
-          onClick={() => { /* Future: unmount / reorder menu */ }}
-        >
-          ⋮
-        </button>
-      </div>
+      {/* New-project wizard (modal overlay) */}
+      {wizardOpen && (
+        <NewProjectWizard
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+        />
+      )}
 
       {/* Mounting progress (replaces tree area) */}
       {isMounting && mountStatus.kind === 'mounting' && (

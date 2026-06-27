@@ -102,11 +102,40 @@ export function writeWorkspaceJson(studioDir: string, meta: WorkspaceBindingMeta
 
 // ─── initProject ─────────────────────────────────────────────────────────────
 
+// ─── InitProjectOptions ───────────────────────────────────────────────────────
+
+/**
+ * Optional overrides for initProject — used by the NewProjectWizard (04.1-04).
+ *
+ * overrideKind: M6 — "Yes, treat as client" in the wizard's unconfirmed-directory branch
+ *   forces kind:'client', overriding detectFolderKind which would otherwise classify the
+ *   folder as mod-project. The user-confirmed choice persists via writeWorkspaceJson.
+ *
+ * serverConfig: D-01 — capture-only local-server association from wizard step 3;
+ *   stored into workspace.json; never executed or pushed in Phase 4.1.
+ */
+export interface InitProjectOptions {
+  /**
+   * Override the auto-detected folder kind (M6 user-confirmed client override).
+   * When provided, detection is skipped and this value persists to workspace.json.
+   */
+  overrideKind?: 'client' | 'tre-set' | 'mod-project';
+  /**
+   * Capture-only server association from wizard step 3 (D-01).
+   * Persisted to workspace.json; no push UI in Phase 4.1.
+   */
+  serverConfig?: {
+    type: 'core3-wsl2' | 'swgsource-docker';
+    path: string;
+    hostPort: string;
+  };
+}
+
 /**
  * Detect → persist → open → auto-mount.
  *
  * Steps:
- *   1. detectFolderKind(folder)
+ *   1. detectFolderKind(folder) — or use options.overrideKind (M6)
  *   2. Resolve cfgPath + treDir (client only)
  *   3. Write .studio/workspace.json atomically (T-04.1-02)
  *   4. Call openWorkspace(folder) to populate workspaceStore with real kind + clientPath
@@ -119,12 +148,12 @@ export function writeWorkspaceJson(studioDir: string, meta: WorkspaceBindingMeta
  * T-04.1-03: .tre enumeration is restricted to files in treDir only (no sub-directories,
  * no symlink traversal outside treDir).
  */
-export async function initProject(folder: string): Promise<void> {
+export async function initProject(folder: string, options?: InitProjectOptions): Promise<void> {
   const normalized = path.resolve(folder);
   const studioDir  = getStudioDir(normalized);
 
-  // ── 1. Detect ────────────────────────────────────────────────────────────
-  const kind = detectFolderKind(normalized);
+  // ── 1. Detect (or use caller-supplied override — M6) ─────────────────────
+  const kind = options?.overrideKind ?? detectFolderKind(normalized);
 
   // ── 2. Resolve cfg/tre paths for client binding ────────────────────────
   let cfgPath: string | undefined;
@@ -148,6 +177,8 @@ export async function initProject(folder: string): Promise<void> {
     clientPath: kind === 'client' ? normalized : null,
     cfgPath,
     treDir,
+    // D-01: capture-only server association from wizard step 3 (if provided)
+    ...(options?.serverConfig ? { serverConfig: options.serverConfig } : {}),
   };
   writeWorkspaceJson(studioDir, meta);
 
