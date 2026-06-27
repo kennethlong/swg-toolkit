@@ -36,6 +36,12 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 - [ ] **DEPLOY-02**: System updates the client `.cfg` search order to activate a patch (with safe, BOM-free writes).
 - [ ] **DEPLOY-03**: User can roll back changes via a changeset/snapshot history.
 - [ ] **DEPLOY-04**: User can version **mod-produced** assets via Git/LFS (never retail `.tre` dumps).
+- [ ] **DEPLOY-05**: User drives the deploy loop from ONE combined Deploy surface — staging (working changes) over the version graph (per-node expandable changed-file lists) with a `Deploy…` modal CTA — composed into the shell as a single `Inspect | Deploy` dock group (approved sketches 005-B/006-D/008). *(Phase 4.1)*
+- [ ] **DEPLOY-06**: The shadow-sandbox deploy model is **lazy/virtual and reversible** — only modified files materialize into the override archive, the original client config is snapshot+restorable, and the multi-GB base copy is retired. *(Phase 4.1; gated on ground-truth cfg/TRE verification)*
+- [ ] **DEPLOY-07**: User can stage assets directly from the TRE browser (Extract→Add, no manual virtual-path entry) and can reopen a closed panel / reset the workspace layout (no soft-brick). *(Phase 4.1)*
+
+### Project & Client Binding (PROJ)
+- [ ] **PROJ-01**: User binds a project to a client install (the workflow front door), which auto-mounts that client's base TRE set into the VFS; non-client projects are first-class (no bound client, deploy-to-client disabled). *(Phase 4.1)*
 
 ### Live In-Game Sync (LIVE) — *Windows-only differentiator*
 - [x] **LIVE-01**: User can attach the toolkit to a running SWG client process on Windows.
@@ -90,7 +96,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 
 ## Traceability
 
-*Every v1 requirement maps to exactly one phase. Coverage: 37/37 (100%).*
+*Every v1 requirement maps to exactly one phase. Coverage: 41/41 (100%).*
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
@@ -117,6 +123,10 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | DEPLOY-02 | Phase 4 | Pending |
 | DEPLOY-03 | Phase 4 | Pending |
 | DEPLOY-04 | Phase 4 | Pending |
+| DEPLOY-05 | Phase 4.1 | Pending |
+| DEPLOY-06 | Phase 4.1 | Pending |
+| DEPLOY-07 | Phase 4.1 | Pending |
+| PROJ-01 | Phase 4.1 | Pending |
 | LIVE-03 | Phase 5 | Pending |
 | DATA-01 | Phase 5 | Pending |
 | DATA-02 | Phase 5 | Pending |

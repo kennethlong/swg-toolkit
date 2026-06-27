@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 04 CODE-COMPLETE (8/8 plans built, gates green); 2 in-client UATs pending (04-06b shadow-base + 04-06 full deploy)
-last_updated: "2026-06-27T05:21:38.816Z"
-last_activity: 2026-06-27 -- Phase 04 execution started
+stopped_at: Phase 04.1 context gathered (CONTEXT.md written; 4 decisions locked)
+last_updated: "2026-06-27T19:42:32.088Z"
+last_activity: 2026-06-27 -- Phase 04.1 inserted (redesign building approved sketches); ready to plan
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 5
   total_plans: 29
   completed_plans: 29
@@ -21,28 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 04 — edit-deploy-loop
+**Current focus:** Phase 04.1 — deploy-project-ux (redesign)
 
 ## Current Position
 
-Phase: 04 (edit-deploy-loop) — EXECUTING
-Plan: 1 of 8
-      corrected) → RESEARCH (HIGH, ground-truth) → VALIDATION (Nyquist) → UI-SPEC (6/6 PASS) →
-      PATTERNS (26 files, 25 analogs) → 7 PLANs → plan-checker PASS (1 blocker + 7 warnings fixed in
-      revision; 3 follow-up warnings resolved/noted). Wave1: 04-01. Wave2: 04-02/03/04/05.
-      Wave3: 04-06b (shadow-base, autonomous:false). Wave4: 04-06 (deploy dialog + in-client UAT).
-Status: Executing Phase 04
-        Key ground-truth corrections baked in: patch built version='5000' (client mounts EERT5000);
-        .cfg writes searchTree_<sku>_<NN>= in [SharedFile] of a toolkit-owned swgtoolkit.cfg via
-        .include from root swgemu.cfg (free slot, e.g. 55), never user.cfg/options.cfg; clientLocator
-        is NEW work (live-inject has no install discovery); banned PurgeChangesetLayer/.tar.gz/exec().
-        Both deploy models implemented (patch-prepend default + shadow-base opt-in, 04-06b).
-Next: PAUSE — offer cross-AI plan review (feedback-pause-after-plan-phase) BEFORE /gsd:execute-phase 04.
-      Do NOT auto-advance to execute. Parked for milestone replan: live-world-terrain-sync placement
-      (Phase 9 vs 7.1); REQUIREMENTS.md traceability stale for VIEW-03/04 + CORE-02 (actually complete).
-Last activity: 2026-06-27 -- Phase 04 execution started
+Phase: 04.1 (deploy-project-ux) — INSERTED, ready to plan
+Plan: none yet (next = /gsd:plan-phase 04.1)
+Status: Phase 04 plumbing is code-complete and UAT-passed end-to-end in-client (deploy loop works:
+        New Project→Add→Save version→Changeset→Deploy patch-prepend→mod loaded in-game, disk-verified).
+        The remaining work is the UI/UX redesign + project-binding/shadow scope surfaced by UAT, now
+        framed as INSERTED Phase 04.1 (maintainer chose inserted-phase over new-plans-under-4). Builds
+        APPROVED sketches 005-B/006-D/007/008 — NOT a fresh design. New reqs: PROJ-01, DEPLOY-05/06/07.
+        Phase 04 deploy ENGINE (packPatch/changesetService/cfgActivator/DeployDialog) reused as-is.
+Next: PLAN 04.1 — run plan-phase with FRESH research (de-anchored ground-truth: absolute searchTree cfg
+      paths vs TreeFile.cpp; v6000 zlib-vs-encrypted; server TRE search-path) + fresh CONTEXT (current
+      04-CONTEXT.md is the OLD plumbing scope). Then PAUSE — offer cross-AI plan review BEFORE execute
+      (feedback-pause-after-plan-phase). Do NOT auto-advance. Phase 04 formal close-out (mark 04-06/06b
+      complete, verifier, REQUIREMENTS DEPLOY-01..04 → Complete) is a separate small task, still pending.
+Last activity: 2026-06-27 -- Phase 04.1 inserted (redesign building approved sketches); ready to plan
 
-Progress: [████░░░░░░] 44% (4/9 phases) — Phase 4 planned, not executed
+Progress: [█████░░░░░] ~50% (5/10 phases) — Phase 4 code-complete; Phase 4.1 inserted, not yet planned
 
 ### 02-03 key facts (crew-verified)
 
@@ -94,6 +92,10 @@ Progress: [████░░░░░░] 44% (4/9 phases) — Phase 4 planned,
 | Phase 03-live-injection-foundation P06b | 305 | 2 tasks | 3 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 04.1 inserted after Phase 4: Deploy & Project UX — redesign building approved sketches 005-B/006-D/007/008 (combined Deploy tab, project↔client binding front door, lazy/virtual shadow); emerged from Phase 4 in-client UAT (URGENT)
 
 ### Decisions
 
@@ -215,6 +217,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T05:21:38.802Z
-Stopped at: Phase 04 CODE-COMPLETE (8/8 plans built, gates green); 2 in-client UATs pending (04-06b shadow-base + 04-06 full deploy)
-Resume file: None
+Last session: 2026-06-27T19:42:32.069Z
+Stopped at: Phase 04.1 context gathered (CONTEXT.md written; 4 decisions locked)
+Resume file: .planning/phases/04.1-deploy-project-ux/04.1-CONTEXT.md

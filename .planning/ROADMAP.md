@@ -17,6 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export ✓ 2026-06-25 (VIEW-01..04; glTF export + Extract human-verified)
 - [x] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track) (completed 2026-06-26)
 - [ ] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs
+- [ ] **Phase 4.1: Deploy & Project UX** *(INSERTED)* - Project↔client binding front door, one combined Deploy tab, stage-from-TRE, lazy/virtual shadow sandbox (build approved sketches 005-B/006-D/007/008)
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
 - [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
 - [ ] **Phase 7: Format Editors** - Terrain, world snapshots, flora, collision/portals, UI, audio/FX — parallelizable leaves on the IFF root
@@ -166,6 +167,24 @@ Plans:
 - [ ] 04-06-PLAN.md — DeployDialog (Sections A/B/C: client picker, patch-prepend/shadow-base, cfg slot preview; handleDeploy branches on deployModel — dispatches to deployShadowBase or cfgActivator 6-step sequence; in-client UAT checkpoint on SWG Infinity) [autonomous: false]
 **UI hint**: yes
 
+### Phase 04.1: Deploy & Project UX (INSERTED)
+**Goal**: Make the now-working deploy loop **discoverable and zero-risk** by building the **approved sketch designs** (005-B / 006-D / 007 / 008) — not a fresh redesign. Bind a project to a client install as the workflow front door (auto-mount its base TRE set); compose the deploy surface into ONE combined Deploy tab (staging over the version graph with per-node expandable changed-file lists + a `Deploy…` modal CTA) inside a single `Inspect | Deploy` dock group; enable staging assets directly from the TRE browser; and re-architect the shadow-sandbox model to **lazy/virtual** (only modified files materialize; original client config snapshot+restorable) so the original client can never be permanently broken. The Phase 4 deploy **engine** (`packPatch`, `changesetService` flatten/seal/select, `cfgActivator`, `DeployDialog`) is reused as-is — this phase is UI/UX composition + the project-binding workflow + the shadow re-architecture, NOT new byte-level format work.
+**Mode:** mvp
+**Depends on**: Phase 4 (deploy engine it composes), Phase 1 (TRE mount/VFS it stages from)
+**Requirements**: PROJ-01, DEPLOY-05, DEPLOY-06, DEPLOY-07
+**Success Criteria** (what must be TRUE):
+  1. Opening/creating a project binds it to a client install and auto-mounts that client's base TREs into the VFS browser (or, for a non-client project, cleanly disables deploy-to-client).
+  2. The deploy loop (stage → save version → select version → deploy) is driven entirely from ONE combined Deploy tab matching sketch 005-B/006-D, in a single `Inspect | Deploy` dock group — no working-changes-vs-history split across tabs.
+  3. A user can stage an asset directly from the TRE browser (Extract→Add) without manual virtual-path entry.
+  4. Shadow-base deploy materializes only modified files (no multi-GB base copy), and a reset restores the original client config exactly.
+  5. A closed deploy/inspect panel can be reopened / the layout reset without restarting the app.
+
+**Ground-truth gate:** DEPLOY-06 (shadow + cfg path handling) is gated on the queued ground-truth verifications — absolute `searchTree` cfg paths accepted by the client (`TreeFile.cpp:115-149`); server TRE search-path config (Core3/swg-main); v6000 = zlib-vs-encrypted (challenges memory `tre-version-oracles-and-v6000-encryption`) — run under the de-anchoring protocol during plan-phase research, NOT from consensus.
+
+**Plans:** 0 plans
+Plans:
+- [ ] TBD (run /gsd-plan-phase 04.1 to break down)
+
 ### Phase 5: WYSIWYG Live-Sync & Typed Editors
 **Goal**: Join the two independently-built halves — viewport gizmo and injection module — into the zero-restart WYSIWYG loop over the SharedArrayBuffer data channel, and ship the first typed edit surfaces (DTII grid, `.stf` strings) as the highest-frequency editing entry points.
 **Mode:** mvp
@@ -219,7 +238,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
+Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 8
 
 (Phase 3 — live-injection — and Phase 6 — Blender bridge — are deliberately OFF the critical path and may be developed in parallel with the format chain; they are listed in numeric order here.)
 
@@ -229,7 +248,8 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
-| 4. Edit & Deploy Loop | 0/8 | Not started | - |
+| 4. Edit & Deploy Loop | 8/8 | Code-complete (plumbing UAT ✓; close-out/verify pending) | - |
+| 4.1 Deploy & Project UX *(INSERTED)* | 0/TBD | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
