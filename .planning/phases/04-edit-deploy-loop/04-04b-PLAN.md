@@ -7,8 +7,8 @@ depends_on:
   - 04-04
   - 04-02
 files_modified:
-  - packages/renderer/src/components/ChangesetTimelinePanel.tsx
-  - packages/renderer/src/components/ChangesetTimelinePanel.test.tsx
+  - packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx
+  - packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx
 autonomous: true
 requirements:
   - DEPLOY-03
@@ -21,16 +21,16 @@ must_haves:
     - "Clicking a node calls selectVersion(node.id); the panel does NOT implement flatten or parent-chain walking itself — it calls selectVersion from changesetService."
     - "A node that is on a branch (parentId points to a non-tail node) shows a branch divergence indicator (e.g. different indent or branch icon) so the user can see the graph structure."
   artifacts:
-    - path: packages/renderer/src/components/ChangesetTimelinePanel.tsx
+    - path: packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx
       provides: Graph-aware timeline panel; branch-divergence display; active/deployed pips; selectVersion wiring
-    - path: packages/renderer/src/components/ChangesetTimelinePanel.test.tsx
+    - path: packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx
       provides: 5 unit tests for rendering, active/deployed pips, stale badge, click→selectVersion, branch indicator
   key_links:
-    - from: packages/renderer/src/components/ChangesetTimelinePanel.tsx
+    - from: packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx
       to: packages/renderer/src/services/changesetService.ts
       via: "selectVersion(id) from '../../services/changesetService'"
       pattern: "selectVersion"
-    - from: packages/renderer/src/components/ChangesetTimelinePanel.tsx
+    - from: packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx
       to: packages/renderer/src/state/changesetStore.ts
       via: "useChangesetStore hooks for activeVersionId, deployedVersionId, changesets"
       pattern: "useChangesetStore"
@@ -43,13 +43,15 @@ must_haves:
 <objective>
 Implement the ChangesetTimelinePanel — the graph-aware version history UI that replaces the prior flat-list "changesets" display.
 
-This plan requires the graph engine from 04-04 (changesetService: flatten, sealVersion, selectVersion) and the Dockview panel wiring from 04-02 (workspace-config.ts).
+This plan requires the graph engine from 04-04 (changesetService: flatten, sealVersion, selectVersion) and the Dockview panel wiring from 04-02 (workspace-config.ts — registered as a tab in the inspector group per R2-B3 fix).
 
 Key requirements from the REFINED model (D-04-05..08):
 - The panel must show branch divergence (nodes whose parentId is not the immediately preceding node in chronological order are on a branch).
 - Two separate visual markers: activeVersionId (current editing pointer) vs deployedVersionId (what is live in the client).
 - Stale-deployment indicator when the two pips diverge.
 - Clicking a node calls selectVersion(id) (from changesetService), which updates the manifest AND materializes the staging store — the UI does not do this itself.
+
+Files live in src/panels/deploy/ (not src/components/) — R2-B4 fix.
 
 Output: ChangesetTimelinePanel.tsx (graph visualization with branch display) + ChangesetTimelinePanel.test.tsx (5 tests GREEN).
 </objective>
@@ -96,6 +98,13 @@ interface SwgChangeset {
   deltas: FileDelta[];
   deployRecord?: CfgDeployRecord;
 }
+
+<!-- IMPORTANT: panel file location (R2-B4 fix) -->
+// This panel lives at: packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx
+// Import paths from this file:
+//   changesetService: import from '../../services/changesetService'
+//   changesetStore:   import from '../../state/changesetStore'
+// The stub created in 04-02 workspace-config.ts must match this path.
 </interfaces>
 </context>
 
@@ -104,13 +113,14 @@ interface SwgChangeset {
 <task type="auto" tdd="true">
   <name>Task 1: ChangesetTimelinePanel.test.tsx — 5 tests for graph display, active/deployed pips, stale badge, branch indicator</name>
   <files>
-    packages/renderer/src/components/ChangesetTimelinePanel.test.tsx
+    packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx
   </files>
   <read_first>
-    packages/renderer/src/components/StagingPanel.tsx and any adjacent .test.tsx files — read for the exact Vitest + React Testing Library pattern used in the renderer.
+    packages/renderer/src/panels/deploy/StagingPanel.tsx and any adjacent .test.tsx files — read for the exact Vitest + React Testing Library pattern used in the renderer.
     packages/renderer/src/state/changesetStore.ts — read the full store shape (04-01 revised) to write accurate test setup.
     packages/renderer/src/state/stagingStore.ts — read restoreEntries (used indirectly via selectVersion, mock it in tests).
     packages/renderer/src/services/changesetService.ts — read the selectVersion export (04-04).
+    packages/renderer/vitest.config.ts — read to confirm jsdom environment is set (created in 04-01 T2 — R2-B5/B6 fix).
   </read_first>
   <behavior>
     - Test 1: Given manifest with 3 changesets (linear chain), panel renders all 3 labels. Each node shows its label text.
@@ -120,10 +130,10 @@ interface SwgChangeset {
     - Test 5: Given manifest with a branch (3 nodes: root → v1 → v2 linear, plus v3 branching off root), the branch node (v3) has a 'branch-node' class or data-branch="true" attribute. The non-branch nodes do not have this attribute.
   </behavior>
   <action>
-    Import { render, screen, fireEvent } from '@testing-library/react'. Import { describe, it, expect, vi, beforeEach } from 'vitest'. Import ChangesetTimelinePanel from './ChangesetTimelinePanel'. Import { useChangesetStore } from '../state/changesetStore'.
+    Import { render, screen, fireEvent } from '@testing-library/react'. Import { describe, it, expect, vi, beforeEach } from 'vitest'. Import ChangesetTimelinePanel from './ChangesetTimelinePanel'. Import { useChangesetStore } from '../../state/changesetStore'.
 
-    vi.mock('../services/changesetService', () => ({ selectVersion: vi.fn() })).
-    import { selectVersion } from '../services/changesetService';
+    vi.mock('../../services/changesetService', () => ({ selectVersion: vi.fn() })).
+    import { selectVersion } from '../../services/changesetService';
 
     Helper: buildManifest(nodes: Partial<SwgChangeset>[]): WorkspaceChangesetManifest — creates a manifest from partial changesets with auto-filled defaults.
 
@@ -138,33 +148,34 @@ interface SwgChangeset {
   </verify>
   <acceptance_criteria>
     pnpm --filter @swg/renderer exec tsc --noEmit exits 0.
-    grep -c "active-version-node\|aria-current\|data-active" packages/renderer/src/components/ChangesetTimelinePanel.test.tsx gives 1+.
-    grep -c "deployed-version-node\|data-deployed" packages/renderer/src/components/ChangesetTimelinePanel.test.tsx gives 1+.
-    grep -c "STALE\|stale\|⚠\|stale.*badge" packages/renderer/src/components/ChangesetTimelinePanel.test.tsx gives 1+.
-    grep -c "branch-node\|data-branch\|branch.*true" packages/renderer/src/components/ChangesetTimelinePanel.test.tsx gives 1+.
-    grep -c "selectVersion" packages/renderer/src/components/ChangesetTimelinePanel.test.tsx gives 1+.
+    grep -c "active-version-node\|aria-current\|data-active" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx gives 1+.
+    grep -c "deployed-version-node\|data-deployed" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx gives 1+.
+    grep -c "STALE\|stale\|⚠\|stale.*badge" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx gives 1+.
+    grep -c "branch-node\|data-branch\|branch.*true" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx gives 1+.
+    grep -c "selectVersion" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx gives 1+.
+    grep -c "from.*components/\|components/Changeset" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx gives 0 (R2-B4: no import from old components/ path).
   </acceptance_criteria>
-  <done>ChangesetTimelinePanel.test.tsx written with 5 test cases; TypeScript compiles; tests RED until Task 2.</done>
+  <done>ChangesetTimelinePanel.test.tsx written at panels/deploy/ with 5 test cases; TypeScript compiles; tests RED until Task 2.</done>
 </task>
 
 <task type="auto" tdd="true">
   <name>Task 2: ChangesetTimelinePanel.tsx — graph visualization, pips, stale badge, selectVersion — make tests GREEN</name>
   <files>
-    packages/renderer/src/components/ChangesetTimelinePanel.tsx
+    packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx
   </files>
   <read_first>
-    packages/renderer/src/components/StagingPanel.tsx — read for the panel wrapper pattern (className, overflow, padding conventions).
+    packages/renderer/src/panels/deploy/StagingPanel.tsx — read for the panel wrapper pattern (className, overflow, padding conventions).
     packages/renderer/src/state/changesetStore.ts — read to confirm selector shape for manifest.changesets, activeVersionId, deployedVersionId.
-    packages/renderer/src/components/ChangesetTimelinePanel.test.tsx — read (Task 1) to confirm data-attributes the component must provide.
+    packages/renderer/src/panels/deploy/ChangesetTimelinePanel.test.tsx — read (Task 1) to confirm data-attributes the component must provide.
     04-CONTEXT.md §D-04-06 — timeline shows labels, active/deployed pips, and branch divergence; no SVG required.
   </read_first>
   <behavior>
     All 5 ChangesetTimelinePanel.test.tsx tests must be GREEN after this task.
   </behavior>
   <action>
-    Create packages/renderer/src/components/ChangesetTimelinePanel.tsx.
+    Create packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx.
 
-    Use React 19 + TypeScript. Import useChangesetStore. Import { selectVersion } from '../services/changesetService'. Import { SwgChangeset, WorkspaceChangesetManifest } from '@swg/contracts'.
+    Use React 19 + TypeScript. Import useChangesetStore. Import { selectVersion } from '../../services/changesetService'. Import { SwgChangeset, WorkspaceChangesetManifest } from '@swg/contracts'.
 
     Component: function ChangesetTimelinePanel(): React.JSX.Element.
 
@@ -197,15 +208,16 @@ interface SwgChangeset {
   </verify>
   <acceptance_criteria>
     pnpm --filter @swg/renderer test exits 0 (includes 5 ChangesetTimelinePanel tests GREEN).
-    grep -c "flatten\|parentId.*walk\|while.*parentId\|for.*chain" packages/renderer/src/components/ChangesetTimelinePanel.tsx gives 0 (display layer only — no graph walking).
-    grep -c "selectVersion" packages/renderer/src/components/ChangesetTimelinePanel.tsx gives 1+ (wired on click).
-    grep -c "active-version-node\|activeVersionId" packages/renderer/src/components/ChangesetTimelinePanel.tsx gives 1+.
-    grep -c "deployed-version-node\|deployedVersionId" packages/renderer/src/components/ChangesetTimelinePanel.tsx gives 1+.
-    grep -c "branch-node\|isBranch\|data-branch" packages/renderer/src/components/ChangesetTimelinePanel.tsx gives 1+.
-    grep -c "stale-deploy-warning\|stale.*warning\|STALE\|⚠" packages/renderer/src/components/ChangesetTimelinePanel.tsx gives 1+.
-    wc -l < packages/renderer/src/components/ChangesetTimelinePanel.tsx gives a number less than 120 (concise display layer).
+    grep -c "flatten\|parentId.*walk\|while.*parentId\|for.*chain" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx gives 0 (display layer only — no graph walking).
+    grep -c "selectVersion" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx gives 1+ (wired on click).
+    grep -c "active-version-node\|activeVersionId" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx gives 1+.
+    grep -c "deployed-version-node\|deployedVersionId" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx gives 1+.
+    grep -c "branch-node\|isBranch\|data-branch" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx gives 1+.
+    grep -c "stale-deploy-warning\|stale.*warning\|STALE\|⚠" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx gives 1+.
+    grep -c "from.*components/\|components/Changeset" packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx gives 0 (R2-B4: no import from old components/ path).
+    wc -l < packages/renderer/src/panels/deploy/ChangesetTimelinePanel.tsx gives a number less than 120 (concise display layer).
   </acceptance_criteria>
-  <done>ChangesetTimelinePanel.tsx renders graph (branch-node markers, active/deployed pips, stale badge); clicks call selectVersion; zero flatten/parentId walking in component; 5 tests GREEN.</done>
+  <done>ChangesetTimelinePanel.tsx at panels/deploy/ renders graph (branch-node markers, active/deployed pips, stale badge); clicks call selectVersion; zero flatten/parentId walking in component; 5 tests GREEN.</done>
 </task>
 
 </tasks>
@@ -227,12 +239,12 @@ interface SwgChangeset {
 </threat_model>
 
 <verification>
-pnpm --filter @swg/renderer test exits 0 (7 graph-engine tests from 04-04 + 5 timeline tests = 12 total passing).
+pnpm --filter @swg/renderer test exits 0 (8 graph-engine tests from 04-04 + 5 timeline tests = 13 total passing).
 pnpm --filter @swg/renderer exec tsc --noEmit exits 0.
 </verification>
 
 <success_criteria>
-ChangesetTimelinePanel.tsx renders all nodes with active/deployed pips and branch-node markers; stale-deployment warning when active !== deployed; clicks call selectVersion(id) from changesetService (no graph logic in component); 5 tests GREEN.
+ChangesetTimelinePanel.tsx at packages/renderer/src/panels/deploy/ renders all nodes with active/deployed pips and branch-node markers; stale-deployment warning when active !== deployed; clicks call selectVersion(id) from changesetService (no graph logic in component); 5 tests GREEN.
 </success_criteria>
 
 <output>

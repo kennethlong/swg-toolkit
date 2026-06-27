@@ -6,7 +6,7 @@ nyquist_compliant: true
 wave_0_complete: true
 created: 2026-06-26
 revised: 2026-06-26
-revision_reason: "MAJOR revision — B1..B8 + W1..W10 + N1..N5 fixes; graph model (04-04 REWRITE); 04-04b NEW (ChangesetTimelinePanel); B5 fix (renderer test script); updated test counts"
+revision_reason: "R1: B1..B8+W1..W10+N1..N5 fixes; graph model (04-04 REWRITE); 04-04b NEW. R2 2026-06-26: R2-B1/B2 dirty model; R2-B3 inspector tabs; R2-B4 panels/deploy/ path; R2-B5/B6 vitest.config.ts+jsdom; R2-B7 patchPath; R2-B8 updateChangesetDeployRecord; R2-W1 local slot; R2-W2 line-surgery; R2-W3 diff-vs-parent; R2-W4 code-point sort; R2-W5 sha fallback; R2-W6 cycle guard; R2-W7 existence check; ROADMAP 8 plans"
 ---
 
 # Phase 04 — Validation Strategy
@@ -25,6 +25,7 @@ revision_reason: "MAJOR revision — B1..B8 + W1..W10 + N1..N5 fixes; graph mode
 | **Quick run (native-core)** | `pnpm --filter @swg/native-core test` |
 | **Full suite command** | `pnpm -r test` (from repo root) |
 | **B5 fix note** | `packages/renderer/package.json` now has `"test": "vitest run"` (added in 04-01 T2); renderer tests run as part of the full suite |
+| **R2-B5/B6 fix note** | `packages/renderer/vitest.config.ts` created in 04-01 T2 with `environment: jsdom` + `*.test.tsx` glob; devDeps (vitest, @testing-library/react, jsdom) added to renderer package.json; .test.tsx component tests now executable |
 | **Estimated runtime** | ~varies (188+ tests today; keep < ~60s) |
 
 ---
@@ -50,15 +51,15 @@ revision_reason: "MAJOR revision — B1..B8 + W1..W10 + N1..N5 fixes; graph mode
 | 04-03 T1: packPatch.test.ts (v5000 magic, tombstone, determinism) + patch-shadow.test.ts (shadow/modify resolution) | 04-03 | 2 | DEPLOY-01 | T-04-09, T-04-10 | magic bytes 0x45 0x45 0x52 0x54 0x35 0x30 0x30 0x30 = EERT5000; tombstone uncompressedSize=0; canonical sort → byte-identical re-deploy | unit (TDD RED→GREEN) | `pnpm --filter @swg/native-core test` | ⬜ pending |
 | 04-03 T2: packPatch.ts (buildPatchName B6+N2, canonical sort D-04-08a, atomic write) + clientLocator.ts (B1 full-chain scan, LAST-wins maxSearchPriority N5) | 04-03 | 2 | DEPLOY-01 | T-04-09, T-04-10, T-04-11, T-04-12 | version arg is '5000' literal; path-traversal guard on virtualPath; B6: sanitized patchName with UUID; N5: LAST-wins comment; clientLocator never throws; LAST-wins maxSearchPriority | unit | `pnpm --filter @swg/native-core test` | ⬜ pending |
 | 04-03 T3: cfgActivator.ts (re-exports clientLocator; W9 deactivatePatch line-surgery) + cfgScan.test.ts (5 tests: multi-include chain B1, LAST-wins N5) + cfgActivator.test.ts (4 tests: W9 coexistence test) | 04-03 | 2 | DEPLOY-02 | T-04-10, T-04-11, T-04-12 | never writes user.cfg/options.cfg; BOM-free; atomic backup+tmp+rename; ensureInclude idempotent; W9: deactivatePatch removes ONLY its keyName= line via regex line-surgery (never restores .bak) | unit (TDD RED→GREEN) | `pnpm --filter @swg/renderer test` | ⬜ pending |
-| 04-04 T1: changeset.test.ts (7 tests: sealVersion linear, flatten chain, selectVersion materializes staging B2, branching after rollback B3, empty/dup guard N4) | 04-04 | 2 | DEPLOY-03 | T-04-13, T-04-14, T-04-15, T-04-16 | sealVersion with parentId=activeVersionId creates branch; flatten = path-walk last-writer-wins NOT cumulative; selectVersion restores stagingStore entries (B2 fix); N4 dup guard; no rmSync/splice/pop | unit (TDD RED→GREEN) | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
-| 04-04 T2: changesetService.ts (flatten, sealVersion, selectVersion, setDeployedVersion — make 7 tests GREEN) | 04-04 | 2 | DEPLOY-03 | T-04-13, T-04-14, T-04-15, T-04-16 | ZERO rmSync/splice/pop/PurgeChangeset; renameSync atomic writeManifest; parentId branching; selectVersion materializes staging (B2); N4 flatEqual guard | unit | `pnpm --filter @swg/renderer test` | ⬜ pending |
-| 04-04b T1: ChangesetTimelinePanel.test.tsx (5 tests: node rendering, active pip, deployed pip, stale badge, branch-node marker) | 04-04b | 3 | DEPLOY-03 | T-04-17 | active-version-node class; deployed-version-node class; stale-deploy-warning when active≠deployed; branch-node data attribute; click → selectVersion(id) | unit (TDD RED→GREEN) | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
-| 04-04b T2: ChangesetTimelinePanel.tsx — graph visualization (branch divergence, pips, stale badge, selectVersion wiring) | 04-04b | 3 | DEPLOY-03 | T-04-17, T-04-18 | zero flatten/parentId walking in component; selectVersion from changesetService; branch-node marker for branch-start nodes; two distinct pip classes for active vs deployed | unit | `pnpm --filter @swg/renderer test` | ⬜ pending |
+| 04-04 T1: changeset.test.ts (8 tests: sealVersion linear, flatten chain, selectVersion materializes staging B2, branching after rollback B3, empty/dup guard N4, R2-W3 diff-vs-parent Test 8) | 04-04 | 2 | DEPLOY-03 | T-04-13, T-04-14, T-04-15, T-04-16 | sealVersion with parentId=activeVersionId creates branch; flatten = path-walk last-writer-wins NOT cumulative; selectVersion restores stagingStore entries (B2 fix); N4 dup guard; no rmSync/splice/pop | unit (TDD RED→GREEN) | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
+| 04-04 T2: changesetService.ts (flatten[R2-W4/W6], sealVersion[R2-W3 diff-vs-parent], selectVersion, setDeployedVersion[R2-W7], flatEqual[R2-W5], updateChangesetDeployRecord[R2-B8] — make 8 tests GREEN) | 04-04 | 2 | DEPLOY-03 | T-04-13, T-04-14, T-04-15, T-04-16 | ZERO rmSync/splice/pop/PurgeChangeset; renameSync atomic writeManifest; parentId branching; selectVersion materializes staging (B2); N4 flatEqual guard; R2-W3: diff-vs-parent deltas; R2-W4: code-point sort; R2-W5: sha fallback; R2-W6: cycle guard; R2-W7: existence check; R2-B8: updateChangesetDeployRecord | unit | `pnpm --filter @swg/renderer test` | ⬜ pending |
+| 04-04b T1: ChangesetTimelinePanel.test.tsx at panels/deploy/ (R2-B4, 5 tests: node rendering, active pip, deployed pip, stale badge, branch-node marker) | 04-04b | 3 | DEPLOY-03 | T-04-17 | R2-B4: panels/deploy/ path; active-version-node class; deployed-version-node class; stale-deploy-warning when active≠deployed; branch-node data attribute; click → selectVersion(id) | unit (TDD RED→GREEN) | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
+| 04-04b T2: ChangesetTimelinePanel.tsx at panels/deploy/ (R2-B4, R2-B3 as inspector tab, R2-B5/B6 jsdom) — graph visualization (branch divergence, pips, stale badge, selectVersion wiring) | 04-04b | 3 | DEPLOY-03 | T-04-17, T-04-18 | zero flatten/parentId walking in component; selectVersion from changesetService; branch-node marker for branch-start nodes; two distinct pip classes for active vs deployed | unit | `pnpm --filter @swg/renderer test` | ⬜ pending |
 | 04-05 T1: gitLfs.test.ts (6 tests incl B8 non-vacuous LFS pointer test + N3 *.iff *.tga *.wav *.ogg assertions) + vcsStore.ts | 04-05 | 2 | DEPLOY-04 | T-04-23, T-04-24, T-04-25, T-04-26 | B8: .dds binary staged → committed → cat-file blob contains LFS pointer header; N3: *.iff *.tga *.wav *.ogg in .gitattributes; *.tre NOT LFS-tracked (gitignored); pre-commit hook rejects .tre and >50MB | unit (TDD RED→GREEN) | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
 | 04-05 T2: gitLfsService.ts + VcsPanel.tsx (make 6 tests GREEN, exec() absent, no git add .) | 04-05 | 2 | DEPLOY-04 | T-04-23, T-04-24, T-04-25, T-04-26 | exec() absent (0 occurrences); execFile only; never git add .; empty-paths guard; message sanitized; VcsPanel textarea uses --color-bg | unit | `pnpm --filter @swg/renderer test` | ⬜ pending |
-| 04-06b T1: shadowBaseService.ts — async copy (B7), patchPath param at highest slot (B4), W4 path.relative containment, W8 .tmp cleanup on error | 04-06b | 3 | DEPLOY-02, DEPLOY-01 | T-04-SB-01..T-04-SB-05 | B4: patchPath → activatePatch at highest slot so mod edits load; B7: fs.promises.copyFile async; W4: path.relative not process.cwd().startsWith(); W8: catch block rmSync tmpShadowDir; disk-space guard; shadow dir inside workspace | compile | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
+| 04-06b T1: shadowBaseService.ts — async copy (B7), patchPath param at highest slot (B4), W4 path.relative containment, W8 .tmp cleanup on error, R2-W1 full-chain scan once+local slot, R2-W2 resetShadow line-surgery | 04-06b | 3 | DEPLOY-02, DEPLOY-01 | T-04-SB-01..T-04-SB-05 | B4: patchPath → activatePatch at highest slot so mod edits load; B7: fs.promises.copyFile async; W4: path.relative not process.cwd().startsWith(); W8: catch block rmSync tmpShadowDir; disk-space guard; shadow dir inside workspace | compile | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
 | 04-06b T2: In-client UAT — shadow TREs load + mod edits visible (B4) + renderer responsive (B7) + reset restores | 04-06b | 3 | DEPLOY-02 | T-04-SB-01, T-04-SB-02 | shadow searchTree slots > originals; B4: mod edits visible in-game (patch at highest slot); B7: renderer stays responsive during multi-GB copy; reset removes shadow cfg entries; originals intact | manual UAT (checkpoint:human-verify) | _Blocking manual UAT — no automated command_ | ⬜ pending |
-| 04-06 T1: DeployDialog.tsx — W2 (flatten not stagingStore), W7 (stale banner), W9 (deployingRef mutex), B1 propagation (scanSharedFile cfgRootPath), B6 (buildPatchName), setDeployedVersion after deploy | 04-06 | 4 | DEPLOY-01, DEPLOY-02 | T-04-30..T-04-34 | W2: packPatch receives flatten() output; W7: stale banner renders when active≠deployed; W9: deployingRef+disabled button prevent concurrent deploy; B1: scanSharedFile(cfgRootPath) not swgtoolkitCfgPath; B6: buildPatchName no raw concatenation | compile | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
+| 04-06 T1: DeployDialog.tsx — W2 (flatten not stagingStore), W7 (stale banner), W9 (deployingRef mutex), B1 propagation (scanSharedFile cfgRootPath), B6 (buildPatchName), setDeployedVersion after deploy, R2-B1/B2 (flatEqual dirty gate), R2-B7 (record.patchPath), R2-B8 (updateChangesetDeployRecord) | 04-06 | 4 | DEPLOY-01, DEPLOY-02 | T-04-30..T-04-34 | W2: packPatch receives flatten() output; W7: stale banner renders when active≠deployed; W9: deployingRef+disabled button prevent concurrent deploy; B1: scanSharedFile(cfgRootPath) not swgtoolkitCfgPath; B6: buildPatchName no raw concatenation | compile | `pnpm --filter @swg/renderer exec tsc --noEmit` | ⬜ pending |
 | 04-06 T2: In-client UAT — slot 55 (B1), patchName no spaces (B6), mod visible (B4 propagation), stale banner (W7), reset clean | 04-06 | 4 | DEPLOY-01, DEPLOY-02 | T-04-30, T-04-31 | patch at slot 55 not slot 1; patchName has UUID fragment no spaces; mod edits visible in-game; stale banner appears when active≠deployed; reset removes cfg key and patch .tre | manual UAT (checkpoint:human-verify) | _Blocking manual UAT — no automated command_ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
@@ -72,7 +73,7 @@ All wave 0 test scaffolds are embedded in the first task of each plan (TDD RED p
 - [x] 04-01 T1: @swg/contracts compiles — `pnpm --filter @swg/contracts build`
 - [x] 04-03 T1: packPatch.test.ts + patch-shadow.test.ts written (RED) before packPatch.ts
 - [x] 04-03 T3: cfgScan.test.ts (5 tests) + cfgActivator.test.ts (4 tests) written (RED) before cfgActivator.ts
-- [x] 04-04 T1: changeset.test.ts (7 tests) written (RED) before changesetService.ts
+- [x] 04-04 T1: changeset.test.ts (8 tests incl R2-W3 diff-vs-parent) written (RED) before changesetService.ts
 - [x] 04-04b T1: ChangesetTimelinePanel.test.tsx (5 tests) written (RED) before ChangesetTimelinePanel.tsx
 - [x] 04-05 T1: gitLfs.test.ts (6 tests incl B8 LFS pointer) written (RED) before gitLfsService.ts
 
@@ -139,6 +140,24 @@ grep -c "replace.*\[.*a-zA-Z0-9_-\]\|randomUUID\|uuid.*slice" packages/renderer/
 grep -c "promises\.copyFile\|await.*copyFile" packages/renderer/src/services/shadowBaseService.ts
 # Expected: 1+
 
+# R2-W1: no rescanning swgtoolkitCfgPath in shadow slot loop (would miss retail slots 30-54)
+grep -c "currentScan.*scanSharedFile|scanSharedFile.*swgtoolkitCfgPath" packages/renderer/src/services/shadowBaseService.ts
+# Expected: 0
+
+# R2-W2: resetShadow line-surgery (not wholesale bak restore)
+grep -c "copyFileSync.*backupPath|backupPath.*copyFileSync" packages/renderer/src/services/shadowBaseService.ts
+# Expected: 0
+
+# R2-B2: dirty check uses flatEqual not stagingEntries.length > 0
+grep -c "flatEqual|isDirty" packages/renderer/src/panels/deploy/DeployDialog.tsx
+# Expected: 1+
+grep -c "stagingEntries.length.*>.*0" packages/renderer/src/panels/deploy/DeployDialog.tsx
+# Expected: 0
+
+# R2-B8: updateChangesetDeployRecord persists deploy record to manifest
+grep -c "updateChangesetDeployRecord" packages/renderer/src/panels/deploy/DeployDialog.tsx
+# Expected: 1+
+
 # W4 fix: path.relative containment check (not process.cwd().startsWith)
 grep -c "path\.relative\|relToWorkspace" packages/renderer/src/services/shadowBaseService.ts
 # Expected: 2+
@@ -167,4 +186,4 @@ grep -c "scanSharedFile.*cfgRootPath" packages/renderer/src/panels/deploy/Deploy
 - [x] Feedback latency < 60s (pnpm --filter @swg/renderer test targets < 60s)
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** planner-signed 2026-06-26 (revised: MAJOR — B1..B8 + W1..W10 + N1..N5 fixes; graph model 04-04 rewrite; 04-04b NEW ChangesetTimelinePanel; B5 renderer test command fixed; all task rows updated for revised plans)
+**Approval:** planner-signed 2026-06-26 (R1: B1..B8+W1..W10+N1..N5 fixes; graph model 04-04 rewrite; 04-04b NEW. R2 2026-06-26: R2-B1..B8+W1..W7 fixes; ROADMAP updated to 8 plans)

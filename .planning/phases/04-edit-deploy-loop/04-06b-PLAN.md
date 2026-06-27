@@ -21,7 +21,8 @@ must_haves:
     - "W4 fix: containment check uses path.relative(studioDir, shadowDir).startsWith('..') === false (NOT process.cwd().startsWith() which is incorrect for Windows absolute paths)."
     - "W8 fix: if deployShadowBase fails mid-copy, the .tmp shadow dir is cleaned up in the catch block (no orphaned partial dirs left in the workspace)."
     - "Shadow cfg entries AND the patch entry are written as searchTree_<sku>_<NN>= into swgtoolkit.cfg at slots above the originals, using the searchTree_<sku>_<NN>= mechanism from TreeFile.cpp:133."
-    - "resetShadow(record) does line-surgery to remove shadow searchTree entries AND the patch entry from swgtoolkit.cfg (W9 principle extended to shadow cleanup)."
+    - "resetShadow(record) does TRUE line-surgery (R2-W2) to remove ONLY the specific keyName= lines it inserted (shadowEntries[].keyName + patchEntry.keyName) — it never restores from .shadow.bak wholesale (would drop unrelated keys)."
+    - "R2-W1 fix: scanSharedFile(client.cfgRootPath) is called ONCE at the start of deployShadowBase; subsequent slot tracking is maintained locally by appending record.slot to currentScan.occupiedSlots after each insert — never rescanning swgtoolkitCfgPath (which lacks retail slots 30-54 and causes slot collision)."
     - ".studio/shadow/ is already in .gitignore (workspaceService 04-01 T3); deployShadowBase verifies this defensively before copying."
   artifacts:
     - path: packages/renderer/src/services/shadowBaseService.ts
@@ -220,8 +221,11 @@ interface ShadowDeployRecord {
        
        const records: ShadowDeployRecord['shadowEntries'] = [].
        
-       // Write one shadow entry per TRE (re-scan after each to get the updated occupied slots)
-       let currentScan = scanSharedFile(client.cfgRootPath).  // FULL chain scan — not just swgtoolkit.cfg
+       // R2-W1: scan the FULL chain ONCE (client.cfgRootPath) — includes all retail slots (e.g. 30-54).
+       // After each insertion, maintain occupiedSlots LOCALLY instead of re-scanning swgtoolkitCfgPath
+       // (which would miss the retail slots and cause slot collision at slot 1).
+       const initialScan = scanSharedFile(client.cfgRootPath);
+       let currentScan: SharedFileScan = { ...initialScan, occupiedSlots: [...initialScan.occupiedSlots] };
        const treFiles = (await fs.promises.readdir(liveDir)).filter(f => f.endsWith('.tre')).
        for (let j = 0; j < treFiles.length; j++) {
          const shadowTrePath = path.join(shadowDir, treFiles[j]).
@@ -229,27 +233,44 @@ interface ShadowDeployRecord {
          // If the client rejects absolute paths, the UAT checkpoint will surface this and a gap-closure plan will add copy-to-client-subdir logic.
          const record = activatePatch(swgtoolkitCfgPath, shadowTrePath, currentScan).
          records.push({ keyName: record.keyName, slot: record.slot, shadowTrePath, originalTreName: treFiles[j] }).
-         currentScan = scanSharedFile(swgtoolkitCfgPath).  // rescan after each insertion
+         // R2-W1: local slot increment — do NOT rescan swgtoolkitCfgPath (it lacks retail slots 30-54)
+         currentScan = { ...currentScan, occupiedSlots: [...currentScan.occupiedSlots, record.slot] };
          onProgress?.(0.8 + (j + 1) / treFiles.length * 0.15).  // cfg writes = 15% of progress
        }
        
        // B4 fix: mount the patch at the highest slot (above all shadow TREs)
        // packPatch(flatten(activeVersionId)) was called by the DeployDialog before invoking deployShadowBase.
        // Here we just register the already-built patchPath in the cfg.
-       const patchScan = scanSharedFile(swgtoolkitCfgPath).  // includes all shadow slots written above
-       const patchRecord = activatePatch(swgtoolkitCfgPath, patchPath, patchScan).
+       // R2-W1: use currentScan (local tracking includes all shadow slots) — NOT scanSharedFile(swgtoolkitCfgPath)
+       const patchRecord = activatePatch(swgtoolkitCfgPath, patchPath, currentScan).
        const patchEntry = { keyName: patchRecord.keyName, slot: patchRecord.slot, patchPath }.
        onProgress?.(1.0).
        
        return { shadowDir, cfgPath: swgtoolkitCfgPath, includeTargetPath: client.cfgRootPath, shadowEntries: records, patchEntry, originalLiveDir: liveDir, backupPath }.
 
     Export function resetShadow(record: ShadowDeployRecord, cleanup = false): void:
-    // Line-surgery to remove shadow searchTree entries AND the patch entry (W9 principle).
-    // Restore from the single .shadow.bak taken before any shadow writes — this is the
-    // authoritative restore point that covers all shadow entries + the patch entry in one operation.
-    fs.copyFileSync(record.backupPath, record.cfgPath).
+    // R2-W2: TRUE line-surgery — remove ONLY the specific keyName= lines we inserted.
+    // NEVER restore from .shadow.bak wholesale: that drops unrelated keys the user may have added
+    // (other tools, manual edits) since the backup was taken.
+    //
+    // Collect the exact keyNames written at deploy time (from shadowEntries[] + patchEntry)
+    const keysToRemove = new Set<string>([
+      ...record.shadowEntries.map(e => e.keyName),
+      record.patchEntry.keyName,
+    ]);
+    const cfgText = fs.readFileSync(record.cfgPath, 'utf8');
+    const eol = cfgText.includes('
+') ? '
+' : '
+';
+    const filtered = cfgText.split(/?
+/).filter(line =>
+      // Remove any line where the trimmed start matches 'keyName='
+      ![...keysToRemove].some(key => line.trimStart().startsWith(key + '='))
+    );
+    fs.writeFileSync(record.cfgPath, filtered.join(eol), 'utf8');
     if (cleanup && fs.existsSync(record.shadowDir)) { fs.rmSync(record.shadowDir, {recursive: true, force: true}); }
-    // The .shadow.bak is kept (do not delete it — safety net for future resets).
+    // The .shadow.bak is retained as a safety net only — never used for auto-restore (R2-W2).
 
     Export function diffShadow(client: DetectedClient, studioDir: string): { inShadow: string[]; missingFromShadow: string[] }:
     Compare *.tre files in liveDir vs shadowDir. Return stale/missing arrays. Used by UAT tooling.
@@ -262,6 +283,11 @@ interface ShadowDeployRecord {
     grep -c "deployShadowBase\|resetShadow\|estimateTreSize\|checkFreeDisk" packages/renderer/src/services/shadowBaseService.ts gives 4.
     grep -c "promises\.copyFile\|await.*copyFile" packages/renderer/src/services/shadowBaseService.ts gives 1+ (B7: async copy).
     grep -c "copyFileSync" packages/renderer/src/services/shadowBaseService.ts gives 1 (only for the .shadow.bak backup — not in the TRE copy loop; grep total should be 1 not 2+).
+    grep -c "initialScan.*scanSharedFile|scanSharedFile.*client.cfgRootPath" packages/renderer/src/services/shadowBaseService.ts gives 1 (R2-W1: full-chain scan ONCE at start).
+    grep -c "scanSharedFile.*swgtoolkitCfgPath|currentScan.*scanSharedFile" packages/renderer/src/services/shadowBaseService.ts gives 0 (R2-W1: rescanning swgtoolkitCfgPath in loop is BANNED).
+    grep -c "occupiedSlots.*record.slot|local.*slot|slot.*increment" packages/renderer/src/services/shadowBaseService.ts gives 1+ (R2-W1: local slot tracking).
+    grep -c "keysToRemove|trimStart.*startsWith|line-surgery|R2-W2" packages/renderer/src/services/shadowBaseService.ts gives 2+ (R2-W2: line-surgery in resetShadow).
+    grep -c "copyFileSync.*record.backupPath|backupPath.*copyFileSync" packages/renderer/src/services/shadowBaseService.ts gives 0 (R2-W2: wholesale bak restore BANNED — use line-surgery instead).
     grep -c "patchEntry\|patchPath.*activatePatch\|B4\|patch.*highest.*slot" packages/renderer/src/services/shadowBaseService.ts gives 2+ (B4: patch slot above shadow entries).
     grep -c "path\.relative\|relToWorkspace\|W4" packages/renderer/src/services/shadowBaseService.ts gives 2+ (W4: correct containment check).
     grep -v "process\.cwd" packages/renderer/src/services/shadowBaseService.ts | grep -c "startsWith" gives 0 (the only startsWith use is path.relative result check, not process.cwd()).
