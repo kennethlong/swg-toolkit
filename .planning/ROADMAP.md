@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 0: Toolchain De-risk & App Shell** - Prove the full native->renderer pipeline, lock Electron security/isolation, ship the dark dockable shell ✓ 2026-06-22 (Path B: native-in-renderer zero-copy)
 - [x] **Phase 1: Core Engine — IFF + TRE + Verification Harness** - The dependency root: parse/serialize IFF byte-exact, mount TRE, bake the standing round-trip gate (completed 2026-06-23)
 - [x] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export ✓ 2026-06-25 (VIEW-01..04; glTF export + Extract human-verified)
-- [x] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track) (completed 2026-06-26)
+- [x] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track) (completed 2026-06-26)
 - [ ] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs
 - [ ] **Phase 4.1: Deploy & Project UX** *(INSERTED)* - Project↔client binding front door, one combined Deploy tab, stage-from-TRE, lazy/virtual shadow sandbox (build approved sketches 005-B/006-D/007/008)
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
@@ -181,9 +181,28 @@ Plans:
 
 **Ground-truth gate:** DEPLOY-06 (shadow + cfg path handling) is gated on the queued ground-truth verifications — absolute `searchTree` cfg paths accepted by the client (`TreeFile.cpp:115-149`); server TRE search-path config (Core3/swg-main); v6000 = zlib-vs-encrypted (challenges memory `tre-version-oracles-and-v6000-encryption`) — run under the de-anchoring protocol during plan-phase research, NOT from consensus.
 
-**Plans:** 0 plans
+**Plans:** 11 plans
 Plans:
-- [ ] TBD (run /gsd-plan-phase 04.1 to break down)
+**Wave 1**
+- [ ] 04.1-01-PLAN.md — Foundation: extend WorkspaceInfo contract (kind + binding fields) + shared fake-client-dir test fixture + vitest version alignment
+**Wave 2**
+- [ ] 04.1-02-PLAN.md — Project binding service + auto-mount (PROJ-01): projectBinding (detect/persist/auto-mount), extracted treMount routine, workspaceService persistence
+**Wave 3**
+- [ ] 04.1-03-PLAN.md — Combined DeployPanel (DEPLOY-05): extract StagingPanelBody + VersionHistoryBody (Baseline + ▸deltas), compose one panel + sticky Deploy CTA, DeployDialog auto-select bound client (D-12)
+- [ ] 04.1-04-PLAN.md — Project front door UI (PROJ-01): ProjectBindingBar (＋Project + chip), NewProjectWizard (4-step, capture-only server, non-client branch), WorkspaceEntry first-run welcome
+**Wave 4**
+- [ ] 04.1-05-PLAN.md — Dock integration + layout-version guard (DEPLOY-05/07): workspace-config panel swap (deploy+vcs, LAYOUT_VERSION=2), WorkspaceShell register DeployPanel + version-mismatch migration
+**Wave 5**
+- [ ] 04.1-06-PLAN.md — .studio relocation (whitespace-free) + Baseline changeset seed (DEPLOY-06/D-08): workspaceService getStudioDir, changesetService seedBaseline
+**Wave 6**
+- [ ] 04.1-07-PLAN.md — Shadow re-arch (DEPLOY-06): shadowBaseService fs.link hardlink + EXDEV fallback, cfgActivator snapshot/restore + idempotent [SharedFile] + backup relocation, DeployDialog model radio (absolute-path default)
+**Wave 7**
+- [ ] 04.1-08-PLAN.md — Stage-from-TRE + reset-layout/reopen-panel (DEPLOY-07): Extract→Add derives virtual path, corrected empty-state copy, reset/reopen affordance
+- [ ] 04.1-09-PLAN.md — Client-layout detection table + manual override (D-13): clientLayout resolver, clientLocator generalization, wizard/binding surfacing
+**Wave 8**
+- [ ] 04.1-10-PLAN.md — Centralize IPC channel return types (Pattern 8): contracts ipc.ts IpcChannels/TypedIpcRenderer + swap all call sites
+**Wave 9**
+- [ ] 04.1-11-PLAN.md — Phase UAT checkpoint: in-client real-Electron onboarding→deploy→reset on SWG Infinity + SWGEmu [autonomous: false]
 
 ### Phase 5: WYSIWYG Live-Sync & Typed Editors
 **Goal**: Join the two independently-built halves — viewport gizmo and injection module — into the zero-restart WYSIWYG loop over the SharedArrayBuffer data channel, and ship the first typed edit surfaces (DTII grid, `.stf` strings) as the highest-frequency editing entry points.
@@ -249,7 +268,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
 | 4. Edit & Deploy Loop | 8/8 | Code-complete (plumbing UAT ✓; close-out/verify pending) | - |
-| 4.1 Deploy & Project UX *(INSERTED)* | 0/TBD | Not started | - |
+| 4.1 Deploy & Project UX *(INSERTED)* | 0/11 | Planned | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |

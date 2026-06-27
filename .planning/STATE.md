@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 04.1 context gathered (CONTEXT.md written; 4 decisions locked)
+stopped_at: Phase 04.1 PLANNED (11 plans/9 waves) + plan-checker PASS + 4-AI crew review applied (6 HIGH+9 MED fixed); PAUSED before execute awaiting maintainer go
 last_updated: "2026-06-27T19:42:32.088Z"
 last_activity: 2026-06-27 -- Phase 04.1 inserted (redesign building approved sketches); ready to plan
 progress:
@@ -25,19 +25,24 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 04.1 (deploy-project-ux) — INSERTED, ready to plan
-Plan: none yet (next = /gsd:plan-phase 04.1)
+Phase: 04.1 (deploy-project-ux) — PLANNED + crew-reviewed; PAUSED before execute
+Plan: 11 plans / 9 waves (MVP front-door-first). plan-checker PASS (0 blockers); 4-AI crew
+      (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
+      reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
+      Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
+      migration, dynamic auto-widen). Crew briefs: .planning/research/CONSULT-P4.1-*.md.
 Status: Phase 04 plumbing is code-complete and UAT-passed end-to-end in-client (deploy loop works:
         New Project→Add→Save version→Changeset→Deploy patch-prepend→mod loaded in-game, disk-verified).
         The remaining work is the UI/UX redesign + project-binding/shadow scope surfaced by UAT, now
         framed as INSERTED Phase 04.1 (maintainer chose inserted-phase over new-plans-under-4). Builds
         APPROVED sketches 005-B/006-D/007/008 — NOT a fresh design. New reqs: PROJ-01, DEPLOY-05/06/07.
         Phase 04 deploy ENGINE (packPatch/changesetService/cfgActivator/DeployDialog) reused as-is.
-Next: PLAN 04.1 — run plan-phase with FRESH research (de-anchored ground-truth: absolute searchTree cfg
-      paths vs TreeFile.cpp; v6000 zlib-vs-encrypted; server TRE search-path) + fresh CONTEXT (current
-      04-CONTEXT.md is the OLD plumbing scope). Then PAUSE — offer cross-AI plan review BEFORE execute
-      (feedback-pause-after-plan-phase). Do NOT auto-advance. Phase 04 formal close-out (mark 04-06/06b
-      complete, verifier, REQUIREMENTS DEPLOY-01..04 → Complete) is a separate small task, still pending.
+Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clear` first for fresh context).
+      Wave order 1→9; plan 11 is a real-Electron in-client UAT (autonomous:false) that gates the phase.
+      Ground-truth note: 2 of 3 queued verifications already RESOLVED (absolute searchTree accepted;
+      v6000 encrypted/out-of-scope) — server TRE search-path remains open, deferred to Phase 8 w/ server-push.
+      Separately still pending: Phase 04 formal close-out (mark 04-06/06b complete, verifier,
+      REQUIREMENTS DEPLOY-01..04 → Complete).
 Last activity: 2026-06-27 -- Phase 04.1 inserted (redesign building approved sketches); ready to plan
 
 Progress: [█████░░░░░] ~50% (5/10 phases) — Phase 4 code-complete; Phase 4.1 inserted, not yet planned
