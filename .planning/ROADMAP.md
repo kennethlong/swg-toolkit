@@ -153,13 +153,13 @@ Plans:
 - [x] 04-01-PLAN.md — Contract types (workspace/staging/changeset/deploy), Zustand stores (workspaceStore/stagingStore/changesetStore), workspaceService (scaffold .studio/, .gitignore, .gitattributes, pre-commit hook, git init)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 04-02-PLAN.md — WorkspaceEntry + ActionBadge (glyph+color+text Rule 1) + StatusBar extend + WorkspaceShell panel registration + StagingPanel (virtualized ROW_HEIGHT=30, Pack Patch auto-seal, path-traversal guard)
-- [ ] 04-03-PLAN.md — packPatch.ts (buildTre version=5000, tombstone, atomic output) + clientLocator.ts (registry + known paths, never throws) + cfgActivator.ts (scanSharedFile, chooseSlot, activatePatch, deactivatePatch, ensureInclude — BOM-free atomic, backup, never user.cfg/options.cfg)
-- [ ] 04-04-PLAN.md — changesetService.ts (sealLayer, setActiveVersion — non-destructive pointer only, atomic JSON, 6 tests GREEN) + ChangesetTimelinePanel (virtual list, active/rolled-back states, keyboard activation)
-- [ ] 04-05-PLAN.md — gitLfsService.ts (execFile arg arrays, never exec(), never git add ., explicit-path staging, message sanitized) + VcsPanel (commit/push/log/LFS status/guard surface)
+- [x] 04-02-PLAN.md — WorkspaceEntry + ActionBadge (glyph+color+text Rule 1) + StatusBar extend + WorkspaceShell panel registration + StagingPanel (virtualized ROW_HEIGHT=30, Pack Patch auto-seal, path-traversal guard)
+- [x] 04-03-PLAN.md — packPatch.ts (buildTre version=5000, tombstone, atomic output) + clientLocator.ts (registry + known paths, never throws) + cfgActivator.ts (scanSharedFile, chooseSlot, activatePatch, deactivatePatch, ensureInclude — BOM-free atomic, backup, never user.cfg/options.cfg)
+- [x] 04-04-PLAN.md — changesetService.ts (sealLayer, setActiveVersion — non-destructive pointer only, atomic JSON, 6 tests GREEN) + ChangesetTimelinePanel (virtual list, active/rolled-back states, keyboard activation)
+- [x] 04-05-PLAN.md — gitLfsService.ts (execFile arg arrays, never exec(), never git add ., explicit-path staging, message sanitized) + VcsPanel (commit/push/log/LFS status/guard surface)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 04-04b-PLAN.md — ChangesetTimelinePanel (graph-aware version history, branch divergence pips, active/deployed markers, selectVersion wiring)
+- [x] 04-04b-PLAN.md — ChangesetTimelinePanel (graph-aware version history, branch divergence pips, active/deployed markers, selectVersion wiring)
 - [ ] 04-06b-PLAN.md — shadowBaseService.ts (estimateTreSize, checkFreeDisk — free-space guard, atomic TRE copy to .studio/shadow/, shadow searchTree entries at higher slots than originals; resetShadow backup-restore; in-client UAT) [autonomous: false]
 
 **Wave 4** *(blocked on Wave 3 completion)*
