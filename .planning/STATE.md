@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 04 PLANNED + verified (7 plans / 4 waves); paused for cross-AI plan review before execute
-last_updated: "2026-06-26T16:15:00.000Z"
-last_activity: 2026-06-26
+status: executing
+stopped_at: Phase 03 context gathered
+last_updated: "2026-06-27T04:05:02.387Z"
+last_activity: 2026-06-27 -- Phase 04 execution started
 progress:
   total_phases: 9
   completed_phases: 4
-  total_plans: 21
+  total_plans: 29
   completed_plans: 21
-  percent: 44
+  percent: 72
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 04 — edit-deploy-loop (context gathered; planning next)
+**Current focus:** Phase 04 — edit-deploy-loop
 
 ## Current Position
 
-Phase: 04 (edit-deploy-loop) — PLANNED + plan-checker VERIFIED (2026-06-26); paused pre-execute
-Plan: 7 plans / 4 waves. Full GSD planning chain done: CONTEXT (16 decisions D-04-01..16, research-
+Phase: 04 (edit-deploy-loop) — EXECUTING
+Plan: 1 of 8
       corrected) → RESEARCH (HIGH, ground-truth) → VALIDATION (Nyquist) → UI-SPEC (6/6 PASS) →
       PATTERNS (26 files, 25 analogs) → 7 PLANs → plan-checker PASS (1 blocker + 7 warnings fixed in
       revision; 3 follow-up warnings resolved/noted). Wave1: 04-01. Wave2: 04-02/03/04/05.
       Wave3: 04-06b (shadow-base, autonomous:false). Wave4: 04-06 (deploy dialog + in-client UAT).
-Status: Phases 0-3 COMPLETE (ROADMAP bookkeeping corrected this session). Phase 4 fully planned.
+Status: Executing Phase 04
         Key ground-truth corrections baked in: patch built version='5000' (client mounts EERT5000);
         .cfg writes searchTree_<sku>_<NN>= in [SharedFile] of a toolkit-owned swgtoolkit.cfg via
         .include from root swgemu.cfg (free slot, e.g. 55), never user.cfg/options.cfg; clientLocator
@@ -40,7 +40,7 @@ Status: Phases 0-3 COMPLETE (ROADMAP bookkeeping corrected this session). Phase 
 Next: PAUSE — offer cross-AI plan review (feedback-pause-after-plan-phase) BEFORE /gsd:execute-phase 04.
       Do NOT auto-advance to execute. Parked for milestone replan: live-world-terrain-sync placement
       (Phase 9 vs 7.1); REQUIREMENTS.md traceability stale for VIEW-03/04 + CORE-02 (actually complete).
-Last activity: 2026-06-26
+Last activity: 2026-06-27 -- Phase 04 execution started
 
 Progress: [████░░░░░░] 44% (4/9 phases) — Phase 4 planned, not executed
 
@@ -161,10 +161,12 @@ Roadmap-shaping decisions affecting current work:
   agent_init in the TARGET via TH32CS_SNAPMODULE32 + target export-table walk (getRemoteModuleBase /
   getRemoteProcAddress in inject_binding.cpp). /MT agent change was NOT the fix (agent loads fine in
   x86; kept as hygiene).
+
 - [Phase 03, UAT 2026-06-26]: 03-06b-UAT advertised path PASSED via attach to in-world
   swg-client-v2 — seqlock ~30fps, no torn reads, liveness=0x1, real networkId, templateName
   object/creature/player/shared_sullustan_male.iff, transform tracked real movement (~4.86m + ~80deg
   yaw). LIVE-01/02/04 green.
+
 - [Phase 03, UAT 2026-06-26]: 03-06b-UAT LEGACY SWGEmu path PASSED via attach to in-world SWGEmu
   build 0.0.119.798 (RVAs confirmed valid by maintainer — Utinni reads this build). Two MORE fixes,
   both in OUR code not the RVAs: (1) networkId sentinel made not-applicable when getNetworkId slot is
@@ -173,6 +175,7 @@ Roadmap-shaping decisions affecting current work:
   by name and returns stale code, so a rebuilt same-named DLL silently runs the OLD agent. transform +
   template + liveness flow; networkId=0 on legacy (Phase-5 x86 64-bit return convention). Movement
   tracked (~9.6m + ~78deg yaw).
+
 - [Phase 03, FOLLOW-UPS from UAT]: (a) DONE — host injects a per-inject uniquely-named copy via
   prepareAgentDllForInject() in useLiveService.ts (copies canonical agent DLL to
   %TEMP%/swg-toolkit-agent/agent-<unique>.dll, prunes unlocked priors, falls back to canonical on copy
@@ -183,6 +186,7 @@ Roadmap-shaping decisions affecting current work:
   closes + resets the store. Verified live: after re-attach, prior mappingName readChannelView -> null
   (no leak); after detachUI, idle + null; node exit clean (this also fixed the open-channel teardown
   segfault). A detach/disconnect UI control to call detachUI() is still TODO (no such button exists yet).
+
 - [Phase 03, UAT 2026-06-26]: APP-PATH validated — the REAL useLiveService.attachToRunningUI (transpiled
   via esbuild) against in-world swg-client-v2 (advertised, PID live) drove liveStore to
   {attached, mode:live, mappingName} and the channel streamed verified data (nid non-zero on advertised,

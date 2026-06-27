@@ -150,7 +150,7 @@ Plans:
 **Plans**: 8 plans
 Plans:
 **Wave 1**
-- [ ] 04-01-PLAN.md — Contract types (workspace/staging/changeset/deploy), Zustand stores (workspaceStore/stagingStore/changesetStore), workspaceService (scaffold .studio/, .gitignore, .gitattributes, pre-commit hook, git init)
+- [x] 04-01-PLAN.md — Contract types (workspace/staging/changeset/deploy), Zustand stores (workspaceStore/stagingStore/changesetStore), workspaceService (scaffold .studio/, .gitignore, .gitattributes, pre-commit hook, git init)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 04-02-PLAN.md — WorkspaceEntry + ActionBadge (glyph+color+text Rule 1) + StatusBar extend + WorkspaceShell panel registration + StagingPanel (virtualized ROW_HEIGHT=30, Pack Patch auto-seal, path-traversal guard)
