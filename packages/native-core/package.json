@@ -6,7 +6,8 @@
   "scripts": {
     "build": "cmake-js build --generator \"Visual Studio 17 2022\" --platform x64",
     "rebuild": "cmake-js rebuild --generator \"Visual Studio 17 2022\" --platform x64",
-    "prebuild": "node scripts/prebuild.js"
+    "prebuild": "node scripts/prebuild.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "node-addon-api": "^8.8.0",
