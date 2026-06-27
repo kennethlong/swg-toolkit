@@ -39,8 +39,9 @@ import {
 } from '../../services/changesetService.js';
 import { packPatch, buildPatchName } from '../../services/packPatch.js';
 import { detectClients, scanSharedFile, chooseSlot } from '../../services/clientLocator.js';
-import { activatePatch, deactivatePatch, ensureInclude } from '../../services/cfgActivator.js';
+import { activatePatch, deactivatePatch, ensureInclude, snapshotCfg, restoreCfg } from '../../services/cfgActivator.js';
 import { deployShadowBase, resetShadow, estimateTreSize } from '../../services/shadowBaseService.js';
+import { BASELINE_ID } from '@swg/contracts';
 
 import type { DetectedClient, CfgInsertionRecord, CfgDeployRecord } from '@swg/contracts';
 import type { SharedFileScan } from '../../services/clientLocator.js';
@@ -67,7 +68,7 @@ export function DeployDialog({
   const [phase, setPhase] = useState<DeployPhase>({ kind: 'idle' });
   const [clients, setClients] = useState<DetectedClient[]>([]);
   const [selectedClient, setSelectedClient] = useState<DetectedClient | null>(null);
-  const [deployModel, setDeployModel] = useState<'patch-prepend' | 'shadow-base'>('patch-prepend');
+  const [deployModel, setDeployModel] = useState<'absolute-path' | 'hardlink-shadow'>('absolute-path');
   const [fullChainScan, setFullChainScan] = useState<SharedFileScan | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [staleWarning, setStaleWarning] = useState(false);  // W7: stale-deployment banner
@@ -95,6 +96,24 @@ export function DeployDialog({
     setPhase({ kind: 'idle' });
     setShowResetConfirm(false);
     deployRecordRef.current = null;
+
+    // M8: cross-session deploy record restore — if no in-memory record, load the
+    // persisted CfgDeployRecord (incl. snapshotPath) from the manifest so that
+    // Reset works after a close/reopen without a fresh deploy in this session.
+    const studioDir0 = useWorkspaceStore.getState().studioDir;
+    if (studioDir0) {
+      try {
+        const m0 = readManifest(studioDir0);
+        if (m0.activeVersionId && m0.activeVersionId !== BASELINE_ID) {
+          const cs0 = m0.changesets.find((c) => c.id === m0.activeVersionId);
+          if (cs0?.deployRecord) {
+            deployRecordRef.current = cs0.deployRecord;
+          }
+        }
+      } catch {
+        /* manifest unreadable — start fresh, no in-memory record */
+      }
+    }
 
     // Detect installed SWG clients (synchronous — registry + known-path probes)
     let detectedClients: DetectedClient[] = [];
@@ -151,10 +170,12 @@ export function DeployDialog({
     }
   }, [selectedClient]);
 
-  // ── Disk estimate for shadow-base ⚠ warning ──────────────────────────────
+  // ── Disk estimate for hardlink-shadow ⚠ warning ─────────────────────────
+  // For same-volume (hardlink) path this is informational (hardlinks use ~0 bytes).
+  // For cross-volume (copy) fallback this is the actual disk space needed.
 
   useEffect(() => {
-    if (deployModel === 'shadow-base' && selectedClient) {
+    if (deployModel === 'hardlink-shadow' && selectedClient) {
       try {
         const liveDir = path.join(selectedClient.installPath, 'Live');
         setDiskEstimate(estimateTreSize(liveDir));
@@ -278,13 +299,38 @@ export function DeployDialog({
 
       // Deploy from the sealed version (W2: flatten from the version graph, not stagingStore)
       const flattenedEntries = flatten(manifest.activeVersionId, manifest, studioDir);
-      if (flattenedEntries.length === 0) {
-        setPhase({
-          kind: 'error',
-          step: 'build',
-          message: 'No entries in version to deploy (flatten returned empty — version is empty)',
-          cfgRestored: false,
-        });
+
+      // H1: Baseline deploy (or empty version) → reset-to-stock.
+      // When the user selects the Baseline version and clicks Deploy, the intent is
+      // "restore the client to stock". Route to restoreCfg + cleanup rather than
+      // throwing the length=0 error (which was confusing and blocked the workflow).
+      if (manifest.activeVersionId === BASELINE_ID || flattenedEntries.length === 0) {
+        const rootCfgPath = selectedClient!.cfgRootPath;
+        const cfgDir = path.dirname(rootCfgPath);
+        const swgtoolkitCfgPath = path.join(cfgDir, 'swgtoolkit.cfg');
+        const existingRec = deployRecordRef.current as (CfgDeployRecord | null);
+
+        // Attempt root cfg restore from snapshot (if we have one)
+        const snap = existingRec?.snapshotPath;
+        if (snap) {
+          try {
+            if (fs.existsSync(snap)) restoreCfg(rootCfgPath, snap);
+          } catch { /* best-effort — cfg may already be clean */ }
+        }
+
+        // Remove toolkit cfg (client won't need it after root cfg restore)
+        if (fs.existsSync(swgtoolkitCfgPath)) {
+          try { fs.unlinkSync(swgtoolkitCfgPath); } catch { /* ignore */ }
+        }
+
+        // Remove deployed patch .tre from Live/ if recorded
+        if (existingRec?.patchPath) {
+          try { fs.unlinkSync(existingRec.patchPath); } catch { /* already gone is fine */ }
+        }
+
+        setDeployedVersion(null);
+        deployRecordRef.current = null;
+        setPhase({ kind: 'done', slot: 'Baseline (reset to stock)', cfgPath: rootCfgPath });
         return;
       }
 
@@ -308,8 +354,14 @@ export function DeployDialog({
 
       setPhase({ kind: 'activating' });
 
-      // ── Shadow-base path (04-06b) ────────────────────────────────────────
-      if (deployModel === 'shadow-base') {
+      // ── Hardlink-shadow path (DEPLOY-06) ────────────────────────────────
+      if (deployModel === 'hardlink-shadow') {
+        // (2) Snapshot ROOT cfg BEFORE deployShadowBase, which calls ensureInclude internally (M9)
+        let shadowSnapshotPath: string | undefined;
+        try {
+          shadowSnapshotPath = snapshotCfg(selectedClient!.cfgRootPath, studioDir);
+        } catch { /* non-fatal — restoreCfg fallback will skip if snap missing */ }
+
         try {
           const shadowRecord = await deployShadowBase(
             selectedClient!,
@@ -317,7 +369,7 @@ export function DeployDialog({
             outputPath,
             (_pct) => {},
           );
-          deployRecordRef.current = shadowRecord;
+          deployRecordRef.current = { ...shadowRecord, snapshotPath: shadowSnapshotPath };
           setDeployedVersion(manifest.activeVersionId!);  // W2: persist deployedVersionId
           // R2-B8: persist deploy record to manifest (survives component unmount)
           updateChangesetDeployRecord(manifest.activeVersionId!, {
@@ -328,80 +380,95 @@ export function DeployDialog({
             backupPath: shadowRecord.backupPath,
             patchPath: shadowRecord.patchEntry.patchPath,
             patchVersion: '5000',
+            snapshotPath: shadowSnapshotPath,
           });
-          setPhase({ kind: 'done', slot: 'shadow-base', cfgPath: shadowRecord.cfgPath });
+          setPhase({ kind: 'done', slot: 'hardlink-shadow', cfgPath: shadowRecord.cfgPath });
         } catch (e) {
+          // H5/M9 auto-rollback: restore ROOT cfg from snapshot if we took one
+          let cfgRestored = false;
+          if (shadowSnapshotPath && selectedClient) {
+            try {
+              if (fs.existsSync(shadowSnapshotPath)) {
+                restoreCfg(selectedClient.cfgRootPath, shadowSnapshotPath);
+                cfgRestored = true;
+              }
+            } catch { /* snapshot restore failed — log only */ }
+          }
           setPhase({
             kind: 'error',
             step: 'activate',
             message: (e as Error).message ?? String(e),
-            cfgRestored: false,
+            cfgRestored,
           });
         }
         return;
       }
 
-      // ── Patch-prepend path ───────────────────────────────────────────────
-      // The client loads TREs (and resolves bare searchTree filenames) from its TRE
-      // directory. This VARIES by release: SWG Infinity uses a Live/ subfolder; stock
-      // SWGEmu keeps its .tre files in the install root. Prefer Live/ when it exists,
-      // else fall back to the install root. (Proper client-layout detection +
-      // manual override is the client-layout-detection todo.)
-      const liveDir = path.join(selectedClient!.installPath, 'Live');
-      const clientTreDir = fs.existsSync(liveDir) ? liveDir : selectedClient!.installPath;
-      const patchPathInLive = path.join(clientTreDir, patchName);
-
-      // Step 1: Copy patch .tre to client Live/ dir
-      try {
-        fs.copyFileSync(outputPath, patchPathInLive);
-      } catch (e) {
-        setPhase({
-          kind: 'error',
-          step: 'activate',
-          message: (e as Error).message ?? String(e),
-          cfgRestored: false,
-        });
-        return;
-      }
-
-      // Step 2: Ensure swgtoolkit.cfg exists (create empty if needed)
+      // ── Absolute-path path (D-05 default) ───────────────────────────────
+      // Write the ABSOLUTE PATH to .studio/build/<patch>.tre directly as the
+      // searchTree value — no copy to Live/ needed (UAT item: TreeFile.cpp absolute
+      // path support; if client rejects, gap-close = copy-to-Live/).
+      // The patchName is a sanitized filename; outputPath is the absolute path to build/.
       const cfgDir = path.dirname(selectedClient!.cfgRootPath);
       const swgtoolkitCfgPath = path.join(cfgDir, 'swgtoolkit.cfg');
+
+      // Step 1: Ensure swgtoolkit.cfg exists (create EMPTY — activatePatch is sole header writer)
       if (!fs.existsSync(swgtoolkitCfgPath)) {
-        fs.writeFileSync(swgtoolkitCfgPath, '[SharedFile]\r\n', { encoding: 'utf8' });
+        fs.writeFileSync(swgtoolkitCfgPath, '', { encoding: 'utf8' });
       }
 
-      // Step 3: activatePatch + ensureInclude + persist
+      // Step 2: Snapshot ROOT cfg BEFORE any mutation (D-07 — ensureInclude runs below)
+      let absSnapshotPath: string | undefined;
+      try {
+        absSnapshotPath = snapshotCfg(selectedClient!.cfgRootPath, studioDir);
+      } catch { /* non-fatal — restoreCfg fallback will skip if snap missing */ }
+
+      // Step 3: activatePatch (writes absolute outputPath as searchTree value) + ensureInclude + persist
       let record: CfgInsertionRecord | undefined;
       try {
         // B1: FULL chain scan from cfgRootPath (swgemu.cfg) — NEVER swgtoolkitCfgPath alone.
         // Scanning only swgtoolkitCfgPath yields occupiedSlots=[] → slot 1 (below retail).
         const insertScan = scanSharedFile(selectedClient!.cfgRootPath);
-        record = activatePatch(swgtoolkitCfgPath, patchName, insertScan);
-        record.patchPath = patchPathInLive;  // R2-B7: store path for Reset's unlinkSync call
+        // D-05: pass outputPath (absolute path to .studio/build/<name>.tre) as patchName
+        // so TreeFile.cpp can find the TRE without a copy-to-Live/. Pass studioDir so
+        // activatePatch relocates the .swgtoolkit.bak into .studio/snapshots (D-06/D-07).
+        record = activatePatch(swgtoolkitCfgPath, outputPath, insertScan, studioDir);
         deployRecordRef.current = record;
+        // M9: ensureInclude on absolute-path path (root cfg gains .include line)
         ensureInclude(selectedClient!.cfgRootPath, 'swgtoolkit.cfg');
         setDeployedVersion(manifest.activeVersionId!);  // W2: persist deployedVersionId
 
-        // R2-B8: persist deploy record to manifest (survives component unmount/remount)
+        // R2-B8: persist deploy record (incl. snapshotPath for M8 cross-session Reset)
         const deployRecord: CfgDeployRecord = {
           cfgPath: record.cfgPath,
           includeTargetPath: selectedClient!.cfgRootPath,
           keyName: record.keyName,
           slot: record.slot,
           backupPath: record.backupPath,
-          patchPath: patchPathInLive,
+          patchPath: outputPath,  // absolute path — no separate patchPathInLive
           patchVersion: '5000',
+          snapshotPath: absSnapshotPath,
         };
+        deployRecordRef.current = { ...record, snapshotPath: absSnapshotPath, patchPath: outputPath };
         updateChangesetDeployRecord(manifest.activeVersionId!, deployRecord);
         setPhase({ kind: 'done', slot: record.keyName, cfgPath: swgtoolkitCfgPath });
       } catch (e) {
         if (record) deactivatePatch(record);  // W9 line-surgery rollback (04-03)
+        // H5/M9 auto-rollback: restore ROOT cfg from snapshot if we took one
+        let cfgRestored = false;
+        if (absSnapshotPath && selectedClient) {
+          try {
+            if (fs.existsSync(absSnapshotPath)) {
+              restoreCfg(selectedClient.cfgRootPath, absSnapshotPath);
+              cfgRestored = true;
+            }
+          } catch { /* snapshot restore failed — log only */ }
+        }
         setPhase({
           kind: 'error',
           step: 'activate',
           message: (e as Error).message ?? String(e),
-          cfgRestored: !!record,
+          cfgRestored,
         });
       }
     } finally {
@@ -410,6 +477,8 @@ export function DeployDialog({
   }, [selectedClient, deployModel]);
 
   // ── handleReset ───────────────────────────────────────────────────────────
+  // H5: primary reset = restoreCfg (whole-file, byte-pristine ROOT cfg restore).
+  // Falls back to line-surgery (deactivatePatch / resetShadow) when no snapshot.
 
   const handleReset = useCallback(() => {
     if (!deployRecordRef.current) {
@@ -417,17 +486,43 @@ export function DeployDialog({
       return;
     }
     try {
-      if (deployModel === 'shadow-base') {
-        // Shadow-base: line-surgery reset + shadow dir cleanup (cleanup=true)
-        resetShadow(deployRecordRef.current as ShadowDeployRecord, true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rec = deployRecordRef.current as any;
+      const rootCfgPath = selectedClient?.cfgRootPath ?? (rec.includeTargetPath as string | undefined);
+      const snapPath: string | undefined = rec.snapshotPath;
+
+      if (snapPath && rootCfgPath && fs.existsSync(snapPath)) {
+        // H5 PRIMARY: whole-file restore from snapshot — byte-pristine (D-07).
+        // Removes .include + any maxSearchPriority bumps; client returns to stock cfg.
+        restoreCfg(rootCfgPath, snapPath);
+      } else if (deployModel === 'hardlink-shadow') {
+        // Fallback for shadow model without snapshot: line-surgery via resetShadow
+        resetShadow(rec as ShadowDeployRecord, true);
       } else {
-        // Patch-prepend: line-surgery cfg deactivate + delete deployed .tre from Live/
-        const rec = deployRecordRef.current as CfgInsertionRecord;
-        deactivatePatch(rec);
+        // Fallback for absolute-path model without snapshot: line-surgery via deactivatePatch
+        deactivatePatch(rec as CfgInsertionRecord);
+      }
+
+      // Model-specific artifact cleanup
+      if (deployModel === 'hardlink-shadow') {
+        // Remove toolkit cfg (client no longer reads it after root cfg restore)
+        const toolkitCfgPath = rec.cfgPath as string | undefined;
+        if (toolkitCfgPath) {
+          try { fs.unlinkSync(toolkitCfgPath); } catch { /* ignore — may already be gone */ }
+        }
+        // Clean up shadow dir (hardlinks; ~0 bytes for same-volume)
+        const shadowRec = rec as ShadowDeployRecord;
+        if (shadowRec.shadowDir && fs.existsSync(shadowRec.shadowDir)) {
+          try { fs.rmSync(shadowRec.shadowDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        }
+      } else {
+        // Absolute-path: delete the deployed .tre from .studio/build/ if still there
+        // (the studio copy stays as history; patchPath IS the studioDir path for absolute-path)
         if (rec.patchPath) {
           try { fs.unlinkSync(rec.patchPath); } catch { /* file may already be gone */ }
         }
       }
+
       setDeployedVersion(null);  // W2: clear deployedVersionId from manifest
       deployRecordRef.current = null;
       setPhase({ kind: 'idle' });
@@ -436,7 +531,7 @@ export function DeployDialog({
       console.error('[DeployDialog] Reset failed:', e);
       setShowResetConfirm(false);
     }
-  }, [deployModel]);
+  }, [deployModel, selectedClient]);
 
   // ── Return null when closed ───────────────────────────────────────────────
 
@@ -569,71 +664,71 @@ export function DeployDialog({
 
         <div style={{ height: 1, background: 'var(--color-border)' }} />
 
-        {/* Section B — Deploy model (D-04-10) */}
+        {/* Section B — Deploy model (D-04-10, D-05) */}
         <div style={sectionStyle}>
           <div style={sectionLabelStyle}>Deploy model</div>
 
-          {/* Patch-prepend option (default) — accent ring when selected */}
+          {/* Absolute-path option (default, D-05) — accent ring when selected */}
           <div
             style={{
-              border: `2px solid ${deployModel === 'patch-prepend' ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              border: `2px solid ${deployModel === 'absolute-path' ? 'var(--color-accent)' : 'var(--color-border)'}`,
               background:
-                deployModel === 'patch-prepend' ? 'var(--color-accent-dim)' : 'transparent',
+                deployModel === 'absolute-path' ? 'var(--color-accent-dim)' : 'transparent',
               borderRadius: 'var(--radius-sm)',
               padding: 'var(--space-2) var(--space-3)',
               cursor: 'pointer',
               marginBottom: 'var(--space-2)',
             }}
-            onClick={() => setDeployModel('patch-prepend')}
+            onClick={() => setDeployModel('absolute-path')}
           >
             <label style={{ display: 'flex', gap: 'var(--space-2)', cursor: 'pointer' }}>
               <input
                 type="radio"
                 name="deployModel"
-                checked={deployModel === 'patch-prepend'}
-                onChange={() => setDeployModel('patch-prepend')}
+                checked={deployModel === 'absolute-path'}
+                onChange={() => setDeployModel('absolute-path')}
                 style={{ accentColor: 'var(--color-accent)', flexShrink: 0 }}
               />
               <div>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Patch-prepend</div>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Absolute path</div>
                 <div style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-                  adds the patch at a free higher cfg priority — retail files stay pristine
+                  points the client cfg directly at the patch in .studio/build — no copy needed
                 </div>
               </div>
             </label>
           </div>
 
-          {/* Shadow-base option (opt-in) — accent ring when selected */}
+          {/* Hardlink-shadow option (opt-in, DEPLOY-06) — accent ring when selected */}
           <div
             style={{
-              border: `2px solid ${deployModel === 'shadow-base' ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              border: `2px solid ${deployModel === 'hardlink-shadow' ? 'var(--color-accent)' : 'var(--color-border)'}`,
               background:
-                deployModel === 'shadow-base' ? 'var(--color-accent-dim)' : 'transparent',
+                deployModel === 'hardlink-shadow' ? 'var(--color-accent-dim)' : 'transparent',
               borderRadius: 'var(--radius-sm)',
               padding: 'var(--space-2) var(--space-3)',
               cursor: 'pointer',
             }}
-            onClick={() => setDeployModel('shadow-base')}
+            onClick={() => setDeployModel('hardlink-shadow')}
           >
             <label style={{ display: 'flex', gap: 'var(--space-2)', cursor: 'pointer' }}>
               <input
                 type="radio"
                 name="deployModel"
-                checked={deployModel === 'shadow-base'}
-                onChange={() => setDeployModel('shadow-base')}
+                checked={deployModel === 'hardlink-shadow'}
+                onChange={() => setDeployModel('hardlink-shadow')}
                 style={{ accentColor: 'var(--color-accent)', flexShrink: 0 }}
               />
               <div>
                 <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-                  Shadow-base (isolated client)
+                  Hardlink shadow (isolated client)
                 </div>
                 <div style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-                  copies the client TRE base to a local shadow and patches there
+                  hardlinks client TRE base to a local shadow; uses ~0 disk on same volume
                 </div>
               </div>
             </label>
-            {/* ⚠ disk-space warning — revealed when shadow-base is selected and client chosen */}
-            {deployModel === 'shadow-base' && diskEstimate !== null && (
+            {/* ⚠ disk-space note — revealed when hardlink-shadow selected and cross-volume risk */}
+            {deployModel === 'hardlink-shadow' && diskEstimate !== null && (
               <div
                 style={{
                   marginTop: 'var(--space-2)',
@@ -642,7 +737,7 @@ export function DeployDialog({
                   color: 'var(--color-warn)',
                 }}
               >
-                ⚠ ~{(diskEstimate / 1073741824).toFixed(1)} GB free disk needed
+                ~{(diskEstimate / 1073741824).toFixed(1)} GB needed if cross-volume fallback triggers
               </div>
             )}
           </div>
@@ -650,8 +745,8 @@ export function DeployDialog({
 
         <div style={{ height: 1, background: 'var(--color-border)' }} />
 
-        {/* Section C — Config slot preview (patch-prepend only, D-04-12) */}
-        {deployModel === 'patch-prepend' && fullChainScan && previewSlot !== null && (
+        {/* Section C — Config slot preview (absolute-path only, D-04-12) */}
+        {deployModel === 'absolute-path' && fullChainScan && previewSlot !== null && (
           <>
             <div style={sectionStyle}>
               <div style={sectionLabelStyle}>Config slot preview</div>
@@ -743,7 +838,9 @@ export function DeployDialog({
                   variant="fail"
                   caption={
                     phase.step === 'activate'
-                      ? `Could not write client config — ${phase.message}. The .cfg was restored from backup.`
+                      ? phase.cfgRestored
+                        ? `Could not write client config — ${phase.message}. Client cfg restored from snapshot (byte-pristine).`
+                        : `Could not write client config — ${phase.message}. Manual cfg check recommended.`
                       : `Could not build patch — ${phase.message}.`
                   }
                 />

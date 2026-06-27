@@ -36,14 +36,20 @@ export interface DetectedClient {
 /**
  * The isolation model chosen for this workspace.
  *
- * patch-prepend (default): add patch.tre at a free higher searchTree priority slot;
- *   retail files untouched; reset = remove cfg key + delete patch.
- * shadow-base (opt-in): copy the full client TRE base to a local shadow dir;
- *   apply patches over the shadow; real install stays pristine.
+ * absolute-path (default, D-05): write the absolute path to the built .tre in .studio/build/
+ *   directly as the searchTree value — no copy to Live/ needed; retail files untouched.
+ *   UAT item: whether TreeFile.cpp accepts absolute paths is unverified (client UAT step 5).
+ * hardlink-shadow (opt-in): hardlink (NTFS fs.link) the full client TRE base to a local
+ *   shadow dir; apply patches over the shadow; ~0 extra disk for same-volume hardlinks.
+ *   Falls back to copyFile (EXDEV cross-device) and shows disk estimate when cross-volume.
  *
- * Source: D-04-10.
+ * Legacy names (pre-04.1-07, preserved for backward compat):
+ *   'patch-prepend' = absolute-path predecessor (relative patchName wrote to Live/)
+ *   'shadow-base'   = hardlink-shadow predecessor (always used copyFile)
+ *
+ * Source: D-04-10, D-05 (absolute-path default), DEPLOY-06 (hardlink).
  */
-export type DeployModel = 'patch-prepend' | 'shadow-base';
+export type DeployModel = 'absolute-path' | 'hardlink-shadow' | 'patch-prepend' | 'shadow-base';
 
 // ---------------------------------------------------------------------------
 // CfgInsertionRecord

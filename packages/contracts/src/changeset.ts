@@ -87,6 +87,12 @@ export interface CfgDeployRecord {
   patchPath: string;
   /** TRE version string the patch was built with — '5000' for live Infinity. */
   patchVersion: string;
+  /**
+   * Absolute path to the ROOT cfg snapshot (from snapshotCfg).
+   * Used by restoreCfg for byte-pristine whole-file Reset (D-07).
+   * Optional: absent for legacy deploy records created before 04.1-07.
+   */
+  snapshotPath?: string;
 }
 
 // ---------------------------------------------------------------------------

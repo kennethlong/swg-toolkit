@@ -101,6 +101,7 @@ vi.mock('./cfgActivator', () => ({
     cfgPath: '',
     includeTargetPath: '',
   })),
+  ensureInclude: vi.fn(),
 }));
 
 // ─── Import service after mocks ─────────────────────────────────────────────

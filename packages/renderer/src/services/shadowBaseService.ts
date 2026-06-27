@@ -49,7 +49,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { scanSharedFile, type SharedFileScan } from './clientLocator';
-import { activatePatch } from './cfgActivator';
+import { activatePatch, ensureInclude } from './cfgActivator';
 import type { DetectedClient } from '@swg/contracts';
 
 // ─── ShadowDeployRecord ───────────────────────────────────────────────────────
@@ -184,6 +184,25 @@ export function checkFreeDisk(targetDir: string, neededBytes: number): void {
   }
 }
 
+// ─── sameVolume ───────────────────────────────────────────────────────────────
+
+/**
+ * Returns true when both paths reside on the same filesystem volume (same device).
+ *
+ * Uses `fs.statSync(path).dev` — on Windows NTFS, `dev` is the volume serial number
+ * encoded as an integer; paths on the same drive return equal values.
+ *
+ * Used by deployShadowBase to decide whether `fs.promises.link` (hardlink, ~0 bytes)
+ * is viable or whether a full copyFile is required (cross-volume fallback).
+ *
+ * @param a  Any path that exists (or whose parent dir exists) on the volume to check.
+ * @param b  Path on the other volume to compare against.
+ * @returns  true iff stat(a).dev === stat(b).dev.
+ */
+export function sameVolume(a: string, b: string): boolean {
+  return fs.statSync(a).dev === fs.statSync(b).dev;
+}
+
 // ─── deployShadowBase ─────────────────────────────────────────────────────────
 
 /**
@@ -255,9 +274,16 @@ export async function deployShadowBase(
     }
   }
 
-  // ── Pre-flight disk space check (T-04-SB-01) ─────────────────────────────────
-  const neededBytes = estimateTreSize(liveDir);
-  checkFreeDisk(studioDir, neededBytes);
+  // ── Same-volume check + conditional disk pre-flight (DEPLOY-06) ──────────────
+  // Hardlinks consume ~0 additional bytes; disk exhaustion check is only needed
+  // when falling back to full copyFile (cross-volume path).
+  // canLink is computed FIRST so estimateTreSize is skipped on the hardlink path.
+  const canLink = sameVolume(liveDir, studioDir);
+  if (!canLink) {
+    // ── Pre-flight disk space check (T-04-SB-01 — copy path only) ──────────
+    const neededBytes = estimateTreSize(liveDir);
+    checkFreeDisk(studioDir, neededBytes);
+  }
 
   // ── Atomic async copy to .tmp (B7: async — W8: cleanup on error) ─────────────
   const tmpShadowDir = shadowDir + '.tmp';
@@ -273,9 +299,29 @@ export async function deployShadowBase(
     for (let i = 0; i < treFiles.length; i++) {
       const src = path.join(liveDir, treFiles[i]);
       const dst = path.join(tmpShadowDir, treFiles[i]);
+
+      if (canLink) {
+        // T-04.1-16 hardlink-escape mitigation: validate dst containment BEFORE fs.link.
+        // A malformed treFiles[i] (e.g. '../../evil') could escape the workspace root.
+        const relDst = path.relative(workspaceRoot, dst);
+        if (relDst.startsWith('..') || path.isAbsolute(relDst)) {
+          throw new Error('Hardlink destination escapes workspace root (W4): ' + dst);
+        }
+        try {
+          // NTFS hardlink: ~0 extra bytes, no data copy, instant for large TRE files
+          await fs.promises.link(src, dst);
+          onProgress?.((i + 1) / total * 0.8);
+          continue;
+        } catch (e: unknown) {
+          // EXDEV = cross-device link not permitted (shouldn't happen if sameVolume=true
+          // but can occur for mounted/symlinked sub-volumes). Fall through to copyFile.
+          if ((e as { code?: string }).code !== 'EXDEV') throw e;
+        }
+      }
+
+      // Copy fallback: either !canLink (different volumes) or EXDEV (cross-device edge case)
       // B7 FIX: await fs.promises.copyFile — never blocks the renderer main thread
       await fs.promises.copyFile(src, dst);
-      // Progress: TRE copy phase = first 80%
       onProgress?.((i + 1) / total * 0.8);
     }
 
@@ -296,14 +342,23 @@ export async function deployShadowBase(
   const cfgDir = path.dirname(client.cfgRootPath);
   const swgtoolkitCfgPath = path.join(cfgDir, 'swgtoolkit.cfg');
 
-  // Create swgtoolkit.cfg if it doesn't exist yet
+  // Create swgtoolkit.cfg if it doesn't exist yet.
+  // EMPTY file — activatePatch is the SOLE [SharedFile] header writer (Pitfall 4 fix).
+  // Writing '[SharedFile]\n' here then having activatePatch also write one = duplicate header.
   if (!fs.existsSync(swgtoolkitCfgPath)) {
-    fs.writeFileSync(swgtoolkitCfgPath, '[SharedFile]\n', { encoding: 'utf8' });
+    fs.writeFileSync(swgtoolkitCfgPath, '', { encoding: 'utf8' });
   }
 
-  // Backup before any edits (T-04-SB-04 — safety net, NOT used for auto-restore per R2-W2)
-  const backupPath = swgtoolkitCfgPath + '.shadow.bak';
+  // D-07 / D-06: Backup written into .studio/snapshots (NOT next to client cfg).
+  // Keeps all toolkit-generated files out of the client install tree.
+  // Safety net only — resetShadow uses line-surgery (R2-W2), not this backup.
+  const snapshotDir = path.join(studioDir, 'snapshots');
+  fs.mkdirSync(snapshotDir, { recursive: true });
+  const backupPath = path.join(snapshotDir, 'swgtoolkit.cfg.shadow.bak');
   fs.copyFileSync(swgtoolkitCfgPath, backupPath);
+
+  // M9: ensure the ROOT cfg includes swgtoolkit.cfg so the engine finds shadow entries.
+  ensureInclude(client.cfgRootPath, 'swgtoolkit.cfg');
 
   // R2-W1 FIX: scan the FULL .include chain ONCE via client.cfgRootPath (swgemu.cfg).
   // This discovers all retail slots (e.g. 30-54) so chooseSlot() inside activatePatch
