@@ -9,6 +9,85 @@ multiple real, cross-confirmed blockers (the "tests-PASSED hides unwired glue" b
 
 ---
 
+## ROUND 2 — re-review of the REVISED plans (commit 34d0d56)
+
+The R1 fixes were implemented (model rewrite + B1-B8/W1-W10/N1-N5). A 2nd re-review (Codex wiring +
+Opus flatten-math + Sonnet plan-checker) confirms **all R1 findings are closed** BUT the revision
+introduced **new must-fix issues**. The GSD plan-checker PASSED (0 blockers) — it validates
+structure/coverage; the **crew caught correctness/wiring issues it missed**. Convergence noted.
+
+### R2 CRITICAL (Opus — the headline feature still fails)
+- **R2-B1 — "select an old version → Deploy" THROWS and hangs.** `DeployDialog.handleDeploy` auto-seals
+  whenever `staging.length > 0` with NO try/catch. After `selectVersion(old)`, staging = `flatten(old)`,
+  so Deploy-without-edits fires the auto-seal → N4 dup-guard sees nothing changed → throws "Nothing new
+  to commit" → uncaught → dialog stuck at `phase:'building'`. The exact D-04-08 flow ("go back two
+  versions and deploy") is broken; plain redeploy throws too. **Same outcome class as the original
+  cosmetic-rollback bug.** Fix: gate auto-seal on `staging ≠ flatten(activeVersionId)` (reuse flatEqual)
+  AND/OR catch the N4 throw and fall through to `flatten(active) → packPatch`.
+- **R2-B2 (root cause) — undefined staging-dirty model.** `selectVersion` materializes the FULL flattened
+  set into staging and nothing clears it after seal, yet `DeployDialog` reads `staging.length > 0` as "has
+  edits." Define one rule: **staging IS the working set; "dirty" = `staging ≠ flatten(activeVersionId)`**;
+  auto-seal only when dirty.
+
+### R2 BLOCKERS (Codex wiring; #1/#2 CONVERGE with plan-checker warnings)
+- **R2-B3 — UI-SPEC layout violated** [Codex + plan-checker, converged]: `04-02` registers Staging/
+  Timeline/VCS as STANDALONE panels (`direction:'left', referencePanel:'sidebar', initialWidth:260`),
+  but the UI-SPEC `## Layout` mandates **tabs in the existing inspector group at ~380px**. Fix the
+  `addPanel` calls in `workspace-config.ts` to add as tabs `within` the inspector group; width ~380.
+- **R2-B4 — ChangesetTimelinePanel path mismatch** [Codex + plan-checker, converged]: `04-04b` writes
+  `src/components/ChangesetTimelinePanel.tsx`, but `04-02`/UI-SPEC reference `panels/deploy/…`. The shell
+  would import the stub while tests pass against the other path. Fix: one canonical path (recommend
+  `panels/deploy/ChangesetTimelinePanel.tsx`); align 04-02 stub + 04-04b output + WorkspaceShell import.
+- **R2-B5 — `.tsx` component tests won't run** [Codex]: they import `@testing-library/react` (not a
+  devDep) and the root vitest is `environment:'node'` + globs only `*.test.ts` (not `.tsx`). Fix: add
+  `@testing-library/react` + `jsdom`, a renderer vitest config with `environment:'jsdom'` + `.tsx` glob,
+  OR drop to non-DOM component tests. (Ties to R2-B6.)
+- **R2-B6 — B5 only partly done** [Codex]: renderer doesn't declare `vitest` as a dep, so
+  `pnpm --filter @swg/renderer test` ("vitest run") may still fail with "vitest not recognized". Declare
+  vitest in the renderer package (or use the root config explicitly).
+- **R2-B7 — deploy Reset can't delete the patch** [Codex]: `CfgInsertionRecord` has `patchName`, not
+  `patchPath`; `04-06` reset references an undefined `patchPathInLiveDir` (and the threat model claims a
+  non-existent `patchPath`). Add `patchPath` (the copied Live-dir path) to the deploy record.
+- **R2-B8 — deploy record not persisted** [Codex]: it's held only in a React `ref`, not written to the
+  manifest's `deployRecord`; UAT re-opens the dialog then resets, but a ref doesn't survive unmount. Write
+  the deploy record into `manifest.changesets[deployedVersionId].deployRecord` after a successful deploy.
+
+### R2 WARNINGS
+- **R2-W1 — `04-06b` undercuts its own B1 fix:** starts with `scanSharedFile(cfgRootPath)` (correct) then
+  rescans `swgtoolkitCfgPath` alone for later shadow/patch entries → low-slot collision risk. Keep using
+  the full-chain scan (incrementing occupied slots locally) for every shadow entry.
+- **R2-W2 — `04-06b resetShadow` reintroduces W9:** must_have says line-surgery, action restores
+  `.shadow.bak` wholesale → can drop unrelated keys. Make it line-surgery (remove only the shadow+patch
+  keys it added), matching `deactivatePatch`.
+- **R2-W3 — stored `deltas` are full snapshots, not per-version diffs** [Opus]: contract says
+  "changes THIS node introduces; NOT cumulative," but `sealVersion` stores the whole working set →
+  storage blowup (re-copies all bytes each seal) + the timeline's "N files changed" + any diff/release
+  view is WRONG. **DESIGN DECISION:** compute diff-vs-parent in `sealVersion` (recommended — needed for a
+  correct "files changed" count) OR change the contract to full-snapshot. Pick one; code+contract disagree.
+- **R2-W4 — locale-sensitive sort** [Opus]: `localeCompare` (no fixed locale) in `flatten` + `packPatch`
+  isn't byte-stable across machines for non-ASCII paths — breaks the determinism guarantee in the exact
+  git-collaborator case it targets. Use a code-point/byte comparator.
+- **R2-W5 — N4 guard depends on staging `sha256`** [Opus + Codex, converged]: `flatEqual` compares
+  `sha256` but `StagingEntry.sha256` is optional and the staging flow doesn't require hashing → guard may
+  mis-fire. Ensure `04-02` computes sha on every add/modify (or N4 falls back to a byte compare).
+- **R2-W6 — `flatten` lacks a cycle/missing-parent guard** [Opus]: a corrupt/hand-edited `manifest.json`
+  → infinite `unshift` loop; also O(n²). Add a `visited` Set (like `scanSharedFile` already has).
+- **R2-W7 — `setDeployedVersion` doesn't validate the id exists** [Opus]: unguarded write (unlike
+  `selectVersion`). Add the same existence check.
+
+### R2 INFO
+- ROADMAP.md Phase 4 still says "7 plans / 0-of-6"; the revised set is **8 plans** (04-04b added) — update
+  the count + wave listing + progress table.
+
+### R2 CONFIRMED CORRECT
+- The version-graph **engine core is mathematically sound** (Opus traced flatten(v4-branched-off-v2) =
+  {A:modified, B:tombstone}; last-writer-wins, tombstones, branch non-destructiveness, independent
+  active/deployed pointers all correct). All R1 B1-B8/W1-W10/N1-N5 are concretely closed (plan-checker
+  spot-checked via acceptance-criteria greps). The failure is at the **deploy boundary + surrounding
+  wiring**, not the model logic.
+
+---
+
 ## BLOCKERS (cross-confirmed first)
 
 ### B1 — cfg slot is chosen from the WRONG file → patch is shadowed BY retail (silent no-load)
