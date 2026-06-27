@@ -2,6 +2,14 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
+- **[2026-06-27-phase4-uat-findings-redesign.md](2026-06-27-phase4-uat-findings-redesign.md)** — ACTIVE.
+  In-client UAT findings + **redesign north star = sketch 005-B** (one combined Deploy tab; the executor
+  diverged into 3 tabs). Consolidates the maintainer's product thesis (zero-risk shadow sandbox,
+  lazy/virtual files), 3 real-Electron bugs found+fixed (vite builtins / silent open / `prompt()`), all
+  design+wiring gaps (each a todo in `todos/pending/`), and 3 queued ground-truth traces (absolute cfg
+  paths, server TRE push, **v6000 zlib-vs-encrypted** — challenges a stored memory). One entry point for
+  the redesign session. Layers on top of the code-complete handoff below.
+
 - **[2026-06-27-phase4-code-complete-uat-pending.md](2026-06-27-phase4-code-complete-uat-pending.md)** — ACTIVE.
   Phase 4 (Edit & Deploy Loop) **code-complete** — all 8 plans built/merged/integrated on `main`
   (`…→2c9137e`), gates green (renderer 28/28, native 6/6). **Next = maintainer runs the 2 in-client UATs**
