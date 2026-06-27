@@ -23,6 +23,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
+import { BASELINE_ID } from '@swg/contracts';
 import { useChangesetStore } from '../src/state/changesetStore';
 import { useStagingStore } from '../src/state/stagingStore';
 import { useWorkspaceStore } from '../src/state/workspaceStore';
@@ -31,6 +32,7 @@ import {
   flatten,
   selectVersion,
   readManifest,
+  seedBaseline,
 } from '../src/services/changesetService';
 
 // ─── Test context ─────────────────────────────────────────────────────────────
@@ -370,5 +372,102 @@ describe('changeset DEPLOY-03 — version graph engine', () => {
     // DIFF-VS-PARENT: only a.txt changed — b.txt must NOT be in v2's deltas
     expect(v2cs.deltas).toHaveLength(1);
     expect(v2cs.deltas[0].virtualPath).toBe('a.txt');
+  });
+});
+
+// ─── DEPLOY-06: Baseline seed, BASELINE_ID-safe selectVersion, path-safe sealVersion ──────
+
+describe('changeset DEPLOY-06 — seedBaseline + BASELINE_ID-safe selectVersion + M1 path-safe sealVersion', () => {
+  // ─── BS-1: seedBaseline writes the Baseline node ──────────────────────────
+  it('BS-1: seedBaseline writes manifest with Baseline node (BASELINE_ID, parentId:null, deltas:[], sealedBy:manual)', () => {
+    const manifest = seedBaseline(STUDIO_DIR);
+    expect(manifest.changesets).toHaveLength(1);
+    const baseline = manifest.changesets[0];
+    expect(baseline.id).toBe(BASELINE_ID);
+    expect(baseline.parentId).toBeNull();
+    expect(baseline.deltas).toHaveLength(0);
+    expect(baseline.sealedBy).toBe('manual');
+    // activeVersionId set to BASELINE_ID when none was previously set
+    expect(manifest.activeVersionId).toBe(BASELINE_ID);
+    // Persisted on disk
+    const disk = readManifest(STUDIO_DIR);
+    expect(disk.changesets[0].id).toBe(BASELINE_ID);
+  });
+
+  // ─── BS-2: seedBaseline is idempotent ────────────────────────────────────
+  it('BS-2: seedBaseline is idempotent — calling twice leaves exactly one Baseline node', () => {
+    seedBaseline(STUDIO_DIR);
+    seedBaseline(STUDIO_DIR);
+    const manifest = readManifest(STUDIO_DIR);
+    expect(manifest.changesets.filter(c => c.id === BASELINE_ID)).toHaveLength(1);
+  });
+
+  // ─── BS-3: seedBaseline must NOT route through sealVersion (N4 would throw on 0 deltas) ──
+  it('BS-3: seedBaseline does NOT throw on zero deltas (bypasses sealVersion N4 guard)', () => {
+    expect(() => seedBaseline(STUDIO_DIR)).not.toThrow();
+    const manifest = readManifest(STUDIO_DIR);
+    expect(manifest.changesets[0].id).toBe(BASELINE_ID);
+  });
+
+  // ─── SV-H2c-1: selectVersion(BASELINE_ID) with Baseline present ──────────
+  it('SV-H2c-1: selectVersion(BASELINE_ID) when Baseline is in manifest → sets activeVersionId, no throw', () => {
+    const seeded = seedBaseline(STUDIO_DIR);
+    useChangesetStore.getState().setManifest(seeded);
+    expect(() => selectVersion(BASELINE_ID)).not.toThrow();
+    const m = readManifest(STUDIO_DIR);
+    expect(m.activeVersionId).toBe(BASELINE_ID);
+  });
+
+  // ─── SV-H2c-2: selectVersion(BASELINE_ID) when Baseline is ABSENT ────────
+  it('SV-H2c-2: selectVersion(BASELINE_ID) on manifest WITHOUT Baseline → treated as pristine, no throw', () => {
+    // beforeEach left manifest with empty changesets[] — Baseline never seeded
+    expect(() => selectVersion(BASELINE_ID)).not.toThrow();
+    const m = readManifest(STUDIO_DIR);
+    expect(m.activeVersionId).toBe(BASELINE_ID);
+    // Staging materialized as empty (pristine = no overrides)
+    const entries = useStagingStore.getState().entries;
+    expect(entries).toHaveLength(0);
+  });
+
+  // ─── M1-1: sealVersion rejects '..' traversal ────────────────────────────
+  it('M1-1: sealVersion rejects virtualPath containing ".." traversal before any copy', async () => {
+    const aFile = path.join(TMP, 'a.txt');
+    fs.writeFileSync(aFile, 'hello');
+
+    await expect(
+      sealVersion({
+        sealedBy: 'manual',
+        entries: [{ virtualPath: '../escape.txt', action: 'add', replacementFilePath: aFile, sha256: undefined }],
+        label: 'unsafe-dotdot',
+      })
+    ).rejects.toThrow();
+  });
+
+  // ─── M1-2: sealVersion rejects absolute paths ────────────────────────────
+  it('M1-2: sealVersion rejects absolute virtualPath (e.g. /etc/passwd)', async () => {
+    const aFile = path.join(TMP, 'a.txt');
+    fs.writeFileSync(aFile, 'hello');
+
+    await expect(
+      sealVersion({
+        sealedBy: 'manual',
+        entries: [{ virtualPath: '/etc/passwd', action: 'add', replacementFilePath: aFile, sha256: undefined }],
+        label: 'unsafe-abs',
+      })
+    ).rejects.toThrow();
+  });
+
+  // ─── M1-3: sealVersion rejects Windows drive-letter paths ─────────────────
+  it('M1-3: sealVersion rejects Windows drive-letter virtualPath (e.g. C:\\secret.txt)', async () => {
+    const aFile = path.join(TMP, 'a.txt');
+    fs.writeFileSync(aFile, 'hello');
+
+    await expect(
+      sealVersion({
+        sealedBy: 'manual',
+        entries: [{ virtualPath: 'C:\\secret.txt', action: 'add', replacementFilePath: aFile, sha256: undefined }],
+        label: 'unsafe-drive',
+      })
+    ).rejects.toThrow();
   });
 });
