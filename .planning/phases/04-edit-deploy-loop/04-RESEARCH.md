@@ -363,22 +363,25 @@ done
 | A5 | `child_process` git/git-lfs from the Path B renderer is the right process posture (vs main). | DEPLOY-04 | If a future packaged build tightens the renderer, these may need to move to main/IPC. Low risk now; `fs` is already used in-renderer. `[ASSUMED]` |
 | A6 | The changeset payload binary extensions to LFS-track are the mod-output set (`.dds/.png/.msh/.mgn/.ans`); the exact list is discretionary. | DEPLOY-04 | Wrong list just means some binaries bloat history or some text is mis-binned; tunable post-hoc. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **OQ-1 — Client install discovery (D-04-09 reuse premise is false).**
    - What we know: `@swg/live-inject` exposes only `launchAndInject(clientExe)` / `attachAndInject(pid)`; no install/`.cfg` discovery exists (verified across `live-inject/src/*.cpp` + `useLiveService.ts`).
    - What's unclear: which Windows registry keys SWGEmu/Infinity launchers write; whether a running-process exe-path bridge is worth wiring.
    - Recommendation: plan a small new `clientLocator` (registry read + known-path probe `D:\SWG Infinity\…`, `D:\SWGEmu Client\…` + manual override). The manual override (already in D-04-09) makes this non-blocking even if auto-detect is imperfect. Optionally derive install dir from a live PID's exe path as a bonus.
+   - **RESOLVED:** `clientLocator.ts` (04-03 Task 2) is the new component; registry probes `HKCU\Software\SWG Infinity` + `HKCU\Software\SWGEmu` + known-path fallbacks + manual override. The live-inject reuse premise is closed as false.
 
 2. **OQ-2 — Which exact cfg file to write (root `.include` vs `user_infinity.cfg`).**
    - What we know: root `swgemu.cfg` is stable (only `.include`s) and CRLF; `user_infinity.cfg` is already `.include`d but missing; `user.cfg`/`options.cfg` are launcher-clobbered.
    - What's unclear: whether the Infinity launcher ever rewrites `swgemu.cfg` or creates `user_infinity.cfg`.
    - Recommendation: default to adding `.include "swgtoolkit.cfg"` to the root cfg + a toolkit-owned `swgtoolkit.cfg`; verify persistence with a relaunch UAT; document `user_infinity.cfg` as the fallback target.
+   - **RESOLVED:** Write target = toolkit-owned `swgtoolkit.cfg` pulled in via `.include "swgtoolkit.cfg"` added once to `swgemu.cfg` (04-03 Task 3 / 04-06 Task 1). Cfg-persistence-across-relaunch remains an open UAT item (Assumption A2 in the Assumptions Log) — verify in 04-06 Task 2 in-client UAT; fallback to `user_infinity.cfg` if the launcher clobbers `swgemu.cfg`.
 
 3. **OQ-3 — Changeset manifest deploy-record fields.**
    - What we know: the doc schema (`SwgChangeset`, `TreFileDelta`, `WorkspaceChangesetManifest`) covers id/versionIndex/label/timestamp/deltas + `activeVersionIndex`, which is sufficient for non-destructive toggle.
    - What's unclear: D-04-07 (auto-seal on pack) and D-04-12 (record cfg insertion) need extra metadata the doc schema lacks — e.g. `sealedBy: 'manual' | 'pack'`, and a `deployRecord { cfgPath, keyName, slot, backupPath, patchVersion }`.
    - Recommendation: extend `SwgChangeset` with `sealedBy` and an optional `deployRecord`; keep the rest of the doc schema. Flag these as the only schema additions needed (the D-04-05 caveat is thus satisfiable).
+   - **RESOLVED:** `SwgChangeset` extended with `sealedBy: 'manual' | 'pack'` and optional `deployRecord: CfgDeployRecord` (04-01 Task 1). Shadow-base variant uses `ShadowDeployRecord` from `shadowBaseService.ts` (04-06b Task 1), cast to `CfgDeployRecord` for `sealLayer`. Schema additions are the only changes to the doc schema.
 
 ## Environment Availability
 

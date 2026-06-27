@@ -147,7 +147,7 @@ Plans:
   2. The system updates the client `.cfg` search order to activate a patch with a safe, BOM-free, atomic write that preserves duplicate `searchTree=` entries in priority order (with backup).
   3. The user can roll back changes via a changeset/snapshot history that reverts the workspace to a prior state.
   4. The user can version mod-produced assets via Git/LFS, and a fresh clone is small with no retail `.tre` in `git log` (base/extracted assets are ignored, never blind `git add .`).
-**Plans**: 6 plans
+**Plans**: 7 plans
 Plans:
 **Wave 1**
 - [ ] 04-01-PLAN.md — Contract types (workspace/staging/changeset/deploy), Zustand stores (workspaceStore/stagingStore/changesetStore), workspaceService (scaffold .studio/, .gitignore, .gitattributes, pre-commit hook, git init)
@@ -159,7 +159,10 @@ Plans:
 - [ ] 04-05-PLAN.md — gitLfsService.ts (execFile arg arrays, never exec(), never git add ., explicit-path staging, message sanitized) + VcsPanel (commit/push/log/LFS status/guard surface)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 04-06-PLAN.md — DeployDialog (Sections A/B/C: client picker, patch-prepend/shadow-base, cfg slot preview; build+activate phases; success/fail/reset; in-client UAT checkpoint on SWG Infinity) [autonomous: false]
+- [ ] 04-06b-PLAN.md — shadowBaseService.ts (estimateTreSize, checkFreeDisk — free-space guard, atomic TRE copy to .studio/shadow/, shadow searchTree entries at higher slots than originals; resetShadow backup-restore; in-client UAT) [autonomous: false]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 04-06-PLAN.md — DeployDialog (Sections A/B/C: client picker, patch-prepend/shadow-base, cfg slot preview; handleDeploy branches on deployModel — dispatches to deployShadowBase or cfgActivator 6-step sequence; in-client UAT checkpoint on SWG Infinity) [autonomous: false]
 **UI hint**: yes
 
 ### Phase 5: WYSIWYG Live-Sync & Typed Editors
