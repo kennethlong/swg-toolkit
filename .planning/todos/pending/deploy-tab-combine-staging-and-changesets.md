@@ -69,6 +69,14 @@ first.)
   notices they must click the Section-A radio. When `clients.length === 1`, default `selectedClient`
   to it (and surface "Browse to the folder containing `swgemu.cfg`" more clearly when none detected).
 
+## Changeset changed-file list (maintainer, 2026-06-27 — validated in sketch 006-D)
+
+Each version row in the graph must **expand (▸) to list that changeset's actual changed files** (its
+deltas: action badge + changed/identical dot + virtual path), not just show a count. Source = the
+changeset's `deltas[]`. Clicking a version still selects it (Deploy target / staging materialization).
+Designed + accepted in sketch 006 winner D. (Distinct from "saved-in-vN" — this is the per-node delta
+list, on demand.)
+
 ## VCS tab — confirmed wired, stays separate
 
 `VcsPanel` is fully wired (Commit/Push/LFS status/retail-guard/commit log via `gitLfsService`;

@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWG Toolkit — Sketch 006: Combined Deploy Tab</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: var(--font-sans); font-size: var(--text-base); color: var(--color-text); background: var(--color-bg); padding-top: 40px; }
+
+/* ---------- variant nav (matches 001–005) ---------- */
+#variant-nav { position:fixed; top:0; left:0; right:0; z-index:9998; height:40px; background:#101010; border-bottom:1px solid #000; display:flex; align-items:center; gap:6px; padding:0 12px; font-family:system-ui; }
+#variant-nav .brand { color:#777; font-size:12px; margin-right:8px; letter-spacing:.04em; }
+.variant-tab { background:#222; color:#bbb; border:1px solid #333; border-radius:6px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .15s; }
+.variant-tab:hover { background:#2c2c2c; color:#eee; }
+.variant-tab.active { background:var(--color-accent); color:var(--color-accent-text); border-color:var(--color-accent); font-weight:600; }
+.variant-tab .star { color:#ffd24a; }
+
+.variant { height:calc(100vh - 40px); display:none; }
+.variant.active { display:flex; }
+
+/* ---------- scene: dimmed backdrop + right-docked panel ---------- */
+.backdrop { flex:1; min-width:0; display:grid; grid-template-columns:200px 1fr; grid-template-rows:28px 1fr 20px; gap:4px; padding:4px; background:#111; }
+.bd-bar { background:#1c1c1c; border-radius:4px; grid-column:1/-1; }
+.bd-p { background:#181818; border:1px solid #222; border-radius:4px; }
+.dock-wrap { flex:0 0 auto; display:flex; flex-direction:column; border-left:1px solid var(--color-border); height:100%; }
+
+/* ---------- panel chrome (verbatim from 001/005) ---------- */
+.panel { background:var(--color-surface); display:flex; flex-direction:column; overflow:hidden; flex:1; min-height:0; }
+.panel-head { height:var(--tabstrip-h); flex:0 0 auto; display:flex; align-items:stretch; background:var(--color-header); border-bottom:1px solid var(--color-border); }
+.drag-dots { width:18px; display:flex; align-items:center; justify-content:center; color:var(--color-text-faint); font-size:11px; letter-spacing:-1px; cursor:grab; }
+.panel-tabs { display:flex; align-items:stretch; flex:1; }
+.ptab { display:flex; align-items:center; gap:6px; padding:0 12px; font-size:var(--text-sm); color:var(--color-text-muted); cursor:pointer; border-right:1px solid var(--color-border); white-space:nowrap; position:relative; transition:background .12s; }
+.ptab .dot { width:6px; height:6px; border-radius:50%; background:var(--color-text-faint); }
+.ptab:hover { background:var(--color-surface-2,#232323); color:var(--color-text); }
+.ptab.active { background:var(--color-surface); color:var(--color-text); }
+.ptab.active::after { content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--color-accent); }
+.ptab.active .dot { background:var(--color-accent); }
+.panel-body { flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+.tab-pane { display:none; flex-direction:column; flex:1; min-height:0; }
+.tab-pane.active { display:flex; }
+
+/* ---------- deploy pane scaffolding ---------- */
+.deploy-foot { flex:0 0 auto; padding:8px 10px; border-top:1px solid var(--color-border); background:var(--color-header); }
+.btn-primary { width:100%; background:var(--color-accent); color:var(--color-accent-text); border:none; border-radius:var(--radius-sm); padding:7px 0; font-size:var(--text-sm); font-weight:600; cursor:pointer; font-family:inherit; transition:all .12s; }
+.btn-primary:hover { background:var(--color-accent-hover); }
+.deploy-foot .deploy-hint { font-size:10px; color:var(--color-text-faint); text-align:center; margin-top:4px; font-family:var(--font-mono); }
+.deploy-foot .deploy-hint b { color:var(--color-accent); font-weight:600; }
+
+/* ---------- staging (004-B) ---------- */
+.section-head { font-size:var(--text-xs); font-weight:600; color:var(--color-text-muted); padding:6px 10px; display:flex; align-items:center; gap:6px; border-bottom:1px solid var(--color-border-soft); user-select:none; flex:0 0 auto; }
+.section-head.clickable { cursor:pointer; }
+.section-head.clickable:hover { background:var(--color-surface-2,#222); color:var(--color-text); }
+.caret { font-size:9px; color:var(--color-text-faint); width:10px; display:inline-block; transition:transform .12s; }
+.collapsed .caret { transform:rotate(-90deg); }
+.badge { display:inline-flex; align-items:center; font-size:10px; padding:1px 5px; border-radius:999px; white-space:nowrap; flex:0 0 auto; }
+.bm { color:var(--color-text-muted); background:rgba(255,255,255,.05); border:1px solid var(--color-border-soft); }
+.ba { color:var(--color-info); background:rgba(74,140,255,.12); border:1px solid rgba(74,140,255,.3); }
+.bd { color:var(--color-warn); background:rgba(224,161,58,.12); border:1px solid rgba(224,161,58,.3); }
+
+/* change-vs-base indicator (NEW — D-06-staging-change-badge) */
+.chg { flex:0 0 auto; font-size:11px; width:12px; text-align:center; line-height:1; }
+.chg-changed { color:var(--color-success,#43c267); }      /* ● content differs from base */
+.chg-same    { color:var(--color-text-faint); }            /* ○ identical to base — no-op */
+
+.staging-row { height:30px; display:flex; align-items:center; gap:5px; padding:0 6px 0 8px; border-bottom:1px solid var(--color-border-soft); cursor:pointer; position:relative; transition:background .1s; }
+.staging-row:hover { background:var(--color-surface-2,#222); }
+.staging-row.selected { background:var(--color-accent-dim); box-shadow:inset 2px 0 0 var(--color-accent); }
+.staging-row.is-same { opacity:.62; }
+.row-path { font-family:var(--font-mono); font-size:10px; color:var(--color-text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.row-same-tag { font-family:var(--font-mono); font-size:9px; color:var(--color-text-faint); flex:0 0 auto; }
+.row-src { font-family:var(--font-mono); font-size:10px; color:var(--color-text-faint); white-space:nowrap; flex:0 0 auto; }
+.row-actbtn { width:16px; height:16px; display:flex; align-items:center; justify-content:center; color:var(--color-text-faint); cursor:pointer; border-radius:3px; font-size:12px; flex:0 0 16px; background:none; border:none; font-family:inherit; opacity:0; transition:opacity .1s,color .1s,background .1s; }
+.staging-row:hover .row-actbtn { opacity:1; }
+.row-actbtn:hover { background:var(--color-surface,#2a2a2a); color:var(--color-text); }
+.row-actbtn.row-rm:hover { color:#e0584f; }
+
+.section-divider { display:flex; align-items:center; gap:6px; padding:4px 10px; font-size:10px; color:var(--color-text-faint); background:var(--color-bg); border-top:1px solid var(--color-border-soft); border-bottom:1px solid var(--color-border-soft); flex:0 0 auto; }
+.ver-ref { font-family:var(--font-mono); color:var(--color-accent); }
+.staging-footer { padding:5px 10px; border-top:1px solid var(--color-border-soft); background:var(--color-header); font-family:var(--font-mono); font-size:10px; color:var(--color-text-faint); display:flex; flex-wrap:wrap; gap:5px; flex:0 0 auto; }
+.btn-save-ver { background:var(--color-accent); color:var(--color-accent-text); border:none; border-radius:3px; padding:2px 8px; font-size:10px; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; transition:all .12s; }
+.btn-save-ver:hover { background:var(--color-accent-hover); }
+.btn-add { background:var(--color-widget); color:var(--color-text-muted); border:1px solid var(--color-border-soft); border-radius:3px; padding:2px 8px; font-size:10px; cursor:pointer; font-family:inherit; white-space:nowrap; transition:all .12s; }
+.btn-add:hover { color:var(--color-text); border-color:var(--color-accent-line); }
+.content-div { height:1px; background:var(--color-border); flex:0 0 auto; }
+
+/* ---------- shared per-row context menu (parity with TRE view) ---------- */
+.ctx-pop { position:fixed; z-index:9990; background:var(--color-header); border:1px solid var(--color-border-soft); border-radius:var(--radius-sm); padding:3px; box-shadow:0 6px 20px rgba(0,0,0,.55); display:none; flex-direction:column; min-width:168px; }
+.ctx-pop.open { display:flex; }
+.ctx-pop button { background:none; border:none; color:var(--color-text-muted); font-size:11px; cursor:pointer; padding:5px 9px; text-align:left; border-radius:3px; white-space:nowrap; font-family:var(--font-sans); transition:all .1s; width:100%; display:flex; align-items:center; gap:8px; }
+.ctx-pop button:hover { background:var(--color-surface-2,#222); color:var(--color-text); }
+.ctx-pop button .ico { width:14px; text-align:center; color:var(--color-text-faint); }
+.ctx-pop button:hover .ico { color:var(--color-accent); }
+.ctx-pop .sep { height:1px; background:var(--color-border-soft); margin:3px 2px; }
+.ctx-pop button.danger:hover { color:#e0584f; }
+.ctx-pop button.danger:hover .ico { color:#e0584f; }
+
+/* ---------- version graph (002-A) ---------- */
+.graph-head { font-size:var(--text-xs); font-weight:600; color:var(--color-text-muted); padding:6px 10px; border-bottom:1px solid var(--color-border-soft); flex:0 0 auto; }
+.graph-container { display:flex; position:relative; }
+.lane-col { flex:0 0 auto; }
+.graph-rows-col { flex:1; min-width:0; }
+.graph-row { height:52px; display:flex; align-items:center; gap:4px; padding:0 8px 0 0; position:relative; cursor:pointer; border-left:2px solid transparent; transition:background .1s; overflow:visible; }
+.graph-row:hover { background:var(--color-surface-2,#222); }
+.graph-row.is-active { background:var(--color-accent-dim); border-left-color:var(--color-accent); }
+.graph-row.is-baseline .ver-title { color:var(--color-text-muted); font-style:italic; }
+.ver-label { font-family:var(--font-mono); font-size:10px; color:var(--color-text-faint); flex:0 0 20px; user-select:none; }
+.ver-pip { font-size:10px; flex:0 0 auto; white-space:nowrap; }
+.ver-pip.pip-active { color:var(--color-accent); font-weight:600; }
+.ver-pip.pip-dep { color:var(--color-info); }
+.ver-pip.pip-base { color:var(--color-text-faint); border:1px dashed var(--color-border-soft); border-radius:3px; padding:0 4px; }
+.ver-info { flex:1; min-width:0; }
+.ver-title { font-size:var(--text-sm); color:var(--color-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ver-meta { font-family:var(--font-mono); font-size:10px; color:var(--color-text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.row-acts { position:absolute; right:6px; top:50%; transform:translateY(-50%); display:flex; gap:2px; align-items:center; opacity:0; pointer-events:none; transition:opacity .12s; background:var(--color-header); border:1px solid var(--color-border-soft); border-radius:var(--radius-sm); padding:2px 4px; z-index:10; }
+.graph-row:hover .row-acts { opacity:1; pointer-events:all; }
+.row-acts button { background:none; border:none; color:var(--color-text-muted); font-size:10px; cursor:pointer; padding:1px 4px; border-radius:3px; white-space:nowrap; font-family:var(--font-sans); transition:all .1s; }
+.row-acts button:hover { background:var(--color-surface-2,#222); color:var(--color-text); }
+.row-acts button.ra-deploy:hover { color:var(--color-accent); }
+.row-acts button.ra-revert:hover { color:var(--color-warn); }
+.row-acts button.ra-branch:hover { color:var(--color-info); }
+.row-acts .vsep { width:1px; background:var(--color-border-soft); align-self:stretch; }
+.graph-status { padding:5px 10px; border-top:1px solid var(--color-border-soft); background:var(--color-header); font-family:var(--font-mono); font-size:10px; color:var(--color-text-faint); display:flex; flex-wrap:wrap; gap:8px; flex:0 0 auto; }
+
+/* ---------- variant-specific section frames ---------- */
+.sec { display:flex; flex-direction:column; min-height:0; }
+.sec-body { min-height:0; overflow-y:auto; }
+.collapsed .sec-body { display:none; }
+
+/* A: fixed stack — one scroll over staging+graph */
+.stack-scroll { flex:1; min-height:0; overflow-y:auto; }
+
+/* B: resizable splitter */
+.split-staging { flex:0 0 auto; display:flex; flex-direction:column; min-height:64px; }
+.split-staging .sec-body { flex:1; }
+.splitter { height:7px; flex:0 0 auto; background:var(--color-header); border-top:1px solid var(--color-border); border-bottom:1px solid var(--color-border); cursor:row-resize; position:relative; transition:background .1s; }
+.splitter:hover, .splitter.dragging { background:var(--color-accent-line,#2b6); }
+.splitter::after { content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:30px; height:2px; border-radius:2px; background:var(--color-text-faint); opacity:.5; }
+.split-graph { flex:1; min-height:0; display:flex; flex-direction:column; }
+.split-graph .sec-body { flex:1; }
+
+/* C: collapsible accordion */
+.acc-staging { flex:0 0 auto; display:flex; flex-direction:column; }
+.acc-staging.expanded { flex:0 1 auto; }
+.acc-staging .sec-body { max-height:230px; }
+.acc-graph { flex:1; min-height:0; display:flex; flex-direction:column; }
+.acc-graph.collapsed { flex:0 0 auto; }
+
+/* ---------- deploy modal (003-A) ---------- */
+#deploy-modal { position:fixed; inset:40px 0 0 0; z-index:9999; align-items:center; justify-content:center; display:none; }
+#deploy-modal.open { display:flex; }
+.modal-scrim { position:absolute; inset:0; background:rgba(0,0,0,.55); }
+.dialog { position:relative; z-index:1; width:344px; max-width:92vw; background:var(--color-surface); border:1px solid var(--color-border-soft); border-radius:var(--radius-md); box-shadow:0 8px 32px rgba(0,0,0,.6); display:flex; flex-direction:column; max-height:calc(100vh - 100px); overflow:hidden; }
+.dlg-head { height:40px; flex:0 0 auto; display:flex; align-items:center; padding:0 12px; background:var(--color-header); border-bottom:1px solid var(--color-border); }
+.dlg-title { font-size:var(--text-md); font-weight:600; flex:1; }
+.dlg-close { width:22px; height:22px; display:flex; align-items:center; justify-content:center; color:var(--color-text-faint); cursor:pointer; border-radius:var(--radius-sm); font-size:15px; background:none; border:none; font-family:inherit; transition:all .12s; }
+.dlg-close:hover { background:var(--color-widget); color:var(--color-text); }
+.dlg-body { flex:1; overflow:auto; padding:12px; display:flex; flex-direction:column; gap:12px; }
+.dlg-sec { font-size:var(--text-xs); font-weight:600; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; padding-bottom:3px; border-bottom:1px solid var(--color-border-soft); }
+.client-row { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--color-border-soft); margin-bottom:6px; background:var(--color-surface-2); transition:all .12s; }
+.client-row:hover { border-color:var(--color-accent-line); }
+.client-row.selected { border-color:var(--color-accent); background:var(--color-accent-dim); box-shadow:0 0 0 1px var(--color-accent); }
+.c-radio { width:13px; height:13px; border-radius:50%; border:2px solid var(--color-text-faint); flex:0 0 auto; position:relative; }
+.client-row.selected .c-radio { border-color:var(--color-accent); }
+.client-row.selected .c-radio::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--color-accent); }
+.c-name { font-size:var(--text-sm); font-weight:600; }
+.c-path { font-family:var(--font-mono); font-size:10px; color:var(--color-info); }
+.c-ver { font-family:var(--font-mono); font-size:10px; color:var(--color-text-faint); }
+.model-opt { display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--color-border-soft); margin-bottom:6px; transition:all .12s; }
+.model-opt:hover { border-color:var(--color-accent-line); }
+.model-opt.selected { border-color:var(--color-accent); background:var(--color-accent-dim); box-shadow:0 0 0 1px var(--color-accent); }
+.m-radio { width:13px; height:13px; border-radius:50%; flex:0 0 13px; margin-top:2px; border:2px solid var(--color-text-faint); position:relative; }
+.model-opt.selected .m-radio { border-color:var(--color-accent); }
+.model-opt.selected .m-radio::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--color-accent); }
+.m-label { font-size:var(--text-sm); font-weight:600; }
+.m-cap { font-size:10px; color:var(--color-text-muted); margin-top:2px; }
+.slot-preview { background:var(--color-bg); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:8px 10px; font-family:var(--font-mono); font-size:10px; color:var(--color-text-muted); line-height:1.7; }
+.slot-preview .sk { color:var(--color-text); } .slot-preview .sv { color:var(--color-accent); }
+.dlg-acts { flex:0 0 auto; display:flex; gap:6px; justify-content:flex-end; padding:10px 12px; background:var(--color-header); border-top:1px solid var(--color-border); }
+.btn-cancel { background:var(--color-widget); color:var(--color-text-muted); border:1px solid var(--color-border-soft); border-radius:var(--radius-sm); padding:5px 12px; font-size:var(--text-sm); cursor:pointer; font-family:inherit; transition:all .1s; }
+.btn-cancel:hover { color:var(--color-text); }
+.btn-dlg-deploy { background:var(--color-accent); color:var(--color-accent-text); border:none; border-radius:var(--radius-sm); padding:5px 14px; font-size:var(--text-sm); font-weight:600; cursor:pointer; font-family:inherit; transition:all .1s; }
+.btn-dlg-deploy:hover { background:var(--color-accent-hover); }
+
+/* ---------- D: synthesis — collapsible + splitter + expandable changeset files ---------- */
+.d-staging { flex:0 0 auto; display:flex; flex-direction:column; min-height:30px; }
+.d-staging.collapsed { flex:0 0 auto !important; height:auto !important; }
+.d-staging.collapsed .sec-body { display:none; }
+.d-splitter { height:7px; flex:0 0 auto; background:var(--color-header); border-top:1px solid var(--color-border); border-bottom:1px solid var(--color-border); cursor:row-resize; position:relative; transition:background .1s; }
+.d-splitter:hover, .d-splitter.dragging { background:var(--color-accent-line,#2b6); }
+.d-splitter::after { content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:30px; height:2px; border-radius:2px; background:var(--color-text-faint); opacity:.5; }
+.d-splitter.hidden { display:none; }
+.d-graph { flex:1; min-height:0; display:flex; flex-direction:column; }
+.d-graph.collapsed { flex:0 0 auto; }
+.d-graph.collapsed .sec-body { display:none; }
+.d-graph .sec-body { flex:1; overflow-y:auto; }
+
+/* expandable version row (reveals the changeset's own changed-file list) */
+.vrow { border-bottom:1px solid var(--color-border-soft); }
+.vrow-head { height:46px; display:flex; align-items:center; gap:6px; padding:0 8px 0 6px; cursor:pointer; position:relative; border-left:2px solid transparent; transition:background .1s; }
+.vrow-head:hover { background:var(--color-surface-2,#222); }
+.vrow.is-active .vrow-head { background:var(--color-accent-dim); border-left-color:var(--color-accent); }
+.vcaret { font-size:9px; color:var(--color-text-faint); width:10px; flex:0 0 10px; transition:transform .12s; }
+.vrow.open .vcaret { transform:rotate(90deg); }
+.vnode { width:9px; height:9px; border-radius:50%; flex:0 0 9px; border:2px solid var(--color-text-faint); background:var(--color-surface); box-sizing:border-box; }
+.vnode.n-active { border-color:var(--color-accent); background:var(--color-accent); }
+.vnode.n-dep { border-color:var(--color-info); }
+.vnode.n-base { border-radius:2px; border-style:dashed; }
+.vrow-main { flex:1; min-width:0; }
+.vrow-title { font-size:var(--text-sm); color:var(--color-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vrow.is-baseline .vrow-title { color:var(--color-text-muted); font-style:italic; }
+.vrow-meta { font-family:var(--font-mono); font-size:10px; color:var(--color-text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vrow-pip { font-size:10px; flex:0 0 auto; }
+.vrow-pip.p-active { color:var(--color-accent); font-weight:600; } .vrow-pip.p-dep { color:var(--color-info); } .vrow-pip.p-base { color:var(--color-text-faint); border:1px dashed var(--color-border-soft); border-radius:3px; padding:0 4px; }
+.vrow-files { display:none; padding:2px 0 6px 0; background:var(--color-bg); }
+.vrow.open .vrow-files { display:block; }
+.cfile { display:flex; align-items:center; gap:6px; height:23px; padding:0 8px 0 36px; font-family:var(--font-mono); font-size:10px; color:var(--color-text-muted); cursor:pointer; }
+.cfile:hover { background:var(--color-surface-2,#222); color:var(--color-text); }
+.cfile .cf-path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cfile-empty { padding:6px 8px 8px 36px; font-size:10px; color:var(--color-text-faint); font-style:italic; }
+
+/* sketch toolbar */
+#sketch-tools { position:fixed; bottom:12px; right:12px; z-index:9997; font-family:system-ui; font-size:12px; background:rgba(0,0,0,.78); color:#fff; padding:8px 10px; border-radius:8px; opacity:.45; transition:opacity .2s; display:flex; align-items:center; gap:10px; }
+#sketch-tools:hover { opacity:1; }
+#sketch-tools select, #sketch-tools button { background:#2a2a2a; color:#eee; border:1px solid #444; border-radius:5px; padding:4px 8px; font-size:11px; cursor:pointer; }
+#sketch-tools button.on { background:var(--color-accent); color:var(--color-accent-text); border-color:var(--color-accent); }
+#sketch-tools .lbl { color:#888; font-size:10px; }
+</style>
+</head>
+<body>
+
+<!-- ============ VARIANT SWITCHER ============ -->
+<div id="variant-nav">
+  <span class="brand">SKETCH 006 · combined-deploy-tab</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A · Fixed stack</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B · Resizable splitter</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C · Collapsible sections</button>
+  <button class="variant-tab" onclick="showVariant('d', this)">D · Collapse + splitter <span class="star">★</span></button>
+</div>
+
+<!-- =================================================================
+     VARIANT A — FIXED STACK (faithful 005-B): one scroll over staging+graph
+     ================================================================= -->
+<div id="variant-a" class="variant active">
+  <div class="backdrop"><div class="bd-bar"></div><div class="bd-p"></div><div class="bd-p"></div><div class="bd-bar"></div></div>
+  <div class="dock-wrap dockw" style="width:380px;">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="drag-dots">⠿</div>
+        <div class="panel-tabs">
+          <div class="ptab" onclick="switchTab(this,'a',0)"><span class="dot"></span>Inspect</div>
+          <div class="ptab active" onclick="switchTab(this,'a',1)"><span class="dot"></span>Deploy</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="tab-pane" id="a-pane-0"><div style="padding:18px 12px;color:var(--color-text-faint);font-size:var(--text-sm);">Inspect tab (appearance / material / customization) coexists here — not the focus of this sketch.</div></div>
+        <div class="tab-pane active" id="a-pane-1">
+          <div class="stack-scroll">
+            <!-- STAGING -->
+            <div class="section-head">
+              <span style="color:var(--color-accent);">●</span> Working changes
+              <span style="margin-left:auto;font-weight:400;color:var(--color-text-faint);">3 files</span>
+              <button class="btn-add" onclick="toast('Open file picker…')">Add…</button>
+              <button class="btn-save-ver" onclick="toast('Save version… (names a changeset)')">Save version</button>
+            </div>
+            <div class="staging-row" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+              <span class="chg chg-changed" title="content differs from base">●</span>
+              <span class="badge bm">~ modify</span>
+              <span class="row-path">appearance/tt8l_y7.sat</span>
+              <span class="row-src">18 kB</span>
+              <button class="row-actbtn" title="More…" onclick="rowMenuBtn(event,this)">⋯</button>
+              <button class="row-actbtn row-rm" title="Remove from staging" onclick="rmRow(event,this)">×</button>
+            </div>
+            <div class="staging-row selected" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+              <span class="chg chg-changed" title="content differs from base">●</span>
+              <span class="badge ba">+ add</span>
+              <span class="row-path">appearance/new_blaster_l0.msh</span>
+              <span class="row-src">96 kB</span>
+              <button class="row-actbtn" title="More…" onclick="rowMenuBtn(event,this)">⋯</button>
+              <button class="row-actbtn row-rm" title="Remove from staging" onclick="rmRow(event,this)">×</button>
+            </div>
+            <div class="staging-row is-same" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+              <span class="chg chg-same" title="identical to base — no actual change">○</span>
+              <span class="badge bm">~ modify</span>
+              <span class="row-path">datatables/weapon/weapon.iff</span>
+              <span class="row-same-tag">identical to base</span>
+              <button class="row-actbtn" title="More…" onclick="rowMenuBtn(event,this)">⋯</button>
+              <button class="row-actbtn row-rm" title="Remove from staging" onclick="rmRow(event,this)">×</button>
+            </div>
+            <div class="staging-footer">
+              <span>3 staged</span><span>·</span>
+              <span style="color:var(--color-success,#43c267);">2 changed</span><span>·</span>
+              <span>1 identical</span>
+              <span style="margin-left:auto;">114 kB payload</span>
+            </div>
+
+            <div class="content-div"></div>
+
+            <!-- VERSION GRAPH -->
+            <div class="graph-head">Version history</div>
+            <div class="graph-rows-host"></div>
+            <div class="graph-status">
+              <span>4 versions · 1 branch</span>
+              <span>active: <span style="color:var(--color-accent);">v3 — heavier blaster</span></span>
+              <span style="margin-left:auto;">live: <span style="color:var(--color-info);">v2</span></span>
+            </div>
+          </div>
+          <div class="deploy-foot">
+            <button class="btn-primary" onclick="openModal()">Deploy v3 — heavier blaster…</button>
+            <div class="deploy-hint">deploys the <b>selected</b> version → <b>flatten(active)</b>, not the staging list</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =================================================================
+     VARIANT B — RESIZABLE SPLITTER: staging + draggable divider + graph
+     ================================================================= -->
+<div id="variant-b" class="variant">
+  <div class="backdrop"><div class="bd-bar"></div><div class="bd-p"></div><div class="bd-p"></div><div class="bd-bar"></div></div>
+  <div class="dock-wrap dockw" style="width:380px;">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="drag-dots">⠿</div>
+        <div class="panel-tabs">
+          <div class="ptab" onclick="switchTab(this,'b',0)"><span class="dot"></span>Inspect</div>
+          <div class="ptab active" onclick="switchTab(this,'b',1)"><span class="dot"></span>Deploy</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="tab-pane" id="b-pane-0"><div style="padding:18px 12px;color:var(--color-text-faint);font-size:var(--text-sm);">Inspect tab coexists here.</div></div>
+        <div class="tab-pane active" id="b-pane-1">
+          <!-- STAGING (own scroll, resizable height) -->
+          <div class="split-staging sec" style="height:200px;">
+            <div class="section-head">
+              <span style="color:var(--color-accent);">●</span> Working changes
+              <span style="margin-left:auto;font-weight:400;color:var(--color-text-faint);">3 files</span>
+              <button class="btn-add" onclick="toast('Open file picker…')">Add…</button>
+              <button class="btn-save-ver" onclick="toast('Save version…')">Save version</button>
+            </div>
+            <div class="sec-body">
+              <div class="staging-row" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-changed">●</span><span class="badge bm">~ modify</span>
+                <span class="row-path">appearance/tt8l_y7.sat</span><span class="row-src">18 kB</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button>
+                <button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-row selected" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-changed">●</span><span class="badge ba">+ add</span>
+                <span class="row-path">appearance/new_blaster_l0.msh</span><span class="row-src">96 kB</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button>
+                <button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-row is-same" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-same">○</span><span class="badge bm">~ modify</span>
+                <span class="row-path">datatables/weapon/weapon.iff</span><span class="row-same-tag">identical to base</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button>
+                <button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-footer"><span>3 staged</span><span>·</span><span style="color:var(--color-success,#43c267);">2 changed</span><span>·</span><span>1 identical</span><span style="margin-left:auto;">114 kB</span></div>
+            </div>
+          </div>
+
+          <!-- DRAGGABLE SPLITTER -->
+          <div class="splitter" onmousedown="startSplit(event,this)" title="Drag to resize"></div>
+
+          <!-- VERSION GRAPH (own scroll, fills remainder) -->
+          <div class="split-graph sec">
+            <div class="graph-head">Version history</div>
+            <div class="sec-body">
+              <div class="graph-rows-host"></div>
+            </div>
+            <div class="graph-status"><span>4 versions · 1 branch</span><span style="margin-left:auto;">live: <span style="color:var(--color-info);">v2</span></span></div>
+          </div>
+
+          <div class="deploy-foot">
+            <button class="btn-primary" onclick="openModal()">Deploy v3 — heavier blaster…</button>
+            <div class="deploy-hint">drag the divider to balance staging vs history</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =================================================================
+     VARIANT C — COLLAPSIBLE SECTIONS (Blender accordion)
+     ================================================================= -->
+<div id="variant-c" class="variant">
+  <div class="backdrop"><div class="bd-bar"></div><div class="bd-p"></div><div class="bd-p"></div><div class="bd-bar"></div></div>
+  <div class="dock-wrap dockw" style="width:380px;">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="drag-dots">⠿</div>
+        <div class="panel-tabs">
+          <div class="ptab" onclick="switchTab(this,'c',0)"><span class="dot"></span>Inspect</div>
+          <div class="ptab active" onclick="switchTab(this,'c',1)"><span class="dot"></span>Deploy</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="tab-pane" id="c-pane-0"><div style="padding:18px 12px;color:var(--color-text-faint);font-size:var(--text-sm);">Inspect tab coexists here.</div></div>
+        <div class="tab-pane active" id="c-pane-1">
+          <!-- STAGING accordion -->
+          <div class="acc-staging sec expanded">
+            <div class="section-head clickable" onclick="toggleSec(this)">
+              <span class="caret">▼</span><span style="color:var(--color-accent);">●</span> Working changes
+              <span style="margin-left:auto;font-weight:400;color:var(--color-text-faint);">3 files</span>
+              <button class="btn-add" onclick="event.stopPropagation();toast('Open file picker…')">Add…</button>
+              <button class="btn-save-ver" onclick="event.stopPropagation();toast('Save version…')">Save version</button>
+            </div>
+            <div class="sec-body">
+              <div class="staging-row" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-changed">●</span><span class="badge bm">~ modify</span>
+                <span class="row-path">appearance/tt8l_y7.sat</span><span class="row-src">18 kB</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button>
+                <button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-row selected" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-changed">●</span><span class="badge ba">+ add</span>
+                <span class="row-path">appearance/new_blaster_l0.msh</span><span class="row-src">96 kB</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button>
+                <button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-row is-same" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-same">○</span><span class="badge bm">~ modify</span>
+                <span class="row-path">datatables/weapon/weapon.iff</span><span class="row-same-tag">identical to base</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button>
+                <button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-footer"><span>3 staged</span><span>·</span><span style="color:var(--color-success,#43c267);">2 changed</span><span>·</span><span>1 identical</span><span style="margin-left:auto;">114 kB</span></div>
+            </div>
+          </div>
+
+          <!-- VERSION GRAPH accordion -->
+          <div class="acc-graph sec">
+            <div class="section-head clickable" onclick="toggleSec(this)">
+              <span class="caret">▼</span> Version history
+              <span style="margin-left:auto;font-weight:400;color:var(--color-text-faint);">4 versions · live v2</span>
+            </div>
+            <div class="sec-body">
+              <div class="graph-rows-host"></div>
+              <div class="graph-status"><span>4 versions · 1 branch</span><span style="margin-left:auto;">active: <span style="color:var(--color-accent);">v3</span></span></div>
+            </div>
+          </div>
+
+          <div class="deploy-foot">
+            <button class="btn-primary" onclick="openModal()">Deploy v3 — heavier blaster…</button>
+            <div class="deploy-hint">collapse a section to focus the other</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =================================================================
+     VARIANT D — SYNTHESIS: collapsible sections + resizable splitter
+     + expandable per-changeset changed-file lists  (★ chosen direction)
+     ================================================================= -->
+<div id="variant-d" class="variant">
+  <div class="backdrop"><div class="bd-bar"></div><div class="bd-p"></div><div class="bd-p"></div><div class="bd-bar"></div></div>
+  <div class="dock-wrap dockw" style="width:380px;">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="drag-dots">⠿</div>
+        <div class="panel-tabs">
+          <div class="ptab" onclick="switchTab(this,'d',0)"><span class="dot"></span>Inspect</div>
+          <div class="ptab active" onclick="switchTab(this,'d',1)"><span class="dot"></span>Deploy</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="tab-pane" id="d-pane-0"><div style="padding:18px 12px;color:var(--color-text-faint);font-size:var(--text-sm);">Inspect tab coexists here.</div></div>
+        <div class="tab-pane active" id="d-pane-1">
+
+          <!-- STAGING — collapsible AND resizable -->
+          <div class="d-staging sec" style="height:170px;">
+            <div class="section-head clickable" onclick="dToggle(this,'staging')">
+              <span class="caret">▼</span><span style="color:var(--color-accent);">●</span> Working changes
+              <span style="margin-left:auto;font-weight:400;color:var(--color-text-faint);">3 files</span>
+              <button class="btn-add" onclick="event.stopPropagation();toast('Open file picker…')">Add…</button>
+              <button class="btn-save-ver" onclick="event.stopPropagation();toast('Save version…')">Save version</button>
+            </div>
+            <div class="sec-body" style="flex:1;overflow-y:auto;">
+              <div class="staging-row" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-changed">●</span><span class="badge bm">~ modify</span>
+                <span class="row-path">appearance/tt8l_y7.sat</span><span class="row-src">18 kB</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button><button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-row selected" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-changed">●</span><span class="badge ba">+ add</span>
+                <span class="row-path">appearance/new_blaster_l0.msh</span><span class="row-src">96 kB</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button><button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-row is-same" oncontextmenu="rowCtx(event,this)" onclick="pickRow(this)">
+                <span class="chg chg-same">○</span><span class="badge bm">~ modify</span>
+                <span class="row-path">datatables/weapon/weapon.iff</span><span class="row-same-tag">identical to base</span>
+                <button class="row-actbtn" onclick="rowMenuBtn(event,this)">⋯</button><button class="row-actbtn row-rm" onclick="rmRow(event,this)">×</button>
+              </div>
+              <div class="staging-footer"><span>3 staged</span><span>·</span><span style="color:var(--color-success,#43c267);">2 changed</span><span>·</span><span>1 identical</span><span style="margin-left:auto;">114 kB</span></div>
+            </div>
+          </div>
+
+          <!-- RESIZABLE SPLITTER (hidden when staging collapsed) -->
+          <div class="d-splitter" onmousedown="dStartSplit(event,this)" title="Drag to resize"></div>
+
+          <!-- VERSION HISTORY — collapsible; rows expand to show the changeset's files -->
+          <div class="d-graph sec">
+            <div class="section-head clickable" onclick="dToggle(this,'graph')">
+              <span class="caret">▼</span> Version history
+              <span style="margin-left:auto;font-weight:400;color:var(--color-text-faint);">4 versions · click ▸ to list files</span>
+            </div>
+            <div class="sec-body">
+              <!-- v3 ACTIVE (open by default to show the changed-file list) -->
+              <div class="vrow is-active open">
+                <div class="vrow-head" onclick="toggleVer(this)">
+                  <span class="vcaret">▸</span><span class="vnode n-active"></span>
+                  <div class="vrow-main"><div class="vrow-title">Alt: heavier blaster</div><div class="vrow-meta">v3 · 2026-06-26 · 2 files · branch from v2</div></div>
+                  <span class="vrow-pip p-active">● active</span>
+                </div>
+                <div class="vrow-files">
+                  <div class="cfile" onclick="toast('Open appearance/new_blaster_l0.msh')"><span class="chg chg-changed">●</span><span class="badge ba">+</span><span class="cf-path">appearance/new_blaster_l0.msh</span><span style="color:var(--color-text-faint);">96 kB</span></div>
+                  <div class="cfile" onclick="toast('Open appearance/tt8l_y7.sat')"><span class="chg chg-changed">●</span><span class="badge bm">~</span><span class="cf-path">appearance/tt8l_y7.sat</span><span style="color:var(--color-text-faint);">18 kB</span></div>
+                </div>
+              </div>
+              <!-- vM main -->
+              <div class="vrow">
+                <div class="vrow-head" onclick="toggleVer(this)">
+                  <span class="vcaret">▸</span><span class="vnode"></span>
+                  <div class="vrow-main"><div class="vrow-title">Recolor stormtrooper armor</div><div class="vrow-meta">vM · 2026-06-26 · 3 files · ↑ main</div></div>
+                  <span class="vrow-pip" style="color:var(--color-text-faint);">↑ main</span>
+                </div>
+                <div class="vrow-files">
+                  <div class="cfile"><span class="chg chg-changed">●</span><span class="badge bm">~</span><span class="cf-path">texture/stormtrooper_armor.dds</span><span style="color:var(--color-text-faint);">512 kB</span></div>
+                  <div class="cfile"><span class="chg chg-changed">●</span><span class="badge bm">~</span><span class="cf-path">texture/st_helmet.dds</span><span style="color:var(--color-text-faint);">256 kB</span></div>
+                  <div class="cfile"><span class="chg chg-changed">●</span><span class="badge bm">~</span><span class="cf-path">appearance/trooper.sat</span><span style="color:var(--color-text-faint);">9 kB</span></div>
+                </div>
+              </div>
+              <!-- v2 deployed -->
+              <div class="vrow">
+                <div class="vrow-head" onclick="toggleVer(this)">
+                  <span class="vcaret">▸</span><span class="vnode n-dep"></span>
+                  <div class="vrow-main"><div class="vrow-title">Buffed DL-44 damage</div><div class="vrow-meta">v2 · 2026-06-25 · 5 files</div></div>
+                  <span class="vrow-pip p-dep">⤓ live</span>
+                </div>
+                <div class="vrow-files">
+                  <div class="cfile"><span class="chg chg-changed">●</span><span class="badge bm">~</span><span class="cf-path">datatables/weapon/weapon.iff</span><span style="color:var(--color-text-faint);">42 kB</span></div>
+                  <div class="cfile"><span class="chg chg-changed">●</span><span class="badge bm">~</span><span class="cf-path">datatables/weapon/ranged.iff</span><span style="color:var(--color-text-faint);">38 kB</span></div>
+                  <div class="cfile" style="color:var(--color-text-faint);">…3 more</div>
+                </div>
+              </div>
+              <!-- Baseline -->
+              <div class="vrow is-baseline">
+                <div class="vrow-head" onclick="toggleVer(this)">
+                  <span class="vcaret">▸</span><span class="vnode n-base"></span>
+                  <div class="vrow-main"><div class="vrow-title">Pristine client (unmodified)</div><div class="vrow-meta">baseline · 0 deltas · shadow ≡ source</div></div>
+                  <span class="vrow-pip p-base">baseline</span>
+                </div>
+                <div class="vrow-files"><div class="cfile-empty">No changes — this is the unmodified client (deploy = reset to stock).</div></div>
+              </div>
+            </div>
+            <div class="graph-status"><span>4 versions · 1 branch</span><span style="margin-left:auto;">active: <span style="color:var(--color-accent);">v3</span> · live: <span style="color:var(--color-info);">v2</span></span></div>
+          </div>
+
+          <div class="deploy-foot">
+            <button class="btn-primary" onclick="openModal()">Deploy v3 — heavier blaster…</button>
+            <div class="deploy-hint">collapse a section or drag the divider · expand a version (▸) to list its files</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SHARED PER-ROW CONTEXT MENU (TRE-view parity) ============ -->
+<div class="ctx-pop" id="row-ctx">
+  <button onclick="ctxAct('open')"><span class="ico">◳</span> Open in editor</button>
+  <button onclick="ctxAct('viewport')"><span class="ico">◉</span> Open in viewport</button>
+  <button onclick="ctxAct('reveal')"><span class="ico">⌖</span> Reveal in TRE browser</button>
+  <button onclick="ctxAct('diff')"><span class="ico">≢</span> Compare to base…</button>
+  <div class="sep"></div>
+  <button class="danger" onclick="ctxAct('remove')"><span class="ico">×</span> Remove from staging</button>
+</div>
+
+<!-- ============ SHARED DEPLOY MODAL (003-A) ============ -->
+<div id="deploy-modal">
+  <div class="modal-scrim" onclick="closeModal()"></div>
+  <div class="dialog">
+    <div class="dlg-head"><span class="dlg-title">Deploy v3 — heavier blaster</span><button class="dlg-close" onclick="closeModal()">×</button></div>
+    <div class="dlg-body">
+      <div>
+        <div class="dlg-sec">Target client</div>
+        <div class="client-row selected" onclick="pickClient(this)">
+          <div class="c-radio"></div>
+          <div style="flex:1;min-width:0;"><div class="c-name">SWG Infinity</div><div class="c-path">D:\SWG Infinity\SWG Infinity</div><div class="c-ver">EERT5000 · Live/ · maxPriority 60</div></div>
+          <span style="font-size:10px;color:var(--color-accent);">bound</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;font-size:var(--text-sm);color:var(--color-text-muted);cursor:pointer;border-radius:var(--radius-sm);" onclick="toast('Browse for client folder…')"><span style="color:var(--color-text-faint);">⊕</span> Browse…</div>
+      </div>
+      <div>
+        <div class="dlg-sec">Deploy model</div>
+        <div class="model-opt selected" onclick="pickModel(this)">
+          <div class="m-radio"></div>
+          <div><div class="m-label">Patch (absolute) <span style="font-weight:400;font-size:10px;color:var(--color-accent);">(recommended)</span></div><div class="m-cap">override stays in .studio, registered by absolute path — nothing copied into the client</div></div>
+        </div>
+        <div class="model-opt" onclick="pickModel(this)">
+          <div class="m-radio"></div>
+          <div><div class="m-label">Shadow (isolated client)</div><div class="m-cap">hardlinked base mirror — total isolation; opt-in</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="dlg-sec">Config slot preview</div>
+        <div class="slot-preview">
+          [SharedFile]<br>
+          <span class="sk">searchTree_00_55</span>=<span class="sv">D:\studio\.studio\build\mymod.tre</span><br>
+          maxSearchPriority=60 <span style="color:var(--color-accent);">✓</span> (slot 55 ≤ 60)<br>
+          <span style="color:var(--color-info);display:block;margin-top:4px;">↳ original cfg snapshotted to .studio — undo = restore</span>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-acts"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-dlg-deploy" onclick="toast('Building patch v5000 → writing cfg…');closeModal()">Deploy patch</button></div>
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div id="toast" style="position:fixed;bottom:54px;left:50%;transform:translateX(-50%);z-index:99999;background:var(--color-accent);color:var(--color-accent-text);font-family:system-ui;font-size:12px;font-weight:600;padding:8px 16px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.5);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;"></div>
+
+<!-- ============ SKETCH TOOLBAR ============ -->
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select onchange="setTheme(this.value)">
+    <option value="cyan" selected>Cyan</option><option value="default">SWG green</option><option value="amber">Amber</option><option value="blue">IDE blue</option><option value="high-contrast">High contrast</option>
+  </select>
+  <span class="lbl">width</span>
+  <button id="w-toggle" onclick="toggleWidth(this)">380px</button>
+</div>
+
+<!-- ============ SHARED VERSION-GRAPH MARKUP (cloned into each variant) ============ -->
+<template id="graph-tpl">
+  <div class="graph-container">
+    <div class="lane-col">
+      <svg width="84" height="208" viewBox="0 0 84 208" xmlns="http://www.w3.org/2000/svg">
+        <!-- main lane x=22: v2(130) → Baseline(182) ; v3 main(78) ; branch x=64 v? ... -->
+        <line x1="22" y1="78" x2="22" y2="182" stroke="var(--color-border-soft)" stroke-width="2"/>
+        <line x1="64" y1="0" x2="64" y2="17" stroke="rgba(56,190,201,.45)" stroke-width="2" stroke-dasharray="3 3"/>
+        <path d="M 22 130 C 52 130 64 92 64 26" stroke="rgba(56,190,201,.45)" stroke-width="2" fill="none"/>
+        <!-- Baseline (pristine) — distinct dashed square -->
+        <rect x="16.5" y="176.5" width="11" height="11" rx="2" fill="var(--color-surface)" stroke="var(--color-text-faint)" stroke-width="1.5" stroke-dasharray="2.5 2"/>
+        <!-- v2 deployed -->
+        <circle cx="22" cy="130" r="7" fill="var(--color-surface)" stroke="var(--color-info)" stroke-width="2"/>
+        <text x="22" y="146" text-anchor="middle" fill="var(--color-info)" font-size="9" font-family="monospace">⤓</text>
+        <!-- v3-main? actually v-main node -->
+        <circle cx="22" cy="78" r="6" fill="var(--color-surface)" stroke="var(--color-text-faint)" stroke-width="1.5"/>
+        <!-- v3 active (branch) -->
+        <circle cx="64" cy="26" r="9" fill="var(--color-accent)" stroke="var(--color-accent)" stroke-width="2"/>
+        <circle cx="64" cy="26" r="4" fill="var(--color-accent-text)"/>
+      </svg>
+    </div>
+    <div class="graph-rows-col">
+      <div class="graph-row is-active" oncontextmenu="graphCtx(event)" onclick="pickGraph(this)">
+        <span class="ver-label">v3</span><span class="ver-pip pip-active">● active</span>
+        <div class="ver-info"><div class="ver-title">Alt: heavier blaster</div><div class="ver-meta">2026-06-26 · 2 files · branch from v2</div></div>
+        <div class="row-acts"><button class="ra-revert" onclick="toast('Revert here')">Revert</button><div class="vsep"></div><button class="ra-deploy" onclick="event.stopPropagation();openModal()">Deploy v3</button><div class="vsep"></div><button class="ra-branch" onclick="toast('Branch from here')">Branch</button></div>
+      </div>
+      <div class="graph-row" oncontextmenu="graphCtx(event)" onclick="pickGraph(this)">
+        <span class="ver-label">vM</span><span class="ver-pip" style="color:var(--color-text-faint);">↑ main</span>
+        <div class="ver-info"><div class="ver-title">Recolor stormtrooper armor</div><div class="ver-meta">2026-06-26 · 3 files</div></div>
+        <div class="row-acts"><button class="ra-revert" onclick="toast('Revert here')">Revert</button><div class="vsep"></div><button class="ra-deploy" onclick="event.stopPropagation();openModal()">Deploy</button><div class="vsep"></div><button class="ra-branch" onclick="toast('Branch')">Branch</button></div>
+      </div>
+      <div class="graph-row" oncontextmenu="graphCtx(event)" onclick="pickGraph(this)">
+        <span class="ver-label">v2</span><span class="ver-pip pip-dep">⤓ live</span>
+        <div class="ver-info"><div class="ver-title">Buffed DL-44 damage</div><div class="ver-meta">2026-06-25 · 5 files</div></div>
+        <div class="row-acts"><button class="ra-revert" onclick="toast('Revert here')">Revert</button><div class="vsep"></div><button style="color:var(--color-text-faint);cursor:default;">⤓ live</button><div class="vsep"></div><button class="ra-branch" onclick="toast('Branch')">Branch</button></div>
+      </div>
+      <div class="graph-row is-baseline" oncontextmenu="graphCtx(event)" onclick="pickGraph(this)">
+        <span class="ver-label">—</span><span class="ver-pip pip-base">baseline</span>
+        <div class="ver-info"><div class="ver-title">Pristine client (unmodified)</div><div class="ver-meta">0 deltas · shadow ≡ source</div></div>
+        <div class="row-acts"><button class="ra-deploy" onclick="event.stopPropagation();openModal()">Deploy (reset to stock)</button><div class="vsep"></div><button class="ra-branch" onclick="toast('Branch from baseline')">Branch</button></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  // clone the shared graph markup into each host
+  document.querySelectorAll('.graph-rows-host').forEach(h => h.appendChild(document.getElementById('graph-tpl').content.cloneNode(true)));
+
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).classList.add('active');
+    btn.classList.add('active'); closeCtx();
+  }
+  function setTheme(name) { document.querySelector('link[href*=themes]').href = '../themes/' + name + '.css'; }
+  function toggleWidth(btn) {
+    const narrow = btn.textContent === '380px';
+    document.querySelectorAll('.dockw').forEach(d => d.style.width = narrow ? '300px' : '380px');
+    btn.textContent = narrow ? '300px' : '380px'; btn.classList.toggle('on', narrow);
+  }
+  function switchTab(tabEl, vid, idx) {
+    const v = document.getElementById('variant-' + vid);
+    v.querySelectorAll('.panel-tabs .ptab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    v.querySelectorAll('[id^="' + vid + '-pane-"]').forEach((p, i) => p.classList.toggle('active', i === idx));
+  }
+  function pickRow(el) { el.closest('.tab-pane').querySelectorAll('.staging-row').forEach(r => r.classList.remove('selected')); el.classList.add('selected'); }
+  function pickGraph(el) {
+    const host = el.closest('.tab-pane');
+    host.querySelectorAll('.graph-row').forEach(r => r.classList.remove('is-active'));
+    el.classList.add('is-active');
+    const title = el.querySelector('.ver-title').textContent;
+    host.querySelectorAll('.btn-primary').forEach(b => b.textContent = 'Deploy ' + (el.querySelector('.ver-label').textContent.replace('—','baseline')) + ' — ' + title + '…');
+    toast('Selected ' + title + ' → staging materialized from flatten()');
+  }
+  function rmRow(e, btn) { e.stopPropagation(); const r = btn.closest('.staging-row'); r.style.transition = 'opacity .15s'; r.style.opacity = '0'; setTimeout(() => r.remove(), 150); }
+
+  // per-row context menu (right-click OR ⋯)
+  let ctxRow = null;
+  function openCtxAt(x, y, row) {
+    ctxRow = row; const pop = document.getElementById('row-ctx');
+    pop.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+    pop.style.top = Math.min(y, window.innerHeight - 200) + 'px';
+    pop.classList.add('open');
+  }
+  function rowCtx(e, row) { e.preventDefault(); e.stopPropagation(); openCtxAt(e.clientX, e.clientY, row); }
+  function rowMenuBtn(e, btn) { e.stopPropagation(); const r = btn.getBoundingClientRect(); openCtxAt(r.left - 150, r.bottom + 2, btn.closest('.staging-row')); }
+  function graphCtx(e) { e.preventDefault(); } // graph uses inline hover actions; right-click no-op in sketch
+  function ctxAct(a) {
+    const path = ctxRow ? (ctxRow.querySelector('.row-path')?.textContent || 'entry') : 'entry';
+    if (a === 'remove' && ctxRow) { ctxRow.style.opacity = '0'; setTimeout(() => ctxRow.remove(), 150); }
+    else toast({open:'Open ' + path + ' in editor', viewport:'Open ' + path + ' in viewport', reveal:'Reveal ' + path + ' in TRE browser', diff:'Diff ' + path + ' vs base'}[a]);
+    closeCtx();
+  }
+  function closeCtx() { document.getElementById('row-ctx').classList.remove('open'); ctxRow = null; }
+  document.addEventListener('click', closeCtx);
+
+  // B: splitter drag
+  let dragEl = null, startY = 0, startH = 0;
+  function startSplit(e, sp) {
+    e.preventDefault(); dragEl = sp.previousElementSibling; startY = e.clientY; startH = dragEl.offsetHeight; sp.classList.add('dragging');
+    function mv(ev) { let h = Math.max(64, Math.min(startH + (ev.clientY - startY), dragEl.parentElement.offsetHeight - 130)); dragEl.style.height = h + 'px'; }
+    function up() { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); sp.classList.remove('dragging'); }
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+  }
+
+  // C: collapse sections
+  function toggleSec(head) {
+    const sec = head.closest('.sec'); sec.classList.toggle('collapsed');
+    // when graph collapses, staging gets the room; when staging collapses, graph fills
+    const pane = head.closest('.tab-pane');
+    const staging = pane.querySelector('.acc-staging'), graph = pane.querySelector('.acc-graph');
+    if (graph) graph.style.flex = graph.classList.contains('collapsed') ? '0 0 auto' : '1';
+    if (staging) staging.style.flex = staging.classList.contains('collapsed') ? '0 0 auto' : '0 1 auto';
+  }
+
+  // modal
+  function openModal() { document.getElementById('deploy-modal').classList.add('open'); }
+  function closeModal() { document.getElementById('deploy-modal').classList.remove('open'); }
+  function pickClient(el) { el.closest('.dlg-body').querySelectorAll('.client-row').forEach(r => r.classList.remove('selected')); el.classList.add('selected'); }
+  function pickModel(el) { el.closest('.dlg-body').querySelectorAll('.model-opt').forEach(o => o.classList.remove('selected')); el.classList.add('selected'); }
+
+  // D: collapse a section (staging or graph); splitter only meaningful when BOTH expanded
+  function dToggle(head) {
+    const sec = head.closest('.sec'); sec.classList.toggle('collapsed');
+    const pane = head.closest('.tab-pane');
+    const staging = pane.querySelector('.d-staging'), graph = pane.querySelector('.d-graph'), split = pane.querySelector('.d-splitter');
+    split.classList.toggle('hidden', staging.classList.contains('collapsed') || graph.classList.contains('collapsed'));
+    graph.style.flex = graph.classList.contains('collapsed') ? '0 0 auto' : '1';
+  }
+  // D: drag the splitter to resize the staging section
+  function dStartSplit(e, sp) {
+    e.preventDefault(); const staging = sp.previousElementSibling;
+    if (staging.classList.contains('collapsed')) return;
+    const startY = e.clientY, startH = staging.offsetHeight; sp.classList.add('dragging');
+    function mv(ev) { let h = Math.max(60, Math.min(startH + (ev.clientY - startY), staging.parentElement.offsetHeight - 150)); staging.style.height = h + 'px'; }
+    function up() { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); sp.classList.remove('dragging'); }
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+  }
+  // D: expand a version row to list its changeset's changed files + select it active (deploy target)
+  function toggleVer(head) {
+    const row = head.closest('.vrow'), pane = head.closest('.tab-pane');
+    pane.querySelectorAll('.vrow').forEach(r => r.classList.remove('is-active'));
+    row.classList.add('is-active'); row.classList.toggle('open');
+    const title = row.querySelector('.vrow-title').textContent, ver = row.querySelector('.vrow-meta').textContent.split('·')[0].trim();
+    pane.querySelector('.btn-primary').textContent = 'Deploy ' + ver + ' — ' + title + '…';
+  }
+
+  // toast
+  let toastT;
+  function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(-4px)'; clearTimeout(toastT); toastT = setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(-50%)'; }, 1600); }
+</script>
+</body>
+</html>
