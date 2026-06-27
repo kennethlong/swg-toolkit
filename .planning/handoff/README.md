@@ -2,6 +2,17 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
+- **[2026-06-27-frontier-sketches-007-011-016-DONE.md](2026-06-27-frontier-sketches-007-011-016-DONE.md)** — DONE (committed + pushed `73e1e5e`).
+  `/gsd-sketch` frontier session: 6 sketches with winners — **007** project front door (client binding +
+  optional local-server + non-client-project branch), **008** Deploy tab composed into the shell (one
+  `Inspect|Deploy` group, auto-widen ~440px), **009** SIE-successor IFF editor (typed fields + DATA grid),
+  **010** Inspect content (hybrid stat-chips), **011** viewport HUD + live-sync, **016** New-Object wizard
+  (derive an instance of the fixed engine type set). Captures 5 product decisions (incl. type-vs-instance,
+  now in `docs/02-formats/object-templates.md`), the shared **chrome kit** + a `.panel-tabs` scroll-bug fix
+  (also retro-fixed 001/002/004), and open follow-ups (012–015; **014 datatable grid** is the load-bearing
+  one). Answers two Phase-4 redesign todos (project-entry, combined deploy tab). Layers on the redesign
+  handoff below.
+
 - **[2026-06-27-phase4-uat-findings-redesign.md](2026-06-27-phase4-uat-findings-redesign.md)** — ACTIVE.
   In-client UAT findings + **redesign north star = sketch 005-B** (one combined Deploy tab; the executor
   diverged into 3 tabs). Consolidates the maintainer's product thesis (zero-risk shadow sandbox,
