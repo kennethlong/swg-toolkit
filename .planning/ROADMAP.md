@@ -184,7 +184,7 @@ Plans:
 **Plans:** 11 plans
 Plans:
 **Wave 1**
-- [ ] 04.1-01-PLAN.md — Foundation: extend WorkspaceInfo contract (kind + binding fields) + shared fake-client-dir test fixture + vitest version alignment
+- [x] 04.1-01-PLAN.md — Foundation: extend WorkspaceInfo contract (kind + binding fields) + shared fake-client-dir test fixture + vitest version alignment
 **Wave 2**
 - [ ] 04.1-02-PLAN.md — Project binding service + auto-mount (PROJ-01): projectBinding (detect/persist/auto-mount), extracted treMount routine, workspaceService persistence
 **Wave 3**
@@ -268,7 +268,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
 | 4. Edit & Deploy Loop | 8/8 | Code-complete (plumbing UAT ✓; close-out/verify pending) | - |
-| 4.1 Deploy & Project UX *(INSERTED)* | 0/11 | Planned | - |
+| 4.1 Deploy & Project UX *(INSERTED)* | 1/11 | In Progress|  |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |

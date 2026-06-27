@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 04.1 PLANNED (11 plans/9 waves) + plan-checker PASS + 4-AI crew review applied (6 HIGH+9 MED fixed); PAUSED before execute awaiting maintainer go
-last_updated: "2026-06-27T19:42:32.088Z"
-last_activity: 2026-06-27 -- Phase 04.1 inserted (redesign building approved sketches); ready to plan
+stopped_at: Phase 04.1 context gathered (CONTEXT.md written; 4 decisions locked)
+last_updated: "2026-06-27T21:55:39.289Z"
+last_activity: 2026-06-27
 progress:
   total_phases: 10
   completed_phases: 5
-  total_plans: 29
-  completed_plans: 29
-  percent: 100
+  total_plans: 40
+  completed_plans: 30
+  percent: 75
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 04.1 — deploy-project-ux (redesign)
+**Current focus:** Phase 04.1 — deploy-project-ux
 
 ## Current Position
 
-Phase: 04.1 (deploy-project-ux) — PLANNED + crew-reviewed; PAUSED before execute
-Plan: 11 plans / 9 waves (MVP front-door-first). plan-checker PASS (0 blockers); 4-AI crew
+Phase: 04.1 (deploy-project-ux) — EXECUTING
+Plan: 2 of 11
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
       migration, dynamic auto-widen). Crew briefs: .planning/research/CONSULT-P4.1-*.md.
-Status: Phase 04 plumbing is code-complete and UAT-passed end-to-end in-client (deploy loop works:
+Status: Ready to execute
         New Project→Add→Save version→Changeset→Deploy patch-prepend→mod loaded in-game, disk-verified).
         The remaining work is the UI/UX redesign + project-binding/shadow scope surfaced by UAT, now
         framed as INSERTED Phase 04.1 (maintainer chose inserted-phase over new-plans-under-4). Builds
@@ -43,9 +43,9 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       v6000 encrypted/out-of-scope) — server TRE search-path remains open, deferred to Phase 8 w/ server-push.
       Separately still pending: Phase 04 formal close-out (mark 04-06/06b complete, verifier,
       REQUIREMENTS DEPLOY-01..04 → Complete).
-Last activity: 2026-06-27 -- Phase 04.1 inserted (redesign building approved sketches); ready to plan
+Last activity: 2026-06-27
 
-Progress: [█████░░░░░] ~50% (5/10 phases) — Phase 4 code-complete; Phase 4.1 inserted, not yet planned
+Progress: [████████░░] 75%
 
 ### 02-03 key facts (crew-verified)
 
@@ -95,6 +95,7 @@ Progress: [█████░░░░░] ~50% (5/10 phases) — Phase 4 code-c
 | Phase 03-live-injection-foundation P04 | 13m | 2 tasks | 7 files |
 | Phase 03 P05 | 9 | 2 tasks | 2 files |
 | Phase 03-live-injection-foundation P06b | 305 | 2 tasks | 3 files |
+| Phase 04.1 P01 | 7 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -222,6 +223,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T19:42:32.069Z
+Last session: 2026-06-27T21:55:39.268Z
 Stopped at: Phase 04.1 context gathered (CONTEXT.md written; 4 decisions locked)
-Resume file: .planning/phases/04.1-deploy-project-ux/04.1-CONTEXT.md
+Resume file: None
