@@ -31,6 +31,30 @@ reviewed_at: 2026-06-26
 
 ---
 
+## Layout — sketch-validated composition (2026-06-26)
+
+Validated via throwaway mockups `.planning/sketches/002–005` (winners marked). **The Phase-4 deploy
+surfaces do NOT get their own dock regions — they live as a tab inside the existing Inspect panel
+group.**
+
+- **Inspect panel becomes a tabbed group: `Inspect` | `Deploy`** (idiomatic dockview tabs — same
+  `.panel-tabs`/`.ptab` chrome as sketch 001). The existing appearance/material/customization
+  inspectors stay under `Inspect`; the new deploy UI is the `Deploy` tab.
+- **`Deploy` tab = a vertical stack:** **Staging** (sketch 004 winner **B** — working-vs-saved split)
+  on top → divider → **Version graph** (sketch 002 winner **A** — git-graph lanes with branch
+  divergence + distinct active-vs-deployed pips) below → a sticky **`Deploy…`** primary button.
+- **The deploy dialog is a MODAL** (sketch 003 winner **A** — single-column stepper, ExportDialog
+  pattern). It overlays the whole app and costs **zero** panel space — this is what makes the
+  composition fit. Launched by the `Deploy…` button.
+- **Width:** the combined Deploy tab needs **~380px+** to read comfortably (sketch 005 winner **B**).
+  The inspector group should **default to ~380px when the Deploy tab is active**; it stays
+  resizable/floatable for working the history. At narrow (~300px) width, version labels + staging
+  paths ellipsize and the per-row Revert/Deploy/Branch actions collapse into a `⋯` overflow popover.
+- **Plan impact:** register Staging + Timeline as **tabs in the inspector group** via the `addPanel`
+  position in `04-02` / `04-04b` (NOT standalone panels); set the inspector group default width ~380px.
+
+---
+
 ## Design System
 
 | Property | Value | Source |
