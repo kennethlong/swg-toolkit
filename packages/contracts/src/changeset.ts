@@ -17,6 +17,20 @@
 import type { StagingAction } from './staging.js';
 
 // ---------------------------------------------------------------------------
+// BASELINE_ID
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical id for the Baseline (pristine) root changeset node.
+ *
+ * Exported here so plans 03 (VersionHistoryBody) and 06 (seedBaseline) import
+ * a single source of truth rather than redeclaring a local literal (W2 fix).
+ *
+ * Source: Phase 4.1 04.1-01-PLAN.md Task 1; D-08 (baseline seed at project creation).
+ */
+export const BASELINE_ID = 'baseline' as const;
+
+// ---------------------------------------------------------------------------
 // FileDelta
 // ---------------------------------------------------------------------------
 

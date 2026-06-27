@@ -5,6 +5,7 @@
  * No runtime code — types and const objects only.
  *
  * Source: D-04-01 (workspace = user-chosen project folder + .studio/ control dir).
+ * Extended: Phase 4.1 04.1-01-PLAN.md Task 1 — kind discriminator + binding fields (D-10/D-13/D-01).
  */
 
 // ---------------------------------------------------------------------------
@@ -15,6 +16,7 @@
  * Metadata for an open mod project workspace.
  *
  * Source: D-04-01; Phase 4 04-01-PLAN.md Task 1.
+ * Extended: Phase 4.1 D-10 (kind), D-13 (cfgPath/treDir/pattern), D-01 (serverConfig capture-only).
  */
 export interface WorkspaceInfo {
   /** Absolute path to the workspace root folder (user-chosen). */
@@ -25,4 +27,64 @@ export interface WorkspaceInfo {
   workspaceName: string;
   /** Absolute path to the detected SWG client install root, or null if not yet set. */
   clientPath: string | null;
+  /**
+   * Project binding kind — discriminates what the workspace folder IS.
+   * D-10: required; set on open/create; plans 02/06 set the real detected value.
+   * 'mod-project' is the safe default when no client install is detected.
+   */
+  kind: 'client' | 'tre-set' | 'mod-project';
+  /**
+   * Absolute path to the resolved cfg file (e.g. /path/to/swgemu.cfg).
+   * D-13: present when kind === 'client' and layout was resolved.
+   */
+  cfgPath?: string;
+  /**
+   * Absolute path to the resolved TRE directory (e.g. /path/to/Live/).
+   * D-13: present when kind === 'client' and layout was resolved.
+   */
+  treDir?: string;
+  /**
+   * Matched release pattern name (e.g. 'SWG Infinity', 'SWGEmu').
+   * D-13: present when kind === 'client' and auto-detection succeeded.
+   */
+  pattern?: string;
+  /**
+   * Local-server association — CAPTURE ONLY (D-01).
+   * Stores type/path/host:port for the optional 007 wizard step 3.
+   * No server push in Phase 4.1 — Phase 8 gates on ground-truth verification.
+   */
+  serverConfig?: {
+    /** Server runtime kind. */
+    type: 'core3-wsl2' | 'swgsource-docker';
+    /** Absolute path to the server root (e.g. WSL mount or Docker volume path). */
+    path: string;
+    /** host:port the server listens on, e.g. '127.0.0.1:44463'. */
+    hostPort: string;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// WorkspaceBindingMeta
+// ---------------------------------------------------------------------------
+
+/**
+ * The persisted subset of WorkspaceInfo that projectBinding reads/writes to
+ * .studio/workspace.json. Plans 02/06 read and write this when detecting the
+ * project kind and binding a client path.
+ *
+ * Source: Phase 4.1 04.1-01-PLAN.md Task 1 — W2 fix; D-10/D-13/D-01.
+ */
+export interface WorkspaceBindingMeta {
+  /** Project binding kind — see WorkspaceInfo.kind. */
+  kind: 'client' | 'tre-set' | 'mod-project';
+  /** Absolute path to the detected SWG client install root, or null. */
+  clientPath: string | null;
+  /** Resolved cfg file path — see WorkspaceInfo.cfgPath. */
+  cfgPath?: string;
+  /** Resolved TRE directory path — see WorkspaceInfo.treDir. */
+  treDir?: string;
+  /** Matched release pattern name — see WorkspaceInfo.pattern. */
+  pattern?: string;
+  /** Local-server association — see WorkspaceInfo.serverConfig. */
+  serverConfig?: WorkspaceInfo['serverConfig'];
 }

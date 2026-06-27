@@ -167,6 +167,8 @@ export async function openWorkspace(folderPath: string): Promise<void> {
       studioDir,
       workspaceName: path.basename(normalized),
       clientPath:    null,
+      // D-10: kind defaults to 'mod-project'; plan 02 sets the real detected value
+      kind:          'mod-project',
     });
     useChangesetStore.getState().setManifest(manifest);
   } catch (err) {
@@ -316,6 +318,8 @@ export async function createWorkspace(folderPath: string): Promise<void> {
       studioDir,
       workspaceName: path.basename(normalized),
       clientPath:    null,
+      // D-10: kind defaults to 'mod-project'; plan 06 sets the real value after binding
+      kind:          'mod-project',
     });
     useChangesetStore.getState().setManifest(emptyManifest);
   } catch (err) {
