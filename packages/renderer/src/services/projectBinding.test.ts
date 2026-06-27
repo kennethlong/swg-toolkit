@@ -31,9 +31,9 @@ import { useWorkspaceStore } from '../state/workspaceStore';
 // vi.hoisted ensures mock variables are initialized before the vi.mock factory runs.
 // This is required for variables used inside the vi.mock() factory callback.
 const nativeMocks = vi.hoisted(() => ({
-  mountSearchableAsync:    vi.fn<[], Promise<string>>().mockResolvedValue('mock-handle-01'),
-  getMountArchives:        vi.fn<[], Array<Record<string, unknown>>>().mockReturnValue([]),
-  getMountEntriesColumnar: vi.fn<[], ArrayBuffer>().mockReturnValue(new ArrayBuffer(8)),
+  mountSearchableAsync:    vi.fn().mockResolvedValue('mock-handle-01'),
+  getMountArchives:        vi.fn().mockReturnValue([]),
+  getMountEntriesColumnar: vi.fn().mockReturnValue(new ArrayBuffer(8)),
   resolveChain:            vi.fn(),
   readMountEntry:          vi.fn(),
   disposeTreMount:         vi.fn(),
