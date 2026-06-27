@@ -290,6 +290,28 @@ export interface NativeMountVfsEntry {
 export function getMountArchives(handle: string): NativeMountArchiveInfo[];
 
 /**
+ * Returns the deduplicated, shadow-resolved VFS as a compact binary columnar blob.
+ *
+ * ONE ArrayBuffer crosses the N-API bridge instead of building ~250k Napi::Objects —
+ * the root fix for the >1 minute UI freeze on a full client mount (244k entries).
+ * Use decodeMountEntriesColumnar() in treMount.ts to decode the binary layout.
+ *
+ * Binary layout (all LE) — mirrors TreMountColumnar in TreMount.h:
+ *   Header (32 bytes): uint32 entryCount, nameDataOffset, nameDataSize,
+ *                       archPathDataOffset, archPathDataSize, arrayOffset, reserved[2]
+ *   Per-entry arrays at arrayOffset (each entryCount elements):
+ *     uint32 nameOffsets[n], archPathOffsets[n], int32 winnerArchiveIndices[n],
+ *     int32 shadowCounts[n], uint8 flags[n]  (bit0=isOverride, bit1=isTombstone)
+ *   nameData / archPathData: packed null-terminated UTF-8 strings
+ *
+ * @param handle  Mount handle from mountSearchableAsync().
+ * @returns       Compact binary columnar ArrayBuffer (decoded by treMount.ts).
+ *
+ * Source: perf fix, tre-mount-perf-marshalling.md issue #1 (2026-06-24); TreMount.h buildColumnarVfs().
+ */
+export function getMountEntriesColumnar(handle: string): ArrayBuffer;
+
+/**
  * The deduplicated, shadow-resolved VFS for the whole mount.
  *
  * Computed once in C++ over every unique path (resolveChain logic). Returns the

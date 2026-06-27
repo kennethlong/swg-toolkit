@@ -1,0 +1,178 @@
+/**
+ * packages/renderer/src/services/projectBinding.ts
+ * First end-to-end vertical slice of PROJ-01: detect → persist → auto-mount.
+ *
+ * Exports:
+ *   detectFolderKind(folderPath)      — classify a folder as 'client'|'tre-set'|'mod-project'
+ *   readWorkspaceJson(studioDir)      — read WorkspaceBindingMeta from .studio/workspace.json
+ *   writeWorkspaceJson(studioDir, m)  — write WorkspaceBindingMeta atomically (tmp+rename)
+ *   initProject(folder)               — detect → persist → open workspace → auto-mount TREs
+ *
+ * Trust boundaries (T-04.1-02/03/04):
+ *   - workspace.json written only under the resolved studioDir (never into the client)
+ *   - TRE enumeration is restricted to files under treDir only; no symlink traversal
+ *   - Detection errors are caught+propagated; the store's openError() is called on failure
+ *
+ * Source: 04.1-02-PLAN.md Task 3; 04.1-PATTERNS.md §projectBinding.ts.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+
+import type { WorkspaceBindingMeta } from '@swg/contracts';
+import { getStudioDir, openWorkspace } from './workspaceService';
+import { mountTrePaths } from './treMount';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/** cfg filenames that signal a client install. Checked in order; first match wins. */
+const CFG_NAMES = ['swgemu.cfg', 'client.cfg'] as const;
+
+// ─── detectFolderKind ────────────────────────────────────────────────────────
+
+/**
+ * Classify a folder as a SWG client install, a bare TRE set, or a generic mod project.
+ *
+ * Detection logic (probe order matches clientLocator.ts):
+ *   1. 'client'      — folder has a cfg file (swgemu.cfg or client.cfg) AND at least one .tre
+ *                      file (in a Live/ subdir if present, else in the folder root)
+ *   2. 'tre-set'     — folder has .tre files in its root but no cfg file
+ *   3. 'mod-project' — neither cfg nor .tre files found
+ *
+ * Never throws — unreadable directories fall through to 'mod-project'.
+ */
+export function detectFolderKind(folderPath: string): 'client' | 'tre-set' | 'mod-project' {
+  // 1. Check for client: known cfg file + .tre files in Live/ or root
+  for (const cfgName of CFG_NAMES) {
+    if (fs.existsSync(path.join(folderPath, cfgName))) {
+      try {
+        const liveDir  = path.join(folderPath, 'Live');
+        const checkDir = fs.existsSync(liveDir) ? liveDir : folderPath;
+        const hasTre   = fs.readdirSync(checkDir).some((f) => f.endsWith('.tre'));
+        if (hasTre) return 'client';
+      } catch {
+        // Directory unreadable (permissions / broken symlink) — fall through
+      }
+    }
+  }
+
+  // 2. Check for bare TRE set: .tre files in root but no cfg
+  try {
+    const hasTreRoot = fs.readdirSync(folderPath).some((f) => f.endsWith('.tre'));
+    if (hasTreRoot) return 'tre-set';
+  } catch {
+    // Fall through to mod-project
+  }
+
+  return 'mod-project';
+}
+
+// ─── Workspace JSON helpers ───────────────────────────────────────────────────
+
+/**
+ * Read WorkspaceBindingMeta from .studio/workspace.json.
+ * Returns a safe default { kind:'mod-project', clientPath:null } when the file is absent
+ * or malformed (T-04.1-04: detection never throws unguarded).
+ */
+export function readWorkspaceJson(studioDir: string): WorkspaceBindingMeta {
+  const filePath = path.join(studioDir, 'workspace.json');
+  if (!fs.existsSync(filePath)) {
+    return { kind: 'mod-project', clientPath: null };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as WorkspaceBindingMeta;
+  } catch {
+    return { kind: 'mod-project', clientPath: null };
+  }
+}
+
+/**
+ * Persist WorkspaceBindingMeta to .studio/workspace.json using atomic tmp+rename.
+ * T-04.1-02: writes only under studioDir (never into the client install dir).
+ * BOM-free utf8 per the Shared "Atomic file write pattern".
+ */
+export function writeWorkspaceJson(studioDir: string, meta: WorkspaceBindingMeta): void {
+  // Ensure studioDir exists before writing (initProject always calls this)
+  fs.mkdirSync(studioDir, { recursive: true });
+  const filePath = path.join(studioDir, 'workspace.json');
+  const tmp      = filePath + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(meta, null, 2), 'utf8');
+  fs.renameSync(tmp, filePath);  // atomic on same-volume rename
+}
+
+// ─── initProject ─────────────────────────────────────────────────────────────
+
+/**
+ * Detect → persist → open → auto-mount.
+ *
+ * Steps:
+ *   1. detectFolderKind(folder)
+ *   2. Resolve cfgPath + treDir (client only)
+ *   3. Write .studio/workspace.json atomically (T-04.1-02)
+ *   4. Call openWorkspace(folder) to populate workspaceStore with real kind + clientPath
+ *   5. If client: enumerate .tre files from treDir, call mountTrePaths with ascending
+ *      priorities (M5 — mounting is UNCONDITIONAL for client-kind; no wizard gate)
+ *
+ * Auto-mount failure is non-fatal (logged, not re-thrown) — the workspace is still usable
+ * even if the TRE mount fails. openWorkspace failure IS re-thrown.
+ *
+ * T-04.1-03: .tre enumeration is restricted to files in treDir only (no sub-directories,
+ * no symlink traversal outside treDir).
+ */
+export async function initProject(folder: string): Promise<void> {
+  const normalized = path.resolve(folder);
+  const studioDir  = getStudioDir(normalized);
+
+  // ── 1. Detect ────────────────────────────────────────────────────────────
+  const kind = detectFolderKind(normalized);
+
+  // ── 2. Resolve cfg/tre paths for client binding ────────────────────────
+  let cfgPath: string | undefined;
+  let treDir:  string | undefined;
+
+  if (kind === 'client') {
+    for (const cfgName of CFG_NAMES) {
+      const candidate = path.join(normalized, cfgName);
+      if (fs.existsSync(candidate)) {
+        cfgPath = candidate;
+        break;
+      }
+    }
+    const liveDir = path.join(normalized, 'Live');
+    treDir        = fs.existsSync(liveDir) ? liveDir : normalized;
+  }
+
+  // ── 3. Persist to .studio/workspace.json ─────────────────────────────────
+  const meta: WorkspaceBindingMeta = {
+    kind,
+    clientPath: kind === 'client' ? normalized : null,
+    cfgPath,
+    treDir,
+  };
+  writeWorkspaceJson(studioDir, meta);
+
+  // ── 4. Open workspace (populates workspaceStore with real kind + clientPath) ──
+  // openWorkspace reads workspace.json and passes kind+clientPath to openComplete.
+  // Error pattern: workspaceService already calls openError(); re-throw for caller.
+  await openWorkspace(normalized);
+
+  // ── 5. Auto-mount base TREs (M5: unconditional for client kind) ────────
+  if (kind === 'client' && treDir !== undefined) {
+    try {
+      // T-04.1-03: enumerate only .tre files directly in treDir (no sub-dirs, no symlinks
+      // outside treDir, no path injection via filename).
+      const treFiles = fs.readdirSync(treDir)
+        .filter((f) => f.endsWith('.tre') && !f.includes('/') && !f.includes('\\'))
+        .sort();  // ascending alphabetical = ascending priority (TRE-dir order)
+
+      if (treFiles.length === 0) return;
+
+      const trePaths   = treFiles.map((f) => path.join(treDir!, f));
+      const priorities = treFiles.map((_, i) => i + 1);  // 1-based ascending
+      await mountTrePaths(trePaths, priorities);
+    } catch (err) {
+      // Non-fatal: log but do not re-throw — the workspace is still usable without a mount
+      console.error('[projectBinding] auto-mount failed:', err);
+    }
+  }
+}

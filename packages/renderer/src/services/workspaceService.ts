@@ -28,7 +28,7 @@ import { promisify } from 'util';
 
 import { useWorkspaceStore } from '../state/workspaceStore';
 import { useChangesetStore } from '../state/changesetStore';
-import type { WorkspaceChangesetManifest } from '@swg/contracts';
+import type { WorkspaceChangesetManifest, WorkspaceBindingMeta } from '@swg/contracts';
 
 const execFileAsync = promisify(execFile);
 
@@ -162,13 +162,28 @@ export async function openWorkspace(folderPath: string): Promise<void> {
 
     const manifest = readManifest(studioDir);
 
+    // D-10: read binding meta from workspace.json (written by initProject) so that
+    // openWorkspace always reflects the real kind + clientPath set during project binding.
+    // Falls back to safe defaults when workspace.json is absent (plain openWorkspace call
+    // not preceded by initProject — e.g. re-open after createWorkspace without binding).
+    let bindingMeta: WorkspaceBindingMeta = { kind: 'mod-project', clientPath: null };
+    const bindingJsonPath = path.join(studioDir, 'workspace.json');
+    if (fs.existsSync(bindingJsonPath)) {
+      try {
+        bindingMeta = JSON.parse(fs.readFileSync(bindingJsonPath, 'utf8')) as WorkspaceBindingMeta;
+      } catch {
+        // Malformed JSON — use defaults (T-04.1-04: never throws unguarded)
+      }
+    }
+
     useWorkspaceStore.getState().openComplete({
       folderPath:    normalized,
       studioDir,
       workspaceName: path.basename(normalized),
-      clientPath:    null,
-      // D-10: kind defaults to 'mod-project'; plan 02 sets the real detected value
-      kind:          'mod-project',
+      clientPath:    bindingMeta.clientPath,
+      kind:          bindingMeta.kind,
+      cfgPath:       bindingMeta.cfgPath,
+      treDir:        bindingMeta.treDir,
     });
     useChangesetStore.getState().setManifest(manifest);
   } catch (err) {
@@ -313,13 +328,24 @@ export async function createWorkspace(folderPath: string): Promise<void> {
     // If .git/hooks/ does not exist (git init failed or git absent): skip silently
 
     // ── Populate stores ───────────────────────────────────────────────────────
+    // D-10: read binding meta from workspace.json if it exists (defensive: covers the case
+    // where initProject was called before createWorkspace — unusual but harmless).
+    let createBindingMeta: WorkspaceBindingMeta = { kind: 'mod-project', clientPath: null };
+    const createBindingJsonPath = path.join(studioDir, 'workspace.json');
+    if (fs.existsSync(createBindingJsonPath)) {
+      try {
+        createBindingMeta = JSON.parse(fs.readFileSync(createBindingJsonPath, 'utf8')) as WorkspaceBindingMeta;
+      } catch {
+        // Malformed JSON — use defaults
+      }
+    }
+
     useWorkspaceStore.getState().openComplete({
       folderPath:    normalized,
       studioDir,
       workspaceName: path.basename(normalized),
-      clientPath:    null,
-      // D-10: kind defaults to 'mod-project'; plan 06 sets the real value after binding
-      kind:          'mod-project',
+      clientPath:    createBindingMeta.clientPath,
+      kind:          createBindingMeta.kind,
     });
     useChangesetStore.getState().setManifest(emptyManifest);
   } catch (err) {
