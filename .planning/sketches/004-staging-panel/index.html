@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWG Toolkit — Sketch 004: Staging Panel</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    color: var(--color-text);
+    background: var(--color-bg);
+    padding-top: 40px;
+    overflow: hidden;
+  }
+
+  /* ---------- variant switcher (matches 001 exactly) ---------- */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 40px;
+    background: #101010; border-bottom: 1px solid #000;
+    display: flex; align-items: center; gap: 6px; padding: 0 12px;
+    font-family: system-ui;
+  }
+  #variant-nav .brand { color: #777; font-size: 12px; margin-right: 8px; letter-spacing: .04em; }
+  .variant-tab {
+    background: #222; color: #bbb; border: 1px solid #333; border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all .15s ease;
+  }
+  .variant-tab:hover { background: #2c2c2c; color: #eee; }
+  .variant-tab.active { background: var(--color-accent); color: var(--color-accent-text); border-color: var(--color-accent); font-weight: 600; }
+
+  .variant { height: calc(100vh - 40px); display: none; overflow: auto; }
+  .variant.active { display: flex; align-items: flex-start; justify-content: center;
+    padding: 24px; gap: 20px; }
+
+  /* ---------- panel chrome (verbatim from 001) ---------- */
+  .panel {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); display: flex; flex-direction: column;
+    overflow: hidden; box-shadow: var(--shadow-panel);
+  }
+  .panel-head {
+    height: 30px; flex: 0 0 auto; display: flex; align-items: stretch;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+  }
+  .drag-dots { width: 18px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: grab; font-size: 11px; letter-spacing: -1px; }
+  .panel-tabs { display: flex; align-items: stretch; flex: 1; overflow-x: auto; }
+  .ptab {
+    display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: var(--text-sm);
+    color: var(--color-text-muted); cursor: pointer; border-right: 1px solid var(--color-border);
+    white-space: nowrap; position: relative;
+  }
+  .ptab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-faint); }
+  .ptab.active { background: var(--color-surface); color: var(--color-text); }
+  .ptab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+    height: 2px; background: var(--color-accent); }
+  .ptab.active .dot { background: var(--color-accent); }
+  .panel-actions { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2); margin-left: auto; }
+  .pbtn { height: 22px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: var(--radius-sm);
+    font-size: 12px; transition: all .12s; background: none; border: none;
+    font-family: inherit; padding: 0 var(--space-2); gap: 3px;
+  }
+  .pbtn:hover { background: var(--color-widget); color: var(--color-text); }
+  .pbtn.primary {
+    background: var(--color-accent); color: var(--color-accent-text);
+    padding: 3px 10px; font-weight: 600; font-size: var(--text-sm);
+  }
+  .pbtn.primary:hover { background: var(--color-accent-hover); }
+  .pbtn.primary:disabled {
+    background: var(--color-widget); color: var(--color-text-faint); opacity: 0.6; cursor: not-allowed;
+  }
+  .panel-body { flex: 1; overflow: auto; min-height: 0; display: flex; flex-direction: column; }
+
+  /* ---------- action badge ---------- */
+  .badge {
+    display: inline-flex; align-items: center; gap: 2px;
+    font-size: var(--text-xs); font-family: var(--font-sans);
+    padding: 1px 6px; border-radius: var(--radius-full);
+    font-weight: 400; white-space: nowrap; flex: 0 0 auto;
+  }
+  .badge-add     { color: var(--color-info); background: rgba(74,140,255,0.12); border: 1px solid rgba(74,140,255,0.3); }
+  .badge-modify  { color: var(--color-text-muted); background: rgba(255,255,255,0.05); border: 1px solid var(--color-border-soft); }
+  .badge-delete  { color: var(--color-warn); background: rgba(224,161,58,0.12); border: 1px solid rgba(224,161,58,0.3); }
+
+  /* ---------- virtualized staging row (ROW_HEIGHT=30, per spec) ---------- */
+  .staging-row {
+    height: 30px; display: flex; align-items: center; gap: var(--space-2);
+    padding: 0 var(--space-4); border-bottom: 1px solid var(--color-border-soft);
+    transition: background .1s; cursor: pointer; position: relative;
+  }
+  .staging-row:hover { background: var(--color-surface-2); }
+  .staging-row.selected { background: var(--color-accent-dim); box-shadow: inset 2px 0 0 var(--color-accent); }
+
+  .row-path {
+    font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text);
+    flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .row-source {
+    font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;
+    flex: 0 0 auto;
+  }
+  .row-remove {
+    width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-faint); cursor: pointer; border-radius: var(--radius-sm);
+    font-size: 13px; flex: 0 0 18px; transition: all .1s;
+    background: none; border: none; font-family: inherit; opacity: 0;
+  }
+  .staging-row:hover .row-remove { opacity: 1; }
+  .row-remove:hover { color: var(--color-danger); background: rgba(224,88,79,0.12); }
+  .row-remove:focus-visible { outline: none; box-shadow: var(--focus-ring); opacity: 1; }
+
+  /* ---------- footer summary bar ---------- */
+  .staging-footer {
+    flex: 0 0 auto; padding: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--color-border-soft); background: var(--color-header);
+    display: flex; align-items: center; gap: var(--space-4);
+    font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint);
+  }
+  .footer-count { color: var(--color-text-muted); }
+
+  /* ---------- save-version popover (inline) ---------- */
+  .save-popover {
+    position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
+    background: var(--color-header); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
+    box-shadow: var(--shadow-pop); display: none; flex-direction: column; gap: var(--space-2);
+    min-width: 260px;
+  }
+  .save-popover.open { display: flex; }
+  .save-popover-label {
+    font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);
+  }
+  .save-input {
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 4px var(--space-2);
+    font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text);
+    width: 100%;
+  }
+  .save-input:focus { outline: none; box-shadow: var(--focus-ring); }
+  .save-input::placeholder { color: var(--color-text-faint); }
+  .save-popover-btns {
+    display: flex; gap: var(--space-2);
+  }
+  .btn-save-confirm {
+    background: var(--color-accent); color: var(--color-accent-text);
+    border: none; border-radius: var(--radius-sm); padding: 3px 10px;
+    font-size: var(--text-sm); font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: all .1s; flex: 1;
+  }
+  .btn-save-confirm:hover { background: var(--color-accent-hover); }
+  .btn-save-cancel {
+    background: var(--color-widget); color: var(--color-text-muted);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    padding: 3px 10px; font-size: var(--text-sm); cursor: pointer; font-family: inherit;
+    transition: all .1s;
+  }
+  .btn-save-cancel:hover { background: var(--color-widget-hover); color: var(--color-text); }
+
+  /* ---------- section divider (variant B) ---------- */
+  .section-divider {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-1) var(--space-4); font-size: var(--text-xs);
+    color: var(--color-text-faint); background: var(--color-bg);
+    border-top: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+    user-select: none;
+  }
+  .section-divider .ver-ref {
+    font-family: var(--font-mono); color: var(--color-accent);
+  }
+
+  /* ---------- inline compose banner (variant C) ---------- */
+  .compose-banner {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: rgba(56,190,201,0.06);
+    border-bottom: 1px solid var(--color-border-soft);
+    font-size: var(--text-sm); flex-wrap: wrap;
+  }
+  .compose-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent);
+    box-shadow: 0 0 4px var(--color-accent); flex: 0 0 auto;
+  }
+  .compose-input {
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: 3px var(--space-2);
+    font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text);
+    width: 200px; flex: 0 0 200px;
+  }
+  .compose-input:focus { outline: none; box-shadow: var(--focus-ring); }
+  .compose-input::placeholder { color: var(--color-text-faint); }
+  .btn-compose-save {
+    background: var(--color-accent); color: var(--color-accent-text);
+    border: none; border-radius: var(--radius-sm); padding: 3px 10px;
+    font-size: var(--text-sm); font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: all .1s;
+  }
+  .btn-compose-save:hover { background: var(--color-accent-hover); }
+
+  /* row action dropdown (variant C) */
+  .row-action-drop {
+    position: relative; flex: 0 0 auto;
+  }
+  .row-action-btn {
+    background: none; border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    color: var(--color-text-faint); font-size: var(--text-xs); cursor: pointer;
+    padding: 1px 6px; font-family: inherit; transition: all .1s;
+    display: flex; align-items: center; gap: 2px; opacity: 0;
+  }
+  .staging-row:hover .row-action-btn { opacity: 1; }
+  .row-action-btn:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .row-dropdown {
+    position: absolute; right: 0; top: calc(100% + 2px); z-index: 20;
+    background: var(--color-header); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); padding: var(--space-1);
+    box-shadow: var(--shadow-pop); display: none; flex-direction: column; min-width: 120px;
+  }
+  .row-dropdown.open { display: flex; }
+  .row-dropdown button {
+    background: none; border: none; color: var(--color-text-muted); font-size: var(--text-xs);
+    cursor: pointer; padding: var(--space-1) var(--space-2); text-align: left;
+    border-radius: var(--radius-sm); font-family: inherit; transition: all .1s;
+    white-space: nowrap;
+  }
+  .row-dropdown button:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .row-dropdown button.danger:hover { color: var(--color-danger); }
+
+  /* sketch toolbar */
+  #sketch-tools {
+    position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 10px; border-radius: 8px; opacity: .45;
+    transition: opacity .2s; display: flex; align-items: center; gap: 10px;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select { background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 5px;
+    padding: 4px 8px; font-size: 11px; cursor: pointer; }
+  #sketch-tools .lbl { color: #888; font-size: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ============ VARIANT SWITCHER ============ -->
+<div id="variant-nav">
+  <span class="brand">SKETCH 004 · staging panel</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A · List + Footer Save Bar</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B · Working-vs-Saved Split</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C · Inline Compose Banner</button>
+</div>
+
+<!-- =================================================================
+     VARIANT A — Virtualized list + footer save bar
+     ================================================================= -->
+<div id="variant-a" class="variant active">
+  <div class="panel" style="width:620px; min-height:300px; max-height:calc(100vh - 88px);">
+    <div class="panel-head">
+      <div class="drag-dots">⠿</div>
+      <div class="panel-tabs">
+        <div class="ptab active"><span class="dot"></span>Staging</div>
+      </div>
+      <div class="panel-actions" style="gap:4px;">
+        <!-- Add affordances menu (collapsed to ＋ Add… button) -->
+        <div style="position:relative;">
+          <button class="pbtn" onclick="toggleAddMenu(this)" title="Add to patch" style="gap:3px;">
+            ＋ Add…
+          </button>
+          <div id="add-menu-a" style="position:absolute; right:0; top:calc(100% + 2px); z-index:20;
+              background:var(--color-header); border:1px solid var(--color-border-soft);
+              border-radius:var(--radius-sm); padding:var(--space-1); box-shadow:var(--shadow-pop);
+              display:none; flex-direction:column; min-width:150px;">
+            <button style="background:none;border:none;color:var(--color-text-muted);font-size:var(--text-xs);
+              cursor:pointer;padding:var(--space-1) var(--space-2);text-align:left;border-radius:var(--radius-sm);
+              font-family:inherit;white-space:nowrap;transition:all .1s;"
+              onmouseenter="this.style.background='var(--color-surface-2)';this.style.color='var(--color-text)'"
+              onmouseleave="this.style.background='none';this.style.color='var(--color-text-muted)'"
+              onclick="closeAddMenu()">Add from Extract</button>
+            <button style="background:none;border:none;color:var(--color-text-muted);font-size:var(--text-xs);
+              cursor:pointer;padding:var(--space-1) var(--space-2);text-align:left;border-radius:var(--radius-sm);
+              font-family:inherit;white-space:nowrap;transition:all .1s;"
+              onmouseenter="this.style.background='var(--color-surface-2)';this.style.color='var(--color-text)'"
+              onmouseleave="this.style.background='none';this.style.color='var(--color-text-muted)'"
+              onclick="closeAddMenu()">Add file…</button>
+            <button style="background:none;border:none;color:var(--color-text-muted);font-size:var(--text-xs);
+              cursor:pointer;padding:var(--space-1) var(--space-2);text-align:left;border-radius:var(--radius-sm);
+              font-family:inherit;white-space:nowrap;transition:all .1s;"
+              onmouseenter="this.style.background='var(--color-surface-2)';this.style.color='var(--color-text)'"
+              onmouseleave="this.style.background='none';this.style.color='var(--color-text-muted)'"
+              onclick="closeAddMenu()">Add tombstone…</button>
+          </div>
+        </div>
+        <!-- Pack Patch -->
+        <button class="pbtn" style="background:var(--color-widget);color:var(--color-text-muted);
+          border:1px solid var(--color-border-soft);border-radius:var(--radius-sm);padding:3px 8px;
+          font-size:var(--text-sm);"
+          onmouseenter="this.style.background='var(--color-widget-hover)';this.style.color='var(--color-text)'"
+          onmouseleave="this.style.background='var(--color-widget)';this.style.color='var(--color-text-muted)'"
+          onclick="alert('Pack Patch → buildTre(staged, v5000)')">Pack Patch</button>
+        <!-- Deploy -->
+        <button class="pbtn primary" onclick="alert('Deploy… → opens deploy dialog (sketch 003)')">Deploy…</button>
+      </div>
+    </div>
+
+    <!-- Staged rows (ROW_HEIGHT=30, OVERSCAN=8, virtualized per spec) -->
+    <div class="panel-body">
+      <div style="flex:1; overflow:auto;">
+
+        <!-- Row 1: Modify -->
+        <div class="staging-row" onclick="pickRow(this)" tabindex="0" aria-label="appearance/tt8l_y7.sat — modify">
+          <span class="badge badge-modify">~ modify</span>
+          <span class="row-path">appearance/tt8l_y7.sat</span>
+          <span class="row-source">tt8l_y7.sat · 18 kB</span>
+          <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                  onclick="removeRow(event, this)">×</button>
+        </div>
+
+        <!-- Row 2: Modify -->
+        <div class="staging-row" onclick="pickRow(this)" tabindex="0" aria-label="texture/stormtrooper_armor.dds — modify">
+          <span class="badge badge-modify">~ modify</span>
+          <span class="row-path">texture/stormtrooper_armor.dds</span>
+          <span class="row-source">stormtrooper_armor.dds · 512 kB</span>
+          <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                  onclick="removeRow(event, this)">×</button>
+        </div>
+
+        <!-- Row 3: Modify -->
+        <div class="staging-row selected" onclick="pickRow(this)" tabindex="0" aria-label="datatables/weapon/weapon.iff — modify">
+          <span class="badge badge-modify">~ modify</span>
+          <span class="row-path">datatables/weapon/weapon.iff</span>
+          <span class="row-source">weapon.iff · 42 kB</span>
+          <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                  onclick="removeRow(event, this)">×</button>
+        </div>
+
+        <!-- Row 4: Delete / tombstone -->
+        <div class="staging-row" onclick="pickRow(this)" tabindex="0" aria-label="appearance/old_emitter.apt — delete tombstone">
+          <span class="badge badge-delete">⊘ delete (tombstone)</span>
+          <span class="row-path">appearance/old_emitter.apt</span>
+          <span class="row-source" style="color:var(--color-warn)">(tombstone — length-0)</span>
+          <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                  onclick="removeRow(event, this)">×</button>
+        </div>
+
+        <!-- Row 5: Add -->
+        <div class="staging-row" onclick="pickRow(this)" tabindex="0" aria-label="appearance/new_blaster_l0.msh — add">
+          <span class="badge badge-add">+ add</span>
+          <span class="row-path">appearance/new_blaster_l0.msh</span>
+          <span class="row-source">new_blaster_l0.msh · 96 kB</span>
+          <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                  onclick="removeRow(event, this)">×</button>
+        </div>
+
+        <!-- Drop target hint (at bottom of list) -->
+        <div style="padding:var(--space-4); text-align:center; font-size:var(--text-xs);
+          color:var(--color-text-faint); border: 1.5px dashed var(--color-border-soft);
+          margin:var(--space-3) var(--space-4); border-radius:var(--radius-sm);">
+          drop a file here to stage it · or use ＋ Add… above
+        </div>
+
+      </div><!-- /scroll area -->
+
+      <!-- Footer summary + Save version -->
+      <div class="staging-footer" style="position:relative;">
+        <span class="footer-count">5 staged</span>
+        <span>·</span>
+        <span><span style="color:var(--color-info)">1 add</span></span>
+        <span>·</span>
+        <span>2 modify</span>
+        <span>·</span>
+        <span><span style="color:var(--color-warn)">1 delete</span></span>
+        <span style="margin-left:auto; font-size:var(--text-xs);">668 kB total</span>
+        <span style="width:1px;background:var(--color-border-soft);align-self:stretch; margin:2px 0;"></span>
+        <!-- Save version button + popover -->
+        <div style="position:relative;">
+          <button id="save-btn-a" style="background:none;border:none;color:var(--color-text-muted);
+            font-size:var(--text-xs);cursor:pointer;font-family:inherit;white-space:nowrap;
+            display:flex;align-items:center;gap:3px;transition:color .1s;"
+            onmouseenter="this.style.color='var(--color-text)'"
+            onmouseleave="this.style.color='var(--color-text-muted)'"
+            onclick="toggleSavePop('pop-a', 'save-btn-a')">
+            <span style="color:var(--color-accent)">●</span> uncommitted — Save version…
+          </button>
+          <div id="pop-a" class="save-popover" style="bottom:calc(100% + 6px); top:auto;">
+            <div class="save-popover-label">Version label</div>
+            <input class="save-input" type="text" placeholder="e.g. Buffed DL-44 damage…"
+                   id="label-a" onkeydown="if(event.key==='Enter') saveVersion('a')">
+            <div class="save-popover-btns">
+              <button class="btn-save-confirm" onclick="saveVersion('a')">Save version</button>
+              <button class="btn-save-cancel" onclick="closeSavePop('pop-a')">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /panel-body -->
+  </div><!-- /panel -->
+
+  <!-- Side annotation -->
+  <div style="width:200px; font-size:var(--text-xs); color:var(--color-text-faint); padding-top:8px; line-height:1.6;">
+    <div style="font-weight:600; color:var(--color-text-muted); margin-bottom:6px;">A · List + Footer Save Bar</div>
+    <div style="margin-bottom:6px;">Rows are fixed 30px (ROW_HEIGHT contract; virtualized when long). Badge encodes action: +add (info) / ~modify (muted) / ⊘delete (warn).</div>
+    <div style="margin-bottom:6px;">Hover a row → × remove appears. Non-destructive — never deletes the on-disk file.</div>
+    <div>Footer: summary + "● uncommitted — Save version…" opens the label popover inline.</div>
+  </div>
+</div>
+
+
+<!-- =================================================================
+     VARIANT B — Working-vs-Saved split
+     ================================================================= -->
+<div id="variant-b" class="variant">
+  <div class="panel" style="width:620px; min-height:300px; max-height:calc(100vh - 88px);">
+    <div class="panel-head">
+      <div class="drag-dots">⠿</div>
+      <div class="panel-tabs">
+        <div class="ptab active"><span class="dot"></span>Staging</div>
+      </div>
+      <div class="panel-actions" style="gap:4px;">
+        <button class="pbtn" onclick="alert('Add…')" style="font-size:var(--text-sm);">＋ Add…</button>
+        <button class="pbtn" style="background:var(--color-widget);color:var(--color-text-muted);
+          border:1px solid var(--color-border-soft);border-radius:var(--radius-sm);padding:3px 8px;
+          font-size:var(--text-sm);"
+          onmouseenter="this.style.background='var(--color-widget-hover)';this.style.color='var(--color-text)'"
+          onmouseleave="this.style.background='var(--color-widget)';this.style.color='var(--color-text-muted)'"
+          onclick="alert('Pack Patch')">Pack Patch</button>
+        <button class="pbtn primary" onclick="alert('Deploy…')">Deploy…</button>
+      </div>
+    </div>
+
+    <div class="panel-body">
+      <!-- Section A: Working changes (uncommitted) -->
+      <div style="font-size:var(--text-xs); font-weight:600; color:var(--color-text-muted);
+        padding:var(--space-2) var(--space-4); display:flex; align-items:center; gap:var(--space-2);">
+        <span style="color:var(--color-accent)">●</span>
+        Working changes (uncommitted)
+        <span style="margin-left:auto; font-weight:400; color:var(--color-text-faint);">3 files</span>
+        <div style="position:relative;">
+          <button id="save-btn-b" style="background:var(--color-accent);color:var(--color-accent-text);
+            border:none;border-radius:var(--radius-sm);padding:2px 8px;font-size:var(--text-xs);
+            font-weight:600;cursor:pointer;font-family:inherit;"
+            onclick="toggleSavePop('pop-b','save-btn-b')">Save version…</button>
+          <div id="pop-b" class="save-popover" style="top:calc(100% + 4px); right:0; bottom:auto;">
+            <div class="save-popover-label">Version label</div>
+            <input class="save-input" type="text" placeholder="Alt: heavier blaster…"
+                   id="label-b" onkeydown="if(event.key==='Enter') saveVersion('b')">
+            <div class="save-popover-btns">
+              <button class="btn-save-confirm" onclick="saveVersion('b')">Save version</button>
+              <button class="btn-save-cancel" onclick="closeSavePop('pop-b')">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Working rows (not yet saved to a version) -->
+      <div class="staging-row" onclick="pickRow(this)" tabindex="0">
+        <span class="badge badge-modify">~ modify</span>
+        <span class="row-path">appearance/tt8l_y7.sat</span>
+        <span class="row-source">tt8l_y7.sat · 18 kB</span>
+        <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                onclick="removeRow(event,this)">×</button>
+      </div>
+      <div class="staging-row selected" onclick="pickRow(this)" tabindex="0">
+        <span class="badge badge-modify">~ modify</span>
+        <span class="row-path">datatables/weapon/weapon.iff</span>
+        <span class="row-source">weapon.iff · 42 kB</span>
+        <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                onclick="removeRow(event,this)">×</button>
+      </div>
+      <div class="staging-row" onclick="pickRow(this)" tabindex="0">
+        <span class="badge badge-add">+ add</span>
+        <span class="row-path">appearance/new_blaster_l0.msh</span>
+        <span class="row-source">new_blaster_l0.msh · 96 kB</span>
+        <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                onclick="removeRow(event,this)">×</button>
+      </div>
+
+      <!-- Divider: based-on version -->
+      <div class="section-divider">
+        <span>Based on</span>
+        <span class="ver-ref">v4 — Alt: heavier blaster</span>
+        <span style="flex:1"></span>
+        <span style="color:var(--color-text-faint);">2 files from previous version below</span>
+      </div>
+
+      <!-- Saved/committed rows (from the active version, v4) -->
+      <div style="font-size:var(--text-xs); font-weight:600; color:var(--color-text-faint);
+        padding:var(--space-2) var(--space-4); display:flex; align-items:center; gap:var(--space-2);">
+        <span>Saved in <span style="color:var(--color-accent); font-family:var(--font-mono);">v4</span></span>
+        <span style="margin-left:auto; font-weight:400;">2 files</span>
+      </div>
+
+      <!-- v4 rows (read-only-ish — dimmed) -->
+      <div class="staging-row" style="opacity:0.55;" onclick="pickRow(this)" tabindex="0">
+        <span class="badge badge-modify">~ modify</span>
+        <span class="row-path">texture/stormtrooper_armor.dds</span>
+        <span class="row-source">stormtrooper_armor.dds · 512 kB</span>
+        <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                onclick="removeRow(event,this)" style="opacity:0.6;">×</button>
+      </div>
+      <div class="staging-row" style="opacity:0.55;" onclick="pickRow(this)" tabindex="0">
+        <span class="badge badge-delete">⊘ delete (tombstone)</span>
+        <span class="row-path">appearance/old_emitter.apt</span>
+        <span class="row-source" style="color:var(--color-warn)">(tombstone — length-0)</span>
+        <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                onclick="removeRow(event,this)" style="opacity:0.6;">×</button>
+      </div>
+
+      <div class="staging-footer">
+        <span class="footer-count">5 total</span>
+        <span>·</span><span><span style="color:var(--color-info)">1 add</span></span>
+        <span>·</span><span>2 modify</span>
+        <span>·</span><span><span style="color:var(--color-warn)">1 delete</span></span>
+        <span style="margin-left:auto">668 kB payload</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="width:200px; font-size:var(--text-xs); color:var(--color-text-faint); padding-top:8px; line-height:1.6;">
+    <div style="font-weight:600; color:var(--color-text-muted); margin-bottom:6px;">B · Working-vs-Saved Split</div>
+    <div style="margin-bottom:6px;">Two sub-lists: top = uncommitted working changes; bottom = entries already committed into the active version (v4, dimmed).</div>
+    <div style="margin-bottom:6px;">"Save version…" promotes working → new version. The divider names the parent.</div>
+    <div>Makes the "staged but not yet versioned" concept visible without extra UI.</div>
+  </div>
+</div>
+
+
+<!-- =================================================================
+     VARIANT C — Inline compose banner + per-row action dropdown
+     ================================================================= -->
+<div id="variant-c" class="variant">
+  <div class="panel" style="width:660px; min-height:300px; max-height:calc(100vh - 88px);">
+    <div class="panel-head">
+      <div class="drag-dots">⠿</div>
+      <div class="panel-tabs">
+        <div class="ptab active"><span class="dot"></span>Staging</div>
+      </div>
+      <div class="panel-actions" style="gap:4px;">
+        <button class="pbtn" onclick="alert('Add…')" style="font-size:var(--text-sm);">＋ Add…</button>
+        <button class="pbtn" style="background:var(--color-widget);color:var(--color-text-muted);
+          border:1px solid var(--color-border-soft);border-radius:var(--radius-sm);padding:3px 8px;
+          font-size:var(--text-sm);"
+          onmouseenter="this.style.background='var(--color-widget-hover)';this.style.color='var(--color-text)'"
+          onmouseleave="this.style.background='var(--color-widget)';this.style.color='var(--color-text-muted)'"
+          onclick="alert('Pack Patch')">Pack Patch</button>
+        <button class="pbtn primary" onclick="alert('Deploy…')">Deploy…</button>
+      </div>
+    </div>
+    <div class="panel-body">
+
+      <!-- Top banner: unsaved changes + inline label + Save -->
+      <div class="compose-banner">
+        <div class="compose-dot"></div>
+        <span style="color:var(--color-text-muted);">5 unsaved changes — name &amp; save this version</span>
+        <input class="compose-input" type="text" id="compose-input-c"
+               placeholder="version label…"
+               onkeydown="if(event.key==='Enter') saveVersionC()">
+        <button class="btn-compose-save" onclick="saveVersionC()">Save</button>
+      </div>
+
+      <!-- Rows with per-row action dropdowns -->
+      <div style="flex:1; overflow:auto;">
+
+        <!-- Row 1 -->
+        <div class="staging-row" onclick="pickRow(this)" tabindex="0">
+          <span class="badge badge-modify">~ modify</span>
+          <span class="row-path">appearance/tt8l_y7.sat</span>
+          <span class="row-source">tt8l_y7.sat · 18 kB</span>
+          <div class="row-action-drop">
+            <button class="row-action-btn" onclick="toggleDropdown(event, this)">⋯ ▾</button>
+            <div class="row-dropdown">
+              <button onclick="closeDropdowns()">Change action…</button>
+              <button onclick="closeDropdowns()">Relink file…</button>
+              <button class="danger" onclick="removeRow(event, this.closest('.staging-row').querySelector('.row-remove'))">Remove from patch</button>
+            </div>
+          </div>
+          <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                  onclick="removeRow(event,this)" style="display:none">×</button>
+        </div>
+
+        <!-- Row 2 -->
+        <div class="staging-row" onclick="pickRow(this)" tabindex="0">
+          <span class="badge badge-modify">~ modify</span>
+          <span class="row-path">texture/stormtrooper_armor.dds</span>
+          <span class="row-source">stormtrooper_armor.dds · 512 kB</span>
+          <div class="row-action-drop">
+            <button class="row-action-btn" onclick="toggleDropdown(event, this)">⋯ ▾</button>
+            <div class="row-dropdown">
+              <button onclick="closeDropdowns()">Change action…</button>
+              <button onclick="closeDropdowns()">Relink file…</button>
+              <button class="danger" onclick="removeRow(event, null, this.closest('.staging-row'))">Remove from patch</button>
+            </div>
+          </div>
+          <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                  onclick="removeRow(event,this)" style="display:none">×</button>
+        </div>
+
+        <!-- Row 3 (selected) -->
+        <div class="staging-row selected" onclick="pickRow(this)" tabindex="0">
+          <span class="badge badge-modify">~ modify</span>
+          <span class="row-path">datatables/weapon/weapon.iff</span>
+          <span class="row-source">weapon.iff · 42 kB</span>
+          <div class="row-action-drop">
+            <button class="row-action-btn" onclick="toggleDropdown(event, this)" style="opacity:1;">⋯ ▾</button>
+            <div class="row-dropdown open" id="demo-dropdown" style="display:flex;">
+              <button onclick="closeDropdowns()">Change action…</button>
+              <button onclick="closeDropdowns()">Relink file…</button>
+              <button class="danger" onclick="removeRow(event, null, this.closest('.staging-row'))">Remove from patch</button>
+            </div>
+          </div>
+          <button class="row-remove" aria-label="Remove from patch" title="Remove from patch"
+                  onclick="removeRow(event,this)" style="display:none">×</button>
+        </div>
+
+        <!-- Row 4: tombstone -->
+        <div class="staging-row" onclick="pickRow(this)" tabindex="0">
+          <span class="badge badge-delete">⊘ delete (tombstone)</span>
+          <span class="row-path">appearance/old_emitter.apt</span>
+          <span class="row-source" style="color:var(--color-warn)">(tombstone — length-0)</span>
+          <div class="row-action-drop">
+            <button class="row-action-btn" onclick="toggleDropdown(event, this)">⋯ ▾</button>
+            <div class="row-dropdown">
+              <button onclick="closeDropdowns()">Change action…</button>
+              <button class="danger" onclick="removeRow(event, null, this.closest('.staging-row'))">Remove from patch</button>
+            </div>
+          </div>
+          <button class="row-remove" style="display:none">×</button>
+        </div>
+
+        <!-- Row 5: add -->
+        <div class="staging-row" onclick="pickRow(this)" tabindex="0">
+          <span class="badge badge-add">+ add</span>
+          <span class="row-path">appearance/new_blaster_l0.msh</span>
+          <span class="row-source">new_blaster_l0.msh · 96 kB</span>
+          <div class="row-action-drop">
+            <button class="row-action-btn" onclick="toggleDropdown(event, this)">⋯ ▾</button>
+            <div class="row-dropdown">
+              <button onclick="closeDropdowns()">Change action…</button>
+              <button onclick="closeDropdowns()">Relink file…</button>
+              <button class="danger" onclick="removeRow(event, null, this.closest('.staging-row'))">Remove from patch</button>
+            </div>
+          </div>
+          <button class="row-remove" style="display:none">×</button>
+        </div>
+
+        <div style="padding:var(--space-4); text-align:center; font-size:var(--text-xs);
+          color:var(--color-text-faint); border:1.5px dashed var(--color-border-soft);
+          margin:var(--space-3) var(--space-4); border-radius:var(--radius-sm);">
+          drop a file here to stage it
+        </div>
+      </div>
+
+      <div class="staging-footer">
+        <span class="footer-count">5 staged</span>
+        <span>·</span><span><span style="color:var(--color-info)">1 add</span></span>
+        <span>·</span><span>2 modify</span>
+        <span>·</span><span><span style="color:var(--color-warn)">1 delete</span></span>
+        <span style="margin-left:auto">668 kB total</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="width:200px; font-size:var(--text-xs); color:var(--color-text-faint); padding-top:8px; line-height:1.6;">
+    <div style="font-weight:600; color:var(--color-text-muted); margin-bottom:6px;">C · Inline Compose Banner</div>
+    <div style="margin-bottom:6px;">Top banner anchors the save label field right in the list header — no popover. "Save" is always one keystroke from the field.</div>
+    <div style="margin-bottom:6px;">Per-row ⋯ dropdown replaces the × remove — surfaces Change action + Relink too. (Demo: row 3 shows open dropdown.)</div>
+    <div>More actions per row; label input is always visible when unsaved changes exist.</div>
+  </div>
+</div>
+
+<!-- ============ SKETCH TOOLBAR ============ -->
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select onchange="setTheme(this.value)">
+    <option value="cyan" selected>Cyan</option>
+    <option value="default">SWG green</option>
+    <option value="amber">Amber</option>
+    <option value="blue">IDE blue</option>
+    <option value="high-contrast">High contrast</option>
+  </select>
+</div>
+
+<script>
+  function showVariant(id, btn) {
+    document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('variant-' + id).classList.add('active');
+    btn.classList.add('active');
+    closeDropdowns();
+  }
+  function setTheme(name) {
+    document.querySelector('link[href*=themes]').href = '../themes/' + name + '.css';
+  }
+
+  function pickRow(rowEl) {
+    const panel = rowEl.closest('.panel-body');
+    panel.querySelectorAll('.staging-row').forEach(r => r.classList.remove('selected'));
+    rowEl.classList.add('selected');
+  }
+
+  function removeRow(event, removeBtn, rowEl) {
+    event && event.stopPropagation();
+    const row = rowEl || (removeBtn && removeBtn.closest('.staging-row'));
+    if (!row) return;
+    row.style.transition = 'opacity .15s';
+    row.style.opacity = '0';
+    setTimeout(() => row.remove(), 150);
+  }
+
+  // Add menu (Variant A)
+  function toggleAddMenu(btn) {
+    const menu = document.getElementById('add-menu-a');
+    menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+  }
+  function closeAddMenu() {
+    const m = document.getElementById('add-menu-a');
+    if (m) m.style.display = 'none';
+  }
+
+  // Save popover
+  function toggleSavePop(popId, btnId) {
+    const pop = document.getElementById(popId);
+    const isOpen = pop.classList.contains('open');
+    document.querySelectorAll('.save-popover').forEach(p => p.classList.remove('open'));
+    if (!isOpen) {
+      pop.classList.add('open');
+      const inp = pop.querySelector('input');
+      if (inp) setTimeout(() => inp.focus(), 50);
+    }
+  }
+  function closeSavePop(popId) {
+    document.getElementById(popId).classList.remove('open');
+  }
+  function saveVersion(variantId) {
+    const input = document.getElementById('label-' + variantId);
+    const label = input ? input.value.trim() : '';
+    const popId = 'pop-' + variantId;
+    closeSavePop(popId);
+    if (label) {
+      alert('Saved version: "' + label + '" → new changeset created');
+    } else {
+      alert('Saved version (no label) → new changeset created');
+    }
+  }
+
+  // Variant C save
+  function saveVersionC() {
+    const label = document.getElementById('compose-input-c').value.trim();
+    alert('Saved version: "' + (label || '(no label)') + '" → new changeset created');
+    document.getElementById('compose-input-c').value = '';
+  }
+
+  // Row dropdowns (Variant C)
+  function toggleDropdown(event, btn) {
+    event.stopPropagation();
+    const drop = btn.nextElementSibling;
+    const wasOpen = drop.classList.contains('open');
+    closeDropdowns();
+    if (!wasOpen) drop.classList.add('open');
+  }
+  function closeDropdowns() {
+    document.querySelectorAll('.row-dropdown').forEach(d => {
+      if (d.id !== 'demo-dropdown') d.classList.remove('open');
+    });
+  }
+
+  // Close menus on outside click
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.row-action-drop') && !e.target.closest('#add-menu-a')) {
+      closeDropdowns();
+      closeAddMenu();
+    }
+    if (!e.target.closest('.save-popover') && !e.target.closest('[id^=save-btn]')) {
+      document.querySelectorAll('.save-popover').forEach(p => p.classList.remove('open'));
+    }
+  });
+</script>
+</body>
+</html>
