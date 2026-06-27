@@ -97,10 +97,27 @@ export function DeployDialog({
     deployRecordRef.current = null;
 
     // Detect installed SWG clients (synchronous — registry + known-path probes)
+    let detectedClients: DetectedClient[] = [];
     try {
-      setClients(detectClients());
+      detectedClients = detectClients();
+      setClients(detectedClients);
     } catch {
       setClients([]);
+    }
+
+    // D-12: auto-select the bound client so Deploy is enabled by default.
+    // Reads clientPath from workspaceStore top-level (set by openComplete from workspace.json).
+    // NEVER reads workspaceStore.kind (does not exist — H4).
+    const boundClientPath = useWorkspaceStore.getState().clientPath;
+    if (boundClientPath) {
+      const bound = detectedClients.find((c) => c.installPath === boundClientPath)
+        ?? ({
+          name:         'Bound client',
+          installPath:  boundClientPath,
+          cfgRootPath:  path.join(boundClientPath, 'swgemu.cfg'),
+          treVersion:   'unknown',
+        } satisfies DetectedClient);
+      setSelectedClient(bound);
     }
 
     // W7: stale-deployment warning — warn when the currently active version in the

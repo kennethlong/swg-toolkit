@@ -18,6 +18,16 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// jsdom does not implement ResizeObserver — stub it so StagingPanelBody's
+// ResizeObserver-based viewHeight tracking doesn't throw.
+if (typeof global.ResizeObserver === 'undefined') {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // vi.mock is hoisted by Vitest — declare BEFORE the import it replaces.
 vi.mock('../../services/changesetService', () => ({
   sealVersion:    vi.fn().mockResolvedValue(undefined),
@@ -138,7 +148,7 @@ describe('DeployPanel', () => {
     expect(screen.getByText('appearance/armor.mgn')).toBeDefined();
   });
 
-  it('Test 3: Save version button calls sealVersion({ sealedBy: "manual" })', async () => {
+  it('Test 3: Save version button exists and is enabled when staging has entries', async () => {
     const manifest = buildManifest([
       { id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] },
     ], BASELINE_ID);
@@ -153,24 +163,15 @@ describe('DeployPanel', () => {
 
     render(<DeployPanel />);
 
-    const saveBtn = screen.getByText('Save version');
+    // Find the Save version button (aria-label is specific)
+    const saveBtn = screen.getByRole('button', { name: 'Save version' });
     expect(saveBtn).toBeDefined();
+
     // The button should not be disabled when entries exist
-    fireEvent.click(saveBtn);
-
-    // After clicking Save version, a modal should appear; confirm it
-    // (if modal-less, sealVersion may be called directly)
-    // The modal or a confirm triggers sealVersion with sealedBy:'manual'
-    // Since the modal needs a label input, find it and submit
-    const confirmBtn = screen.queryByText(/Save version/i);
-    if (confirmBtn && confirmBtn !== saveBtn) {
-      fireEvent.click(confirmBtn);
-    }
-
-    // sealVersion should eventually be called with sealedBy:'manual'
-    // The actual call happens on modal confirm - let's just check the button was clickable
-    // The test verifies the button exists and is enabled
-    expect(saveBtn).toBeDefined();
+    const isDisabled =
+      (saveBtn as HTMLButtonElement).disabled === true ||
+      saveBtn.getAttribute('aria-disabled') === 'true';
+    expect(isDisabled).toBe(false);
   });
 
   it('Test 4: mod-project (status.info.kind) → Deploy CTA disabled with no-client hint', () => {
@@ -191,16 +192,13 @@ describe('DeployPanel', () => {
     render(<DeployPanel />);
 
     // Deploy CTA should be disabled for mod-project
-    const deployBtn = screen.getByText(/Deploy/i);
+    // Use aria-label which is specific to the button (not the hint text)
+    const deployBtn = screen.getByRole('button', { name: /Deploy disabled/i });
     expect(deployBtn).toBeDefined();
-    // Check it's disabled (button element has disabled attribute or is not-clickable)
-    const btnEl = deployBtn.closest('button') ?? deployBtn;
     // For a mod-project, the button should be disabled
-    // (rendered disabled or with aria-disabled)
     const isDisabled =
-      (btnEl as HTMLButtonElement).disabled === true ||
-      btnEl.getAttribute('aria-disabled') === 'true' ||
-      btnEl.getAttribute('disabled') !== null;
+      (deployBtn as HTMLButtonElement).disabled === true ||
+      deployBtn.getAttribute('aria-disabled') === 'true';
     expect(isDisabled).toBe(true);
 
     // Hint copy should appear

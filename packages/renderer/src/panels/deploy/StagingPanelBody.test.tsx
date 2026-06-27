@@ -19,6 +19,17 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// jsdom does not implement ResizeObserver — stub it so StagingPanelBody's
+// ResizeObserver-based viewHeight tracking doesn't throw. The stub is a no-op:
+// the component will use the default viewHeight=400.
+if (typeof global.ResizeObserver === 'undefined') {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // vi.mock is hoisted — declare BEFORE imports
 vi.mock('../../services/changesetService', () => ({
   sealVersion:   vi.fn().mockResolvedValue(undefined),
