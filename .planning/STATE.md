@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.1-03-PLAN.md (DeployPanel + extracted bodies + pathSafety GREEN)
-last_updated: "2026-06-27T22:53:59.270Z"
+stopped_at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
+last_updated: "2026-06-27T23:07:48.065Z"
 last_activity: 2026-06-27
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 40
-  completed_plans: 33
-  percent: 83
+  completed_plans: 34
+  percent: 85
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.1 (deploy-project-ux) — EXECUTING
-Plan: 5 of 11
+Plan: 6 of 11
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
@@ -45,7 +45,7 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       REQUIREMENTS DEPLOY-01..04 → Complete).
 Last activity: 2026-06-27
 
-Progress: [████████░░] 83%
+Progress: [█████████░] 85%
 
 ### 02-03 key facts (crew-verified)
 
@@ -99,6 +99,7 @@ Progress: [████████░░] 83%
 | Phase 04.1-deploy-project-ux P02 | 2 sessions | 3 tasks | 7 files |
 | Phase 04.1 P03 | 25 | 3 tasks | 7 files |
 | Phase 04.1-deploy-project-ux P04 | 7 | 3 tasks | 5 files |
+| Phase 04.1-deploy-project-ux P05 | 10 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -207,6 +208,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: vi.mock intercepts ESM not CJS require()
 - [Phase ?]: avoids A→B→A circular import with projectBinding
 - [Phase ?]: DeployPanel: ONE surface (staging + splitter + history + CTA); dockview registration in plan 05; pathSafety.ts = M1 shared validator for plans 06+08
+- [Phase ?]: LAYOUT_VERSION 1→2 for plan 05 panel-id swap (staging/changesets retired → deploy); further bumps follow the same constant
+- [Phase ?]: onDidActivePanelChange (dockview 6.6.1) fires with no args; active panel read via api.activePanel in closure
+- [Phase ?]: resetLayout exposed on window.__resetLayout for plan-08 wiring; not module export
 
 ### Pending Todos
 
@@ -230,6 +234,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T22:53:59.248Z
-Stopped at: Completed 04.1-03-PLAN.md (DeployPanel + extracted bodies + pathSafety GREEN)
+Last session: 2026-06-27T23:07:48.039Z
+Stopped at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
 Resume file: None
