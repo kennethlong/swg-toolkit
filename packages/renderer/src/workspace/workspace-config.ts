@@ -6,7 +6,9 @@
  * INITIAL_LAYOUT uses explicit initialWidth/initialHeight (review LOW / Cursor):
  *   sidebar: 240px, inspector: 280px, data: 200px (bottom).
  *
- * All four component IDs are registered BEFORE fromJSON (RESEARCH Pitfall 5).
+ * All component IDs are registered BEFORE fromJSON (RESEARCH Pitfall 5).
+ *
+ * LAYOUT_VERSION = 2 (plan 05): retired staging+changesets; added deploy.
  */
 
 import { DockviewApi } from 'dockview';
@@ -17,8 +19,21 @@ import type React from 'react';
 // Storage keys
 // ---------------------------------------------------------------------------
 
-export const LAYOUT_STORAGE_KEY = 'swg-workspace-layout' as const;
-export const THEME_STORAGE_KEY  = 'swg-active-theme' as const;
+export const LAYOUT_STORAGE_KEY  = 'swg-workspace-layout' as const;
+export const THEME_STORAGE_KEY   = 'swg-active-theme' as const;
+
+// ---------------------------------------------------------------------------
+// Layout version guard (D-03 / DEPLOY-07 / Pattern 6)
+//
+// Bump LAYOUT_VERSION whenever panel ids are added, renamed, or retired.
+// WorkspaceShell.onReady checks localStorage[LAYOUT_VERSION_KEY] and discards
+// any saved layout whose version differs from LAYOUT_VERSION, preventing
+// returning users from being soft-bricked by retired panel ids (dockview #341).
+// ---------------------------------------------------------------------------
+
+/** Bumped from 1 → 2: retired 'staging'/'changesets', added 'deploy' (plan 05). */
+export const LAYOUT_VERSION     = 2 as const;
+export const LAYOUT_VERSION_KEY = 'swg-workspace-layout-version' as const;
 
 // ---------------------------------------------------------------------------
 // Theme names
@@ -88,23 +103,18 @@ export function buildInitialLayout(api: DockviewApi): void {
     initialHeight: 200,
   });
 
-  // R2-B3: Staging + Changesets + VCS are TABS inside the inspector group.
-  // direction: 'within' + referencePanel: 'inspector' = dockview tab registration.
-  // Standalone panel (sidebar) uses 'left'; these deploy panels use 'within' (inspector tabs).
-  // W3 fix: addPanel calls go here in buildInitialLayout, NOT in WorkspaceShell.tsx.
-  // initialWidth of 380px applies only to the first panel in the group; siblings inherit.
+  // Plan 05 (DEPLOY-05 / D-14): ONE combined 'deploy' tab replaces 'staging'+'changesets'.
+  // 'vcs' stays as a separate tab in the same inspector group.
+  // direction: 'within' + referencePanel: 'inspector' = dockview tab-within-group placement.
+  // initialWidth: 440 — Deploy panel is wider than the old Inspector/Staging split (M3 / UI-SPEC).
+  // The width only sets the group on first render; active-panel auto-widen in WorkspaceShell
+  // maintains the correct width per active tab on every subsequent switch (M3 dynamic).
   api.addPanel({
-    id: 'staging',
-    component: 'staging',
-    title: 'Staging',
+    id: 'deploy',
+    component: 'deploy',
+    title: 'Deploy',
     position: { direction: 'within', referencePanel: 'inspector' },
-    initialWidth: 380,
-  });
-  api.addPanel({
-    id: 'changesets',
-    component: 'changesets',
-    title: 'Changesets',
-    position: { direction: 'within', referencePanel: 'inspector' },
+    initialWidth: 440,
   });
   api.addPanel({
     id: 'vcs',
