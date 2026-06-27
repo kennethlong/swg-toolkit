@@ -30,8 +30,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { SAB_LAYOUT } from '@swg/contracts';
-import { useTreStore } from '../state/treStore.ts';
-import { useLiveStore } from '../state/liveStore.ts';
+import { useTreStore }       from '../state/treStore.ts';
+import { useLiveStore }      from '../state/liveStore.ts';
+import { useWorkspaceStore } from '../state/workspaceStore.ts';
+import { useChangesetStore } from '../state/changesetStore.ts';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -72,6 +74,12 @@ export default function StatusBar(): React.ReactElement {
   const treArchives    = useTreStore((s) => s.archives);
   const treVfsEntries  = useTreStore((s) => s.vfsEntries);
   const treMountStatus = useTreStore((s) => s.mountStatus);
+
+  // Workspace + deploy indicators (Plan 04-02 — W7 stale-deployment badge)
+  const workspaceName     = useWorkspaceStore((s) => s.workspaceName);
+  const staleDeployment   = useWorkspaceStore((s) => s.hasStaleDeployment);
+  const clientDetected    = useWorkspaceStore((s) => s.clientPath !== null);
+  const deployedVersionId = useChangesetStore((s) => s.manifest.deployedVersionId);
 
   useEffect(() => {
     // ── Read crossOriginIsolated immediately ───────────────────────────────
@@ -267,6 +275,64 @@ export default function StatusBar(): React.ReactElement {
           {liveMode === 'live' ? '● Live' : '○ File-patch'}
         </span>
       </span>
+
+      {/* Workspace name (Plan 04-02 / W7) */}
+      <Dot />
+      <span>
+        workspace:{' '}
+        <span
+          style={{
+            color:      workspaceName ? 'var(--color-info)' : 'var(--color-text-faint)',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          {workspaceName ?? 'none'}
+        </span>
+      </span>
+
+      {/* Client detection indicator */}
+      <Dot />
+      <span
+        style={{
+          color:      clientDetected ? 'var(--color-info)' : 'var(--color-text-faint)',
+          fontFamily: 'var(--font-mono)',
+          fontSize:   'var(--text-xs)',
+        }}
+      >
+        {clientDetected ? '● client' : '○ no client'}
+      </span>
+
+      {/* Stale-deployment badge (W7) */}
+      {staleDeployment && (
+        <>
+          <Dot />
+          <span
+            style={{
+              color:      'var(--color-warn)',
+              fontFamily: 'var(--font-mono)',
+              fontSize:   'var(--text-xs)',
+            }}
+          >
+            ⚠ deployed patch missing from cfg
+          </span>
+        </>
+      )}
+
+      {/* Deployed version indicator (hidden when nothing deployed) */}
+      {deployedVersionId !== null && (
+        <>
+          <Dot />
+          <span
+            style={{
+              color:      'var(--color-text-faint)',
+              fontFamily: 'var(--font-mono)',
+              fontSize:   'var(--text-xs)',
+            }}
+          >
+            deployed: {deployedVersionId.slice(0, 8)}
+          </span>
+        </>
+      )}
       <Dot />
 
       {/* Right-aligned */}

@@ -14,11 +14,15 @@ import React, { useRef } from 'react';
 import { DockviewReact, DockviewReadyEvent, DockviewApi } from 'dockview';
 import type { IDockviewPanelProps } from 'dockview';
 import { LAYOUT_STORAGE_KEY, buildInitialLayout } from './workspace-config';
-import SidebarPanel        from '../panels/SidebarPanel';
-import ViewportPanel       from '../panels/ViewportPanel';
-import InspectorPanel      from '../panels/InspectorPanel';
-import DataPanel           from '../panels/DataPanel';
-import LiveInspectorPanel  from '../panels/LiveInspectorPanel';
+import SidebarPanel            from '../panels/SidebarPanel';
+import ViewportPanel           from '../panels/ViewportPanel';
+import InspectorPanel          from '../panels/InspectorPanel';
+import DataPanel               from '../panels/DataPanel';
+import LiveInspectorPanel      from '../panels/LiveInspectorPanel';
+// Phase 4: deploy / staging / vcs panels (04-02)
+import StagingPanel            from '../panels/deploy/StagingPanel';
+import ChangesetTimelinePanel  from '../panels/deploy/ChangesetTimelinePanel';
+import VcsPanel                from '../panels/deploy/VcsPanel';
 
 // Panel component registry — all IDs registered before fromJSON (Pitfall 5)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,6 +32,12 @@ const panelComponents: Record<string, React.FunctionComponent<IDockviewPanelProp
   inspector:        InspectorPanel,
   data:             DataPanel,
   'live-inspector': LiveInspectorPanel,  // Phase 3: live injection HUD panel (03-06)
+  // Phase 4: deploy panels — registered here in panelComponents;
+  // addPanel calls (layout positions) live in workspace-config.ts buildInitialLayout (W3 fix).
+  // R2-B4: paths are panels/deploy/, NOT components/ (old incorrect path).
+  'staging':    StagingPanel,
+  'changesets': ChangesetTimelinePanel,
+  'vcs':        VcsPanel,
 };
 
 export default function WorkspaceShell(): React.ReactElement {

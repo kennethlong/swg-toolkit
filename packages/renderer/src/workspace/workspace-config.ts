@@ -87,4 +87,29 @@ export function buildInitialLayout(api: DockviewApi): void {
     position: { direction: 'below', referencePanel: 'viewport' },
     initialHeight: 200,
   });
+
+  // R2-B3: Staging + Changesets + VCS are TABS inside the inspector group.
+  // direction: 'within' + referencePanel: 'inspector' = dockview tab registration.
+  // Standalone panel (sidebar) uses 'left'; these deploy panels use 'within' (inspector tabs).
+  // W3 fix: addPanel calls go here in buildInitialLayout, NOT in WorkspaceShell.tsx.
+  // initialWidth of 380px applies only to the first panel in the group; siblings inherit.
+  api.addPanel({
+    id: 'staging',
+    component: 'staging',
+    title: 'Staging',
+    position: { direction: 'within', referencePanel: 'inspector' },
+    initialWidth: 380,
+  });
+  api.addPanel({
+    id: 'changesets',
+    component: 'changesets',
+    title: 'Changesets',
+    position: { direction: 'within', referencePanel: 'inspector' },
+  });
+  api.addPanel({
+    id: 'vcs',
+    component: 'vcs',
+    title: 'Version Control',
+    position: { direction: 'within', referencePanel: 'inspector' },
+  });
 }
