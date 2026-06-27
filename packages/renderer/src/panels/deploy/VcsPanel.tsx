@@ -33,11 +33,11 @@ import { useWorkspaceStore } from '../../state/workspaceStore';
 import VerificationStatus  from '../../shared/VerificationStatus';
 import AsyncProgress       from '../../shared/AsyncProgress';
 import {
-  checkLfsInstalled,
   gitCommit,
   gitPush,
   refreshLog,
   getGuardStatus,
+  probeLfsStatus,
 } from '../../services/gitLfsService';
 
 // ─── Button styles (mirrors ExportDialog.tsx lines 483-506) ──────────────────
@@ -85,28 +85,9 @@ export default function VcsPanel(_props: IDockviewPanelProps): React.ReactElemen
   useEffect(() => {
     if (!folderPath) return;
 
-    // Probe LFS availability
-    checkLfsInstalled(folderPath).then((present) => {
-      if (present) {
-        // We have a version string from 'git lfs version' but the store was set by
-        // checkLfsInstalled returning boolean. Use a lightweight follow-up call.
-        import('child_process').then(({ execFile }) => {
-          import('util').then(({ promisify }) => {
-            const execFileAsync = promisify(execFile);
-            execFileAsync('git', ['lfs', 'version'], { cwd: folderPath, timeout: 5_000 })
-              .then(({ stdout }) => {
-                const version = (stdout as string).trim().replace(/^git-lfs\//, '');
-                useVcsStore.getState().setLfsStatus({ kind: 'present', version, pointerCount: 0 });
-              })
-              .catch(() => {
-                useVcsStore.getState().setLfsStatus({ kind: 'present', version: 'unknown', pointerCount: 0 });
-              });
-          }).catch(() => void 0);
-        }).catch(() => void 0);
-      } else {
-        useVcsStore.getState().setLfsStatus({ kind: 'absent' });
-      }
-    }).catch(() => {
+    // Probe LFS availability and update vcsStore.lfsStatus via gitLfsService.
+    // VcsPanel never calls child_process directly — all git I/O goes through gitLfsService.
+    probeLfsStatus(folderPath).catch(() => {
       useVcsStore.getState().setLfsStatus({ kind: 'absent' });
     });
 

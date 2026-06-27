@@ -166,6 +166,35 @@ export async function gitCommit(
 }
 
 /**
+ * Probe git-lfs availability and update vcsStore.lfsStatus.
+ * Reads 'git lfs version', parses the version string, counts LFS pointers in the repo.
+ * Intended to be called from VcsPanel.useEffect on mount (VcsPanel must not call child_process).
+ *
+ * On success: updates lfsStatus to { kind:'present'; version; pointerCount }.
+ * On absent:  updates lfsStatus to { kind:'absent' }.
+ */
+export async function probeLfsStatus(repoPath: string): Promise<void> {
+  try {
+    const versionLine = await git(repoPath, ['lfs', 'version']);
+    // Format: "git-lfs/3.6.1 (GitHub; windows amd64; go ...)"
+    const version = versionLine.replace(/^git-lfs\//, '').split(' ')[0] ?? versionLine;
+
+    // Count LFS pointers (best-effort: 'git lfs ls-files' lists tracked pointer files)
+    let pointerCount = 0;
+    try {
+      const lsOutput = await git(repoPath, ['lfs', 'ls-files']);
+      pointerCount = lsOutput ? lsOutput.split('\n').filter(Boolean).length : 0;
+    } catch {
+      pointerCount = 0;
+    }
+
+    useVcsStore.getState().setLfsStatus({ kind: 'present', version, pointerCount });
+  } catch {
+    useVcsStore.getState().setLfsStatus({ kind: 'absent' });
+  }
+}
+
+/**
  * Push the current branch to origin.
  * Uses execFile arg arrays (D-04-16). Updates commitStatus to error on failure.
  */
