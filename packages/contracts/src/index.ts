@@ -12,3 +12,7 @@ export * from './skeleton.js';
 export * from './animation.js';
 export * from './material.js';
 export * from './live-inject.js';
+export * from './workspace.js';
+export * from './staging.js';
+export * from './changeset.js';
+export * from './deploy.js';
