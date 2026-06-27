@@ -181,7 +181,7 @@ Plans:
 
 **Ground-truth gate:** DEPLOY-06 (shadow + cfg path handling) is gated on the queued ground-truth verifications — absolute `searchTree` cfg paths accepted by the client (`TreeFile.cpp:115-149`); server TRE search-path config (Core3/swg-main); v6000 = zlib-vs-encrypted (challenges memory `tre-version-oracles-and-v6000-encryption`) — run under the de-anchoring protocol during plan-phase research, NOT from consensus.
 
-**Plans:** 5/11 plans executed
+**Plans:** 6/11 plans executed
 Plans:
 **Wave 1**
 - [x] 04.1-01-PLAN.md — Foundation: extend WorkspaceInfo contract (kind + binding fields) + shared fake-client-dir test fixture + vitest version alignment
@@ -193,7 +193,7 @@ Plans:
 **Wave 4**
 - [x] 04.1-05-PLAN.md — Dock integration + layout-version guard (DEPLOY-05/07): workspace-config panel swap (deploy+vcs, LAYOUT_VERSION=2), WorkspaceShell register DeployPanel + version-mismatch migration
 **Wave 5**
-- [ ] 04.1-06-PLAN.md — .studio relocation (whitespace-free) + Baseline changeset seed (DEPLOY-06/D-08): workspaceService getStudioDir, changesetService seedBaseline
+- [x] 04.1-06-PLAN.md — .studio relocation (whitespace-free) + Baseline changeset seed (DEPLOY-06/D-08): workspaceService getStudioDir, changesetService seedBaseline
 **Wave 6**
 - [ ] 04.1-07-PLAN.md — Shadow re-arch (DEPLOY-06): shadowBaseService fs.link hardlink + EXDEV fallback, cfgActivator snapshot/restore + idempotent [SharedFile] + backup relocation, DeployDialog model radio (absolute-path default)
 **Wave 7**
