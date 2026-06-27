@@ -181,14 +181,14 @@ Plans:
 
 **Ground-truth gate:** DEPLOY-06 (shadow + cfg path handling) is gated on the queued ground-truth verifications — absolute `searchTree` cfg paths accepted by the client (`TreeFile.cpp:115-149`); server TRE search-path config (Core3/swg-main); v6000 = zlib-vs-encrypted (challenges memory `tre-version-oracles-and-v6000-encryption`) — run under the de-anchoring protocol during plan-phase research, NOT from consensus.
 
-**Plans:** 11 plans
+**Plans:** 3/11 plans executed
 Plans:
 **Wave 1**
 - [x] 04.1-01-PLAN.md — Foundation: extend WorkspaceInfo contract (kind + binding fields) + shared fake-client-dir test fixture + vitest version alignment
 **Wave 2**
-- [ ] 04.1-02-PLAN.md — Project binding service + auto-mount (PROJ-01): projectBinding (detect/persist/auto-mount), extracted treMount routine, workspaceService persistence
+- [x] 04.1-02-PLAN.md — Project binding service + auto-mount (PROJ-01): projectBinding (detect/persist/auto-mount), extracted treMount routine, workspaceService persistence
 **Wave 3**
-- [ ] 04.1-03-PLAN.md — Combined DeployPanel (DEPLOY-05): extract StagingPanelBody + VersionHistoryBody (Baseline + ▸deltas), compose one panel + sticky Deploy CTA, DeployDialog auto-select bound client (D-12)
+- [x] 04.1-03-PLAN.md — Combined DeployPanel (DEPLOY-05): extract StagingPanelBody + VersionHistoryBody (Baseline + ▸deltas), compose one panel + sticky Deploy CTA, DeployDialog auto-select bound client (D-12)
 - [ ] 04.1-04-PLAN.md — Project front door UI (PROJ-01): ProjectBindingBar (＋Project + chip), NewProjectWizard (4-step, capture-only server, non-client branch), WorkspaceEntry first-run welcome
 **Wave 4**
 - [ ] 04.1-05-PLAN.md — Dock integration + layout-version guard (DEPLOY-05/07): workspace-config panel swap (deploy+vcs, LAYOUT_VERSION=2), WorkspaceShell register DeployPanel + version-mismatch migration
