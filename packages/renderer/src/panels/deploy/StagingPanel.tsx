@@ -309,7 +309,7 @@ function StagingPanelBody({
       const outputPath = patchName;
       packPatch(entries, outputPath);
       // Auto-seal the changeset on pack (D-04-07)
-      void sealVersion(entries, 'Auto-sealed on pack', 'pack').catch((err) => {
+      void sealVersion({ sealedBy: 'pack', entries, label: 'Auto-sealed on pack' }).catch((err) => {
         console.error('[StagingPanel] sealVersion error:', err);
       });
       store.buildDone(outputPath);
