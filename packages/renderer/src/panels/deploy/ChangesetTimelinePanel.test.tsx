@@ -12,7 +12,7 @@
  * TDD RED phase: tests compile but fail until Task 2 creates the real component.
  * TDD GREEN phase: all 5 tests pass once ChangesetTimelinePanel.tsx is implemented.
  *
- * R2-B4: imports from panels/deploy/ (NOT components/).
+ * R2-B4: import path is panels/deploy/, not the legacy panels path.
  * Source: 04-04b-PLAN.md Task 1; 04-CONTEXT.md §D-04-05..08.
  */
 
