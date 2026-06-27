@@ -51,21 +51,42 @@ outputs.
   - ⚠ **CORRECTION (04-RESEARCH.md):** the live Infinity client mounts **`EERT5000` (v5000)**,
     confirmed by hexdump — so the patch must be built **`version='5000'`**, NOT `buildTre`'s
     `'0005'` default (or detect the base client's version and match it). A v0005 patch will not load.
+  - ⚠ **REFINED (D-04-08):** the patch is built from the **selected version's CUMULATIVE flattened
+    deltas** (root→N from the change database), **NOT the live staging list** — this was the core
+    bug the crew found (`packPatch` packed the live list, so revert/deploy didn't reflect the chosen
+    version). Live staging is just the *uncommitted* working set that becomes the next saved version.
 
-### Rollback (DEPLOY-03)
-- **D-04-05:** Rollback uses a **layered changeset-stack ("Base44") model** — maintainer's
-  **experience-backed** choice (has used this pattern; considers it a good fit). NOT a tentative
-  AI-proposed selection. ⚠ Caveat scoped narrowly: validate the **exact manifest field schema**
-  in the AI-distilled doc against real use before locking it — the *architecture* is the
-  maintainer's decision, only the specific field layout needs ground-truth confirmation.
-- **D-04-06:** A changeset captures the **staging list + mod-produced replacement assets only**
-  — never the extracted retail base. Keeps history small and copyright-clean.
-- **D-04-07:** A new changeset layer is sealed on **both** triggers: a **manual checkpoint**
-  (user "commit changeset" anytime) **and** an **auto-seal on pack/deploy** (every deploy is
-  guaranteed a rollback point for the exact shipped state).
-- **D-04-08:** Rollback is a **non-destructive version toggle** — set the active-version pointer
-  down; higher layers remain on disk (greyed in the timeline) and are **re-activatable** (redo).
-  No `PurgeChangesetLayer`-style destructive delete on rollback. Work is never lost.
+### Versioning + Rollback (DEPLOY-03) — REFINED 2026-06-26 (post cross-AI review, maintainer-clarified)
+
+> The cross-AI crew found the original "Base44 pointer-toggle" plan made rollback **cosmetic**
+> (the pointer moved but nothing materialized). The maintainer clarified the intended model below.
+> This is a **version graph + per-version file store + materialize-on-deploy** model. It supersedes
+> the literal "non-destructive pointer toggle" framing while keeping its non-destructive spirit.
+
+- **D-04-05 (REFINED):** The changeset store IS a **persistent change database** under
+  `.studio/changesets/`: each **version** persists (a) a manifest row and (b) the **actual modified
+  file bytes** (mod-produced replacement assets) for that version, **plus a `parentId`** so history
+  is a navigable **graph** (not a flat list). The Base44 directory-per-layer structure is the right
+  bones; validate exact manifest fields against real use.
+- **D-04-06:** A version captures the **changed files + mod-produced replacement assets only** —
+  never the extracted retail base. Keeps history small and copyright-clean.
+- **D-04-07 (REFINED):** **"Save a set of changes" → a new version** (the primary trigger). Deploy
+  may also auto-seal. Editing *after reverting to an older version* creates a **branch** off that
+  version (maintainer chose "keep both — branch the history"; nothing is lost; the timeline shows
+  divergence).
+- **D-04-08 (REFINED — supersedes pointer-only toggle):** **Reverting selects any version along the
+  history graph; DEPLOY is what materializes it.** Deploying version N rebuilds the client TRE set to
+  match the **CUMULATIVE state at N** — flatten the file deltas along the path **root→N** (via
+  `parentId`) into the deployed patch (patch-prepend) or onto the isolated base copy (shadow-base).
+  "Go back two versions and deploy" → the client exactly matches that version. **Deploy/flatten reads
+  from the change database, NEVER the live staging list.** No destructive delete on revert
+  (`PurgeChangesetLayer` / `.tar.gz` snapshot engine stay BANNED).
+- **D-04-08a (determinism):** flatten emits entries in a **canonical order (sort by `virtualPath`)**
+  before `buildTre`, so re-deploying the same version is byte-identical.
+- **D-04-08b (guard):** skip sealing a version whose flattened delta equals the parent's (no
+  empty/duplicate versions); surface "Nothing new to commit."
+- **Scope note:** the maintainer chose to **build this full model now in Phase 4** (not a linear-only
+  MVP). Size the changeset + deploy plans accordingly.
 
 ### `.cfg` Activation (DEPLOY-02)
 - **D-04-09 (CORRECTED by 04-RESEARCH.md — ground truth):** Client/`.cfg` discovery =
@@ -79,9 +100,16 @@ outputs.
     priority slot** (see D-04-12); never touch retail files. Originals stay pristine automatically
     and ARE the compare/reset baseline. Reset = remove the one `.cfg` key + delete the patch.
   - *Opt-in:* **shadow-base "isolated client"** — copy the client TRE base to a **local shadow
-    dir** (with a disk-space warning), repoint the client base at the shadow, apply patches there;
-    real install stays as the pristine reset/compare source. The shadow is **local-only, never
-    git-tracked**.
+    dir** (with a disk-space warning), then **mount the deployed version's flattened patch over the
+    shadow at a higher `searchTree` slot** so the shadow set = pristine base copy + the selected
+    version's changes (⚠ **CORRECTION/B4:** the original plan copied the base but never applied the
+    edits — shadow-base MUST consume the version's flattened patch, same as patch-prepend, just
+    against the shadow copy). Real install stays pristine for reset/compare. Shadow is
+    **local-only, never git-tracked**.
+  - ⚠ **B7/B9 (crew):** the multi-GB shadow copy MUST be **async** (`fs.promises.copyFile`/streams),
+    not synchronous (renderer freeze); deploy models are **mutually exclusive per client+session**
+    (or `deactivatePatch` does line-surgery on its own key, not a whole-backup restore) to avoid the
+    `.bak` clobber where resetting patch-prepend drops the shadow keys.
 - **D-04-11:** Workspace is **fully usable with no client detected** — authoring/extract/pack/
   version all work offline; client detection + `.cfg` activation are **deploy-time only**.
   Deploy is disabled behind a clear "point me at a client" prompt until a client is set.
@@ -96,6 +124,15 @@ outputs.
   added once to the stable root `swgemu.cfg` — **NEVER** edit launcher-clobbered
   `user.cfg`/`options.cfg`. Write is **CRLF, BOM-free, atomic**, backs up the edited `.cfg`,
   records the insertion for clean rollback. (Persistence-across-relaunch = UAT item OQ-2.)
+  - ⚠ **B1 (Cursor + Sonnet, cross-confirmed):** `scanSharedFile` MUST **walk the full `.include`
+    chain** from the root `swgemu.cfg` (→ `swgemu_live.cfg` …) to learn the **true** `occupiedSlots`
+    (30–54) + `maxSearchPriority`. Scanning the empty toolkit-owned `swgtoolkit.cfg` alone yields
+    `occupiedSlots=[]` → slot **1**, which is BELOW retail and gets **shadowed BY retail** (silent
+    no-load). The insert must use the full-chain scan, and `chooseSlot` then returns 55.
+  - ⚠ **B1 (Cursor):** duplicate `maxSearchPriority` across includes is **LAST-wins**
+    (`ConfigFile.cpp:797`), NOT first-wins (the earlier note was backwards). Read the **last**
+    `maxSearchPriority`; append `.include "swgtoolkit.cfg"` **after** `swgemu_live.cfg` so any
+    toolkit bump wins. For Infinity (max=60, slot 55) no bump is needed.
 
 ### Git/LFS (DEPLOY-04)
 - **D-04-13:** The **Git repo lives in the workspace folder (one per mod)** and **versions the
