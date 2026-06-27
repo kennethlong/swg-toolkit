@@ -240,6 +240,28 @@ app.whenReady().then(() => {
     return result.canceled ? [] : result.filePaths;
   });
 
+  // ── IPC: OS folder picker for workspace open/create (Plan 04-02) ─────────
+  // WorkspaceEntry.tsx invokes this channel to pick a project folder.
+  // Returns an array of one path (the selected folder), or [] if cancelled.
+  ipcMain.handle('workspace:pick-dir', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Select Mod Project Folder…',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return result.canceled ? [] : result.filePaths;
+  });
+
+  // ── IPC: OS file picker for staging panel "Add…" (Plan 04-02) ────────────
+  // StagingPanel.tsx invokes this channel to pick a replacement file to stage.
+  // Returns an array of one path (the selected file), or [] if cancelled.
+  ipcMain.handle('workspace:pick-file', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Add Replacement File…',
+      properties: ['openFile'],
+    });
+    return result.canceled ? [] : result.filePaths;
+  });
+
   // ── STEP 3: loadURL LAST ──────────────────────────────────────────────────
   // RESEARCH Pitfall 1: loadURL must be the LAST step so that:
   //   1. onHeadersReceived is already registered when the browser fetches the page.
