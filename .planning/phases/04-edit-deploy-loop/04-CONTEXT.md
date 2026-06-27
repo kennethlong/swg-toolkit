@@ -210,6 +210,13 @@ outputs.
 <deferred>
 ## Deferred Ideas
 
+- **Cross-session shadow-base reset (post-MVP tech debt — plan-checker W-NEW-2):** the shadow-base
+  deploy stores a `ShadowDeployRecord` into the changeset's `deployRecord` field via an
+  `as unknown as CfgDeployRecord` cast. **Within-session** reset works (covered by 04-06b UAT) since
+  it uses the live in-memory record; **cross-session** reset (reading the record back from
+  `manifest.json` in a later session) would mis-type the shadow fields. Fix when needed: make
+  `SwgChangeset.deployRecord` a discriminated union (`CfgDeployRecord | ShadowDeployRecord`) or add a
+  `deployModelKind` tag. Accepted as post-MVP — not in the Phase-4 UAT checklist.
 - **Remote differential CDN sync** (SHA-256 broadphase + targeted compressed delivery, layer 4 of
   the version-control doc) — explicitly v2/deferred per REQUIREMENTS. Not in Phase 4.
 - **App auto-update / Squirrel / asset-template streaming** (packaging doc §6) — app distribution,
