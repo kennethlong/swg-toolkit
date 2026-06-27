@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
-last_updated: "2026-06-27T23:23:34.837Z"
+last_updated: "2026-06-27T23:53:54.582Z"
 last_activity: 2026-06-27
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 40
-  completed_plans: 35
-  percent: 88
+  completed_plans: 36
+  percent: 90
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.1 (deploy-project-ux) — EXECUTING
-Plan: 7 of 11
+Plan: 8 of 11
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
@@ -45,7 +45,7 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       REQUIREMENTS DEPLOY-01..04 → Complete).
 Last activity: 2026-06-27
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 90%
 
 ### 02-03 key facts (crew-verified)
 
@@ -101,6 +101,7 @@ Progress: [█████████░] 88%
 | Phase 04.1-deploy-project-ux P04 | 7 | 3 tasks | 5 files |
 | Phase 04.1-deploy-project-ux P05 | 10 | 3 tasks | 4 files |
 | Phase 04.1-deploy-project-ux P06 | 10 | 3 tasks | 4 files |
+| Phase 04.1 P07 | 25 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 04.1, Plan 06]: seedBaseline uses direct writeManifest (NOT sealVersion) — N4 zero-delta guard at sealVersion:225-230 throws on empty deltas; Baseline has no deltas by design (D-08)
 - [Phase 04.1, Plan 06]: getStudioDir relocated to LOCALAPPDATA/swg-toolkit/studios/<sanitized-id> (D-06); space-in-path truncation for searchTree= values closed (Pitfall 1); basename-only+space→_ prevents path injection (T-04.1-13)
 - [Phase 04.1, Plan 06]: openWorkspace: M2 non-destructive migration copies legacy <folderPath>/.studio to new LOCALAPPDATA path when new studioDir has no manifest; mandatory idempotent seedBaseline on every open (H2a); selectVersion(BASELINE_ID) H2c pristine fallback when node absent
+- [Phase ?]: snapshotCfg idempotent + restoreCfg byte-pristine Reset (04.1-07)
+- [Phase ?]: absolute-path default deploy model (D-05): writes absolute outputPath as searchTree value, no copy to Live required (04.1-07)
+- [Phase ?]: handleReset H5: restoreCfg whole-file as primary; deactivatePatch/resetShadow fallback for pre-07 records lacking snapshotPath (04.1-07)
 
 ### Pending Todos
 
@@ -238,6 +242,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T23:23:34.810Z
+Last session: 2026-06-27T23:53:40.503Z
 Stopped at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
 Resume file: None

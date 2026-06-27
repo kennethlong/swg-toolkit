@@ -195,7 +195,7 @@ Plans:
 **Wave 5**
 - [x] 04.1-06-PLAN.md — .studio relocation (whitespace-free) + Baseline changeset seed (DEPLOY-06/D-08): workspaceService getStudioDir, changesetService seedBaseline
 **Wave 6**
-- [ ] 04.1-07-PLAN.md — Shadow re-arch (DEPLOY-06): shadowBaseService fs.link hardlink + EXDEV fallback, cfgActivator snapshot/restore + idempotent [SharedFile] + backup relocation, DeployDialog model radio (absolute-path default)
+- [x] 04.1-07-PLAN.md — Shadow re-arch (DEPLOY-06): shadowBaseService fs.link hardlink + EXDEV fallback, cfgActivator snapshot/restore + idempotent [SharedFile] + backup relocation, DeployDialog model radio (absolute-path default)
 **Wave 7**
 - [ ] 04.1-08-PLAN.md — Stage-from-TRE + reset-layout/reopen-panel (DEPLOY-07): Extract→Add derives virtual path, corrected empty-state copy, reset/reopen affordance
 - [ ] 04.1-09-PLAN.md — Client-layout detection table + manual override (D-13): clientLayout resolver, clientLocator generalization, wizard/binding surfacing
@@ -268,7 +268,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
 | 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-06-27 |
-| 4.1 Deploy & Project UX *(INSERTED)* | 4/11 | In Progress|  |
+| 4.1 Deploy & Project UX *(INSERTED)* | 7/11 | In Progress|  |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
