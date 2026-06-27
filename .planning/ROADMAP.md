@@ -160,7 +160,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [x] 04-04b-PLAN.md — ChangesetTimelinePanel (graph-aware version history, branch divergence pips, active/deployed markers, selectVersion wiring)
-- [ ] 04-06b-PLAN.md — shadowBaseService.ts (estimateTreSize, checkFreeDisk — free-space guard, atomic TRE copy to .studio/shadow/, shadow searchTree entries at higher slots than originals; resetShadow backup-restore; in-client UAT) [autonomous: false]
+- [x] 04-06b-PLAN.md — shadowBaseService.ts (estimateTreSize, checkFreeDisk — free-space guard, atomic TRE copy to .studio/shadow/, shadow searchTree entries at higher slots than originals; resetShadow backup-restore; in-client UAT) [autonomous: false]
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 04-06-PLAN.md — DeployDialog (Sections A/B/C: client picker, patch-prepend/shadow-base, cfg slot preview; handleDeploy branches on deployModel — dispatches to deployShadowBase or cfgActivator 6-step sequence; in-client UAT checkpoint on SWG Infinity) [autonomous: false]
