@@ -20,6 +20,9 @@ export default defineConfig({
     ],
     environment: 'node',
     pool: 'forks',
+    // Redirect toolkit data (studios/projects) into a per-run temp dir so tests that
+    // create/open workspaces never pollute the user's real %LOCALAPPDATA%\swg-toolkit.
+    setupFiles: ['./packages/renderer/test/setup-data-root.ts'],
   },
   resolve: {
     alias: {

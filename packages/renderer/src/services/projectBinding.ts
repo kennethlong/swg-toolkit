@@ -117,6 +117,22 @@ export function writeWorkspaceJson(studioDir: string, meta: WorkspaceBindingMeta
  */
 export interface InitProjectOptions {
   /**
+   * Project display name (umbrella). Defaults to basename(projectFolder).
+   */
+  projectName?: string;
+  /**
+   * The TRE set this project targets — a client install root or a standalone TRE folder.
+   * DECOUPLE: the project folder (the first arg) is the umbrella identity; the target is a
+   * separate path referenced by the project. When omitted, the project folder itself is
+   * treated as the target (legacy behavior — kept so existing call sites still work).
+   */
+  targetPath?: string;
+  /**
+   * Target kind hint: 'client' (full install) or 'standalone' (loose .tre folder).
+   * When omitted, the target is auto-detected (or uses overrideKind).
+   */
+  targetKind?: 'client' | 'standalone';
+  /**
    * Override the auto-detected folder kind (M6 user-confirmed client override).
    * When provided, detection is skipped and this value persists to workspace.json.
    */
@@ -157,13 +173,26 @@ export interface InitProjectOptions {
  * no symlink traversal outside treDir).
  */
 export async function initProject(folder: string, options?: InitProjectOptions): Promise<void> {
-  const normalized = path.resolve(folder);
-  const studioDir  = getStudioDir(normalized);
+  // DECOUPLE: `folder` is the PROJECT (umbrella) folder = identity; the TARGET TRE set
+  // (a client install or standalone .tre folder) is a separate path. Legacy callers that
+  // pass only a client path get target = projectFolder (old behavior).
+  const projectFolder = path.resolve(folder);
+  const target        = options?.targetPath ? path.resolve(options.targetPath) : projectFolder;
+  const studioDir     = getStudioDir(projectFolder);  // keyed by project, NOT target
+  const projectName   = options?.projectName ?? path.basename(projectFolder);
 
-  // ── 1. Detect (or use caller-supplied override — M6) ─────────────────────
-  const kind = options?.overrideKind ?? detectFolderKind(normalized);
+  // Ensure the project umbrella folder exists (a new project under the app store won't
+  // exist yet; openWorkspace requires the folder to be present). Existing dirs untouched.
+  fs.mkdirSync(projectFolder, { recursive: true });
 
-  // ── 2. Resolve cfg/tre paths for client binding ────────────────────────
+  // ── 1. Resolve target kind ────────────────────────────────────────────────
+  // 'standalone' target → persisted as kind 'tre-set'. Otherwise detect on the TARGET
+  // (not the project folder) or honor the M6 override.
+  const kind: 'client' | 'tre-set' | 'mod-project' =
+    options?.targetKind === 'standalone' ? 'tre-set'
+    : (options?.overrideKind ?? detectFolderKind(target));
+
+  // ── 2. Resolve cfg/tre paths from the TARGET ──────────────────────────────
   let cfgPath: string | undefined;
   let treDir:  string | undefined;
   let pattern: string | undefined;
@@ -175,16 +204,16 @@ export async function initProject(folder: string, options?: InitProjectOptions):
       // existence-checked by cfgActivator / treMount at use time; not validated here
       // to allow entries for installs not yet downloaded).
       const ml = options.manualLayout;
-      cfgPath  = path.join(normalized, ml.cfgFile);
-      treDir   = ml.treSubdir ? path.join(normalized, ml.treSubdir) : normalized;
+      cfgPath  = path.join(target, ml.cfgFile);
+      treDir   = ml.treSubdir ? path.join(target, ml.treSubdir) : target;
       pattern  = ml.release;
     } else {
       // D-13: auto-detect via release-pattern table (replaces hardcoded 'swgemu.cfg'
       // / 'Live/' literals from the original implementation).
-      const layout = resolveLayout(normalized);
+      const layout = resolveLayout(target);
       if (layout) {
-        cfgPath = path.join(normalized, layout.cfgFile);
-        treDir  = layout.treSubdir ? path.join(normalized, layout.treSubdir) : normalized;
+        cfgPath = path.join(target, layout.cfgFile);
+        treDir  = layout.treSubdir ? path.join(target, layout.treSubdir) : target;
         pattern = layout.release;
       } else {
         // Fallback for confirmed-client folders with an unknown layout (e.g. client.cfg
@@ -193,23 +222,27 @@ export async function initProject(folder: string, options?: InitProjectOptions):
         // treDir; the wizard / ProjectBindingBar should have surfaced a manual-override
         // prompt, but we handle it gracefully here in case it was skipped.
         for (const cfgName of CFG_NAMES) {
-          const candidate = path.join(normalized, cfgName);
+          const candidate = path.join(target, cfgName);
           if (fs.existsSync(candidate)) {
             cfgPath = candidate;
             break;
           }
         }
-        const liveDir = path.join(normalized, 'Live');
-        treDir        = fs.existsSync(liveDir) ? liveDir : normalized;
+        const liveDir = path.join(target, 'Live');
+        treDir        = fs.existsSync(liveDir) ? liveDir : target;
         // pattern stays undefined — no known release name
       }
     }
+  } else if (kind === 'tre-set') {
+    // Standalone TRE set: the target folder IS the TRE dir (no client cfg).
+    treDir = target;
   }
 
   // ── 3. Persist to .studio/workspace.json ─────────────────────────────────
   const meta: WorkspaceBindingMeta = {
+    projectName,
     kind,
-    clientPath: kind === 'client' ? normalized : null,
+    clientPath: kind === 'client' ? target : null,
     cfgPath,
     treDir,
     pattern,
@@ -221,10 +254,10 @@ export async function initProject(folder: string, options?: InitProjectOptions):
   // ── 4. Open workspace (populates workspaceStore with real kind + clientPath) ──
   // openWorkspace reads workspace.json and passes kind+clientPath to openComplete.
   // Error pattern: workspaceService already calls openError(); re-throw for caller.
-  await openWorkspace(normalized);
+  await openWorkspace(projectFolder);
 
-  // ── 5. Auto-mount base TREs (M5: unconditional for client kind) ────────
-  if (kind === 'client' && treDir !== undefined) {
+  // ── 5. Auto-mount the target TRE set (M5) — client OR standalone ──────────
+  if (treDir !== undefined) {
     try {
       // T-04.1-03: enumerate only .tre files directly in treDir (no sub-dirs, no symlinks
       // outside treDir, no path injection via filename).

@@ -12,10 +12,14 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useWorkspaceStore } from '../../state/workspaceStore';
-import { openWorkspace, createWorkspace, getDefaultProjectsDir } from '../../services/workspaceService';
+import { openWorkspace, createWorkspace, getDefaultProjectsDir, getStudioDir } from '../../services/workspaceService';
 import * as projectBinding from '../../services/projectBinding';
 import { detectClients } from '../../services/clientLocator';
-import { getRecentProjects, type RecentProject } from '../../services/recentProjects';
+import { getRecentProjects, pruneRecentProjects, type RecentProject } from '../../services/recentProjects';
+
+// Path B fs — used only to self-heal recents (drop entries whose studio dir is gone).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodeFs = require('fs') as typeof import('fs');
 import type { DetectedClient, TypedIpcRenderer } from '@swg/contracts';
 import AsyncProgress from '../../shared/AsyncProgress';
 
@@ -143,7 +147,12 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
   // Auto-scan detected clients + load recents on mount.
   useEffect(() => {
     try { setDetectedClients(detectClients()); } catch (err) { console.error('[WorkspaceEntry] detectClients error:', err); }
-    setRecents(getRecentProjects());
+    // Self-heal: drop recents whose project studio no longer exists (e.g. after cleanup).
+    try {
+      setRecents(pruneRecentProjects((r) => nodeFs.existsSync(getStudioDir(r.folderPath))));
+    } catch {
+      setRecents(getRecentProjects());
+    }
   }, []);
 
   // Open… — pick a folder and bind/open it.

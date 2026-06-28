@@ -37,33 +37,31 @@ const execFileAsync = promisify(execFile);
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 /**
- * Whitespace-free app-root base for all per-project studio dirs (D-06 / T-04.1-12).
+ * Whitespace-free app-root base for all toolkit data (studios + projects).
  *
- * Resolved once at module load from LOCALAPPDATA (Windows) or HOME (*nix).
- * Using a fixed app-root keeps absolute searchTree= values free of spaces that
- * would truncate the path at the first whitespace character (Pitfall 1).
+ * Read per-call (NOT a module-load const) so a test can redirect it to an isolated
+ * temp dir via SWG_TOOLKIT_DATA_ROOT — otherwise unit tests write real studio dirs
+ * into the user's %LOCALAPPDATA%\swg-toolkit\studios and pollute it on every run.
+ * Default: %LOCALAPPDATA%\swg-toolkit (Windows) / $HOME/swg-toolkit (*nix).
+ *
+ * The fixed app-root keeps absolute searchTree= values free of spaces that would
+ * truncate the path at the first whitespace character (Pitfall 1 / D-06 / T-04.1-12).
  */
-const APP_ROOT_STUDIO = path.join(
-  process.env['LOCALAPPDATA'] ?? process.env['HOME'] ?? '.',
-  'swg-toolkit',
-  'studios',
-);
+function appDataRoot(): string {
+  return (
+    process.env['SWG_TOOLKIT_DATA_ROOT'] ??
+    path.join(process.env['LOCALAPPDATA'] ?? process.env['HOME'] ?? '.', 'swg-toolkit')
+  );
+}
 
-/**
- * Default parent directory for NEW project folders — the app-specific project store
- * (UAT 04.1-11 decision). Sibling of the studio store under the same app root:
- *   %LOCALAPPDATA%\swg-toolkit\projects   (Windows)
- *   $HOME/swg-toolkit/projects            (*nix)
- */
-const APP_ROOT_PROJECTS = path.join(
-  process.env['LOCALAPPDATA'] ?? process.env['HOME'] ?? '.',
-  'swg-toolkit',
-  'projects',
-);
+/** Studio-store root (parent of per-project studio control dirs). */
+function studioRoot(): string {
+  return path.join(appDataRoot(), 'studios');
+}
 
 /** Absolute path to the default projects store (parent of per-project folders). */
 export function getDefaultProjectsDir(): string {
-  return APP_ROOT_PROJECTS;
+  return path.join(appDataRoot(), 'projects');
 }
 
 /**
@@ -75,7 +73,7 @@ export function getDefaultProjectsDir(): string {
  */
 export function getDefaultProjectFolder(name: string): string {
   const safe = name.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim() || 'New Project';
-  return path.join(APP_ROOT_PROJECTS, safe);
+  return path.join(getDefaultProjectsDir(), safe);
 }
 
 /**
@@ -93,7 +91,7 @@ export function getDefaultProjectFolder(name: string): string {
  */
 export function getStudioDir(folderPath: string): string {
   const projectId = path.basename(folderPath).replace(/\s+/g, '_');
-  return path.join(APP_ROOT_STUDIO, projectId);
+  return path.join(studioRoot(), projectId);
 }
 
 /**
@@ -260,18 +258,21 @@ export async function openWorkspace(folderPath: string): Promise<void> {
 
     useWorkspaceStore.getState().openComplete({
       folderPath:    normalized,
+      projectName:   bindingMeta.projectName ?? path.basename(normalized),
       studioDir,
       workspaceName: path.basename(normalized),
       clientPath:    bindingMeta.clientPath,
       kind:          bindingMeta.kind,
       cfgPath:       bindingMeta.cfgPath,
       treDir:        bindingMeta.treDir,
+      serverConfig:  bindingMeta.serverConfig,
     });
 
     // Record in recents for the first-run Welcome list (sketch 007-B). Non-fatal.
+    // folderPath = the PROJECT folder (reopen key); name = the umbrella project name.
     addRecentProject({
       folderPath: normalized,
-      name:       path.basename(normalized),
+      name:       bindingMeta.projectName ?? path.basename(normalized),
       kind:       bindingMeta.kind,
       clientName: bindingMeta.kind === 'client'
         ? (bindingMeta.pattern ?? path.basename(bindingMeta.clientPath ?? normalized))

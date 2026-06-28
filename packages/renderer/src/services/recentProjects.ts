@@ -42,6 +42,20 @@ export function getRecentProjects(): RecentProject[] {
   }
 }
 
+/**
+ * Drop recents that fail the caller's `keep` predicate (e.g. project whose studio dir
+ * no longer exists after a cleanup), persist the pruned list, and return it. Never throws.
+ * The predicate is supplied by the caller so this module stays free of fs/workspaceService
+ * (avoids a circular import).
+ */
+export function pruneRecentProjects(keep: (r: RecentProject) => boolean): RecentProject[] {
+  const kept = getRecentProjects().filter((r) => {
+    try { return keep(r); } catch { return false; }
+  });
+  try { localStorage.setItem(RECENTS_KEY, JSON.stringify(kept)); } catch { /* ignore */ }
+  return kept;
+}
+
 /** Upsert a project into recents (dedup by folderPath, newest first). Never throws. */
 export function addRecentProject(
   entry: Omit<RecentProject, 'lastOpenedISO'> & { lastOpenedISO?: string },
