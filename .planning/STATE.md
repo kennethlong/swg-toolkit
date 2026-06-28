@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
-last_updated: "2026-06-27T23:53:54.582Z"
-last_activity: 2026-06-27
+last_updated: "2026-06-28T00:12:30.312Z"
+last_activity: 2026-06-28
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 40
-  completed_plans: 36
-  percent: 90
+  completed_plans: 37
+  percent: 93
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.1 (deploy-project-ux) — EXECUTING
-Plan: 8 of 11
+Plan: 9 of 11
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
@@ -43,9 +43,9 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       v6000 encrypted/out-of-scope) — server TRE search-path remains open, deferred to Phase 8 w/ server-push.
       Separately still pending: Phase 04 formal close-out (mark 04-06/06b complete, verifier,
       REQUIREMENTS DEPLOY-01..04 → Complete).
-Last activity: 2026-06-27
+Last activity: 2026-06-28
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 93%
 
 ### 02-03 key facts (crew-verified)
 
@@ -102,6 +102,7 @@ Progress: [█████████░] 90%
 | Phase 04.1-deploy-project-ux P05 | 10 | 3 tasks | 4 files |
 | Phase 04.1-deploy-project-ux P06 | 10 | 3 tasks | 4 files |
 | Phase 04.1 P07 | 25 | 3 tasks | 7 files |
+| Phase 04.1 P08 | 8 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -242,6 +243,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T23:53:40.503Z
+Last session: 2026-06-28T00:12:30.286Z
 Stopped at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
 Resume file: None
