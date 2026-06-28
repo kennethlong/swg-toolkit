@@ -44,6 +44,22 @@ import type { SharedFileScan } from './clientLocator';
 export { scanSharedFile, chooseSlot } from './clientLocator';
 export type { SharedFileScan } from './clientLocator';
 
+// ─── getToolkitCfgPath ──────────────────────────────────────────────────────────
+
+/**
+ * Absolute path to the toolkit-owned cfg, kept INSIDE the studio dir (not the client).
+ *
+ * Footprint goal: the only change to the client install is a single absolute, quoted
+ * `.include "<studio>\swgtoolkit.cfg"` line in the root cfg — the cfg file itself lives
+ * with the project. Verified against swg-client-v2 ConfigFile.cpp:370-392: `.include`
+ * requires quotes, copies the entire quoted string (whitespace preserved, no truncation),
+ * and loadFile() → CreateFile() opens an absolute path directly. The studio path is also
+ * whitespace-free (D-06), so the unquoted searchTree value inside it is safe too.
+ */
+export function getToolkitCfgPath(studioDir: string): string {
+  return path.join(studioDir, 'swgtoolkit.cfg');
+}
+
 // ─── ensureInclude ────────────────────────────────────────────────────────────
 
 /**

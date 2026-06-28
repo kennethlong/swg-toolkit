@@ -49,7 +49,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { scanSharedFile, type SharedFileScan } from './clientLocator';
-import { activatePatch, ensureInclude } from './cfgActivator';
+import { activatePatch, ensureInclude, getToolkitCfgPath } from './cfgActivator';
 import type { DetectedClient } from '@swg/contracts';
 
 // ─── ShadowDeployRecord ───────────────────────────────────────────────────────
@@ -339,15 +339,14 @@ export async function deployShadowBase(
   }
 
   // ── Write shadow cfg entries + B4 patch entry ─────────────────────────────────
-  const cfgDir = path.dirname(client.cfgRootPath);
-  const swgtoolkitCfgPath = path.join(cfgDir, 'swgtoolkit.cfg');
+  // swgtoolkit.cfg lives in the STUDIO (not the client) — the client only gains a single
+  // absolute .include line (see getToolkitCfgPath / ConfigFile.cpp verification).
+  const swgtoolkitCfgPath = getToolkitCfgPath(studioDir);
 
-  // Create swgtoolkit.cfg if it doesn't exist yet.
-  // EMPTY file — activatePatch is the SOLE [SharedFile] header writer (Pitfall 4 fix).
-  // Writing '[SharedFile]\n' here then having activatePatch also write one = duplicate header.
-  if (!fs.existsSync(swgtoolkitCfgPath)) {
-    fs.writeFileSync(swgtoolkitCfgPath, '', { encoding: 'utf8' });
-  }
+  // (Re)create swgtoolkit.cfg EMPTY each deploy — activatePatch is the SOLE [SharedFile]
+  // header writer (Pitfall 4); truncating avoids stale lines accumulating across deploys.
+  fs.mkdirSync(path.dirname(swgtoolkitCfgPath), { recursive: true });
+  fs.writeFileSync(swgtoolkitCfgPath, '', { encoding: 'utf8' });
 
   // D-07 / D-06: Backup written into .studio/snapshots (NOT next to client cfg).
   // Keeps all toolkit-generated files out of the client install tree.
@@ -357,8 +356,9 @@ export async function deployShadowBase(
   const backupPath = path.join(snapshotDir, 'swgtoolkit.cfg.shadow.bak');
   fs.copyFileSync(swgtoolkitCfgPath, backupPath);
 
-  // M9: ensure the ROOT cfg includes swgtoolkit.cfg so the engine finds shadow entries.
-  ensureInclude(client.cfgRootPath, 'swgtoolkit.cfg');
+  // M9: ensure the ROOT cfg includes the studio swgtoolkit.cfg (absolute, quoted) so the
+  // engine finds shadow entries — without placing the cfg file in the client install.
+  ensureInclude(client.cfgRootPath, swgtoolkitCfgPath);
 
   // R2-W1 FIX: scan the FULL .include chain ONCE via client.cfgRootPath (swgemu.cfg).
   // This discovers all retail slots (e.g. 30-54) so chooseSlot() inside activatePatch

@@ -39,7 +39,7 @@ import {
 } from '../../services/changesetService.js';
 import { packPatch, buildPatchName } from '../../services/packPatch.js';
 import { detectClients, scanSharedFile, chooseSlot } from '../../services/clientLocator.js';
-import { activatePatch, deactivatePatch, ensureInclude, snapshotCfg, restoreCfg } from '../../services/cfgActivator.js';
+import { activatePatch, deactivatePatch, ensureInclude, snapshotCfg, restoreCfg, getToolkitCfgPath } from '../../services/cfgActivator.js';
 import { deployShadowBase, resetShadow, estimateTreSize } from '../../services/shadowBaseService.js';
 import { BASELINE_ID, type TypedIpcRenderer } from '@swg/contracts';
 
@@ -305,8 +305,7 @@ export function DeployDialog({
       // throwing the length=0 error (which was confusing and blocked the workflow).
       if (manifest.activeVersionId === BASELINE_ID || flattenedEntries.length === 0) {
         const rootCfgPath = selectedClient!.cfgRootPath;
-        const cfgDir = path.dirname(rootCfgPath);
-        const swgtoolkitCfgPath = path.join(cfgDir, 'swgtoolkit.cfg');
+        const swgtoolkitCfgPath = getToolkitCfgPath(studioDir);  // studio, not client
         const existingRec = deployRecordRef.current as (CfgDeployRecord | null);
 
         // Attempt root cfg restore from snapshot (if we have one)
@@ -408,13 +407,14 @@ export function DeployDialog({
       // searchTree value — no copy to Live/ needed (UAT item: TreeFile.cpp absolute
       // path support; if client rejects, gap-close = copy-to-Live/).
       // The patchName is a sanitized filename; outputPath is the absolute path to build/.
-      const cfgDir = path.dirname(selectedClient!.cfgRootPath);
-      const swgtoolkitCfgPath = path.join(cfgDir, 'swgtoolkit.cfg');
+      // swgtoolkit.cfg lives in the STUDIO (not the client) — the client only gains a
+      // single absolute .include line (see getToolkitCfgPath / ConfigFile.cpp verification).
+      const swgtoolkitCfgPath = getToolkitCfgPath(studioDir);
 
-      // Step 1: Ensure swgtoolkit.cfg exists (create EMPTY — activatePatch is sole header writer)
-      if (!fs.existsSync(swgtoolkitCfgPath)) {
-        fs.writeFileSync(swgtoolkitCfgPath, '', { encoding: 'utf8' });
-      }
+      // Step 1: (Re)create swgtoolkit.cfg EMPTY each deploy — one flattened patch ⇒ exactly
+      // one searchTree line; truncating avoids stale lines accumulating across deploys.
+      fs.mkdirSync(path.dirname(swgtoolkitCfgPath), { recursive: true });
+      fs.writeFileSync(swgtoolkitCfgPath, '', { encoding: 'utf8' });
 
       // Step 2: Snapshot ROOT cfg BEFORE any mutation (D-07 — ensureInclude runs below)
       let absSnapshotPath: string | undefined;
@@ -433,8 +433,9 @@ export function DeployDialog({
         // activatePatch relocates the .swgtoolkit.bak into .studio/snapshots (D-06/D-07).
         record = activatePatch(swgtoolkitCfgPath, outputPath, insertScan, studioDir);
         deployRecordRef.current = record;
-        // M9: ensureInclude on absolute-path path (root cfg gains .include line)
-        ensureInclude(selectedClient!.cfgRootPath, 'swgtoolkit.cfg');
+        // M9: ensureInclude on absolute-path path — the root cfg gains a single absolute,
+        // quoted .include pointing at the studio cfg (ConfigFile.cpp opens absolute paths).
+        ensureInclude(selectedClient!.cfgRootPath, swgtoolkitCfgPath);
         setDeployedVersion(manifest.activeVersionId!);  // W2: persist deployedVersionId
 
         // R2-B8: persist deploy record (incl. snapshotPath for M8 cross-session Reset)

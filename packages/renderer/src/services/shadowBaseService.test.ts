@@ -102,6 +102,7 @@ vi.mock('./cfgActivator', () => ({
     includeTargetPath: '',
   })),
   ensureInclude: vi.fn(),
+  getToolkitCfgPath: vi.fn((studioDir: string) => `${studioDir}/swgtoolkit.cfg`),
 }));
 
 // ─── Import service after mocks ─────────────────────────────────────────────
