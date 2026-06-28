@@ -37,18 +37,7 @@ import ActionBadge from './ActionBadge';
 
 import { useChangesetStore } from '../../state/changesetStore';
 import { useStagingStore }   from '../../state/stagingStore';
-import { useIffStore }       from '../../state/iffStore';
-import type { IffParseResult } from '../../state/iffStore';
-
-// Path B native addon — parse a staged file as IFF for the "Open in viewer" action.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const nativeCore = require('@swg/native-core') as {
-  parseIff: (bytes: ArrayBuffer | Uint8Array) => {
-    roots: unknown[];
-    trailingBytes: { offset: number; count: number } | null;
-    roundTrip: { passed: boolean; failOffset?: number };
-  };
-};
+import { openStagedEntry }   from '../../services/openInViewer';
 
 import { sealVersion } from '../../services/changesetService';
 import { isVirtualPathSafe } from '../../services/pathSafety';
@@ -617,33 +606,11 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const canOpen = entry.action !== 'delete' && !!entry.replacementFilePath;
 
-  // Open the STAGED bytes in the IFF viewer (the staged content, not the base TRE) and
-  // bring the Data panel forward. Tombstones / sourceless entries have nothing to open.
+  // Open the STAGED item in its type-appropriate viewer/editor (mesh → 3D viewport,
+  // else → IFF structure). Tombstones / sourceless entries have nothing to open.
   const handleOpen = useCallback(() => {
     if (entry.action === 'delete' || !entry.replacementFilePath) return;
-    const filename = path.basename(entry.virtualPath);
-    useIffStore.getState().beginParse(filename);
-    try {
-      const bytes = new Uint8Array(fs.readFileSync(entry.replacementFilePath));
-      try {
-        const raw = nativeCore.parseIff(bytes);
-        const result: IffParseResult = {
-          roots:         raw.roots as IffParseResult['roots'],
-          trailingBytes: raw.trailingBytes,
-          roundTrip:     raw.roundTrip,
-        };
-        useIffStore.getState().parseComplete(filename, result, bytes.buffer);
-      } catch (iffErr) {
-        const reason = iffErr instanceof Error ? iffErr.message : String(iffErr);
-        const m = /0x([0-9A-Fa-f]+)/.exec(reason);
-        useIffStore.getState().parseError(filename, reason, m ? parseInt(m[1], 16) : undefined);
-      }
-    } catch (readErr) {
-      const reason = readErr instanceof Error ? readErr.message : String(readErr);
-      useIffStore.getState().parseError(filename, `could not read staged file — ${reason}`);
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__activatePanel?.('data');
+    void openStagedEntry(entry.virtualPath, entry.replacementFilePath);
   }, [entry.action, entry.replacementFilePath, entry.virtualPath]);
 
   // Path-traversal rejection display (T-04-06)
