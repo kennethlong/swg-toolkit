@@ -31,6 +31,7 @@ import { useChangesetStore } from '../state/changesetStore';
 import type { WorkspaceBindingMeta } from '@swg/contracts';
 import { seedBaseline } from './changesetService';
 import { addRecentProject } from './recentProjects';
+import { autoMountTarget } from './treAutoMount';
 
 const execFileAsync = promisify(execFile);
 
@@ -57,6 +58,11 @@ function appDataRoot(): string {
 /** Studio-store root (parent of per-project studio control dirs). */
 function studioRoot(): string {
   return path.join(appDataRoot(), 'studios');
+}
+
+/** Absolute path to the studio store root (authoritative list of projects). */
+export function getStudiosRoot(): string {
+  return studioRoot();
 }
 
 /** Absolute path to the default projects store (parent of per-project folders). */
@@ -216,13 +222,19 @@ export async function openWorkspace(folderPath: string): Promise<void> {
 
   try {
     const normalized = validateWorkspacePath(folderPath);
+    const studioDir = getStudioDir(normalized);
 
-    // Validate that the directory exists
+    // The project umbrella folder is a marker — the real validation is the studio dir
+    // (checked below). A client-bound project's umbrella folder can legitimately be
+    // missing (the data lives in the studio + the client install), so recreate it on
+    // reopen rather than failing. The studioDir-exists guard below still rejects a folder
+    // that isn't a toolkit project.
+    if (!fs.existsSync(normalized) && fs.existsSync(studioDir)) {
+      fs.mkdirSync(normalized, { recursive: true });
+    }
     if (!fs.existsSync(normalized) || !fs.statSync(normalized).isDirectory()) {
       throw new Error(`Workspace path does not exist or is not a directory: ${normalized}`);
     }
-
-    const studioDir = getStudioDir(normalized);
 
     // M2: one-time non-destructive migration from Phase-4 legacy path (.studio inside
     // the project folder).  If the NEW studioDir has no manifest.json but the legacy
@@ -285,6 +297,16 @@ export async function openWorkspace(folderPath: string): Promise<void> {
     // re-opened projects, including those created before plan 06.
     const manifestWithBaseline = seedBaseline(studioDir);
     useChangesetStore.getState().setManifest(manifestWithBaseline);
+
+    // Auto-mount the project's target TRE set on EVERY open (fresh bind via initProject
+    // AND reopen via recents / Open Project), so the TRE browser is always populated.
+    // Non-fatal (autoMountTarget swallows mount errors).
+    await autoMountTarget({
+      kind:    bindingMeta.kind,
+      cfgPath: bindingMeta.cfgPath,
+      treDir:  bindingMeta.treDir,
+      target:  bindingMeta.clientPath ?? normalized,
+    });
   } catch (err) {
     const reason = String((err as Error)?.message ?? err);
     useWorkspaceStore.getState().openError(reason);

@@ -23,6 +23,7 @@
 import React, { useCallback, useRef, useState, useMemo, useEffect } from 'react';
 import type { VfsEntry, ShadowChainDisplay } from '../../state/treStore.ts';
 import type { MountedArchive } from '../../state/treStore.ts';
+import { useStagingStore } from '../../state/stagingStore';
 import ShadowChainDetail from './ShadowChainDetail.tsx';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -270,6 +271,8 @@ function VfsRow({
   onExtract?: (entry: VfsEntry) => void;
 }): React.ReactElement {
   const [hovered, setHovered] = useState(false);
+  // Already-staged check (UAT #3) — staging is keyed by virtualPath (= entry.path).
+  const isStaged = useStagingStore((s) => s.entries.some((e) => e.virtualPath === entry.path));
   const depth  = entry.segments.length - 1;
   const indent = depth * 16; // 16px per nesting level per UI-SPEC
 
@@ -380,10 +383,35 @@ function VfsRow({
         </span>
       )}
 
-      {/* Extract to staging — visible on hover when onExtract is provided (plan 08).
-          Derives the virtual path directly from the VFS entry (no VirtualPathModal).
-          Hidden when tombstone (nothing to extract). Keyboard-accessible (tabIndex). */}
-      {onExtract && !entry.isTombstone && hovered && (
+      {/* Already-staged badge (always visible) — supersedes the Extract button so the
+          user can see at a glance which entries are in the patch (plan 08 / UAT #3). */}
+      {isStaged && !entry.isTombstone && (
+        <span
+          aria-label={`${entry.name} is staged`}
+          title="Already staged in the patch — remove it from the Deploy panel"
+          style={{
+            display:      'inline-flex',
+            alignItems:   'center',
+            gap:          3,
+            background:   'var(--color-accent-dim, rgba(46,160,160,0.18))',
+            border:       '1px solid var(--color-accent-line)',
+            borderRadius: 'var(--radius-sm)',
+            color:        'var(--color-accent)',
+            fontFamily:   'var(--font-mono)',
+            fontSize:     'var(--text-xs)',
+            padding:      '1px 6px',
+            flexShrink:   0,
+            whiteSpace:   'nowrap',
+            lineHeight:   '18px',
+          }}
+        >
+          ✓ staged
+        </span>
+      )}
+
+      {/* Extract to staging — visible on hover when onExtract is provided (plan 08), and
+          only when NOT already staged. Derives the virtual path directly from the VFS entry. */}
+      {onExtract && !entry.isTombstone && !isStaged && hovered && (
         <button
           aria-label={`Extract ${entry.name} to staging`}
           title="Extract to staging — adds this file to the patch staging list"

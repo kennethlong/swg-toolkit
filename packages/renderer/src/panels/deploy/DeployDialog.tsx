@@ -283,7 +283,7 @@ export function DeployDialog({
         // The N4 'Nothing new' throw cannot fire here: the isDirty gate uses the same
         // flatEqual inputs as N4, so if isDirty=true, N4 will not throw.
         try {
-          await sealVersion({ sealedBy: 'pack', entries: stagingEntries, label: 'auto (pack)' });
+          await sealVersion({ sealedBy: 'pack', entries: stagingEntries, label: 'Deploy snapshot (unsaved changes)' });
         } catch (e) {
           setPhase({
             kind: 'error',
@@ -676,16 +676,19 @@ export function DeployDialog({
                 deployModel === 'absolute-path' ? 'var(--color-accent-dim)' : 'transparent',
               borderRadius: 'var(--radius-sm)',
               padding: 'var(--space-2) var(--space-3)',
-              cursor: 'pointer',
+              cursor: phase.kind === 'done' ? 'default' : 'pointer',
               marginBottom: 'var(--space-2)',
+              // Lock the deploy model while a deploy is active — gray the non-deployed one.
+              opacity: phase.kind === 'done' && deployModel !== 'absolute-path' ? 0.45 : 1,
             }}
-            onClick={() => setDeployModel('absolute-path')}
+            onClick={phase.kind === 'done' ? undefined : () => setDeployModel('absolute-path')}
           >
-            <label style={{ display: 'flex', gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', gap: 'var(--space-2)', cursor: phase.kind === 'done' ? 'default' : 'pointer' }}>
               <input
                 type="radio"
                 name="deployModel"
                 checked={deployModel === 'absolute-path'}
+                disabled={phase.kind === 'done'}
                 onChange={() => setDeployModel('absolute-path')}
                 style={{ accentColor: 'var(--color-accent)', flexShrink: 0 }}
               />
@@ -706,15 +709,17 @@ export function DeployDialog({
                 deployModel === 'hardlink-shadow' ? 'var(--color-accent-dim)' : 'transparent',
               borderRadius: 'var(--radius-sm)',
               padding: 'var(--space-2) var(--space-3)',
-              cursor: 'pointer',
+              cursor: phase.kind === 'done' ? 'default' : 'pointer',
+              opacity: phase.kind === 'done' && deployModel !== 'hardlink-shadow' ? 0.45 : 1,
             }}
-            onClick={() => setDeployModel('hardlink-shadow')}
+            onClick={phase.kind === 'done' ? undefined : () => setDeployModel('hardlink-shadow')}
           >
-            <label style={{ display: 'flex', gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', gap: 'var(--space-2)', cursor: phase.kind === 'done' ? 'default' : 'pointer' }}>
               <input
                 type="radio"
                 name="deployModel"
                 checked={deployModel === 'hardlink-shadow'}
+                disabled={phase.kind === 'done'}
                 onChange={() => setDeployModel('hardlink-shadow')}
                 style={{ accentColor: 'var(--color-accent)', flexShrink: 0 }}
               />
@@ -867,13 +872,16 @@ export function DeployDialog({
               borderTop: '1px solid var(--color-border)',
             }}
           >
+            {/* After a deploy/error, this is the clear exit ("Close", prominent); before,
+                it's "Cancel" (the deploy hasn't happened yet). */}
             <button
-              style={secondaryBtnStyleLocal}
+              style={phase.kind === 'done' ? primaryBtnStyleLocal(false) : secondaryBtnStyleLocal}
               onClick={handleClose}
-              aria-label="Cancel deploy"
+              aria-label={phase.kind === 'done' || phase.kind === 'error' ? 'Close dialog' : 'Cancel deploy'}
             >
-              Cancel
+              {phase.kind === 'done' || phase.kind === 'error' ? 'Close' : 'Cancel'}
             </button>
+            {phase.kind !== 'done' && (
             <button
               style={primaryBtnStyleLocal(isDeployDisabled)}
               disabled={isDeployDisabled}
@@ -890,6 +898,7 @@ export function DeployDialog({
             >
               Deploy patch
             </button>
+            )}
           </div>
         )}
       </div>

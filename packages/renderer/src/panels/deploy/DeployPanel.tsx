@@ -26,7 +26,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 
-import WorkspaceEntry    from './WorkspaceEntry';
 import StagingPanelBody  from './StagingPanelBody';
 import VersionHistoryBody from './VersionHistoryBody';
 import { DeployDialog }  from './DeployDialog';
@@ -68,19 +67,28 @@ export default function DeployPanel(_props?: IDockviewPanelProps): React.ReactEl
   // ── Workspace gate ─────────────────────────────────────────────────────────
 
   if (status.kind !== 'ready') {
+    // No project: a brief hint — the first-run Welcome lives in the Assets panel, so the
+    // Deploy panel must NOT duplicate it (and must not steal focus on startup).
     return (
       <div
         style={{
-          display:       'flex',
-          flexDirection: 'column',
-          height:        '100%',
-          background:    'var(--color-surface)',
-          color:         'var(--color-text)',
-          fontFamily:    'var(--font-sans)',
-          overflow:      'hidden',
+          display:        'flex',
+          flexDirection:  'column',
+          alignItems:     'center',
+          justifyContent: 'center',
+          gap:            'var(--space-1)',
+          height:         '100%',
+          padding:        'var(--space-4)',
+          textAlign:      'center',
+          background:     'var(--color-surface)',
+          color:          'var(--color-text-muted)',
+          fontFamily:     'var(--font-sans)',
         }}
       >
-        <WorkspaceEntry />
+        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>No project open</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+          Open or create a project to deploy.
+        </span>
       </div>
     );
   }

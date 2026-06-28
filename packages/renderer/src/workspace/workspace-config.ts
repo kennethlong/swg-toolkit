@@ -86,7 +86,7 @@ export function buildInitialLayout(api: DockviewApi): void {
   });
 
   // Inspector panel docked to the right of viewport
-  api.addPanel({
+  const inspectorPanel = api.addPanel({
     id: 'inspector',
     component: 'inspector',
     title: 'Inspector',
@@ -122,4 +122,8 @@ export function buildInitialLayout(api: DockviewApi): void {
     title: 'Version Control',
     position: { direction: 'within', referencePanel: 'inspector' },
   });
+
+  // Inspect is the default active tab in the right group — adding 'deploy'/'vcs' last
+  // would otherwise leave Deploy focused (and auto-widened) on a fresh start.
+  inspectorPanel?.api?.setActive?.();
 }
