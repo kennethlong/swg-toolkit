@@ -25,7 +25,7 @@
  *   so plan-08 can wire it without importing WorkspaceShell internals.
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { DockviewReact, DockviewReadyEvent, DockviewApi } from 'dockview';
 import type { IDockviewPanelProps } from 'dockview';
 import {
@@ -71,10 +71,46 @@ const panelComponents: Record<string, React.FunctionComponent<IDockviewPanelProp
 const DEPLOY_WIDTH    = 440;  // combined Deploy panel (staging + history)
 const INSPECTOR_WIDTH = 290;  // original Inspector-only width
 
+// ─── Panel display metadata (plan-08 reopen affordance) ──────────────────────
+
+/** Human-readable title for each registered panel. */
+const PANEL_TITLES: Record<string, string> = {
+  sidebar:          'Assets',
+  viewport:         'Viewport',
+  inspector:        'Inspector',
+  data:             'Data',
+  'live-inspector': 'Live Inspector',
+  deploy:           'Deploy',
+  vcs:              'Version Control',
+};
+
+/**
+ * Where to add a panel when reopening it (mirrors buildInitialLayout positions).
+ * If the reference panel has also been closed, dockview will create a new group.
+ */
+const PANEL_REOPEN_POSITIONS: Record<string, { direction: string; referencePanel?: string }> = {
+  sidebar:          { direction: 'left',   referencePanel: 'viewport' },
+  viewport:         { direction: 'within', referencePanel: 'viewport' },
+  inspector:        { direction: 'right',  referencePanel: 'viewport' },
+  data:             { direction: 'below',  referencePanel: 'viewport' },
+  'live-inspector': { direction: 'within', referencePanel: 'inspector' },
+  deploy:           { direction: 'within', referencePanel: 'inspector' },
+  vcs:              { direction: 'within', referencePanel: 'inspector' },
+};
+
 // ─── WorkspaceShell ───────────────────────────────────────────────────────────
 
 export default function WorkspaceShell(): React.ReactElement {
-  const apiRef = useRef<DockviewApi | null>(null);
+  const apiRef    = useRef<DockviewApi | null>(null);
+  const menuRef   = useRef<HTMLDivElement>(null);
+
+  // ── Layout menu state (plan-08 affordance) ────────────────────────────────
+  //
+  // Closed panels are computed ON OPEN from the live api.panels list so the
+  // list is always fresh (no stale state from panel add/remove events).
+
+  const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
+  const [closedPanels,   setClosedPanels]   = useState<Array<{ id: string; title: string }>>([]);
 
   // ── onReady: version-guard layout restore + auto-widen handler ────────────
 
@@ -146,10 +182,206 @@ export default function WorkspaceShell(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__resetLayout = resetLayout;
 
+  // ── Layout menu handlers (plan-08 affordance) ─────────────────────────────
+
+  /** Open the layout dropdown and compute closed panels at this instant. */
+  const handleLayoutMenuOpen = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    // Compute closed panel ids: registered ids not currently in api.panels
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const openIds = new Set((api as any).panels?.map((p: { id: string }) => p.id) ?? []);
+    const closed = Object.keys(panelComponents)
+      .filter((id) => !openIds.has(id))
+      .map((id) => ({ id, title: PANEL_TITLES[id] ?? id }));
+    setClosedPanels(closed);
+    setLayoutMenuOpen(true);
+  }, []);
+
+  /** Re-add a closed panel. Guards against duplicate ids (T-04.1-20). */
+  const handleReopenPanel = useCallback((panelId: string) => {
+    const api = apiRef.current;
+    if (!api) return;
+    // Guard: don't add if already open (T-04.1-20)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const already = (api as any).panels?.find((p: { id: string }) => p.id === panelId);
+    if (already) { setLayoutMenuOpen(false); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pos = PANEL_REOPEN_POSITIONS[panelId] as any;
+    api.addPanel({
+      id:        panelId,
+      component: panelId,
+      title:     PANEL_TITLES[panelId] ?? panelId,
+      ...(pos ? { position: pos } : {}),
+    });
+    setLayoutMenuOpen(false);
+  }, []);
+
+  // Close layout menu when user clicks outside of it (standard dropdown behaviour).
+  useEffect(() => {
+    if (!layoutMenuOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setLayoutMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [layoutMenuOpen]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+
+      {/* ── Layout toolbar (plan-08: discoverable Reset layout + Reopen panel) ── */}
+      {/*
+       * Thin 22px chrome bar that sits ABOVE the dockview pane.
+       * Matches --statusbar-h (22px) so it doesn't compete with panel header chrome.
+       * Keyboard-accessible: button has a visible focus ring; menu items are buttons
+       * with role="menuitem" (Accessibility Rule 5 — no icon-only controls here).
+       */}
+      <div
+        ref={menuRef}
+        style={{
+          display:      'flex',
+          alignItems:   'center',
+          height:       'var(--statusbar-h)',
+          background:   'var(--color-header)',
+          borderBottom: '1px solid var(--color-border)',
+          paddingLeft:  'var(--space-2)',
+          gap:          'var(--space-2)',
+          flexShrink:   0,
+          position:     'relative',
+          zIndex:       10,
+        }}
+      >
+        {/* Layout menu button */}
+        <button
+          aria-label="Layout menu — reset layout or reopen closed panels"
+          aria-haspopup="menu"
+          aria-expanded={layoutMenuOpen}
+          title="Reset layout or reopen closed panels"
+          onClick={layoutMenuOpen ? () => setLayoutMenuOpen(false) : handleLayoutMenuOpen}
+          style={{
+            background:   'transparent',
+            border:       'none',
+            color:        'var(--color-text-muted)',
+            cursor:       'pointer',
+            fontFamily:   'var(--font-sans)',
+            fontSize:     'var(--text-xs)',
+            fontWeight:   600,
+            padding:      '1px 6px',
+            borderRadius: 'var(--radius-sm)',
+            outline:      'none',
+            flexShrink:   0,
+          }}
+          onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--focus-ring)'; }}
+          onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-muted)'; }}
+        >
+          Layout ▾
+        </button>
+
+        {/* Layout dropdown menu */}
+        {layoutMenuOpen && (
+          <div
+            role="menu"
+            aria-label="Layout options"
+            style={{
+              position:     'absolute',
+              top:          'calc(100% + 2px)',
+              left:         'var(--space-2)',
+              background:   'var(--color-surface)',
+              border:       '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-sm)',
+              boxShadow:    '0 4px 12px rgba(0,0,0,0.4)',
+              minWidth:     160,
+              zIndex:       100,
+              display:      'flex',
+              flexDirection: 'column',
+              padding:      '3px 0',
+            }}
+          >
+            {/* Reset layout */}
+            <button
+              role="menuitem"
+              onClick={() => { resetLayout(); setLayoutMenuOpen(false); }}
+              title="Discard the current layout and rebuild the default arrangement"
+              style={{
+                background:  'transparent',
+                border:      'none',
+                color:       'var(--color-text)',
+                cursor:      'pointer',
+                fontFamily:  'var(--font-sans)',
+                fontSize:    'var(--text-xs)',
+                padding:     '4px var(--space-4)',
+                textAlign:   'left',
+                outline:     'none',
+                whiteSpace:  'nowrap',
+              }}
+              onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--focus-ring)'; }}
+              onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-surface-2)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            >
+              Reset layout
+            </button>
+
+            {/* Reopen closed panels — only shown when there are closed panels */}
+            {closedPanels.length > 0 && (
+              <>
+                <div
+                  role="separator"
+                  style={{ borderTop: '1px solid var(--color-border)', margin: '3px 0' }}
+                />
+                <span
+                  style={{
+                    padding:     '2px var(--space-4)',
+                    fontSize:    'var(--text-xs)',
+                    color:       'var(--color-text-muted)',
+                    fontFamily:  'var(--font-sans)',
+                    userSelect:  'none',
+                    fontWeight:  600,
+                    letterSpacing: '0.03em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Reopen panel
+                </span>
+                {closedPanels.map(({ id, title }) => (
+                  <button
+                    key={id}
+                    role="menuitem"
+                    onClick={() => handleReopenPanel(id)}
+                    title={`Reopen the ${title} panel`}
+                    style={{
+                      background:  'transparent',
+                      border:      'none',
+                      color:       'var(--color-text)',
+                      cursor:      'pointer',
+                      fontFamily:  'var(--font-sans)',
+                      fontSize:    'var(--text-xs)',
+                      padding:     '4px var(--space-4)',
+                      textAlign:   'left',
+                      outline:     'none',
+                      whiteSpace:  'nowrap',
+                    }}
+                    onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--focus-ring)'; }}
+                    onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-surface-2)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
+                    {title}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       <DockviewReact
         className="dockview-theme-dark"
         components={panelComponents}
