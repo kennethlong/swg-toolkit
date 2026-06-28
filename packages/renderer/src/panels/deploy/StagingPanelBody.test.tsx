@@ -160,3 +160,29 @@ describe('StagingPanelBody', () => {
   });
 
 });
+
+// ─── Task 1 RED: empty-state copy (DEPLOY-07 Copywriting Contract) ────────────
+//
+// The corrected empty-state body must reference the TRE browser Extract→Add flow.
+// RED: fails because current body is "Extract a file and Add to patch, or drop in a replacement."
+// GREEN: passes once StagingPanelBody.tsx body is updated to the Copywriting Contract text.
+
+describe('StagingPanelBody — empty-state copy (Copywriting Contract)', () => {
+
+  it('Test 6: empty-state body references TRE browser Extract to staging flow', () => {
+    render(
+      <StagingPanelBody
+        entries={[]}
+        buildStatus={{ kind: 'idle' }}
+        workspaceName="FakeProject"
+      />,
+    );
+
+    // UI-SPEC Copywriting Contract — 04.1-08-PLAN.md Task 2 target copy:
+    // "Right-click a file in the TRE browser → Extract to staging, or drop a replacement file here."
+    // RED: current body is "Extract a file and Add to patch, or drop in a replacement."
+    const body = screen.queryByText(/right-click a file in the TRE browser/i);
+    expect(body).not.toBeNull();
+  });
+
+});
