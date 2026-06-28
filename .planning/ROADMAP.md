@@ -200,7 +200,7 @@ Plans:
 - [x] 04.1-08-PLAN.md — Stage-from-TRE + reset-layout/reopen-panel (DEPLOY-07): Extract→Add derives virtual path, corrected empty-state copy, reset/reopen affordance
 - [x] 04.1-09-PLAN.md — Client-layout detection table + manual override (D-13): clientLayout resolver, clientLocator generalization, wizard/binding surfacing
 **Wave 8**
-- [ ] 04.1-10-PLAN.md — Centralize IPC channel return types (Pattern 8): contracts ipc.ts IpcChannels/TypedIpcRenderer + swap all call sites
+- [x] 04.1-10-PLAN.md — Centralize IPC channel return types (Pattern 8): contracts ipc.ts IpcChannels/TypedIpcRenderer + swap all call sites
 **Wave 9**
 - [ ] 04.1-11-PLAN.md — Phase UAT checkpoint: in-client real-Electron onboarding→deploy→reset on SWG Infinity + SWGEmu [autonomous: false]
 
@@ -268,7 +268,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
 | 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-06-27 |
-| 4.1 Deploy & Project UX *(INSERTED)* | 8/11 | In Progress|  |
+| 4.1 Deploy & Project UX *(INSERTED)* | 10/11 | In Progress|  |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |

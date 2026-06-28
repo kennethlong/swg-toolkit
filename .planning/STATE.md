@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
-last_updated: "2026-06-28T00:34:59.063Z"
+last_updated: "2026-06-28T00:45:24.250Z"
 last_activity: 2026-06-28
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 40
-  completed_plans: 38
-  percent: 95
+  completed_plans: 39
+  percent: 98
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.1 (deploy-project-ux) — EXECUTING
-Plan: 10 of 11
+Plan: 11 of 11
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
@@ -45,7 +45,7 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       REQUIREMENTS DEPLOY-01..04 → Complete).
 Last activity: 2026-06-28
 
-Progress: [██████████] 95%
+Progress: [██████████] 98%
 
 ### 02-03 key facts (crew-verified)
 
@@ -104,6 +104,7 @@ Progress: [██████████] 95%
 | Phase 04.1 P07 | 25 | 3 tasks | 7 files |
 | Phase 04.1 P08 | 8 | 3 tasks | 9 files |
 | Phase 04.1 P09 | 60 | 3 tasks | 6 files |
+| Phase 04.1 P10 | 6 | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -245,6 +246,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-28T00:34:59.036Z
+Last session: 2026-06-28T00:45:24.226Z
 Stopped at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
 Resume file: None
