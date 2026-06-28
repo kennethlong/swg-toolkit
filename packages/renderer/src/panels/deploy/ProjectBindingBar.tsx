@@ -19,10 +19,11 @@
  * Source: 04.1-04-PLAN.md Task 1; 04.1-UI-SPEC.md Surface 2 §007-A; 04.1-PATTERNS.md §ProjectBindingBar.tsx.
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { useTreStore } from '../../state/treStore';
 import * as projectBinding from '../../services/projectBinding';
+import { resolveLayout } from '../../services/clientLayout';
 
 // Path B: require() for Node modules (nodeIntegration:true)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -99,6 +100,7 @@ export default function ProjectBindingBar({
   archiveCount,
 }: ProjectBindingBarProps): React.ReactElement {
   const clientPath  = useWorkspaceStore((s) => s.clientPath);
+  const wsInfo      = useWorkspaceStore((s) => s.status.kind === 'ready' ? s.status.info : null);
   const archives    = useTreStore((s) => s.archives);
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +111,13 @@ export default function ProjectBindingBar({
   const clientName = clientPath ? nodePath.basename(clientPath) : null;
   // treVersion: strip leading 'v' from archive version tag — e.g. "0005" from "v0005"
   const treVersion = archives.length > 0 ? archives[0].version.replace(/^v/, '') : null;
+
+  // D-13: resolve layout for the current client path (for maxSearchPriority display)
+  // useMemo prevents re-probing the fs on every render; only recalculates when clientPath changes
+  const detectedLayout = useMemo(
+    () => (clientPath ? resolveLayout(clientPath) : null),
+    [clientPath],
+  );
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -143,18 +152,32 @@ export default function ProjectBindingBar({
     onNewProject();
   }, [onNewProject]);
 
+  // D-13: binding detail fields derived from wsInfo (written by initProject via workspace.json)
+  const cfgFile      = wsInfo?.cfgPath  ? nodePath.basename(wsInfo.cfgPath)  : null;
+  const treDirBase   = wsInfo?.treDir   ? nodePath.basename(wsInfo.treDir)   : null;
+  const pattern      = wsInfo?.pattern  ?? null;
+  const mSP          = detectedLayout?.maxSearchPriority ?? null;
+  const serverConfig = wsInfo?.serverConfig ?? null;
+
   return (
     <div
       style={{
         display:      'flex',
-        alignItems:   'center',
-        height:       'var(--tabstrip-h)',
+        flexDirection:'column',
         background:   'var(--color-header)',
         borderBottom: '1px solid var(--color-border)',
-        paddingLeft:  'var(--space-4)',
-        paddingRight: 'var(--space-4)',
-        gap:          'var(--space-2)',
         flexShrink:   0,
+      }}
+    >
+    {/* ── Main button row ──────────────────────────────────────────────── */}
+    <div
+      style={{
+        display:     'flex',
+        alignItems:  'center',
+        height:      'var(--tabstrip-h)',
+        paddingLeft: 'var(--space-4)',
+        paddingRight:'var(--space-4)',
+        gap:         'var(--space-2)',
       }}
     >
       {/* ── ＋ Project ▾ split-button ────────────────────────────────── */}
@@ -291,6 +314,69 @@ export default function ProjectBindingBar({
           ✕ {error}
         </span>
       )}
+    </div>{/* end main button row */}
+
+    {/* ── D-13: Binding-details sub-row (M4: canonical layout home) ─────── */}
+    {/* Shown when a client is bound — pattern, cfg, TRE dir, mSP, serverConfig. */}
+    {/* Accessibility Rule 1: all status conveyed by text labels (no color-only). */}
+    {clientPath && (cfgFile || pattern || serverConfig) && (
+      <div
+        style={{
+          display:     'flex',
+          alignItems:  'center',
+          flexWrap:    'wrap',
+          gap:         'var(--space-3)',
+          paddingLeft: 'var(--space-4)',
+          paddingRight:'var(--space-4)',
+          paddingBottom:'var(--space-1)',
+          fontFamily:  'var(--font-mono)',
+          fontSize:    'var(--text-xs)',
+          color:       'var(--color-text-muted)',
+          borderTop:   '1px solid var(--color-border)',
+        }}
+      >
+        {/* Release pattern */}
+        {pattern && (
+          <span title="Matched release pattern">
+            pattern: <span style={{ color: 'var(--color-text)' }}>{pattern}</span>
+          </span>
+        )}
+
+        {/* cfg filename */}
+        {cfgFile && (
+          <span title={wsInfo?.cfgPath}>
+            cfg: <span style={{ color: 'var(--color-text)' }}>{cfgFile}</span>
+          </span>
+        )}
+
+        {/* TRE directory */}
+        {treDirBase !== null && (
+          <span title={wsInfo?.treDir}>
+            TREs: <span style={{ color: 'var(--color-text)' }}>
+              {treDirBase === nodePath.basename(clientPath ?? '') || treDirBase === ''
+                ? '(install root)'
+                : `${treDirBase}/`}
+            </span>
+          </span>
+        )}
+
+        {/* maxSearchPriority (from KNOWN_LAYOUTS, not persisted in workspace.json) */}
+        {mSP !== null && (
+          <span title="maxSearchPriority from release pattern">
+            mSP: <span style={{ color: 'var(--color-text)' }}>{mSP}</span>
+          </span>
+        )}
+
+        {/* Local-server capture (D-01 — capture-only in Phase 4.1) */}
+        {serverConfig && (
+          <span title={`Server path: ${serverConfig.path}`}>
+            server: <span style={{ color: 'var(--color-text)' }}>
+              {serverConfig.type} @ {serverConfig.hostPort}
+            </span>
+          </span>
+        )}
+      </div>
+    )}
     </div>
   );
 }

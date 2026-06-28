@@ -32,6 +32,7 @@ import { detectClients } from '../../services/clientLocator';
 import type { DetectedClient } from '@swg/contracts';
 import * as projectBinding from '../../services/projectBinding';
 import type { InitProjectOptions } from '../../services/projectBinding';
+import { resolveLayout, type ClientLayout } from '../../services/clientLayout';
 
 // ─── IPC bridge (Path B — same pattern as WorkspaceEntry.tsx:26-30) ───────────
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -81,6 +82,12 @@ interface WizardState {
   folder:     string;
   /** Step 2: the client binding choice. */
   bindChoice: BindChoice;
+  /**
+   * D-13: manual layout override from Step 2 when resolveLayout() returns null
+   * for a confirmed-client folder (unknown release pattern).
+   * Passed to initProject as InitProjectOptions.manualLayout.
+   */
+  manualLayout?: ClientLayout;
   /** Step 3: optional server config (undefined = not using a local server). */
   serverConfig?: InitProjectOptions['serverConfig'];
   /** Step 4: false = use client TRE set (recommended); true = start with empty staging. */
@@ -194,6 +201,9 @@ export default function NewProjectWizard({ open, onClose }: NewProjectWizardProp
       await projectBinding.initProject(folder, {
         overrideKind,
         serverConfig: wizard.serverConfig,
+        // D-13: pass manual override when the user filled in cfgFile + treSubdir
+        // (occurs when resolveLayout returned null for the confirmed client folder)
+        manualLayout: wizard.manualLayout,
       });
 
       onClose();
@@ -394,12 +404,37 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
   const [unconfirmedAnswer, setUnconfirmedAnswer] = useState<'client' | 'non-client' | null>(null);
   const [isBrowsed, setIsBrowsed] = useState(false);
 
-  // Check if the currently browsed folder is classifiable
+  // D-13: manual-override inputs (cfgFile + treSubdir) used when resolveLayout returns null
+  const [manualCfgFile, setManualCfgFile]       = useState('');
+  const [manualTreSubdir, setManualTreSubdir]   = useState('');
+
+  // ── Folder kind + layout detection ──────────────────────────────────────────
+
+  // Check if the currently browsed folder is classifiable as a client
   const browsedKind = browsedFolder
     ? projectBinding.detectFolderKind(browsedFolder)
     : null;
   // Unconfirmed: browsed but couldn't auto-classify as client
   const isUnconfirmed = isBrowsed && browsedKind !== 'client' && browsedKind !== null;
+
+  // D-13: resolve layout for the currently selected client install path
+  const selectedInstallPath: string | null = (
+    wizard.bindChoice?.kind === 'client'          ? wizard.bindChoice.client.installPath :
+    wizard.bindChoice?.kind === 'client-override' ? wizard.bindChoice.folder :
+    null
+  );
+  const detectedLayout: ClientLayout | null = selectedInstallPath
+    ? resolveLayout(selectedInstallPath)
+    : null;
+
+  // When layout IS detected, clear any manual override from WizardState
+  // When layout is null AND a client is selected, the manual form is shown below
+  useEffect(() => {
+    if (detectedLayout) {
+      // Auto-detection succeeded; clear any previously entered manual layout
+      setWizard((w) => ({ ...w, manualLayout: undefined }));
+    }
+  }, [detectedLayout, setWizard]);
 
   // ── IPC bridge ──────────────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -420,8 +455,9 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
         if (kind === 'client') {
           setWizard((w) => ({
             ...w,
-            folder: folder,
-            bindChoice: { kind: 'client-override', folder },
+            folder:       folder,
+            bindChoice:   { kind: 'client-override', folder },
+            manualLayout: undefined,  // reset manual; will re-detect via resolveLayout
           }));
         }
       }
@@ -435,7 +471,7 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
     setUnconfirmedAnswer('client');
     setWizard((w) => ({
       ...w,
-      folder: browsedFolder,
+      folder:     browsedFolder,
       bindChoice: { kind: 'client-override', folder: browsedFolder },
     }));
   }, [browsedFolder, setWizard]);
@@ -445,10 +481,43 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
     setUnconfirmedAnswer('non-client');
     setWizard((w) => ({
       ...w,
-      folder: w.folder || browsedFolder,
-      bindChoice: { kind: 'mod-project', folder: w.folder || browsedFolder },
+      folder:       w.folder || browsedFolder,
+      bindChoice:   { kind: 'mod-project', folder: w.folder || browsedFolder },
+      manualLayout: undefined,
     }));
   }, [browsedFolder, setWizard]);
+
+  // D-13: apply manual-override values → persist into WizardState.manualLayout
+  const handleApplyManualOverride = useCallback(() => {
+    if (!manualCfgFile.trim()) return;
+    const ml: ClientLayout = {
+      release:           'manual',
+      cfgFile:           manualCfgFile.trim(),
+      treSubdir:         manualTreSubdir.trim(),
+      maxSearchPriority: 0,  // informational; real value read from cfg chain at deploy time
+    };
+    setWizard((w) => ({ ...w, manualLayout: ml }));
+  }, [manualCfgFile, manualTreSubdir, setWizard]);
+
+  // Sync manual layout whenever inputs change (live-update WizardState)
+  useEffect(() => {
+    if (!selectedInstallPath) return;
+    if (detectedLayout) return;  // auto-detect succeeded; no manual needed
+    if (!manualCfgFile.trim()) return;  // nothing entered yet
+
+    const ml: ClientLayout = {
+      release:           'manual',
+      cfgFile:           manualCfgFile.trim(),
+      treSubdir:         manualTreSubdir.trim(),
+      maxSearchPriority: 0,
+    };
+    setWizard((w) => ({ ...w, manualLayout: ml }));
+  }, [manualCfgFile, manualTreSubdir, detectedLayout, selectedInstallPath, setWizard]);
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  /** True when manual override has been fully entered (cfgFile required). */
+  const hasManualOverride = wizard.manualLayout !== undefined && wizard.manualLayout.cfgFile !== '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -472,7 +541,12 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
             return (
               <div
                 key={client.installPath}
-                onClick={() => setWizard((w) => ({ ...w, folder: w.folder || client.installPath, bindChoice: { kind: 'client', client } }))}
+                onClick={() => setWizard((w) => ({
+                  ...w,
+                  folder:       w.folder || client.installPath,
+                  bindChoice:   { kind: 'client', client },
+                  manualLayout: undefined,
+                }))}
                 style={{
                   display:      'flex',
                   alignItems:   'center',
@@ -534,17 +608,17 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
           )}
         </div>
 
-        {/* Surface 3 — Unconfirmed-directory branch */}
+        {/* Surface 3 — Unconfirmed-directory branch (detectFolderKind != client) */}
         {isUnconfirmed && unconfirmedAnswer === null && (
           <div
             style={{
-              padding:      'var(--space-3)',
-              background:   'rgba(224, 161, 58, 0.08)',
-              border:       '1px solid var(--color-warn, #e0a13a)',
-              borderRadius: 'var(--radius-sm)',
-              display:      'flex',
-              flexDirection:'column',
-              gap:          'var(--space-2)',
+              padding:       'var(--space-3)',
+              background:    'rgba(224, 161, 58, 0.08)',
+              border:        '1px solid var(--color-warn, #e0a13a)',
+              borderRadius:  'var(--radius-sm)',
+              display:       'flex',
+              flexDirection: 'column',
+              gap:           'var(--space-2)',
             }}
           >
             <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warn, #e0a13a)', fontWeight: 600 }}>
@@ -581,6 +655,130 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
           </div>
         )}
       </div>
+
+      {/* ── D-13: Detected-layout section (Surface 3 confirm/correct) ───────── */}
+      {selectedInstallPath && detectedLayout && (
+        <div
+          style={{
+            padding:       'var(--space-2) var(--space-3)',
+            background:    'var(--color-surface-2)',
+            border:        '1px solid var(--color-border)',
+            borderRadius:  'var(--radius-sm)',
+            display:       'flex',
+            flexDirection: 'column',
+            gap:           'var(--space-1)',
+          }}
+        >
+          <span style={{ ...sectionLabelStyle, marginBottom: 'var(--space-1)' }}>
+            DETECTED LAYOUT
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+            <span style={{ color: 'var(--color-text-muted)' }}>
+              pattern:
+              <span style={{ color: 'var(--color-text)', marginLeft: 'var(--space-2)' }}>
+                {detectedLayout.release}
+              </span>
+            </span>
+            <span style={{ color: 'var(--color-text-muted)' }}>
+              cfg:
+              <span style={{ color: 'var(--color-text)', marginLeft: 'var(--space-2)' }}>
+                {detectedLayout.cfgFile}
+              </span>
+            </span>
+            <span style={{ color: 'var(--color-text-muted)' }}>
+              TREs:
+              <span style={{ color: 'var(--color-text)', marginLeft: 'var(--space-2)' }}>
+                {detectedLayout.treSubdir ? `${detectedLayout.treSubdir}/` : '(install root)'}
+              </span>
+            </span>
+            <span style={{ color: 'var(--color-text-muted)' }}>
+              maxSearchPriority:
+              <span style={{ color: 'var(--color-text)', marginLeft: 'var(--space-2)' }}>
+                {detectedLayout.maxSearchPriority}
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── D-13: Layout-unknown manual-override section ─────────────────────── */}
+      {/* Shown when: a client IS confirmed but resolveLayout returned null        */}
+      {selectedInstallPath && !detectedLayout && wizard.bindChoice?.kind !== 'mod-project' && !isUnconfirmed && (
+        <div
+          style={{
+            padding:       'var(--space-3)',
+            background:    'rgba(224, 161, 58, 0.08)',
+            border:        '1px solid var(--color-warn, #e0a13a)',
+            borderRadius:  'var(--radius-sm)',
+            display:       'flex',
+            flexDirection: 'column',
+            gap:           'var(--space-2)',
+          }}
+        >
+          {/* ⚠ triple-encoded: glyph + border (on container) + text color */}
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warn, #e0a13a)', fontWeight: 600 }}>
+            ⚠ Layout not recognized
+          </span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            This client folder uses an unrecognized layout. Enter the cfg filename and TRE
+            directory so the toolkit can locate your archives.
+          </span>
+
+          {/* cfgFile input */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              cfg filename (e.g. swgemu.cfg, client.cfg)
+            </span>
+            <input
+              type="text"
+              value={manualCfgFile}
+              onChange={(e) => setManualCfgFile(e.target.value)}
+              placeholder="swgemu.cfg"
+              style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
+              aria-label="Client cfg filename"
+            />
+          </div>
+
+          {/* treSubdir input */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              TRE subdirectory (leave blank if TREs are in the install root)
+            </span>
+            <input
+              type="text"
+              value={manualTreSubdir}
+              onChange={(e) => setManualTreSubdir(e.target.value)}
+              placeholder="Live"
+              style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
+              aria-label="TRE subdirectory"
+            />
+          </div>
+
+          {/* Confirmation feedback */}
+          {hasManualOverride && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-accent)', fontFamily: 'var(--font-mono)' }}>
+                ✓ Override set:
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                cfg={wizard.manualLayout!.cfgFile}
+                {wizard.manualLayout!.treSubdir
+                  ? ` · TREs=${wizard.manualLayout!.treSubdir}/`
+                  : ' · TREs=(root)'}
+              </span>
+            </div>
+          )}
+
+          {/* Apply button — explicitly sets manualLayout even if inputs didn't change */}
+          <button
+            style={{ ...secondaryBtnStyle, alignSelf: 'flex-start' }}
+            onClick={handleApplyManualOverride}
+            disabled={!manualCfgFile.trim()}
+          >
+            Apply override
+          </button>
+        </div>
+      )}
 
       {/* Skip: no client (mod-project) */}
       {wizard.bindChoice === null && (
