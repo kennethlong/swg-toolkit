@@ -2,6 +2,18 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
+- **[2026-06-28-phase04.1-deploy-uat-iteration.md](2026-06-28-phase04.1-deploy-uat-iteration.md)** — ACTIVE. ← start here.
+  Phase 04.1 (deploy-project-ux): all 11 plans executed; long in-client UAT round (the 04.1-11
+  checkpoint, still open). Landed the **project-model decouple** (project = umbrella under
+  `projects\<name>` that *references* a target client/standalone; in-app Open Project dialog;
+  auto-mount on every open), the **native-core seam** (blank-screen fix), the **first-run Welcome
+  takeover** (sketch 007-B), **TreeFile.cpp-faithful TRE mount order**, **swgtoolkit.cfg moved into
+  the studio** (client gets one absolute `.include`), test isolation, and a big UX round (staged-item
+  right-click Open-in-viewer/Unstage, unsaved-changes deploy prompt, badges). HEAD `ae99267`.
+  **Open:** in-game absolute-path load check → Hardlink-Shadow keep/remove decision; finish the
+  04.1-11 UAT script; then verify + complete the phase. New memories: project-model-umbrella-and-target,
+  feedback-sketches-are-ui-source-of-truth, reference-treefile-searchtree-precedence.
+
 - **[2026-06-27-frontier-sketches-007-011-016-DONE.md](2026-06-27-frontier-sketches-007-011-016-DONE.md)** — DONE (committed + pushed `73e1e5e`).
   `/gsd-sketch` frontier session: 6 sketches with winners — **007** project front door (client binding +
   optional local-server + non-client-project branch), **008** Deploy tab composed into the shell (one
