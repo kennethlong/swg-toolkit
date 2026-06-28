@@ -12,7 +12,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useWorkspaceStore } from '../../state/workspaceStore';
-import { openWorkspace, createWorkspace, getDefaultProjectsDir, getStudioDir } from '../../services/workspaceService';
+import { openWorkspace, createWorkspace, getDefaultProjectsDir, getDefaultProjectFolder, getStudioDir } from '../../services/workspaceService';
 import * as projectBinding from '../../services/projectBinding';
 import { detectClients } from '../../services/clientLocator';
 import { getRecentProjects, pruneRecentProjects, type RecentProject } from '../../services/recentProjects';
@@ -161,10 +161,11 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
     let picked: string | undefined;
     try {
       // Open the picker at the shared project store so existing projects are right there.
+      // Reopen the picked PROJECT folder (preserves its target binding) — do not re-bind.
       const paths = await ipcRenderer.invoke('workspace:pick-dir', getDefaultProjectsDir());
       if (paths.length > 0 && paths[0]) {
         picked = paths[0];
-        await projectBinding.initProject(picked);
+        await openWorkspace(picked);
       }
     } catch (err) {
       const msg = String((err as Error)?.message ?? err);
@@ -194,11 +195,16 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
     }
   }, []);
 
-  // Click a detected client → bind it.
+  // Click a detected client → quick-create a project named after the client, targeting
+  // that install (decouple: the client is the target, not the project identity).
   const handleOpenClient = useCallback(async (client: DetectedClient) => {
     setClientError(null);
     try {
-      await projectBinding.initProject(client.installPath);
+      await projectBinding.initProject(getDefaultProjectFolder(client.name), {
+        projectName: client.name,
+        targetPath:  client.installPath,
+        overrideKind: 'client',
+      });
     } catch (err) {
       const msg = String((err as Error)?.message ?? err);
       setClientError(msg);

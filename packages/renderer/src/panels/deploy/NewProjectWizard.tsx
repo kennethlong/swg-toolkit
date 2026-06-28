@@ -35,12 +35,6 @@ import type { InitProjectOptions } from '../../services/projectBinding';
 import { resolveLayout, type ClientLayout } from '../../services/clientLayout';
 import { getDefaultProjectFolder } from '../../services/workspaceService';
 
-// Path B fs access (nodeIntegration:true) — used only to create a new project folder
-// under the app store before binding (the store path won't exist yet). Lazy require()
-// like every other renderer call site; never bundled by Vite.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const fs = require('fs') as typeof import('fs');
-
 // ─── IPC bridge (Path B — same pattern as WorkspaceEntry.tsx) ────────────────
 // TypedIpcRenderer from @swg/contracts is the single source of truth for channel types.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -179,32 +173,29 @@ export default function NewProjectWizard({ open, onClose }: NewProjectWizardProp
     setError(null);
     setBusy(true);
     try {
-      const folder = wizard.bindChoice !== null && wizard.bindChoice.kind === 'client'
-        ? wizard.bindChoice.client.installPath
-        : wizard.bindChoice !== null && wizard.bindChoice.kind === 'client-override'
-          ? wizard.bindChoice.folder
-          : wizard.folder;
+      // DECOUPLE: the project (umbrella) ALWAYS lives at wizard.folder = projects\<name>.
+      // The TARGET TRE set (client install or standalone .tre folder) is a separate path
+      // derived from the bind choice. initProject mkdirs the project folder itself.
+      const bc = wizard.bindChoice;
+      let targetPath:   string | undefined;
+      let targetKind:   InitProjectOptions['targetKind'];
+      let overrideKind: InitProjectOptions['overrideKind'];
 
-      const overrideKind: InitProjectOptions['overrideKind'] =
-        wizard.bindChoice?.kind === 'client' ? 'client' :
-        wizard.bindChoice?.kind === 'client-override' ? 'client' :
-        wizard.bindChoice?.kind === 'mod-project' ? 'mod-project' :
-        undefined;
-
-      // A new non-client project lives under the app store and its folder won't exist
-      // yet — create it so initProject → openWorkspace (which requires an existing dir)
-      // succeeds. Client binds use an existing install path and are left untouched.
-      const isClientBind =
-        wizard.bindChoice?.kind === 'client' || wizard.bindChoice?.kind === 'client-override';
-      if (!isClientBind && folder && !fs.existsSync(folder)) {
-        fs.mkdirSync(folder, { recursive: true });
+      if (bc?.kind === 'client') {
+        targetPath = bc.client.installPath;            // auto-detected client install
+      } else if (bc?.kind === 'client-override') {
+        targetPath = bc.folder; overrideKind = 'client';  // M6 user-confirmed client
+      } else if (bc?.kind === 'mod-project') {
+        targetPath = bc.folder; targetKind = 'standalone'; // non-client → standalone TRE set
       }
 
-      await projectBinding.initProject(folder, {
+      await projectBinding.initProject(wizard.folder, {
+        projectName: wizard.name.trim(),
+        targetPath,
+        targetKind,
         overrideKind,
         serverConfig: wizard.serverConfig,
-        // D-13: pass manual override when the user filled in cfgFile + treSubdir
-        // (occurs when resolveLayout returned null for the confirmed client folder)
+        // D-13: manual override (cfgFile + treSubdir) when resolveLayout returned null
         manualLayout: wizard.manualLayout,
       });
 
