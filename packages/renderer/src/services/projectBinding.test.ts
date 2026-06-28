@@ -44,6 +44,10 @@ const nativeMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@swg/native-core', () => nativeMocks);
+// treMount reaches the addon through the ./nativeTre require() seam (a direct native-core
+// import would crash the real renderer at startup — see nativeTre.ts). vitest cannot mock
+// the externalized native require(), so mock the local seam: nativeCore IS nativeMocks.
+vi.mock('./nativeTre', () => ({ nativeCore: nativeMocks }));
 
 // Import AFTER vi.mock — vitest hoists vi.mock to the top of the file, so the mock
 // is guaranteed active before the imports below resolve.

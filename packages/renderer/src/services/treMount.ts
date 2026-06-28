@@ -9,8 +9,9 @@
  *   mountTrePaths(filePaths, priorities)      — mount archives + populate treStore
  *   decodeMountEntriesColumnar(blob)           — decode native columnar blob → VfsEntry[]
  *
- * Path B addon access: require('@swg/native-core') directly (nodeIntegration:true).
- * Source: packages/renderer/src/shell/StatusBar.tsx:34-41.
+ * Path B addon access: via the ./nativeTre require() seam (nodeIntegration:true).
+ * A top-level ESM import of @swg/native-core crashes the real renderer at startup
+ * (Vite bundles the addon loader → `os.platform is not a function`); see nativeTre.ts.
  *
  * Source: 04.1-02-PLAN.md Task 2 (H3 fix — columnar decoder must be shared, not duplicated).
  */
@@ -18,15 +19,12 @@
 import { useTreStore, basename } from '../state/treStore';
 import type { MountedArchive, VfsEntry } from '../state/treStore';
 import type { TreVersion } from '@swg/contracts';
-// Named ESM import (not require) so vi.mock('@swg/native-core', factory) in tests can
-// intercept the resolution. Vitest hooks ESM import resolution; raw require() bypasses
-// the mock registry for native addons (loaded via process.dlopen/node-gyp-build).
-// In production (Electron renderer, nodeIntegration:true), ESM↔CJS interop is transparent.
-import {
-  mountSearchableAsync as nativeMountSearchableAsync,
-  getMountArchives as nativeGetMountArchives,
-  getMountEntriesColumnar as nativeGetMountEntriesColumnar,
-} from '@swg/native-core';
+// Native addon access via the Path B require() seam (see nativeTre.ts for why a bare
+// require — not a top-level ESM import — is required: a static import makes Vite bundle
+// the addon's loader into the renderer and crashes startup with `os.platform is not a
+// function`). Importing the seam (a local ESM module) keeps the native call mockable in
+// vitest via vi.mock('./nativeTre', …) without loading the .node binary.
+import { nativeCore } from './nativeTre';
 
 // ─── Version helper (moved from TreVfsBrowser) ───────────────────────────────
 
@@ -148,12 +146,12 @@ export function decodeMountEntriesColumnar(blob: ArrayBuffer): VfsEntry[] {
  */
 export async function mountTrePaths(filePaths: string[], priorities: number[]): Promise<string> {
   // Mount the archives asynchronously (off-main-thread via AsyncWorker).
-  const handle = await nativeMountSearchableAsync(filePaths, priorities);
+  const handle = await nativeCore.mountSearchableAsync(filePaths, priorities);
 
   // Build the MountedArchive list from native truth, in the mount's priority-sorted
   // index space (getMountArchives returns highest-priority first — same space as
   // resolveChain hits). version + enumerateOnly come straight from the native layer.
-  const archives: MountedArchive[] = nativeGetMountArchives(handle).map((a) => ({
+  const archives: MountedArchive[] = nativeCore.getMountArchives(handle).map((a) => ({
     path:            a.path,
     filename:        basename(a.path),
     version:         parseVersion(a.version),
@@ -165,7 +163,7 @@ export async function mountTrePaths(filePaths: string[], priorities: number[]): 
 
   // Build the VFS entry list from the native columnar blob (perf fix).
   // ONE ArrayBuffer crosses the N-API bridge instead of ~250k Napi::Object instances.
-  const columnarBlob = nativeGetMountEntriesColumnar(handle);
+  const columnarBlob = nativeCore.getMountEntriesColumnar(handle);
   const vfsEntries: VfsEntry[] = decodeMountEntriesColumnar(columnarBlob);
 
   useTreStore.getState().mountComplete(handle, archives, vfsEntries);
