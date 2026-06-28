@@ -230,6 +230,10 @@ export function detectClients(): DetectedClient[] {
       const stdout = execFileSync('reg', ['query', key, '/v', valueName], {
         encoding: 'utf8',
         timeout: 5000,
+        // Ignore stderr so reg.exe's "unable to find the specified registry key" message
+        // for an absent key (the common, expected case) never leaks to the terminal.
+        // stdout stays piped (returned); the catch below handles the non-zero exit.
+        stdio: ['ignore', 'pipe', 'ignore'],
       });
       const match = stdout.match(/REG_SZ\s+(.+)/);
       if (!match) continue;
