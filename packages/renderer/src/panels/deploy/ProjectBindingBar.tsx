@@ -22,20 +22,12 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { useTreStore } from '../../state/treStore';
-import { getDefaultProjectsDir, openWorkspace } from '../../services/workspaceService';
+import { useOpenProjectStore } from '../../state/openProjectStore';
 import { resolveLayout } from '../../services/clientLayout';
-import type { TypedIpcRenderer } from '@swg/contracts';
 
 // Path B: require() for Node modules (nodeIntegration:true)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const nodePath = require('path') as typeof import('path');
-
-// ─── IPC bridge ───────────────────────────────────────────────────────────────
-
-// Path B: dialog is main-process only — invoke via IPC.
-// TypedIpcRenderer from @swg/contracts is the single source of truth for channel types.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
 
 // ─── Button styles (W1 fix — LOCAL const functions, not shared via ExportDialog) ─
 
@@ -129,22 +121,10 @@ export default function ProjectBindingBar({
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
-  // Open… — pick-dir IPC then initProject (same async/error pattern as WorkspaceEntry.tsx:73-99)
-  const handleOpen = useCallback(async () => {
+  // Open… — show the in-app project list dialog (replaces the OS folder picker).
+  const handleOpen = useCallback(() => {
     setMenuOpen(false);
-    setError(null);
-    try {
-      // Open the picker at the shared project store; reopen the picked PROJECT folder
-      // (preserves its target binding) rather than re-binding it.
-      const paths = await ipcRenderer.invoke('workspace:pick-dir', getDefaultProjectsDir());
-      if (paths.length > 0 && paths[0]) {
-        await openWorkspace(paths[0]);
-      }
-    } catch (err) {
-      const msg = String((err as Error)?.message ?? err);
-      setError(msg);
-      console.error('[ProjectBindingBar] Open error:', err);
-    }
+    useOpenProjectStore.getState().open();
   }, []);
 
   const handleNewProject = useCallback(() => {

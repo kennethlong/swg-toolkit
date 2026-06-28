@@ -12,22 +12,17 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useWorkspaceStore } from '../../state/workspaceStore';
-import { openWorkspace, createWorkspace, getDefaultProjectsDir, getDefaultProjectFolder, getStudioDir } from '../../services/workspaceService';
+import { openWorkspace, getDefaultProjectFolder, getStudioDir } from '../../services/workspaceService';
+import { useOpenProjectStore } from '../../state/openProjectStore';
 import * as projectBinding from '../../services/projectBinding';
 import { detectClients } from '../../services/clientLocator';
 import { getRecentProjects, pruneRecentProjects, type RecentProject } from '../../services/recentProjects';
+import type { DetectedClient } from '@swg/contracts';
+import AsyncProgress from '../../shared/AsyncProgress';
 
 // Path B fs — used only to self-heal recents (drop entries whose studio dir is gone).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const nodeFs = require('fs') as typeof import('fs');
-import type { DetectedClient, TypedIpcRenderer } from '@swg/contracts';
-import AsyncProgress from '../../shared/AsyncProgress';
-
-// ─── IPC bridge ────────────────────────────────────────────────────────────────
-
-// Path B: dialog is main-process only — invoke via IPC channel 'workspace:pick-dir'.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -155,32 +150,9 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
     }
   }, []);
 
-  // Open… — pick a folder and bind/open it.
-  const handleOpen = useCallback(async () => {
-    setClientError(null);
-    let picked: string | undefined;
-    try {
-      // Open the picker at the shared project store so existing projects are right there.
-      // Reopen the picked PROJECT folder (preserves its target binding) — do not re-bind.
-      const paths = await ipcRenderer.invoke('workspace:pick-dir', getDefaultProjectsDir());
-      if (paths.length > 0 && paths[0]) {
-        picked = paths[0];
-        await openWorkspace(picked);
-      }
-    } catch (err) {
-      const msg = String((err as Error)?.message ?? err);
-      console.error('[WorkspaceEntry] initProject error:', err);
-      if (picked && /Not a toolkit workspace/.test(msg)) {
-        const create = window.confirm(
-          `No toolkit workspace was found in:\n\n${picked}\n\nCreate a new mod workspace here?`,
-        );
-        if (create) {
-          try { await createWorkspace(picked); } catch (cerr) { console.error('[WorkspaceEntry] createWorkspace error:', cerr); }
-        }
-      } else {
-        setClientError(msg);
-      }
-    }
+  // Open… — show the in-app project list dialog (replaces the OS folder picker).
+  const handleOpen = useCallback(() => {
+    useOpenProjectStore.getState().open();
   }, []);
 
   // Re-open a recent project.

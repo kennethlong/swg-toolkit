@@ -23,6 +23,7 @@ import { THEMES, ThemeName, THEME_STORAGE_KEY } from './workspace/workspace-conf
 import Titlebar       from './shell/Titlebar';
 import StatusBar      from './shell/StatusBar';
 import WorkspaceShell from './workspace/WorkspaceShell';
+import ProjectListDialog from './panels/deploy/ProjectListDialog';
 
 function getInitialTheme(): ThemeName {
   try {
@@ -74,6 +75,8 @@ export default function App(): React.ReactElement {
       />
       <WorkspaceShell />
       <StatusBar />
+      {/* In-app "Open Project" dialog — full-window overlay, toggled via openProjectStore. */}
+      <ProjectListDialog />
     </div>
   );
 }
