@@ -47,6 +47,7 @@
 import { app, BrowserWindow, session, protocol, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import type { IpcChannels } from '@swg/contracts';
 
 // ---------------------------------------------------------------------------
 // SharedArrayBuffer availability — Chromium 92+ requires crossOriginIsolated
@@ -231,7 +232,7 @@ app.whenReady().then(() => {
   // T-01-SC). Note also that File.path was removed in Electron 32+, so a hidden
   // <input type=file> can no longer return a real filesystem path; the native OS
   // dialog is the correct source of truth for archive paths.
-  ipcMain.handle('tre:pick-archives', async () => {
+  ipcMain.handle('tre:pick-archives', async (): Promise<IpcChannels['tre:pick-archives']> => {
     const result = await dialog.showOpenDialog(win, {
       title: 'Mount Archive…',
       filters: [{ name: 'TRE Archives', extensions: ['tre'] }],
@@ -243,7 +244,7 @@ app.whenReady().then(() => {
   // ── IPC: OS folder picker for workspace open/create (Plan 04-02) ─────────
   // WorkspaceEntry.tsx invokes this channel to pick a project folder.
   // Returns an array of one path (the selected folder), or [] if cancelled.
-  ipcMain.handle('workspace:pick-dir', async () => {
+  ipcMain.handle('workspace:pick-dir', async (): Promise<IpcChannels['workspace:pick-dir']> => {
     const result = await dialog.showOpenDialog(win, {
       title: 'Select Mod Project Folder…',
       properties: ['openDirectory', 'createDirectory'],
@@ -254,7 +255,7 @@ app.whenReady().then(() => {
   // ── IPC: OS file picker for staging panel "Add…" (Plan 04-02) ────────────
   // StagingPanel.tsx invokes this channel to pick a replacement file to stage.
   // Returns an array of one path (the selected file), or [] if cancelled.
-  ipcMain.handle('workspace:pick-file', async () => {
+  ipcMain.handle('workspace:pick-file', async (): Promise<IpcChannels['workspace:pick-file']> => {
     const result = await dialog.showOpenDialog(win, {
       title: 'Add Replacement File…',
       properties: ['openFile'],
