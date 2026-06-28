@@ -23,6 +23,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { useTreStore } from '../../state/treStore';
 import * as projectBinding from '../../services/projectBinding';
+import { getDefaultProjectsDir } from '../../services/workspaceService';
 import { resolveLayout } from '../../services/clientLayout';
 import type { TypedIpcRenderer } from '@swg/contracts';
 
@@ -134,7 +135,8 @@ export default function ProjectBindingBar({
     setMenuOpen(false);
     setError(null);
     try {
-      const paths = await ipcRenderer.invoke('workspace:pick-dir');
+      // Open the picker at the shared project store for consistency with the Welcome screen.
+      const paths = await ipcRenderer.invoke('workspace:pick-dir', getDefaultProjectsDir());
       if (paths.length > 0 && paths[0]) {
         await projectBinding.initProject(paths[0]);
       }

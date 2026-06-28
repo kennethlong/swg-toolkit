@@ -8,9 +8,11 @@
 
 import React, { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
+import { useNoProjectDimStyle } from '../state/useNoProjectDim';
 
 export default function InspectorPanel(_props: IDockviewPanelProps): React.ReactElement {
   const [collapsed, setCollapsed] = useState(false);
+  const dimStyle = useNoProjectDimStyle();
 
   return (
     <div
@@ -21,6 +23,7 @@ export default function InspectorPanel(_props: IDockviewPanelProps): React.React
         background: 'var(--color-surface)',
         color: 'var(--color-text)',
         fontFamily: 'var(--font-sans)',
+        ...dimStyle,
       }}
     >
       {/* Panel head */}

@@ -244,9 +244,16 @@ app.whenReady().then(() => {
   // ── IPC: OS folder picker for workspace open/create (Plan 04-02) ─────────
   // WorkspaceEntry.tsx invokes this channel to pick a project folder.
   // Returns an array of one path (the selected folder), or [] if cancelled.
-  ipcMain.handle('workspace:pick-dir', async (): Promise<IpcChannels['workspace:pick-dir']> => {
+  ipcMain.handle('workspace:pick-dir', async (_event, defaultPath?: string): Promise<IpcChannels['workspace:pick-dir']> => {
+    // Open the dialog at the caller's requested directory (e.g. the shared project store
+    // for "Open Project"). Create it first if missing so the dialog actually lands there
+    // — the project store may not exist until the first project is created.
+    if (defaultPath) {
+      try { fs.mkdirSync(defaultPath, { recursive: true }); } catch { /* fall back to OS default */ }
+    }
     const result = await dialog.showOpenDialog(win, {
       title: 'Select Mod Project Folder…',
+      defaultPath: defaultPath || undefined,
       properties: ['openDirectory', 'createDirectory'],
     });
     return result.canceled ? [] : result.filePaths;

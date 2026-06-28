@@ -33,6 +33,13 @@ import type { DetectedClient, TypedIpcRenderer } from '@swg/contracts';
 import * as projectBinding from '../../services/projectBinding';
 import type { InitProjectOptions } from '../../services/projectBinding';
 import { resolveLayout, type ClientLayout } from '../../services/clientLayout';
+import { getDefaultProjectFolder } from '../../services/workspaceService';
+
+// Path B fs access (nodeIntegration:true) — used only to create a new project folder
+// under the app store before binding (the store path won't exist yet). Lazy require()
+// like every other renderer call site; never bundled by Vite.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fs = require('fs') as typeof import('fs');
 
 // ─── IPC bridge (Path B — same pattern as WorkspaceEntry.tsx) ────────────────
 // TypedIpcRenderer from @swg/contracts is the single source of truth for channel types.
@@ -75,7 +82,9 @@ type ServerType = 'core3-wsl2' | 'swgsource-docker';
 
 /** State accumulated across wizard steps. */
 interface WizardState {
-  /** Step 1: absolute path to the project folder. */
+  /** Step 1: project name (drives the default folder under the app store). */
+  name:       string;
+  /** Step 1: absolute path to the project folder (derived from name, or a browsed override). */
   folder:     string;
   /** Step 2: the client binding choice. */
   bindChoice: BindChoice;
@@ -111,6 +120,7 @@ const TOTAL_STEPS = 4;
 export default function NewProjectWizard({ open, onClose }: NewProjectWizardProps): React.ReactElement | null {
   const [step, setStep] = useState(1);
   const [wizard, setWizard] = useState<WizardState>({
+    name:       '',
     folder:     '',
     bindChoice: null,
     startEmpty: false,
@@ -139,25 +149,11 @@ export default function NewProjectWizard({ open, onClose }: NewProjectWizardProp
     if (e.key === 'Escape') onClose();
   }, [onClose]);
 
-  // ─── Step 1: folder picker ─────────────────────────────────────────────────
-
-  const handlePickFolder = useCallback(async () => {
-    setError(null);
-    try {
-      const paths = await ipcRenderer.invoke('workspace:pick-dir');
-      if (paths.length > 0 && paths[0]) {
-        setWizard((w) => ({ ...w, folder: paths[0] }));
-      }
-    } catch (err) {
-      setError(String((err as Error)?.message ?? err));
-    }
-  }, []);
-
   // ─── Navigation ───────────────────────────────────────────────────────────
 
   const canProceed = useCallback((): boolean => {
     switch (step) {
-      case 1: return wizard.folder.trim().length > 0;
+      case 1: return wizard.name.trim().length > 0 && wizard.folder.trim().length > 0;
       case 2: return wizard.bindChoice !== null;
       case 3: return true; // step 3 is optional
       case 4: return true;
@@ -194,6 +190,15 @@ export default function NewProjectWizard({ open, onClose }: NewProjectWizardProp
         wizard.bindChoice?.kind === 'client-override' ? 'client' :
         wizard.bindChoice?.kind === 'mod-project' ? 'mod-project' :
         undefined;
+
+      // A new non-client project lives under the app store and its folder won't exist
+      // yet — create it so initProject → openWorkspace (which requires an existing dir)
+      // succeeds. Client binds use an existing install path and are left untouched.
+      const isClientBind =
+        wizard.bindChoice?.kind === 'client' || wizard.bindChoice?.kind === 'client-override';
+      if (!isClientBind && folder && !fs.existsSync(folder)) {
+        fs.mkdirSync(folder, { recursive: true });
+      }
 
       await projectBinding.initProject(folder, {
         overrideKind,
@@ -284,8 +289,8 @@ export default function NewProjectWizard({ open, onClose }: NewProjectWizardProp
 
         {/* ── Step content ──────────────────────────────────────────── */}
         <div style={{ minHeight: 160 }}>
-          {step === 1 && <Step1NameLocation wizard={wizard} setWizard={setWizard} onPickFolder={handlePickFolder} firstInputRef={firstInputRef as React.RefObject<HTMLButtonElement>} />}
-          {step === 2 && <Step2BindClient wizard={wizard} setWizard={setWizard} clients={clients} onPickFolder={handlePickFolder} firstInputRef={firstInputRef as React.RefObject<HTMLButtonElement>} />}
+          {step === 1 && <Step1NameLocation wizard={wizard} setWizard={setWizard} firstInputRef={firstInputRef} />}
+          {step === 2 && <Step2BindClient wizard={wizard} setWizard={setWizard} clients={clients} firstInputRef={firstInputRef as React.RefObject<HTMLButtonElement>} />}
           {step === 3 && <Step3LocalServer wizard={wizard} setWizard={setWizard} />}
           {step === 4 && <Step4SeedAssets wizard={wizard} setWizard={setWizard} />}
         </div>
@@ -335,52 +340,65 @@ export default function NewProjectWizard({ open, onClose }: NewProjectWizardProp
 interface Step1Props {
   wizard:       WizardState;
   setWizard:    React.Dispatch<React.SetStateAction<WizardState>>;
-  onPickFolder: () => Promise<void>;
-  firstInputRef: React.RefObject<HTMLButtonElement>;
+  firstInputRef: React.RefObject<HTMLInputElement | HTMLButtonElement | null>;
 }
 
-function Step1NameLocation({ wizard, onPickFolder, firstInputRef }: Step1Props): React.ReactElement {
+function Step1NameLocation({ wizard, setWizard, firstInputRef }: Step1Props): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       <div>
-        <div style={sectionLabelStyle}>STEP 1 — NAME & LOCATION</div>
+        <div style={sectionLabelStyle}>STEP 1 — NAME</div>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 0, marginTop: 'var(--space-2)' }}>
-          Choose where your project files will be stored. A <code>.studio/</code> directory will be created here.
+          Name your project. It&apos;s created in your SWG Toolkit project store and set up automatically.
         </p>
       </div>
 
+      {/* Project name → drives the project folder under the app store */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-          Project folder
+          Project name
         </span>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+        <input
+          ref={firstInputRef as React.RefObject<HTMLInputElement | null>}
+          type="text"
+          value={wizard.name}
+          placeholder="DL-44 Overhaul"
+          aria-label="Project name"
+          onChange={(e) => {
+            const name = e.target.value;
+            setWizard((w) => ({
+              ...w,
+              name,
+              folder: name.trim() ? getDefaultProjectFolder(name) : '',
+            }));
+          }}
+          style={{
+            fontFamily:   'var(--font-sans)',
+            fontSize:     'var(--text-sm)',
+            color:        'var(--color-text)',
+            background:   'var(--color-widget)',
+            border:       '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-sm)',
+            padding:      '5px 8px',
+            outline:      'none',
+          }}
+        />
+        {/* Read-only location hint — informational only (no override; .studio stays internal) */}
+        {wizard.folder && (
           <span
+            title={wizard.folder}
             style={{
-              flex:         1,
               fontFamily:   'var(--font-mono)',
               fontSize:     'var(--text-xs)',
-              color:        wizard.folder ? 'var(--color-text)' : 'var(--color-text-faint)',
-              background:   'var(--color-widget)',
-              border:       '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-sm)',
-              padding:      '4px 8px',
+              color:        'var(--color-text-faint)',
               overflow:     'hidden',
               textOverflow: 'ellipsis',
               whiteSpace:   'nowrap',
-              minWidth:     0,
             }}
           >
-            {wizard.folder || 'No folder selected'}
+            Stored in {wizard.folder}
           </span>
-          <button
-            ref={firstInputRef}
-            style={browseButtonStyle}
-            onClick={() => void onPickFolder()}
-            aria-label="Browse for project folder"
-          >
-            Browse…
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -392,7 +410,6 @@ interface Step2Props {
   wizard:       WizardState;
   setWizard:    React.Dispatch<React.SetStateAction<WizardState>>;
   clients:      DetectedClient[];
-  onPickFolder: () => Promise<void>;
   firstInputRef: React.RefObject<HTMLButtonElement>;
 }
 

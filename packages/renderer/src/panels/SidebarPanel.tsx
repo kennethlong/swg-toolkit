@@ -11,12 +11,21 @@
  * Accessibility Rule 5: aria-label + title on all icon-only controls.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 import TreVfsBrowser from './tre/TreVfsBrowser.tsx';
+import { useWorkspaceStore } from '../state/workspaceStore';
 
-export default function SidebarPanel(_props: IDockviewPanelProps): React.ReactElement {
+export default function SidebarPanel(props: IDockviewPanelProps): React.ReactElement {
   const [collapsed, setCollapsed] = useState(false);
+
+  // First-run: the left panel reads "Welcome" until a project is open, then "Assets"
+  // (sketch 007-B). Drive both the dockview tab title and the in-panel head label.
+  const workspaceReady = useWorkspaceStore((s) => s.status.kind === 'ready');
+  const panelTitle = workspaceReady ? 'Assets' : 'Welcome';
+  useEffect(() => {
+    try { props.api.setTitle(panelTitle); } catch { /* api unavailable in some test envs */ }
+  }, [props.api, panelTitle]);
 
   return (
     <div
@@ -65,7 +74,7 @@ export default function SidebarPanel(_props: IDockviewPanelProps): React.ReactEl
             flex: 1,
           }}
         >
-          Assets
+          {panelTitle}
         </span>
 
         {/* Action buttons */}

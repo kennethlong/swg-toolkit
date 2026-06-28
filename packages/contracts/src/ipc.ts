@@ -89,13 +89,16 @@ export interface IpcChannels {
  * Usage: `const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };`
  */
 export type TypedIpcRenderer = {
-  invoke<C extends keyof IpcChannels>(channel: C): Promise<IpcChannels[C]>;
+  invoke<C extends keyof IpcChannels>(channel: C, defaultPath?: string): Promise<IpcChannels[C]>;
 };
 
 /**
  * Typed handler callback for the backend side.
- * Usage: `ipcMain.handle('workspace:pick-dir', (): IpcChannels['workspace:pick-dir'] => ...)`
+ * Usage: `ipcMain.handle('workspace:pick-dir', (_e, defaultPath?): IpcChannels['workspace:pick-dir'] => ...)`
  * A handler that returns the wrong shape (e.g. string|null) fails tsc here.
+ *
+ * The optional `defaultPath` lets a caller open the OS dialog at a specific directory
+ * (e.g. the shared project store for "Open Project"); handlers may ignore it.
  */
 export type TypedIpcHandler<C extends keyof IpcChannels> =
-  () => IpcChannels[C] | Promise<IpcChannels[C]>;
+  (event: unknown, defaultPath?: string) => IpcChannels[C] | Promise<IpcChannels[C]>;

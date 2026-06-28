@@ -30,6 +30,7 @@ import { useWorkspaceStore } from '../state/workspaceStore';
 import { useChangesetStore } from '../state/changesetStore';
 import type { WorkspaceBindingMeta } from '@swg/contracts';
 import { seedBaseline } from './changesetService';
+import { addRecentProject } from './recentProjects';
 
 const execFileAsync = promisify(execFile);
 
@@ -47,6 +48,35 @@ const APP_ROOT_STUDIO = path.join(
   'swg-toolkit',
   'studios',
 );
+
+/**
+ * Default parent directory for NEW project folders — the app-specific project store
+ * (UAT 04.1-11 decision). Sibling of the studio store under the same app root:
+ *   %LOCALAPPDATA%\swg-toolkit\projects   (Windows)
+ *   $HOME/swg-toolkit/projects            (*nix)
+ */
+const APP_ROOT_PROJECTS = path.join(
+  process.env['LOCALAPPDATA'] ?? process.env['HOME'] ?? '.',
+  'swg-toolkit',
+  'projects',
+);
+
+/** Absolute path to the default projects store (parent of per-project folders). */
+export function getDefaultProjectsDir(): string {
+  return APP_ROOT_PROJECTS;
+}
+
+/**
+ * Default absolute folder for a new project of the given name, under the app store.
+ * Illegal Windows filename characters are stripped; spaces are preserved (the project
+ * folder may contain them — the whitespace-free guarantee applies to the studio/build
+ * dir via getStudioDir, not the project folder itself). Empty/blank names fall back to
+ * "New Project".
+ */
+export function getDefaultProjectFolder(name: string): string {
+  const safe = name.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim() || 'New Project';
+  return path.join(APP_ROOT_PROJECTS, safe);
+}
 
 /**
  * Returns the absolute path to the studio control directory for a workspace root.
@@ -236,6 +266,16 @@ export async function openWorkspace(folderPath: string): Promise<void> {
       kind:          bindingMeta.kind,
       cfgPath:       bindingMeta.cfgPath,
       treDir:        bindingMeta.treDir,
+    });
+
+    // Record in recents for the first-run Welcome list (sketch 007-B). Non-fatal.
+    addRecentProject({
+      folderPath: normalized,
+      name:       path.basename(normalized),
+      kind:       bindingMeta.kind,
+      clientName: bindingMeta.kind === 'client'
+        ? (bindingMeta.pattern ?? path.basename(bindingMeta.clientPath ?? normalized))
+        : undefined,
     });
 
     // H2a: mandatory idempotent Baseline seed — adds the Baseline root node when absent,

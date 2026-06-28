@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
+import { useNoProjectDimStyle } from '../state/useNoProjectDim';
 import type { IDockviewPanelProps } from 'dockview';
 import { useViewportStore } from '../state/viewportStore.js';
 import Viewport from './viewport/Viewport.js';
@@ -30,6 +31,7 @@ type RenderMode = 'solid' | 'wire' | 'textured';
 type CameraMode = 'orbit' | 'pan' | 'frame';
 
 export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactElement {
+  const dimStyle = useNoProjectDimStyle();
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
   const [stats, setStats] = useState<FrameStats>({ verts: 0, tris: 0, draws: 0 });
   const [showSidePanels, setShowSidePanels] = useState(false);
@@ -73,6 +75,7 @@ export default function ViewportPanel(_props: IDockviewPanelProps): React.ReactE
         position: 'relative',
         background: 'radial-gradient(ellipse at center, #2a2e26 0%, #141414 100%)',
         overflow: 'hidden',
+        ...dimStyle,
       }}
     >
       {/* 28×28 dot grid overlay */}

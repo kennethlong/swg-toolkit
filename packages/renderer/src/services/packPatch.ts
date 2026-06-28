@@ -93,8 +93,15 @@ export function packPatch(staged: StagingEntry[], outputPath: string): void {
     if (s.action === 'delete') {
       return { path: s.virtualPath, tombstone: true };
     }
-    // 'add' or 'modify': read replacement file bytes
-    const data = new Uint8Array(fs.readFileSync(s.replacementFilePath!));
+    // 'add' or 'modify': read replacement file bytes. Guard against a missing source so a
+    // sourceless entry surfaces an actionable message instead of Node's cryptic
+    // "path argument … Received undefined" (e.g. an Extract→Add not materialized to disk).
+    if (!s.replacementFilePath) {
+      throw new Error(
+        `Staged entry '${s.virtualPath}' (${s.action}) has no source file — re-add it from the TRE browser or pick a replacement file.`,
+      );
+    }
+    const data = new Uint8Array(fs.readFileSync(s.replacementFilePath));
     return { path: s.virtualPath, data };
   });
 

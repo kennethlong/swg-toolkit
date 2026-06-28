@@ -42,7 +42,9 @@ import VfsTree from './VfsTree.tsx';
 import AsyncProgress from '../../shared/AsyncProgress.tsx';
 import ProjectBindingBar from '../deploy/ProjectBindingBar.tsx';
 import NewProjectWizard from '../deploy/NewProjectWizard.tsx';
+import WorkspaceEntry from '../deploy/WorkspaceEntry.tsx';
 import { useStagingStore } from '../../state/stagingStore';
+import { useWorkspaceStore } from '../../state/workspaceStore';
 import { isVirtualPathSafe } from '../../services/pathSafety';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
@@ -86,6 +88,16 @@ const nativeCore = require('@swg/native-core') as {
   /** List all entries in a single archive. */
   listMountEntries: (handle: string, archiveIndex: number) => Array<{ path: string }>;
 };
+
+// Path B Node access (nodeIntegration:true) — used by Extract→Add to materialize the
+// selected TRE entry's bytes to a temp file so the seal/pack pipeline (which reads from
+// replacementFilePath on disk) has a byte source. Lazy require(), never bundled by Vite.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodeFs   = require('fs')   as typeof import('fs');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodeOs   = require('os')   as typeof import('os');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodePath = require('path') as typeof import('path');
 
 /** File extensions that trigger the appearance resolver + viewport. */
 const MESH_EXTENSIONS = new Set(['msh', 'mgn', 'sat', 'apt']);
@@ -351,15 +363,40 @@ export default function TreVfsBrowser(): React.ReactElement {
       return; // invalid path — show inline invalid-path message in the row (defensive)
     }
 
-    // Add to staging store directly — no VirtualPathModal prompt (DEPLOY-07)
-    useStagingStore.getState().addEntry({
-      virtualPath: vpath,
-      action:      'add',
-      // No replacementFilePath for a VFS-browser extract — the entry is sourced from the
-      // mounted TRE archive, not a replacement file on disk. The staging entry tracks
-      // origin via the virtualPath; the pack step reads from the mounted TRE at seal time.
-    });
-  }, []);
+    // The seal/pack pipeline reads entry bytes from replacementFilePath on disk, so an
+    // Extract→Add (sourced from the mounted TRE, not a loose file) MUST be materialized to
+    // a temp file here. Without it the entry flattens back with replacementFilePath:undefined
+    // and packPatch throws "path argument must be of type string … Received undefined".
+    const mountHandle = store.mountHandle;
+    if (!mountHandle) {
+      console.warn('[TreVfsBrowser] Extract→Add: no mount handle');
+      return;
+    }
+    try {
+      const chain = nativeCore.resolveChain(mountHandle, vpath);
+      if (!chain.winner || chain.tombstone ||
+          chain.winnerArchiveIndex < 0 || chain.winnerEntryIndex < 0) {
+        console.warn('[TreVfsBrowser] Extract→Add: entry not resolvable in mount:', vpath);
+        return;
+      }
+      const bytes = nativeCore.readMountEntry(mountHandle, chain.winnerArchiveIndex, chain.winnerEntryIndex);
+
+      const tmpDir   = nodePath.join(nodeOs.tmpdir(), 'swg-toolkit-extract');
+      nodeFs.mkdirSync(tmpDir, { recursive: true });
+      const safeName = vpath.replace(/[\\/:*?"<>|]/g, '_');
+      const tmpPath  = nodePath.join(tmpDir, `${Date.now()}-${safeName}`);
+      nodeFs.writeFileSync(tmpPath, Buffer.from(bytes));
+
+      // Add to staging store directly — no VirtualPathModal prompt (DEPLOY-07)
+      useStagingStore.getState().addEntry({
+        virtualPath:         vpath,
+        action:              'add',
+        replacementFilePath: tmpPath,
+      });
+    } catch (err) {
+      console.error('[TreVfsBrowser] Extract→Add failed:', err);
+    }
+  }, [store]);
 
   // ── Splitter (archives region ↔ file list region) ──────────────────────────
 
@@ -408,6 +445,16 @@ export default function TreVfsBrowser(): React.ReactElement {
   const { archives, mountStatus, searchResults, vfsEntries, selectedEntryPath, selectedChain, search } = store;
   const isMounting = mountStatus.kind === 'mounting';
   const hasArchives = archives.length > 0;
+  // First-run / empty state (sketch 007-B): when no project is open the Assets-panel
+  // body becomes the welcome takeover (WorkspaceEntry) — recent projects + detected
+  // clients + New/Open/Mount — instead of the bare "No archive mounted" hint. The
+  // panel-head (ProjectBindingBar) stays. Once a project is open we fall back to the
+  // normal mounted/empty TRE-browser body.
+  const workspaceReady = useWorkspaceStore((s) => s.status.kind === 'ready');
+  // Welcome takeover is active when no project is open and nothing is mounted/mounting.
+  // In that state the ProjectBindingBar (＋ Project ▾ / Mount) is suppressed so the panel
+  // shows ONE header (the dockview "Welcome" tab) — the welcome body carries the actions.
+  const welcomeMode = !isMounting && !hasArchives && !workspaceReady;
 
   return (
     <div
@@ -423,11 +470,14 @@ export default function TreVfsBrowser(): React.ReactElement {
       {/* ── Assets panel-head: ＋ Project ▾ + Mount Archive… + bound-client chip ── */}
       {/* ProjectBindingBar replaces the previous mount toolbar, incorporating     */}
       {/* Mount Archive… so no functionality is lost (04.1-04-PLAN.md Task 1).    */}
-      <ProjectBindingBar
-        onNewProject={() => setWizardOpen(true)}
-        onMount={() => void handleMountClick()}
-        archiveCount={archives.length}
-      />
+      {/* Suppressed in welcome mode so the welcome takeover owns the single head. */}
+      {!welcomeMode && (
+        <ProjectBindingBar
+          onNewProject={() => setWizardOpen(true)}
+          onMount={() => void handleMountClick()}
+          archiveCount={archives.length}
+        />
+      )}
 
       {/* New-project wizard (modal overlay) */}
       {wizardOpen && (
@@ -447,8 +497,16 @@ export default function TreVfsBrowser(): React.ReactElement {
         />
       )}
 
-      {/* Empty state */}
-      {!isMounting && !hasArchives && (
+      {/* First-run welcome takeover — no project open (sketch 007-B) */}
+      {welcomeMode && (
+        <WorkspaceEntry
+          onNewProject={() => setWizardOpen(true)}
+          onMount={() => void handleMountClick()}
+        />
+      )}
+
+      {/* Empty state — project open but nothing mounted */}
+      {!isMounting && !hasArchives && workspaceReady && (
         <div
           style={{
             flex: 1,

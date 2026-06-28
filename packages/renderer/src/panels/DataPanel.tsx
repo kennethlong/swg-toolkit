@@ -19,6 +19,7 @@
  */
 
 import React, { useState } from 'react';
+import { useNoProjectDimStyle } from '../state/useNoProjectDim';
 import type { IDockviewPanelProps } from 'dockview';
 import { useIffStore } from '../state/iffStore.ts';
 import type { IffParseResult, SelectedIffNode } from '../state/iffStore.ts';
@@ -50,6 +51,7 @@ const consoleSeedLines = [
 ];
 
 export default function DataPanel(_props: IDockviewPanelProps): React.ReactElement {
+  const dimStyle = useNoProjectDimStyle();
   const [activeTab, setActiveTab] = useState<TabId>('structure');
   const [collapsed, setCollapsed] = useState(false);
 
@@ -94,6 +96,7 @@ export default function DataPanel(_props: IDockviewPanelProps): React.ReactEleme
         background: 'var(--color-surface)',
         color: 'var(--color-text)',
         fontFamily: 'var(--font-sans)',
+        ...dimStyle,
       }}
     >
       {/* Panel head: tabs + action buttons */}
