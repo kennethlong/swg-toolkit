@@ -29,18 +29,15 @@ import React, {
   useRef,
 } from 'react';
 import { detectClients } from '../../services/clientLocator';
-import type { DetectedClient } from '@swg/contracts';
+import type { DetectedClient, TypedIpcRenderer } from '@swg/contracts';
 import * as projectBinding from '../../services/projectBinding';
 import type { InitProjectOptions } from '../../services/projectBinding';
 import { resolveLayout, type ClientLayout } from '../../services/clientLayout';
 
-// ─── IPC bridge (Path B — same pattern as WorkspaceEntry.tsx:26-30) ───────────
+// ─── IPC bridge (Path B — same pattern as WorkspaceEntry.tsx) ────────────────
+// TypedIpcRenderer from @swg/contracts is the single source of truth for channel types.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { ipcRenderer } = require('electron') as {
-  ipcRenderer: {
-    invoke(channel: 'workspace:pick-dir'): Promise<string[]>;
-  };
-};
+const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
 
 // ─── Button styles (W1 fix — LOCAL const functions) ───────────────────────────
 
@@ -437,10 +434,9 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
   }, [detectedLayout, setWizard]);
 
   // ── IPC bridge ──────────────────────────────────────────────────────────────
+  // TypedIpcRenderer from @swg/contracts — channel types are enforced at module level above.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { ipcRenderer: ipc } = require('electron') as {
-    ipcRenderer: { invoke(channel: 'workspace:pick-dir'): Promise<string[]> };
-  };
+  const { ipcRenderer: ipc } = require('electron') as { ipcRenderer: TypedIpcRenderer };
 
   const handleBrowse = useCallback(async () => {
     try {

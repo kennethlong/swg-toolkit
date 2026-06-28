@@ -24,6 +24,7 @@ import { useWorkspaceStore } from '../../state/workspaceStore';
 import { useTreStore } from '../../state/treStore';
 import * as projectBinding from '../../services/projectBinding';
 import { resolveLayout } from '../../services/clientLayout';
+import type { TypedIpcRenderer } from '@swg/contracts';
 
 // Path B: require() for Node modules (nodeIntegration:true)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -32,12 +33,9 @@ const nodePath = require('path') as typeof import('path');
 // ─── IPC bridge ───────────────────────────────────────────────────────────────
 
 // Path B: dialog is main-process only — invoke via IPC.
+// TypedIpcRenderer from @swg/contracts is the single source of truth for channel types.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { ipcRenderer } = require('electron') as {
-  ipcRenderer: {
-    invoke(channel: 'workspace:pick-dir'): Promise<string[]>;
-  };
-};
+const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
 
 // ─── Button styles (W1 fix — LOCAL const functions, not shared via ExportDialog) ─
 

@@ -41,7 +41,7 @@ import { useStagingStore }   from '../../state/stagingStore';
 import { sealVersion } from '../../services/changesetService';
 import { isVirtualPathSafe } from '../../services/pathSafety';
 
-import type { StagingEntry } from '@swg/contracts';
+import type { StagingEntry, TypedIpcRenderer } from '@swg/contracts';
 
 // ─── Virtualization constants (mandatory — match VfsTree, HexInspector) ────────
 
@@ -184,13 +184,9 @@ export default function StagingPanelBody({
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleAdd = useCallback(() => {
-    // Open a file picker via IPC (same pattern as WorkspaceEntry)
+    // Open a file picker via IPC — TypedIpcRenderer from @swg/contracts enforces channel type.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { ipcRenderer } = require('electron') as {
-      ipcRenderer: {
-        invoke(channel: 'workspace:pick-file'): Promise<string[]>;
-      };
-    };
+    const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
 
     void (async () => {
       try {

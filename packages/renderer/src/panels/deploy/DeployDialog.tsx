@@ -41,7 +41,7 @@ import { packPatch, buildPatchName } from '../../services/packPatch.js';
 import { detectClients, scanSharedFile, chooseSlot } from '../../services/clientLocator.js';
 import { activatePatch, deactivatePatch, ensureInclude, snapshotCfg, restoreCfg } from '../../services/cfgActivator.js';
 import { deployShadowBase, resetShadow, estimateTreSize } from '../../services/shadowBaseService.js';
-import { BASELINE_ID } from '@swg/contracts';
+import { BASELINE_ID, type TypedIpcRenderer } from '@swg/contracts';
 
 import type { DetectedClient, CfgInsertionRecord, CfgDeployRecord } from '@swg/contracts';
 import type { SharedFileScan } from '../../services/clientLocator.js';
@@ -210,10 +210,9 @@ export function DeployDialog({
     // workspace:pick-dir returns string[] (filePaths, or [] if cancelled) — NOT a
     // single string. (Bug fix: the prior `string | null` typing made path.join throw
     // on the array → caught silently → client never selected → Deploy stayed disabled.)
+    // TypedIpcRenderer from @swg/contracts enforces channel type at compile time.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { ipcRenderer } = require('electron') as {
-      ipcRenderer: { invoke(channel: 'workspace:pick-dir'): Promise<string[]> };
-    };
+    const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
     void ipcRenderer.invoke('workspace:pick-dir').then((paths) => {
       const folderPath = paths[0];
       if (!folderPath) return; // cancelled

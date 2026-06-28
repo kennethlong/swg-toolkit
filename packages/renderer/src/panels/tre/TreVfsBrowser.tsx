@@ -30,6 +30,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useTreStore, basename } from '../../state/treStore.ts';
 import type { MountedArchive, VfsEntry, ShadowChainDisplay } from '../../state/treStore.ts';
 import { mountTrePaths } from '../../services/treMount';
+import type { TypedIpcRenderer } from '@swg/contracts';
 import { useIffStore } from '../../state/iffStore.ts';
 import type { IffParseResult } from '../../state/iffStore.ts';
 import { useViewportStore } from '../../state/viewportStore.ts';
@@ -108,10 +109,9 @@ export default function TreVfsBrowser(): React.ReactElement {
     // Electron 32+ removed, so the native dialog is the only reliable path source.
     let filePaths: string[] = [];
     try {
+      // TypedIpcRenderer from @swg/contracts enforces channel type at compile time.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { ipcRenderer } = require('electron') as {
-        ipcRenderer: { invoke: (channel: string) => Promise<string[]> }
-      };
+      const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
       filePaths = await ipcRenderer.invoke('tre:pick-archives');
     } catch {
       // Last-resort fallback (e.g. plain web context with no Electron): hidden input.

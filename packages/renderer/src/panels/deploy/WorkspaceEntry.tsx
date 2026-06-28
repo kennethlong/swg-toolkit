@@ -25,18 +25,15 @@ import { useWorkspaceStore } from '../../state/workspaceStore';
 import { openWorkspace, createWorkspace } from '../../services/workspaceService';
 import * as projectBinding from '../../services/projectBinding';
 import { detectClients } from '../../services/clientLocator';
-import type { DetectedClient } from '@swg/contracts';
+import type { DetectedClient, TypedIpcRenderer } from '@swg/contracts';
 import AsyncProgress from '../../shared/AsyncProgress';
 
 // ─── IPC bridge ────────────────────────────────────────────────────────────────
 
 // Path B: dialog is main-process only — invoke via IPC channel 'workspace:pick-dir'.
+// TypedIpcRenderer from @swg/contracts is the single source of truth for channel types.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { ipcRenderer } = require('electron') as {
-  ipcRenderer: {
-    invoke(channel: 'workspace:pick-dir'): Promise<string[]>;
-  };
-};
+const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
