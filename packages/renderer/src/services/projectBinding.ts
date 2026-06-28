@@ -22,6 +22,7 @@ import * as path from 'path';
 import type { WorkspaceBindingMeta } from '@swg/contracts';
 import { getStudioDir, openWorkspace } from './workspaceService';
 import { mountTrePaths } from './treMount';
+import { resolveLayout, type ClientLayout } from './clientLayout';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,13 @@ export interface InitProjectOptions {
     path: string;
     hostPort: string;
   };
+  /**
+   * D-13 manual override: user-entered cfgFile + treSubdir from the wizard when
+   * resolveLayout() returns null for an unclassified client folder.
+   * When provided, this layout is used instead of resolveLayout auto-detection.
+   * Persists into workspace.json as cfgPath / treDir / pattern = manualLayout.release.
+   */
+  manualLayout?: ClientLayout;
 }
 
 /**
@@ -158,17 +166,44 @@ export async function initProject(folder: string, options?: InitProjectOptions):
   // ── 2. Resolve cfg/tre paths for client binding ────────────────────────
   let cfgPath: string | undefined;
   let treDir:  string | undefined;
+  let pattern: string | undefined;
 
   if (kind === 'client') {
-    for (const cfgName of CFG_NAMES) {
-      const candidate = path.join(normalized, cfgName);
-      if (fs.existsSync(candidate)) {
-        cfgPath = candidate;
-        break;
+    if (options?.manualLayout) {
+      // D-13: user-entered manual override (wizard → "Yes, treat as client" path +
+      // manual cfgFile + treSubdir). Honored over auto-detect (T-04.1-22: paths are
+      // existence-checked by cfgActivator / treMount at use time; not validated here
+      // to allow entries for installs not yet downloaded).
+      const ml = options.manualLayout;
+      cfgPath  = path.join(normalized, ml.cfgFile);
+      treDir   = ml.treSubdir ? path.join(normalized, ml.treSubdir) : normalized;
+      pattern  = ml.release;
+    } else {
+      // D-13: auto-detect via release-pattern table (replaces hardcoded 'swgemu.cfg'
+      // / 'Live/' literals from the original implementation).
+      const layout = resolveLayout(normalized);
+      if (layout) {
+        cfgPath = path.join(normalized, layout.cfgFile);
+        treDir  = layout.treSubdir ? path.join(normalized, layout.treSubdir) : normalized;
+        pattern = layout.release;
+      } else {
+        // Fallback for confirmed-client folders with an unknown layout (e.g. client.cfg
+        // or non-standard TRE dir — resolveLayout returned null but the user confirmed
+        // via overrideKind:'client'). Probe CFG_NAMES and fall back to install root for
+        // treDir; the wizard / ProjectBindingBar should have surfaced a manual-override
+        // prompt, but we handle it gracefully here in case it was skipped.
+        for (const cfgName of CFG_NAMES) {
+          const candidate = path.join(normalized, cfgName);
+          if (fs.existsSync(candidate)) {
+            cfgPath = candidate;
+            break;
+          }
+        }
+        const liveDir = path.join(normalized, 'Live');
+        treDir        = fs.existsSync(liveDir) ? liveDir : normalized;
+        // pattern stays undefined — no known release name
       }
     }
-    const liveDir = path.join(normalized, 'Live');
-    treDir        = fs.existsSync(liveDir) ? liveDir : normalized;
   }
 
   // ── 3. Persist to .studio/workspace.json ─────────────────────────────────
@@ -177,6 +212,7 @@ export async function initProject(folder: string, options?: InitProjectOptions):
     clientPath: kind === 'client' ? normalized : null,
     cfgPath,
     treDir,
+    pattern,
     // D-01: capture-only server association from wizard step 3 (if provided)
     ...(options?.serverConfig ? { serverConfig: options.serverConfig } : {}),
   };

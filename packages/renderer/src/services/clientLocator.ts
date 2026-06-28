@@ -38,6 +38,7 @@ import fs from 'fs';
 import { execFileSync } from 'child_process';
 
 import type { DetectedClient } from '@swg/contracts';
+import { resolveLayout } from './clientLayout';
 
 // ─── SharedFileScan ────────────────────────────────────────────────────────────
 
@@ -183,42 +184,30 @@ export function detectClients(): DetectedClient[] {
   const candidates: DetectedClient[] = [];
 
   // 1. Known install paths (most reliable — registry varies by installer version)
-  const knownPaths: Array<{ name: string; installPath: string; cfgFile: string }> = [
-    {
-      name: 'SWG Infinity',
-      installPath: 'D:\\SWG Infinity\\SWG Infinity',
-      cfgFile: 'swgemu.cfg',
-    },
-    {
-      name: 'SWGEmu',
-      installPath: 'D:\\SWGEmu Client\\SWGEmu',
-      cfgFile: 'swgemu.cfg',
-    },
-    {
-      name: 'SWG Infinity (C:)',
-      installPath: 'C:\\SWG Infinity\\SWG Infinity',
-      cfgFile: 'swgemu.cfg',
-    },
-    {
-      name: 'SWGEmu (C:)',
-      installPath: 'C:\\SWGEmu\\SWGEmu',
-      cfgFile: 'swgemu.cfg',
-    },
+  // D-13: cfgFile is no longer hardcoded; resolveLayout() determines it from the
+  // release-pattern table so we correctly handle Live/-subdir vs root layouts.
+  const knownPaths: Array<{ name: string; installPath: string }> = [
+    { name: 'SWG Infinity',      installPath: 'D:\\SWG Infinity\\SWG Infinity' },
+    { name: 'SWGEmu',            installPath: 'D:\\SWGEmu Client\\SWGEmu'      },
+    { name: 'SWG Infinity (C:)', installPath: 'C:\\SWG Infinity\\SWG Infinity' },
+    { name: 'SWGEmu (C:)',       installPath: 'C:\\SWGEmu\\SWGEmu'             },
   ];
 
   for (const known of knownPaths) {
     try {
-      const cfgRootPath = path.join(known.installPath, known.cfgFile);
-      if (fs.existsSync(cfgRootPath)) {
-        // Peek at the first .tre to read the version
-        const treVersion = _detectTreVersion(known.installPath);
-        candidates.push({
-          name: known.name,
-          installPath: known.installPath,
-          cfgRootPath,
-          treVersion,
-        });
-      }
+      // D-13: resolveLayout() probes both cfgFile and TRE dir — replaces the
+      // hardcoded 'swgemu.cfg' / 'Live/' assumption (RESEARCH.md §Pattern 3).
+      const layout = resolveLayout(known.installPath);
+      if (!layout) continue;
+
+      const cfgRootPath = path.join(known.installPath, layout.cfgFile);
+      const treVersion  = _detectTreVersion(known.installPath);
+      candidates.push({
+        name: known.name,
+        installPath: known.installPath,
+        cfgRootPath,
+        treVersion,
+      });
     } catch {
       // Silently skip inaccessible paths (Pitfall 3 + T-04-12)
     }
@@ -246,8 +235,13 @@ export function detectClients(): DetectedClient[] {
       if (!match) continue;
 
       const installPath = match[1].trim();
-      const cfgRootPath = path.join(installPath, 'swgemu.cfg');
-      if (!fs.existsSync(cfgRootPath)) continue;
+
+      // D-13: resolveLayout() replaces the hardcoded 'swgemu.cfg' probe; it also
+      // confirms the TRE dir has archives so we don't add empty/partial installs.
+      const layout = resolveLayout(installPath);
+      if (!layout) continue;
+
+      const cfgRootPath = path.join(installPath, layout.cfgFile);
 
       // Avoid duplicates from known-path probes
       const alreadyFound = candidates.some(c => c.installPath === installPath);
@@ -279,10 +273,13 @@ export function detectClients(): DetectedClient[] {
  */
 export function addManualClient(installPath: string): DetectedClient | null {
   try {
-    const cfgRootPath = path.join(installPath, 'swgemu.cfg');
-    if (!fs.existsSync(cfgRootPath)) return null;
+    // D-13: resolveLayout() replaces the hardcoded 'swgemu.cfg' check so that
+    // manual installs with a known non-standard cfgFile are still accepted.
+    const layout = resolveLayout(installPath);
+    if (!layout) return null;
 
-    const treVersion = _detectTreVersion(installPath);
+    const cfgRootPath = path.join(installPath, layout.cfgFile);
+    const treVersion  = _detectTreVersion(installPath);
     return {
       name: 'Manual Install',
       installPath,
@@ -307,13 +304,21 @@ export function addManualClient(installPath: string): DetectedClient | null {
  */
 function _detectTreVersion(installPath: string): string {
   try {
-    const liveDir = path.join(installPath, 'Live');
-    if (!fs.existsSync(liveDir)) return 'unknown';
+    // D-13: resolveLayout() replaces the hardcoded 'Live/' subdir assumption.
+    // SWGEmu stores TREs at the install root; Infinity in Live/. Both are resolved
+    // correctly by the release-pattern table.
+    const layout = resolveLayout(installPath);
+    if (!layout) return 'unknown';
 
-    const treFiles = fs.readdirSync(liveDir).filter(f => f.endsWith('.tre'));
+    const treDir = layout.treSubdir
+      ? path.join(installPath, layout.treSubdir)
+      : installPath;
+    if (!fs.existsSync(treDir)) return 'unknown';
+
+    const treFiles = fs.readdirSync(treDir).filter(f => f.endsWith('.tre'));
     if (treFiles.length === 0) return 'unknown';
 
-    const fd = fs.openSync(path.join(liveDir, treFiles[0]), 'r');
+    const fd = fs.openSync(path.join(treDir, treFiles[0]), 'r');
     try {
       const header = Buffer.alloc(8);
       fs.readSync(fd, header, 0, 8, 0);
