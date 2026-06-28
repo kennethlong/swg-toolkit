@@ -23,6 +23,7 @@ import type { WorkspaceBindingMeta } from '@swg/contracts';
 import { getStudioDir, openWorkspace } from './workspaceService';
 import { mountTrePaths } from './treMount';
 import { resolveLayout, type ClientLayout } from './clientLayout';
+import { resolveClientMountOrder } from './clientSearchOrder';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -259,16 +260,30 @@ export async function initProject(folder: string, options?: InitProjectOptions):
   // ── 5. Auto-mount the target TRE set (M5) — client OR standalone ──────────
   if (treDir !== undefined) {
     try {
-      // T-04.1-03: enumerate only .tre files directly in treDir (no sub-dirs, no symlinks
-      // outside treDir, no path injection via filename).
-      const treFiles = fs.readdirSync(treDir)
-        .filter((f) => f.endsWith('.tre') && !f.includes('/') && !f.includes('\\'))
-        .sort();  // ascending alphabetical = ascending priority (TRE-dir order)
+      let trePaths:   string[];
+      let priorities: number[];
 
-      if (treFiles.length === 0) return;
+      // For a client target, mount the EXACT set + precedence the client loads — read from
+      // the cfg chain's [SharedFile] searchTree (the TRE config lives in an .include'd file
+      // like swgemu_live.cfg, NOT the root cfg), replicating TreeFile.cpp ordering so the
+      // browser's override resolution matches the game.
+      const order = kind === 'client' && cfgPath
+        ? resolveClientMountOrder(cfgPath, target)
+        : null;
 
-      const trePaths   = treFiles.map((f) => path.join(treDir!, f));
-      const priorities = treFiles.map((_, i) => i + 1);  // 1-based ascending
+      if (order) {
+        ({ trePaths, priorities } = order);
+      } else {
+        // Standalone target (or a cfg with no searchTree): plain directory scan.
+        // T-04.1-03: only .tre files directly in treDir (no sub-dirs / path injection).
+        const treFiles = fs.readdirSync(treDir)
+          .filter((f) => f.endsWith('.tre') && !f.includes('/') && !f.includes('\\'))
+          .sort();  // ascending alphabetical = ascending priority (TRE-dir order)
+        if (treFiles.length === 0) return;
+        trePaths   = treFiles.map((f) => path.join(treDir!, f));
+        priorities = treFiles.map((_, i) => i + 1);  // 1-based ascending
+      }
+
       await mountTrePaths(trePaths, priorities);
     } catch (err) {
       // Non-fatal: log but do not re-throw — the workspace is still usable without a mount
