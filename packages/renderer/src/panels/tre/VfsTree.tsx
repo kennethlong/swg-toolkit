@@ -52,6 +52,8 @@ interface VfsTreeProps {
   selectedPath: string | null;
   selectedChain: ShadowChainDisplay | null;
   onSelect: (entry: VfsEntry, chain: ShadowChainDisplay | null) => void;
+  /** Called when the user clicks "Extract to staging" on an entry row (plan 08). */
+  onExtract?: (entry: VfsEntry) => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ export default function VfsTree({
   selectedPath,
   selectedChain,
   onSelect,
+  onExtract,
 }: VfsTreeProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -189,6 +192,7 @@ export default function VfsTree({
                 isSelected={isSelected}
                 isEncrypted={isEncrypted}
                 onSelect={onSelect}
+                onExtract={onExtract}
               />
             );
           })}
@@ -254,6 +258,7 @@ function VfsRow({
   isSelected,
   isEncrypted: _isEncrypted,
   onSelect,
+  onExtract,
 }: {
   entry: VfsEntry;
   isSelected: boolean;
@@ -261,7 +266,10 @@ function VfsRow({
    *  parent's out-of-list detail panel; kept here so the signature is explicit. */
   isEncrypted: boolean;
   onSelect: (entry: VfsEntry, chain: ShadowChainDisplay | null) => void;
+  /** Optional: called when the user triggers "Extract to staging" on this row. */
+  onExtract?: (entry: VfsEntry) => void;
 }): React.ReactElement {
+  const [hovered, setHovered] = useState(false);
   const depth  = entry.segments.length - 1;
   const indent = depth * 16; // 16px per nesting level per UI-SPEC
 
@@ -276,6 +284,11 @@ function VfsRow({
     }
   };
 
+  const handleExtractClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent onSelect from firing
+    if (onExtract) onExtract(entry);
+  };
+
   return (
     <div
       role="option"
@@ -283,27 +296,24 @@ function VfsRow({
       tabIndex={0}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 'var(--space-2)',
         height: ROW_HEIGHT,
         paddingLeft: `calc(var(--space-4) + ${indent}px)`,
-        paddingRight: 'var(--space-4)',
+        paddingRight: 'var(--space-2)',
         cursor: 'pointer',
         borderLeft: isSelected ? '2px solid var(--color-accent)' : '2px solid transparent',
         background: isSelected
           ? 'var(--color-accent-dim)'
-          : 'transparent',
+          : hovered ? 'var(--color-surface-2)' : 'transparent',
         transition: 'background 0.1s ease',
         outline: 'none',
         boxSizing: 'border-box',
-      }}
-      onMouseEnter={(e) => {
-        if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--color-surface-2)';
-      }}
-      onMouseLeave={(e) => {
-        if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent';
+        position: 'relative',
       }}
       onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--focus-ring)'; }}
       onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
@@ -368,6 +378,37 @@ function VfsRow({
         >
           {entry.winnerArchiveFilename}
         </span>
+      )}
+
+      {/* Extract to staging — visible on hover when onExtract is provided (plan 08).
+          Derives the virtual path directly from the VFS entry (no VirtualPathModal).
+          Hidden when tombstone (nothing to extract). Keyboard-accessible (tabIndex). */}
+      {onExtract && !entry.isTombstone && hovered && (
+        <button
+          aria-label={`Extract ${entry.name} to staging`}
+          title="Extract to staging — adds this file to the patch staging list"
+          onClick={handleExtractClick}
+          tabIndex={0}
+          style={{
+            background:   'var(--color-accent)',
+            border:       'none',
+            borderRadius: 'var(--radius-sm)',
+            color:        'var(--color-accent-text)',
+            cursor:       'pointer',
+            fontFamily:   'var(--font-sans)',
+            fontSize:     'var(--text-xs)',
+            fontWeight:   600,
+            padding:      '1px 6px',
+            flexShrink:   0,
+            whiteSpace:   'nowrap',
+            lineHeight:   '18px',
+            outline:      'none',
+          }}
+          onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--focus-ring)'; }}
+          onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+        >
+          Extract
+        </button>
       )}
     </div>
   );

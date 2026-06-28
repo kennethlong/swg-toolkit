@@ -13,6 +13,7 @@
 
 import { create } from 'zustand';
 import type { StagingEntry } from '@swg/contracts';
+import { isVirtualPathSafe } from '../services/pathSafety';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,13 +61,17 @@ export const useStagingStore = create<StagingStore>((set) => ({
   entries:     [],
   buildStatus: { kind: 'idle' },
 
-  addEntry: (e: StagingEntry) =>
+  addEntry: (e: StagingEntry) => {
+    // M1: reject unsafe virtual paths before storing (T-04.1-19).
+    // Same validator used by StagingPanelBody (modal) and packPatch (build time).
+    if (!isVirtualPathSafe(e.virtualPath)) return;
     set((state) => ({
       entries: [
         ...state.entries.filter((x) => x.virtualPath !== e.virtualPath),
         e,
       ],
-    })),
+    }));
+  },
 
   removeEntry: (virtualPath: string) =>
     set((state) => ({

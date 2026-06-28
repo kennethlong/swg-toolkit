@@ -41,6 +41,8 @@ import VfsTree from './VfsTree.tsx';
 import AsyncProgress from '../../shared/AsyncProgress.tsx';
 import ProjectBindingBar from '../deploy/ProjectBindingBar.tsx';
 import NewProjectWizard from '../deploy/NewProjectWizard.tsx';
+import { useStagingStore } from '../../state/stagingStore';
+import { isVirtualPathSafe } from '../../services/pathSafety';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
 // Source: packages/renderer/src/shell/StatusBar.tsx:34-41.
@@ -333,6 +335,32 @@ export default function TreVfsBrowser(): React.ReactElement {
     [store, iffStore, viewportStore],
   );
 
+  // ── Extract→Add handler (plan 08 — DEPLOY-07) ────────────────────────────────
+  //
+  // Derives the virtual path DIRECTLY from the VFS entry's path — NO VirtualPathModal prompt.
+  // Validates through the shared isVirtualPathSafe (M1) before calling stagingStore.addEntry.
+  // The store's addEntry also validates (belt-and-suspenders), so the check here provides
+  // an inline error message in the browser rather than silently rejecting.
+
+  const handleExtract = useCallback((entry: VfsEntry) => {
+    const vpath = entry.path;
+
+    // M1: validate derived virtual path before adding to staging (T-04.1-19)
+    if (!isVirtualPathSafe(vpath)) {
+      console.warn('[TreVfsBrowser] Extract→Add rejected unsafe derived path:', vpath);
+      return; // invalid path — show inline invalid-path message in the row (defensive)
+    }
+
+    // Add to staging store directly — no VirtualPathModal prompt (DEPLOY-07)
+    useStagingStore.getState().addEntry({
+      virtualPath: vpath,
+      action:      'add',
+      // No replacementFilePath for a VFS-browser extract — the entry is sourced from the
+      // mounted TRE archive, not a replacement file on disk. The staging entry tracks
+      // origin via the virtualPath; the pack step reads from the mounted TRE at seal time.
+    });
+  }, []);
+
   // ── Splitter (archives region ↔ file list region) ──────────────────────────
 
   /**
@@ -615,6 +643,7 @@ export default function TreVfsBrowser(): React.ReactElement {
                 selectedPath={selectedEntryPath}
                 selectedChain={selectedChain}
                 onSelect={handleSelectEntry}
+                onExtract={handleExtract}
               />
             )}
           </div>

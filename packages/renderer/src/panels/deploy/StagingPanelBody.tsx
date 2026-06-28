@@ -507,7 +507,7 @@ function StagingEmptyState({
         Nothing staged
       </span>
       <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-base)' }}>
-        Extract a file and Add to patch, or drop in a replacement.
+        Right-click a file in the TRE browser → Extract to staging, or drop a replacement file here.
       </span>
     </div>
   );

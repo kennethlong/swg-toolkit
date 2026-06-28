@@ -26,6 +26,7 @@ import fs from 'fs';
 import { randomUUID } from 'crypto';
 
 import type { StagingEntry } from '@swg/contracts';
+import { isVirtualPathSafe } from './pathSafety';
 
 // Path B: require the native addon directly (nodeIntegration:true in the renderer).
 // Mirrors the pattern in useLiveService.ts lines 29-35.
@@ -77,13 +78,12 @@ export function buildPatchName(workspaceName: string): string {
  *         T-04-09 (path traversal guard).
  */
 export function packPatch(staged: StagingEntry[], outputPath: string): void {
-  // T-04-09: path traversal guard — reject any virtualPath that could escape the VFS
+  // M1: unified path-safety guard — uses the shared isVirtualPathSafe (pathSafety.ts).
+  // Replaces the previous weak inline guard (T-04-09) which checked '..' and leading
+  // slash/backslash but MISSED Windows drive-letter patterns like 'C:\...'.
+  // isVirtualPathSafe also rejects empty, whitespace-only, and drive-letter paths.
   for (const entry of staged) {
-    if (
-      entry.virtualPath.includes('..') ||
-      entry.virtualPath.startsWith('/') ||
-      entry.virtualPath.startsWith('\\')
-    ) {
+    if (!isVirtualPathSafe(entry.virtualPath)) {
       throw new Error(`Invalid virtualPath: path traversal rejected — '${entry.virtualPath}'`);
     }
   }
