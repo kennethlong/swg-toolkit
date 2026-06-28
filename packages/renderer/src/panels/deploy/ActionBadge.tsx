@@ -20,7 +20,7 @@ import type { StagingAction } from '@swg/contracts';
 /** Visual configuration for each staging action. */
 const ACTION_CONFIG: Record<StagingAction, { glyph: string; label: string; colorVar: string }> = {
   add:    { glyph: '+',  label: 'add',                  colorVar: 'var(--color-info)'       },
-  modify: { glyph: '~',  label: 'modify',               colorVar: 'var(--color-text-muted)' },
+  modify: { glyph: '~',  label: 'changed',              colorVar: 'var(--color-accent)'     },
   delete: { glyph: '⊘', label: 'delete (tombstone)',    colorVar: 'var(--color-warn)'       },
 };
 

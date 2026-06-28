@@ -387,7 +387,9 @@ export default function TreVfsBrowser(): React.ReactElement {
       const tmpPath  = nodePath.join(tmpDir, `${Date.now()}-${safeName}`);
       nodeFs.writeFileSync(tmpPath, Buffer.from(bytes));
 
-      // Add to staging store directly — no VirtualPathModal prompt (DEPLOY-07)
+      // Add to staging store directly — no VirtualPathModal prompt (DEPLOY-07).
+      // Action is 'add': an Extract→Add is a copy of the base bytes (unchanged). It only
+      // becomes 'changed' (modify) once an editor actually edits the staged file.
       useStagingStore.getState().addEntry({
         virtualPath:         vpath,
         action:              'add',
