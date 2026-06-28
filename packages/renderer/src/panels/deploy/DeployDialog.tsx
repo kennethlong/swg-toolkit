@@ -71,6 +71,10 @@ export function DeployDialog({
   const [deployModel, setDeployModel] = useState<'absolute-path' | 'hardlink-shadow'>('absolute-path');
   const [fullChainScan, setFullChainScan] = useState<SharedFileScan | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  // Unsaved-changes prompt (UAT): when deploying with staging != the active version, ask
+  // the user to name a version instead of silently auto-snapshotting.
+  const [unsavedPromptOpen, setUnsavedPromptOpen] = useState(false);
+  const [pendingVersionName, setPendingVersionName] = useState('');
   const [staleWarning, setStaleWarning] = useState(false);  // W7: stale-deployment banner
   const [diskEstimate, setDiskEstimate] = useState<number | null>(null);
 
@@ -246,7 +250,7 @@ export function DeployDialog({
   // ── handleDeploy ─────────────────────────────────────────────────────────
   // Full deploy sequence with W2/W7/W9/B1/B6/R2-B1/B2/B7/B8 fixes applied.
 
-  const handleDeploy = useCallback(async () => {
+  const handleDeploy = useCallback(async (sealLabel?: string) => {
     // W9: mutual exclusion — prevent concurrent deploys sharing the .bak file.
     // Deploy button is also disabled while phase.kind !== 'idle' (double guard).
     if (deployingRef.current) return;
@@ -276,14 +280,20 @@ export function DeployDialog({
       const isDirty = !flatEqual(stagingSorted, currentFlat);
 
       if (isDirty) {
+        // Prompt the user to name a version rather than silently snapshotting (UAT).
+        // The outer finally resets deployingRef; the user re-triggers deploy with a label.
+        if (!sealLabel) {
+          setUnsavedPromptOpen(true);
+          return;
+        }
         setPhase({ kind: 'building' });
-        // R2-final (Opus): wrap auto-seal so a seal-time IO failure (manifest write,
+        // R2-final (Opus): wrap the seal so a seal-time IO failure (manifest write,
         // file copy, 'No workspace open') surfaces as phase:'error' instead of stranding
         // the dialog at phase:'building' with no way out.
         // The N4 'Nothing new' throw cannot fire here: the isDirty gate uses the same
         // flatEqual inputs as N4, so if isDirty=true, N4 will not throw.
         try {
-          await sealVersion({ sealedBy: 'pack', entries: stagingEntries, label: 'Deploy snapshot (unsaved changes)' });
+          await sealVersion({ sealedBy: 'pack', entries: stagingEntries, label: sealLabel });
         } catch (e) {
           setPhase({
             kind: 'error',
@@ -552,6 +562,7 @@ export function DeployDialog({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div
       role="dialog"
       aria-modal="true"
@@ -903,6 +914,62 @@ export function DeployDialog({
         )}
       </div>
     </div>
+
+    {/* Unsaved-changes prompt — name a version instead of an auto-snapshot (UAT). */}
+    {unsavedPromptOpen && (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        onClick={() => setUnsavedPromptOpen(false)}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Save version before deploy"
+          onClick={(e) => e.stopPropagation()}
+          style={{ width: 360, maxWidth: '90vw', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontFamily: 'var(--font-sans)' }}
+        >
+          <div style={{ fontSize: 'var(--text-md)', fontWeight: 600, color: 'var(--color-text)' }}>Unsaved changes</div>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 0 }}>
+            Your staged changes aren&apos;t saved as a version yet. Name one to save and deploy:
+          </p>
+          <input
+            autoFocus
+            value={pendingVersionName}
+            onChange={(e) => setPendingVersionName(e.target.value)}
+            placeholder="e.g. Test Version 2"
+            aria-label="Version name"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && pendingVersionName.trim()) {
+                const n = pendingVersionName.trim();
+                setUnsavedPromptOpen(false);
+                void handleDeploy(n);
+              }
+            }}
+            style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)', color: 'var(--color-text)', background: 'var(--color-widget)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '5px 8px', outline: 'none' }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+            <button style={secondaryBtnStyleLocal} onClick={() => setUnsavedPromptOpen(false)} aria-label="Cancel deploy">
+              Cancel
+            </button>
+            <button
+              style={primaryBtnStyleLocal(!pendingVersionName.trim())}
+              disabled={!pendingVersionName.trim()}
+              aria-disabled={!pendingVersionName.trim()}
+              onClick={() => {
+                const n = pendingVersionName.trim();
+                if (!n) return;
+                setUnsavedPromptOpen(false);
+                void handleDeploy(n);
+              }}
+              aria-label="Save version and deploy"
+            >
+              Save &amp; Deploy
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
