@@ -37,6 +37,18 @@ import ActionBadge from './ActionBadge';
 
 import { useChangesetStore } from '../../state/changesetStore';
 import { useStagingStore }   from '../../state/stagingStore';
+import { useIffStore }       from '../../state/iffStore';
+import type { IffParseResult } from '../../state/iffStore';
+
+// Path B native addon — parse a staged file as IFF for the "Open in viewer" action.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nativeCore = require('@swg/native-core') as {
+  parseIff: (bytes: ArrayBuffer | Uint8Array) => {
+    roots: unknown[];
+    trailingBytes: { offset: number; count: number } | null;
+    roundTrip: { passed: boolean; failOffset?: number };
+  };
+};
 
 import { sealVersion } from '../../services/changesetService';
 import { isVirtualPathSafe } from '../../services/pathSafety';
@@ -601,6 +613,39 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
     useStagingStore.getState().removeEntry(entry.virtualPath);
   }, [entry.virtualPath]);
 
+  // Right-click context menu (UAT): Open in viewer / Unstage.
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const canOpen = entry.action !== 'delete' && !!entry.replacementFilePath;
+
+  // Open the STAGED bytes in the IFF viewer (the staged content, not the base TRE) and
+  // bring the Data panel forward. Tombstones / sourceless entries have nothing to open.
+  const handleOpen = useCallback(() => {
+    if (entry.action === 'delete' || !entry.replacementFilePath) return;
+    const filename = path.basename(entry.virtualPath);
+    useIffStore.getState().beginParse(filename);
+    try {
+      const bytes = new Uint8Array(fs.readFileSync(entry.replacementFilePath));
+      try {
+        const raw = nativeCore.parseIff(bytes);
+        const result: IffParseResult = {
+          roots:         raw.roots as IffParseResult['roots'],
+          trailingBytes: raw.trailingBytes,
+          roundTrip:     raw.roundTrip,
+        };
+        useIffStore.getState().parseComplete(filename, result, bytes.buffer);
+      } catch (iffErr) {
+        const reason = iffErr instanceof Error ? iffErr.message : String(iffErr);
+        const m = /0x([0-9A-Fa-f]+)/.exec(reason);
+        useIffStore.getState().parseError(filename, reason, m ? parseInt(m[1], 16) : undefined);
+      }
+    } catch (readErr) {
+      const reason = readErr instanceof Error ? readErr.message : String(readErr);
+      useIffStore.getState().parseError(filename, `could not read staged file — ${reason}`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__activatePanel?.('data');
+  }, [entry.action, entry.replacementFilePath, entry.virtualPath]);
+
   // Path-traversal rejection display (T-04-06)
   const pathIsInvalid = !isVirtualPathSafe(entry.virtualPath);
 
@@ -645,7 +690,56 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
     >
+      {/* Right-click context menu — Open in viewer / Unstage */}
+      {menu && (
+        <>
+          <div
+            onClick={() => setMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 2000 }}
+          />
+          <div
+            role="menu"
+            style={{
+              position: 'fixed', left: menu.x, top: menu.y, zIndex: 2001,
+              minWidth: 150, padding: '3px 0', display: 'flex', flexDirection: 'column',
+              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-sm)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+              fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+            }}
+          >
+            <button
+              role="menuitem"
+              disabled={!canOpen}
+              onClick={() => { setMenu(null); handleOpen(); }}
+              title={canOpen ? 'Open the staged file in the viewer' : 'Nothing to open (tombstone)'}
+              style={{
+                background: 'transparent', border: 'none', textAlign: 'left',
+                color: canOpen ? 'var(--color-text)' : 'var(--color-text-faint)',
+                cursor: canOpen ? 'pointer' : 'not-allowed', padding: '4px var(--space-4)',
+                fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+              }}
+            >
+              Open in viewer
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => { setMenu(null); handleRemove(); }}
+              title="Remove this entry from the patch staging list"
+              style={{
+                background: 'transparent', border: 'none', textAlign: 'left',
+                color: 'var(--color-text)', cursor: 'pointer', padding: '4px var(--space-4)',
+                fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+              }}
+            >
+              Unstage
+            </button>
+          </div>
+        </>
+      )}
+
       {/* Action badge */}
       <ActionBadge action={entry.action} />
 
