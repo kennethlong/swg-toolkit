@@ -31,6 +31,11 @@ export interface StagingStore {
   entries: StagingEntry[];
   /** Status of the most recent (or current) build operation. */
   buildStatus: StagingBuildStatus;
+  /**
+   * Transient "flash this row" signal (Extract→Add feedback). The nonce changes on each
+   * call so re-extracting the same path re-triggers the highlight. Cleared by the row.
+   */
+  flash: { virtualPath: string; nonce: number } | null;
 
   // ─── Actions ───────────────────────────────────────────────────────────────
 
@@ -38,6 +43,8 @@ export interface StagingStore {
   addEntry: (e: StagingEntry) => void;
   /** Remove the staging entry with the given virtualPath. */
   removeEntry: (virtualPath: string) => void;
+  /** Flag a row to flash (Extract→Add feedback). Increments the flash nonce. */
+  flashEntry: (virtualPath: string) => void;
   /** Clear all staged entries (e.g. after sealing a changeset). */
   clearAll: () => void;
   /**
@@ -60,6 +67,7 @@ export interface StagingStore {
 export const useStagingStore = create<StagingStore>((set) => ({
   entries:     [],
   buildStatus: { kind: 'idle' },
+  flash:       null,
 
   addEntry: (e: StagingEntry) => {
     // M1: reject unsafe virtual paths before storing (T-04.1-19).
@@ -77,6 +85,9 @@ export const useStagingStore = create<StagingStore>((set) => ({
     set((state) => ({
       entries: state.entries.filter((x) => x.virtualPath !== virtualPath),
     })),
+
+  flashEntry: (virtualPath: string) =>
+    set((state) => ({ flash: { virtualPath, nonce: (state.flash?.nonce ?? 0) + 1 } })),
 
   clearAll: () =>
     set({ entries: [] }),

@@ -393,6 +393,12 @@ export default function TreVfsBrowser(): React.ReactElement {
         action:              'add',
         replacementFilePath: tmpPath,
       });
+
+      // Visible feedback: bring the Deploy panel to the front and flash the new row so
+      // Extract→Add doesn't look like a no-op.
+      useStagingStore.getState().flashEntry(vpath);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__activatePanel?.('deploy');
     } catch (err) {
       console.error('[TreVfsBrowser] Extract→Add failed:', err);
     }

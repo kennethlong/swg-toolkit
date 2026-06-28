@@ -182,6 +182,33 @@ export default function WorkspaceShell(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__resetLayout = resetLayout;
 
+  // ── activatePanel (Extract→Add affordance) ───────────────────────────────
+  //
+  // Bring a panel to the front of its tab group (e.g. activate 'deploy' so an
+  // Extract→Add from the TRE browser is visibly staged). Reopens the panel if it
+  // was closed. Exposed on window.__activatePanel (same window.__* pattern).
+  const activatePanel = (id: string): void => {
+    const api = apiRef.current;
+    if (!api) return;
+    const existing = api.getPanel(id);
+    if (existing) {
+      existing.api.setActive();
+      return;
+    }
+    // Closed → reopen it next to the inspector (mirrors buildInitialLayout placement).
+    const pos = PANEL_REOPEN_POSITIONS[id] as { direction: string; referencePanel?: string } | undefined;
+    api.addPanel({
+      id,
+      component: id,
+      title: PANEL_TITLES[id] ?? id,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...(pos ? { position: pos as any } : {}),
+    });
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__activatePanel = activatePanel;
+
   // ── Layout menu handlers (plan-08 affordance) ─────────────────────────────
 
   /** Open the layout dropdown and compute closed panels at this instant. */

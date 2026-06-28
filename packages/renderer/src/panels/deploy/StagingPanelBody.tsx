@@ -143,6 +143,15 @@ export default function StagingPanelBody({
     return () => obs.disconnect();
   }, []);
 
+  // Extract→Add feedback: scroll the newly-staged (appended) row into view so the
+  // flash highlight is visible even when the list is long.
+  const flashNonce = useStagingStore((s) => s.flash?.nonce);
+  useEffect(() => {
+    if (flashNonce === undefined) return;
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [flashNonce]);
+
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setScrollTop((e.currentTarget as HTMLDivElement).scrollTop);
   }, []);
@@ -576,6 +585,18 @@ interface StagingRowProps {
 function StagingRow({ entry }: StagingRowProps): React.ReactElement {
   const [hovered, setHovered] = useState(false);
 
+  // Extract→Add feedback: briefly highlight this row when it's the flashed entry.
+  const flash = useStagingStore((s) => s.flash);
+  const [isFlashing, setIsFlashing] = useState(false);
+  useEffect(() => {
+    if (flash && flash.virtualPath === entry.virtualPath) {
+      setIsFlashing(true);
+      const t = setTimeout(() => setIsFlashing(false), 900);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [flash?.nonce, flash?.virtualPath, entry.virtualPath]);
+
   const handleRemove = useCallback(() => {
     useStagingStore.getState().removeEntry(entry.virtualPath);
   }, [entry.virtualPath]);
@@ -616,8 +637,10 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
         height:       ROW_HEIGHT,
         paddingLeft:  'var(--space-4)',
         paddingRight: 'var(--space-2)',
-        background:   hovered ? 'var(--color-surface-2)' : 'transparent',
-        transition:   'background 0.1s ease',
+        background:   isFlashing
+          ? 'var(--color-accent-dim, rgba(46,160,160,0.22))'
+          : hovered ? 'var(--color-surface-2)' : 'transparent',
+        transition:   isFlashing ? 'background 0.1s ease' : 'background 0.5s ease',
         boxSizing:    'border-box',
       }}
       onMouseEnter={() => setHovered(true)}
