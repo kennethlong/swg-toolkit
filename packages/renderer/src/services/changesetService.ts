@@ -34,6 +34,7 @@ import type {
   StagingEntry,
   StagingAction,
   CfgDeployRecord,
+  LooseDeployRecord,
 } from '@swg/contracts';
 import { BASELINE_ID } from '@swg/contracts';
 
@@ -458,7 +459,7 @@ export function setDeployedVersion(id: string | null): void {
  */
 export function updateChangesetDeployRecord(
   csId: string,
-  record: CfgDeployRecord
+  record: CfgDeployRecord | LooseDeployRecord
 ): void {
   const studioDir = useWorkspaceStore.getState().studioDir;
   if (!studioDir) throw new Error('No workspace open');
