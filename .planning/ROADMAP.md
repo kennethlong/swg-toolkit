@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track) (completed 2026-06-26)
 - [x] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs (completed 2026-06-27)
 - [ ] **Phase 4.1: Deploy & Project UX** *(INSERTED)* - Project↔client binding front door, one combined Deploy tab, stage-from-TRE, lazy/virtual shadow sandbox (build approved sketches 005-B/006-D/007/008)
+- [ ] **Phase 4.2: Dev-Client Support & Loose-Override Deploy** *(INSERTED)* - Detect `client.cfg` clients whose binary is decoupled from an external TRE set; mount the full base via `searchTOC`/`searchPath` (not just `searchTree`); deploy by dropping loose files into the top-priority override dir (the lazy/virtual-shadow thesis, proven on swg-client-v2)
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
 - [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
 - [ ] **Phase 7: Format Editors** - Terrain, world snapshots, flora, collision/portals, UI, audio/FX — parallelizable leaves on the IFF root
@@ -204,6 +205,38 @@ Plans:
 **Wave 9**
 - [ ] 04.1-11-PLAN.md — Phase UAT checkpoint: in-client real-Electron onboarding→deploy→reset on SWG Infinity + SWGEmu [autonomous: false]
 
+### Phase 04.2: Dev-Client Support & Loose-Override Deploy (INSERTED)
+**Goal**: Make the toolkit a first-class citizen of the standard **dev/modder workflow**, where the runnable client is **decoupled** from its TRE data — the client binary dir (`stage/`: exe + dlls + `client.cfg`, **zero `.tre`**) references an **external** game-data install by absolute path (verified ground truth: swg-client-v2 / SWG Source). Three capabilities, built as one vertical slice: (1) **detect `client.cfg` layouts** (add the release row to `clientLayout.ts`/`clientLocator.ts`) plus a **manual cfg-path + TRE-dir override** when auto-detect can't classify an install; (2) **extend the mount** (`clientSearchOrder.ts`/`treAutoMount.ts`) to read the FULL base via **`searchTOC`** (a `.toc` master index — token "TOC"/TAG_0001, listing 131+ TREs + a path→archive index, with `TOCTreePath` prepended to each archive name) and **`searchPath`** loose dirs, not just `searchTree`, so the dev client's full asset set is browsable/extractable; (3) add a **"deploy into the top-priority loose `searchPath` override dir"** deploy mode — write edited loose files straight into the override dir (no TRE pack, no `.cfg` surgery, survives cmake/setup regen), which **realizes the lazy/virtual shadow thesis** Phase 04.1 introduced. Reuses the 04.1 project-binding + deploy surface; this is mount-breadth + a new deploy target + detection, NOT new byte-level format work.
+**Mode:** mvp
+**Depends on**: Phase 04.1 (project-binding/auto-mount/deploy surface it extends), Phase 1 (TRE mount/VFS + `.toc`/IFF readers)
+**Requirements**: CLIENT-02, TRE-05, DEPLOY-08
+**Success Criteria** (what must be TRUE):
+  1. Binding a project to a swg-client-v2-style install (`client.cfg`, external TRE data, no co-located `.tre`) is detected (or completes via manual cfg/TRE-dir override) and persists with the project.
+  2. Opening that project auto-mounts the client's FULL base — the `searchTOC` archives (with `TOCTreePath` applied) + `searchPath` loose dirs + `searchTree` overlays — in correct precedence, so the 131-archive base is browsable and an asset (e.g. `texture/ksk_all_spaceterminal.dds`) resolves + extracts.
+  3. A "deploy to override dir" mode writes staged loose files into the client's highest-priority `searchPath` directory; the original client install and its generated `client.cfg` are left byte-untouched.
+  4. **End-to-end proof:** the toolkit reproduces the hand-verified space-terminal retexture against swg-client-v2 — extract the `.dds`, stage an edit, deploy to the override dir, and the change appears in-game — with no manual file copying.
+  5. Existing SWGEmu/Infinity `searchTree`-only clients still mount + deploy exactly as before (no regression).
+
+**Ground-truth gate** (de-anchoring protocol — verify against `../swg-client-v2` source + real bytes, NOT consensus): mount semantics are LOCKED from the 2026-06-28 source trace — `TreeFile::install` reads `searchPath`/`searchTree`/`searchTOC` per priority 0→maxSearchPriority (`TreeFile.cpp:118-148`); `.toc` = token "TOC"/TAG_0001 (`TreeFile_SearchNode.h:270-299`); `TOCTreePath` prepended to in-toc archive names (`TreeFile_SearchNode.cpp:639-671`); precedence priority-DESC, same-priority ties → **LATER-added wins** (do NOT re-derive as first-added). See memory `reference-swg-client-mount-mechanisms` + todo `client-detection-and-layout-model.md`.
+
+**Plans:** 6 plans
+Plans:
+**Wave 1**
+- [ ] 04.2-01-PLAN.md — Contracts + RED test scaffolding: LooseDeployRecord type, 'loose-override' DeployModel, SwgChangeset.deployRecord union; RED stubs for tocReader, looseOverrideDeploy, clientLayout (treDirFromCfg case), clientSearchOrder (quote-stripping, looseDirs)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 04.2-02-PLAN.md — Client detection: clientLayout treDirFromCfg flag + swg-client-v2 KNOWN_LAYOUTS row; clientLocator swg-client-v2 knownPath; clientSearchOrder rename parseSearchNodes + family tags + stripQuotes + searchTOC/searchPath/TOCTreePath parsing + looseDirs/tocEntries/tocTreePaths
+
+**Wave 3** *(blocked on Wave 2 completion — parallel pair)*
+- [ ] 04.2-03-PLAN.md — TOC reader + mount extension: tocReader.ts (parseTocHeader + readTocTreeNames, magic+bounds-check); treAutoMount expand tocEntries via readTocTreeNames+TOCTreePath; treMount injectLooseDirOverlay; treStore appendLooseEntries
+- [ ] 04.2-04-PLAN.md — Loose-override deploy: looseOverrideDeploy.ts (resolveOverrideDir, deployLoose, resetLoose — path-traversal guard, preExisted flag, atomic write); changesetService broadened type
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 04.2-05-PLAN.md — DeployDialog: third radio 'Loose override dir' + resolvedOverrideDir preview; generalize handleBrowse via resolveLayout; handleDeploy + handleReset loose-override branches (deployLoose/resetLoose only, no packPatch/cfgActivator)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 04.2-06-PLAN.md — In-client UAT: full test suite gate + E2E space-terminal retexture proof (bind swg-client-v2 → mount 131-archive base → stage edit → deploy → in-game verification → reset → sha256 invariant; Infinity regression) [autonomous: false]
+
 ### Phase 5: WYSIWYG Live-Sync & Typed Editors
 **Goal**: Join the two independently-built halves — viewport gizmo and injection module — into the zero-restart WYSIWYG loop over the SharedArrayBuffer data channel, and ship the first typed edit surfaces (DTII grid, `.stf` strings) as the highest-frequency editing entry points.
 **Mode:** mvp
@@ -269,6 +302,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
 | 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-06-27 |
 | 4.1 Deploy & Project UX *(INSERTED)* | 10/11 | In Progress|  |
+| 4.2 Dev-Client Support & Loose-Override Deploy *(INSERTED)* | 0/6 | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
