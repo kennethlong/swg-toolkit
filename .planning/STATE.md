@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
-last_updated: "2026-06-28T00:45:24.250Z"
-last_activity: 2026-06-28
+last_updated: "2026-06-29T13:55:43.168Z"
+last_activity: 2026-06-29 -- Phase 04.2 execution started
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 5
-  total_plans: 40
+  total_plans: 46
   completed_plans: 39
-  percent: 98
+  percent: 85
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 04.1 — deploy-project-ux
+**Current focus:** Phase 04.2 — dev-client-support-loose-override-deploy
 
 ## Current Position
 
-Phase: 04.1 (deploy-project-ux) — EXECUTING
-Plan: 11 of 11
+Phase: 04.2 (dev-client-support-loose-override-deploy) — EXECUTING
+Plan: 1 of 6
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
       migration, dynamic auto-widen). Crew briefs: .planning/research/CONSULT-P4.1-*.md.
-Status: Ready to execute
+Status: Executing Phase 04.2
         New Project→Add→Save version→Changeset→Deploy patch-prepend→mod loaded in-game, disk-verified).
         The remaining work is the UI/UX redesign + project-binding/shadow scope surfaced by UAT, now
         framed as INSERTED Phase 04.1 (maintainer chose inserted-phase over new-plans-under-4). Builds
@@ -43,7 +43,7 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       v6000 encrypted/out-of-scope) — server TRE search-path remains open, deferred to Phase 8 w/ server-push.
       Separately still pending: Phase 04 formal close-out (mark 04-06/06b complete, verifier,
       REQUIREMENTS DEPLOY-01..04 → Complete).
-Last activity: 2026-06-28
+Last activity: 2026-06-29 -- Phase 04.2 execution started
 
 Progress: [██████████] 98%
 
@@ -111,6 +111,7 @@ Progress: [██████████] 98%
 ### Roadmap Evolution
 
 - Phase 04.1 inserted after Phase 4: Deploy & Project UX — redesign building approved sketches 005-B/006-D/007/008 (combined Deploy tab, project↔client binding front door, lazy/virtual shadow); emerged from Phase 4 in-client UAT (URGENT)
+- Phase 04.2 inserted after Phase 4: Dev-Client Support & Loose-Override Deploy: detect client.cfg + mount searchTOC/searchPath + loose-override deploy mode for the dev/modder decoupled-client class (swg-client-v2) (URGENT)
 
 ### Decisions
 
