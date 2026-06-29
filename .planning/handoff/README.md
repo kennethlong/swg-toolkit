@@ -2,7 +2,16 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-06-28-phase04.1-deploy-uat-iteration.md](2026-06-28-phase04.1-deploy-uat-iteration.md)** — ACTIVE. ← start here.
+- **[2026-06-29-phase04.2-planned-crew-reviewed.md](2026-06-29-phase04.2-planned-crew-reviewed.md)** — ACTIVE. ← start here.
+  Phase 04.2 (Dev-Client Support & Loose-Override Deploy) **planned, NOT executed**: 6 plans / 5 waves,
+  plan-checker PASS (0 blockers), finalized after a full 4-AI de-anchoring crew review + ground-truth
+  fact-check that caught **8 defects the plan-checker couldn't see** (mount-wiring B1/B2/B4, reset B3,
+  deploy lifecycle H2/H3, and the TOC duplicate-resolution corrected to engine-faithful CRC binary
+  search). `.toc` byte format VERIFIED. Resume: `/clear` → `/gsd:execute-phase 04.2`. HEAD `5aed03f`.
+  **Watch:** crc32 oracle `3830594` unverified (confirm vs Crc.cpp); real-byte tests skipIf assets absent.
+  04.1's UAT (below) is still open and precedes 04.2 numerically.
+
+- **[2026-06-28-phase04.1-deploy-uat-iteration.md](2026-06-28-phase04.1-deploy-uat-iteration.md)** — ACTIVE (04.1 UAT still open).
   Phase 04.1 (deploy-project-ux): all 11 plans executed; long in-client UAT round (the 04.1-11
   checkpoint, still open). Landed the **project-model decouple** (project = umbrella under
   `projects\<name>` that *references* a target client/standalone; in-app Open Project dialog;
