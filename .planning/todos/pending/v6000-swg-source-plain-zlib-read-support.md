@@ -1,65 +1,69 @@
 ---
 id: v6000-swg-source-plain-zlib-read-support
-title: v6000 is a DUAL format — SWG-Source v6000 is plain-zlib READABLE; stop blanket-marking all v6000 enumerate-only/encrypted
+title: searchTOC base is incompletely mounted — empty-internal-TOC container .tre files (incl. v6000) need the MASTER .toc as the index; v6000 is plain-zlib, not encrypted
 created: 2026-06-29
-origin: Maintainer UAT note during 04.2-06 — swg-client-v2 mounts patch_sku3_*.tre as v6000 marked "enumerate-only (encrypted)" with 0 entries, but the maintainer's TRE extractor reads them (they are zlip-compressed, not encrypted). "I told you there were 6000 type tree files that were only zipped, not encrypted… my tre extractor can read these." Corrects the conflation with Restoration's genuinely-encrypted type 6000.
-severity: high (blocks reading the swg-client-v2 dev-client base — assets inside v6000 patch archives never resolve/extract; directly impacts the 04.2 dev-client UAT spine)
-area: native-core (modules/core/tre — TreVersion.h, TreArchive.cpp, TreMount.cpp) + renderer version display
+origin: Maintainer UAT note during 04.2-06 — swg-client-v2 mounts patch_sku3_*.tre as v6000 "enumerate-only (encrypted)" with 0 entries, but they are plain zlib. Investigation (2026-06-29, real bytes) found the deeper cause: those .tre files have EMPTY internal TOCs; their entries live only in the master .toc.
+severity: medium-high (the v6000/empty-TOC content set is silently missing from the mount; NOT blocking the 04.2-06 UAT — the space-terminal texture is in a v5000 self-indexed patch and resolves fine)
+area: renderer (treAutoMount + tocReader) + native-core (tre extraction for toc-indexed entries; v6000 enumerate-only)
 status: pending
 related: tre-version-oracles-and-v6000-encryption, feedback-crew-catches-what-plancheck-cannot, project-binds-and-automounts-client-tres
 ---
 
-## Problem — `6000` is a version TAG used by TWO different formats; we treat the tag as "encrypted"
+## Real root cause (verified 2026-06-29 against real swg-client-v2 / SWGSource Client v3.0 bytes)
 
-GROUND TRUTH (maintainer's working extractor + the SWG Source client itself):
-- The version tag `6000` (32-byte crc-first TOC stride) is used by BOTH:
-  - **SWG Source / swg-client-v2** `patch_sku3_*.tre` — **plain zlib, READABLE.** Proof: the SWG Source
-    client mounts them, and `swg-blender-plugin/swg_pipeline/tre_reader.py` reads TOC+names+payloads via zlib.
-  - **Restoration** — payloads proprietary-encrypted (zlib fails; needs TreeFileExtractor.exe).
-- The discriminator is **per-payload at RUNTIME**, not the version string:
-  `swg_pipeline/tre_decrypt.py::try_read_tre_payload` tries `zlib.decompress(raw)` → success = SWG-Source zlib;
-  `zlib.error` = Restoration-encrypted. (compressor==0 ⇒ stored/raw.)
+The swg-client-v2 base is a **SearchTOC** architecture: a master `.toc` per sku (`sku0_client.toc` =
+193,475 entries, `sku3_client.toc` = 1,158) is the authoritative index of every path, mapping each to
+`(tre_file, offset, compressor, length, compressedLength, crc)`. The referenced `.tre` files come in TWO
+shapes:
 
-Our native code bakes the wrong axiom:
-- `modules/core/tre/TreVersion.h::isEnumerateOnly(v) { return v == V6000; }` — blanket, version-tag-keyed.
-  Comment cites "Utinni TreVersion.cs:79-86 (IsEnumerateOnly => V6000 only)" — but **Utinni targets Restoration**,
-  where v6000 IS encrypted. The assumption does not generalize to SWG Source v6000.
-- `modules/core/tre/TreArchive.cpp::extractEntry` (≈L307) throws for any `isEnumerateOnly(m_version)` archive —
-  so even readable SWG-Source v6000 payloads are refused.
-- `modules/core/tre/TreMount.cpp::archiveInfos` sets `info.enumerateOnly = isEnumerateOnly(ver)` → UI shows
-  "enumerate-only (encrypted)" for all v6000.
+| `.tre` kind | Example | Internal TOC | Our current mount result |
+|---|---|---|---|
+| Self-indexed retail/patch | `bottom.tre` (v5000, 808), `patch_11_00.tre` (v5000, 12198) | PRESENT (numberOfFiles>0) | reads internal TOC → entries appear ✓ |
+| TOC-indexed container | `patch_sku3_24_shared_00.tre` (**v6000, numberOfFiles=0**) | EMPTY | reads empty internal TOC → **0 entries** ✗ |
 
-Note the native reader ALREADY parses the v6000 32-byte TOC and populates `m_entries` (TreVersion.h `recordStride(V6000)=32`;
-verified byte-exact vs `SwgRestoration_00.tre`). So entries are enumerated/browsable — only extraction is wrongly refused.
+`treAutoMount.buildTreNodes` mounts each `.tre` by name (`readTocTreeNames`) and relies on each `.tre`'s
+**internal** TOC (`mountTrePaths` → native `TreArchive` parses the on-disk TOC). For empty-TOC container
+files that yields 0 entries — that is the `entryCount 0` in the Mounted-Archives UI. The entries for those
+files exist ONLY in the master `.toc` (payloads at `comp:2`=zlib / `comp:0`=stored — **READABLE, not
+encrypted**; confirmed via the `.toc` index + `swg_pipeline/tre_reader.py`).
 
-## Open anomaly to investigate FIRST
+The faithful fix = mount a SearchTOC client from the **master `.toc` index** (the full entry set, which
+`tocReader.readTocIndex` from 04.2-03 already reads but the mount never uses for entry-sourcing), NOT from
+per-`.tre` internal TOCs. Payloads are read from the referenced `.tre` at the indexed offset + inflated by
+the per-entry compressor.
 
-The swg-client-v2 v6000 archives displayed **entryCount 0** in the Mounted-Archives UI (screenshot 2026-06-29),
-despite `archiveInfos().entryCount = node.archive->entryCount()` (= `m_entries.size()`). Possible causes:
-1. Our native parse of these specific files throws and the mount swallows it → 0 entries (format delta between
-   SWG-Source v6000 and the Restoration v6000 oracle we tested: TOC compressor handling, header field, name block).
-2. The displayed `0` is a different column (shadow/override), not entryCount.
-Determine this by mounting a real swg-client-v2 `patch_sku3_*.tre` through the native addon and logging entryCount +
-the first parsed entry, cross-checked against `tre_reader.read_tre_entries()` on the same file.
+## Secondary issue — v6000 enumerate-only is also wrong (but insufficient on its own)
+
+`native-core/.../TreVersion.h::isEnumerateOnly(v){ return v==V6000; }` blanket-refuses ALL v6000 payload
+extraction (`TreArchive.cpp::extractEntry` throws), citing Utinni (Restoration-only, where v6000 IS
+encrypted). swg-client-v2 v6000 is plain zlib. So even once entries are sourced from the master `.toc`,
+extraction of a v6000-container payload would be refused. Fix: make enumerate-only a per-payload runtime
+determination (attempt inflate; only on failure classify as Restoration-encrypted) — mirrors
+`tre_decrypt.py::try_read_tre_payload`. NOTE: flipping `isEnumerateOnly` ALONE does nothing visible, because
+the entries are not sourced (empty internal TOC) — the master-index mount is the load-bearing fix.
 
 ## Acceptance criteria
 
-1. `isEnumerateOnly` is no longer a version-tag gate. v6000 archives enumerate AND attempt payload extraction.
-2. `extractEntry` for v6000: attempt `treInflate`/zlib (compressor-driven, same as retail). Only on inflate FAILURE
-   classify that payload (or archive) as encrypted/Restoration → then refuse with a clear, per-payload reason.
-3. swg-client-v2 `patch_sku3_*.tre` entries resolve in the VFS browser with non-zero entryCount, and a known asset
-   (e.g. a `.dds`/`.iff` inside one) extracts byte-identically to `tre_reader.read_tre_payload()` on the same file.
-4. Restoration v6000 still behaves correctly (extraction fails gracefully → enumerate-only, not a crash).
-5. UI: the "enumerate-only (encrypted)" chip only shows when extraction actually fails, not for readable v6000.
-6. Native byte-exact test using a real swg-client-v2 v6000 archive (skipIf absent), plus the existing Restoration
-   v6000 enumerate-only test stays green.
+1. SearchTOC mount sources entries from the master `.toc` index (all paths), so TOC-indexed container `.tre`
+   files (incl. v6000) contribute their entries — `patch_sku3_*` archives show non-zero entryCount.
+2. Avoid double-counting where a `.tre` is BOTH self-indexed and master-indexed (use the master `.toc` as
+   the single index for searchTOC clients; do not also read internal TOCs for the same paths).
+3. Payload extraction for a TOC-indexed entry reads from the referenced `.tre` at offset + inflates by the
+   per-entry compressor; a known v6000 asset extracts byte-identically to `tre_reader.read_tre_payload()`.
+4. v6000 `isEnumerateOnly` becomes per-payload (try inflate; refuse only on real failure). Restoration v6000
+   still degrades gracefully to enumerate-only (no crash).
+5. UI "enumerate-only (encrypted)" chip shows only when extraction actually fails, not for readable v6000.
+6. Regression: v5000 self-indexed base/patches (bottom.tre, patch_11_*) still resolve; Infinity/SWGEmu
+   searchTree clients unaffected. Native byte-exact test on a real swg-client-v2 v6000 archive (skipIf absent).
 
-## Notes / why I was wrong before
+## UAT impact + notes
 
-The stored memory `tre-version-oracles-and-v6000-encryption` (re-confirmed 2026-06-27) concluded "no plain-zlib 6000
-exists; 6000 is exclusively Restoration-encrypted." That sampling missed swg-client-v2's patch_sku3 v6000 set. Memory
-corrected 2026-06-29. This is a textbook de-anchoring case (CLAUDE.md): a working extractor + the SWG Source client
-mounting these files is ground truth; the AI-distilled "v6000 = encrypted" axiom is not.
-
-Whether this blocks the 04.2-06 UAT spine depends on whether `ksk_all_spaceterminal.dds` lives in a v6000 patch
-archive vs a readable base TRE — check before deciding sequencing.
+- NOT blocking 04.2-06: `texture/ksk_all_spaceterminal.dds` is in `patch_11_0x.tre` (v5000, self-indexed) →
+  resolves via the normal internal-TOC mount + the autoMountClient wiring fix (bcf48e6).
+- The MISSING set is the sku3 v6000 content (1,158 paths: collision floors, 344 dds, 294 msh, etc.) — real
+  client content the toolkit currently omits. Worth completing for full TRE-05 fidelity.
+- This corrects the stored memory [[tre-version-oracles-and-v6000-encryption]] ("v6000 = exclusively
+  Restoration-encrypted; no plain-zlib 6000 exists" — FALSIFIED). Classic de-anchoring case (CLAUDE.md):
+  the working extractor + the SWG Source client mounting these files is ground truth.
+- This is effectively COMPLETING the searchTOC mount that 04.2-03 started (it built readTocIndex but the
+  mount only used readTocTreeNames). Candidate for a dedicated 04.x plan, not a one-line patch.
