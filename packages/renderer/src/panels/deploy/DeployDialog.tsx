@@ -73,6 +73,11 @@ export function DeployDialog({
   const [clients, setClients] = useState<DetectedClient[]>([]);
   const [selectedClient, setSelectedClient] = useState<DetectedClient | null>(null);
   const [deployModel, setDeployModel] = useState<'absolute-path' | 'hardlink-shadow' | 'loose-override'>('absolute-path');
+  // Hardlink-shadow is demoted behind an "Advanced" disclosure: the absolute-path / loose-override
+  // pointer models are non-destructive and proven to load in-game (UAT 2026-06-29, ksk_all_spaceterminal
+  // override loaded with the cfg untouched), so full-shadow is reserved for the rare whole-TRE-replace
+  // case. Auto-revealed below when hardlink-shadow is the active model (e.g. an in-progress shadow deploy).
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [fullChainScan, setFullChainScan] = useState<SharedFileScan | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   // Unsaved-changes prompt (UAT): when deploying with staging != the active version, ask
@@ -820,52 +825,6 @@ export function DeployDialog({
             </label>
           </div>
 
-          {/* Hardlink-shadow option (opt-in, DEPLOY-06) — accent ring when selected */}
-          <div
-            style={{
-              border: `2px solid ${deployModel === 'hardlink-shadow' ? 'var(--color-accent)' : 'var(--color-border)'}`,
-              background:
-                deployModel === 'hardlink-shadow' ? 'var(--color-accent-dim)' : 'transparent',
-              borderRadius: 'var(--radius-sm)',
-              padding: 'var(--space-2) var(--space-3)',
-              cursor: phase.kind === 'done' ? 'default' : 'pointer',
-              opacity: phase.kind === 'done' && deployModel !== 'hardlink-shadow' ? 0.45 : 1,
-            }}
-            onClick={phase.kind === 'done' ? undefined : () => setDeployModel('hardlink-shadow')}
-          >
-            <label style={{ display: 'flex', gap: 'var(--space-2)', cursor: phase.kind === 'done' ? 'default' : 'pointer' }}>
-              <input
-                type="radio"
-                name="deployModel"
-                checked={deployModel === 'hardlink-shadow'}
-                disabled={phase.kind === 'done'}
-                onChange={() => setDeployModel('hardlink-shadow')}
-                style={{ accentColor: 'var(--color-accent)', flexShrink: 0 }}
-              />
-              <div>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-                  Hardlink shadow (isolated client)
-                </div>
-                <div style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-                  hardlinks client TRE base to a local shadow; uses ~0 disk on same volume
-                </div>
-              </div>
-            </label>
-            {/* ⚠ disk-space note — revealed when hardlink-shadow selected and cross-volume risk */}
-            {deployModel === 'hardlink-shadow' && diskEstimate !== null && (
-              <div
-                style={{
-                  marginTop: 'var(--space-2)',
-                  fontSize: 'var(--text-xs)',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--color-warn)',
-                }}
-              >
-                ~{(diskEstimate / 1073741824).toFixed(1)} GB needed if cross-volume fallback triggers
-              </div>
-            )}
-          </div>
-
           {/* Loose-override option (opt-in, DEPLOY-08) — accent ring when selected */}
           <div
             style={{
@@ -909,6 +868,77 @@ export function DeployDialog({
               </div>
             )}
           </div>
+
+          {/* Advanced disclosure — Hardlink shadow is demoted here (see showAdvanced note above).
+              Collapsed by default; auto-shown when it is the active deployed model. */}
+          {!(showAdvanced || deployModel === 'hardlink-shadow') && (
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--color-text-muted)',
+                fontSize: 'var(--text-xs)',
+                fontFamily: 'var(--font-sans)',
+                cursor: 'pointer',
+                padding: 'var(--space-1) 0',
+                textAlign: 'left',
+              }}
+              aria-label="Show advanced deploy models"
+            >
+              ▸ Advanced — Hardlink shadow (isolated client)
+            </button>
+          )}
+
+          {/* Hardlink-shadow option (opt-in, DEPLOY-06) — accent ring when selected */}
+          {(showAdvanced || deployModel === 'hardlink-shadow') && (
+            <div
+              style={{
+                border: `2px solid ${deployModel === 'hardlink-shadow' ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                background:
+                  deployModel === 'hardlink-shadow' ? 'var(--color-accent-dim)' : 'transparent',
+                borderRadius: 'var(--radius-sm)',
+                padding: 'var(--space-2) var(--space-3)',
+                cursor: phase.kind === 'done' ? 'default' : 'pointer',
+                opacity: phase.kind === 'done' && deployModel !== 'hardlink-shadow' ? 0.45 : 1,
+              }}
+              onClick={phase.kind === 'done' ? undefined : () => setDeployModel('hardlink-shadow')}
+            >
+              <label style={{ display: 'flex', gap: 'var(--space-2)', cursor: phase.kind === 'done' ? 'default' : 'pointer' }}>
+                <input
+                  type="radio"
+                  name="deployModel"
+                  checked={deployModel === 'hardlink-shadow'}
+                  disabled={phase.kind === 'done'}
+                  onChange={() => setDeployModel('hardlink-shadow')}
+                  style={{ accentColor: 'var(--color-accent)', flexShrink: 0 }}
+                />
+                <div>
+                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
+                    Hardlink shadow (isolated client)
+                  </div>
+                  <div style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+                    hardlinks client TRE base to a local shadow; uses ~0 disk on same volume — for the rare
+                    whole-TRE-replacement case (absolute-path / loose-override are preferred)
+                  </div>
+                </div>
+              </label>
+              {/* ⚠ disk-space note — revealed when hardlink-shadow selected and cross-volume risk */}
+              {deployModel === 'hardlink-shadow' && diskEstimate !== null && (
+                <div
+                  style={{
+                    marginTop: 'var(--space-2)',
+                    fontSize: 'var(--text-xs)',
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--color-warn)',
+                  }}
+                >
+                  ~{(diskEstimate / 1073741824).toFixed(1)} GB needed if cross-volume fallback triggers
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ height: 1, background: 'var(--color-border)' }} />
