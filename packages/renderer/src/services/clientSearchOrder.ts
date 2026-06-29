@@ -18,6 +18,11 @@
  * then assign strictly-descending mount priorities so the native mount's first-match
  * resolution reproduces the client's precedence exactly (no native tie-break needed).
  *
+ * Extended (Plan 04.2-02) to also parse searchTOC, searchPath, and TOCTreePath entries.
+ * The full ClientMountOrder now carries looseDirs/looseDirPriorities/tocEntries/
+ * tocTreePaths/searchTreeRawPriorities/maxPriority for Plan 03 unified-mount compaction
+ * and Plan 05 override-dir guard.
+ *
  * searchTree filenames are relative to the client's working dir (= install root); absolute
  * values are used as-is. The toolkit's own deploy cfg (swgtoolkit.cfg) is excluded so the
  * mounted set is the pristine client base.
@@ -29,26 +34,57 @@ import path from 'path';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require('fs') as typeof import('fs');
 
+import { resolveLayout } from './clientLayout';
+
 /** The toolkit's own deploy cfg — excluded from the base mount set. */
 const TOOLKIT_CFG = 'swgtoolkit.cfg';
+
+/** Entry family — which cfg key family produced this entry. */
+type EntryFamily = 'searchTree' | 'searchTOC' | 'searchPath';
 
 interface RawEntry {
   sku:       number;  // parsed from the _NN_ suffix (0 when no sku suffix)
   priority:  number;  // the numeric slot — higher wins
-  fileName:  string;  // searchTree value (relative to install root, or absolute)
+  fileName:  string;  // resolved value (after stripQuotes); relative or absolute
   baseDir:   string;  // dir of the cfg file the entry was declared in
   order:     number;  // global parse-encounter index (for stable index-within-key order)
+  family:    EntryFamily;  // which cfg key family produced this entry
 }
 
 /**
- * Parse the [SharedFile] searchTree entries across the full `.include` chain.
- * Returns the entries plus the resolved maxSearchPriority (LAST-wins).
+ * Strip surrounding double-quotes from a cfg value.
+ * SWG cfg files quote paths that contain spaces: "D:/path with spaces/foo.toc"
+ * Must be applied to searchTOC, searchPath, and TOCTreePath values before any
+ * fs.existsSync call (T-04.2-07 — Pitfall 1: quote-stripping).
+ *
+ * Does NOT strip searchTree values (those are never quoted in real client cfgs).
+ *
+ * Exported for use by looseOverrideDeploy.ts (Plan 04).
  */
-function parseSearchTree(rootCfgPath: string): { entries: RawEntry[]; maxPriority: number } {
+export function stripQuotes(val: string): string {
+  return val.startsWith('"') && val.endsWith('"') ? val.slice(1, -1) : val;
+}
+
+/**
+ * Parse the [SharedFile] search entries (searchTree, searchTOC, searchPath, TOCTreePath)
+ * across the full `.include` chain. Returns the entries, the resolved maxSearchPriority
+ * (LAST-wins), and all TOCTreePath values collected across the chain.
+ *
+ * Previously named parseSearchTree (internal only). Renamed to parseSearchNodes and
+ * exported so looseOverrideDeploy.ts (Plan 04) can call it directly for resolveOverrideDir.
+ *
+ * Source: 04.2-PATTERNS.md §clientSearchOrder.ts; 04.2-RESEARCH.md §Capability 2.
+ */
+export function parseSearchNodes(rootCfgPath: string): {
+  entries: RawEntry[];
+  maxPriority: number;
+  tocTreePaths: string[];
+} {
   const entries: RawEntry[] = [];
   let maxPriority = 20;            // ConfigFile default (TreeFile.cpp:102)
   let order = 0;
   const visited = new Set<string>();
+  const tocTreePaths: string[] = [];
 
   function processFile(cfgPath: string): void {
     const abs = path.resolve(cfgPath);
@@ -67,10 +103,49 @@ function parseSearchTree(rootCfgPath: string): { entries: RawEntry[]; maxPriorit
         entries.push({
           sku:      tree[1] !== undefined ? parseInt(tree[1], 10) : 0,
           priority: parseInt(tree[2], 10),
-          fileName: tree[3],
+          fileName: tree[3],  // searchTree values are not quoted in real client cfgs
           baseDir,
           order:    order++,
+          family:   'searchTree',
         });
+        continue;
+      }
+
+      // searchTOC_<sku>_<priority>="path/to/sku.toc"
+      // Values are quoted when the path contains spaces — stripQuotes before use (T-04.2-07).
+      const toc = line.match(/^\s*searchTOC(?:_(\d+)_)?(\d+)\s*=\s*(.+?)\s*$/);
+      if (toc) {
+        entries.push({
+          sku:      toc[1] !== undefined ? parseInt(toc[1], 10) : 0,
+          priority: parseInt(toc[2], 10),
+          fileName: stripQuotes(toc[3]),
+          baseDir,
+          order:    order++,
+          family:   'searchTOC',
+        });
+        continue;
+      }
+
+      // searchPath_<sku>_<priority>="absolute/loose/dir"
+      // Values are quoted when the path contains spaces — stripQuotes before use (T-04.2-07).
+      const sp = line.match(/^\s*searchPath(?:_(\d+)_)?(\d+)\s*=\s*(.+?)\s*$/);
+      if (sp) {
+        entries.push({
+          sku:      sp[1] !== undefined ? parseInt(sp[1], 10) : 0,
+          priority: parseInt(sp[2], 10),
+          fileName: stripQuotes(sp[3]),
+          baseDir,
+          order:    order++,
+          family:   'searchPath',
+        });
+        continue;
+      }
+
+      // TOCTreePath="absolute/data/root/" — can repeat; collect all values.
+      // Used by Plan 03 tocReader to prefix constituent .tre archive names.
+      const ttp = line.match(/^\s*TOCTreePath\s*=\s*(.+?)\s*$/);
+      if (ttp) {
+        tocTreePaths.push(stripQuotes(ttp[1]));
         continue;
       }
 
@@ -84,56 +159,176 @@ function parseSearchTree(rootCfgPath: string): { entries: RawEntry[]; maxPriorit
   }
 
   processFile(rootCfgPath);
-  return { entries, maxPriority };
-}
-
-export interface ClientMountOrder {
-  /** Absolute .tre paths in client precedence order (index 0 = highest precedence). */
-  trePaths:   string[];
-  /** Parallel mount priorities (strictly descending) reproducing that precedence. */
-  priorities: number[];
+  return { entries, maxPriority, tocTreePaths };
 }
 
 /**
- * Build the client's TRE mount order from the cfg chain. Returns null when the cfg has no
- * searchTree config (caller should fall back to a plain directory scan).
+ * Unified mount order output from a client cfg chain.
  *
- * @param rootCfgPath  absolute path to the client root cfg (e.g. <install>/swgemu.cfg)
- * @param installRoot  absolute install root that relative searchTree filenames resolve against
+ * trePaths/priorities — the searchTree .tre paths in client precedence order (index 0 =
+ *   highest precedence), with strictly-descending compact priorities. Backward-compat.
+ * searchTreeRawPriorities — raw cfg priorities parallel to trePaths (e.g. [8, 7]).
+ *   Plan 03 treAutoMount uses these for unified cross-family priority compaction (B2 fix)
+ *   instead of the compact priorities.
+ * looseDirs — searchPath dirs sorted priority DESC (looseDirs[0] = deploy target).
+ * looseDirPriorities — raw cfg priorities parallel to looseDirs (e.g. [10, 9, 5]).
+ *   Plan 03 uses these for compaction; Plan 04 resolveOverrideDir picks index 0 (max).
+ * tocEntries — searchTOC entries NOT yet expanded to .tre paths (Plan 03 expandTocEntries).
+ * tocTreePaths — TOCTreePath values for resolving tocEntry tree names (Plan 03).
+ * maxPriority — resolved maxSearchPriority from the full cfg chain (Plan 05 guard).
+ *
+ * Source: 04.2-PLAN.md §interfaces block; 04.2-PATTERNS.md §clientSearchOrder.ts.
  */
-export function resolveClientMountOrder(rootCfgPath: string, installRoot: string): ClientMountOrder | null {
-  const { entries, maxPriority } = parseSearchTree(rootCfgPath);
+export interface ClientMountOrder {
+  /** Absolute .tre paths in client precedence order (index 0 = highest precedence),
+   *  searchTree family only. */
+  trePaths:   string[];
+  /** Compact mount priorities for trePaths (strictly descending); searchTree only.
+   *  Plan 03 treAutoMount IGNORES these and uses searchTreeRawPriorities for unified
+   *  cross-family compaction (B2 root fix). Kept for backward compat with call sites
+   *  that used the pre-extension ClientMountOrder. */
+  priorities: number[];
+  /** Raw cfg priorities parallel to trePaths (e.g. [8, 7] for the live swg-client-v2 cfg).
+   *  Used by Plan 03 for cross-family unified priority compaction (B2 root fix). */
+  searchTreeRawPriorities: number[];
+  /** searchPath dirs sorted by priority DESC (looseDirs[0] = max priority = deploy target). */
+  looseDirs:  string[];
+  /** Raw cfg priorities parallel to looseDirs (e.g. [10, 9, 5] for the live cfg).
+   *  Used by Plan 03 for unified compaction and Plan 04 resolveOverrideDir (pick index 0). */
+  looseDirPriorities: number[];
+  /** searchTOC entries NOT yet expanded to .tre paths — expansion is in Plan 03 treAutoMount. */
+  tocEntries: Array<{ tocFilePath: string; priority: number }>;
+  /** TOCTreePath values for resolving tocEntry tree names (Plan 03 expandTocEntries). */
+  tocTreePaths: string[];
+  /** Resolved maxSearchPriority from the full cfg chain (used by Plan 05 override-dir guard). */
+  maxPriority: number;
+}
+
+/**
+ * Build the client's full mount order from the cfg chain.
+ *
+ * cfgPath may be:
+ *   (a) a direct .cfg file path   — read it directly (e.g. 'D:/Code/swg-client-v2/stage-x64/client.cfg')
+ *   (b) an install directory      — derive cfg via resolveLayout(cfgPath)?.cfgFile ?? 'swgemu.cfg'
+ *
+ * Returns null ONLY when the cfg has zero entries across all three families
+ * (searchTree + searchTOC + searchPath). A pure-searchTOC or pure-searchPath client is
+ * valid and returns a non-null ClientMountOrder with empty trePaths.
+ *
+ * @param cfgPath     Direct .cfg file path OR install directory (auto-detected via statSync).
+ * @param installRoot Absolute install root that relative searchTree filenames resolve against.
+ *
+ * Source: 04.2-PLAN.md Task 2; 04.2-PATTERNS.md §clientSearchOrder.ts; CLIENT-02, TRE-05.
+ */
+export function resolveClientMountOrder(cfgPath: string, installRoot: string): ClientMountOrder | null {
+  // Two-arg form: detect whether cfgPath is a file or directory.
+  // statSync wrapped in try/catch — returns false (directory form) on any error.
+  let resolvedCfgPath: string;
+  try {
+    const stat = fs.statSync(cfgPath);
+    if (stat.isFile()) {
+      resolvedCfgPath = cfgPath;
+    } else {
+      // cfgPath is a directory — derive the cfg file via resolveLayout.
+      const layout = resolveLayout(cfgPath);
+      resolvedCfgPath = path.join(cfgPath, layout?.cfgFile ?? 'swgemu.cfg');
+    }
+  } catch {
+    // cfgPath does not exist or is not accessible — treat as a direct file path and
+    // let parseSearchNodes handle the missing-file case (existsSync guard).
+    resolvedCfgPath = cfgPath;
+  }
+
+  const { entries, maxPriority, tocTreePaths } = parseSearchNodes(resolvedCfgPath);
   if (entries.length === 0) return null;
 
-  // Drop entries above maxSearchPriority (the client only scans priority <= max), then
-  // order them as TreeFile would: priority DESC, and within equal priority the later-added
-  // wins. Add order = sku ascending, then priority ascending, then cfg index — which for a
-  // fixed priority reduces to (sku ASC, order ASC); "later wins" → (sku DESC, order DESC).
-  const ordered = entries
-    .filter((e) => e.priority <= maxPriority)
-    .sort((a, b) =>
-      b.priority - a.priority ||   // higher priority first
-      b.sku      - a.sku      ||   // ties: higher sku first (added later)
-      b.order    - a.order,        // then later cfg line first
-    );
+  // Sort all entries by the same TreeFile precedence rule:
+  // priority DESC, sku DESC (later sku = added later in install loop), order DESC
+  // (later cfg line within same sku+priority = later-added = higher precedence).
+  const sortFn = (a: RawEntry, b: RawEntry): number =>
+    b.priority - a.priority ||
+    b.sku      - a.sku      ||
+    b.order    - a.order;
 
-  // Resolve to absolute paths; skip missing files (the client WARNs and skips), and
-  // de-dup the same file appearing under multiple slots (first/highest precedence wins).
+  // ── searchTree family ──────────────────────────────────────────────────────
+  // Existing behavior: resolve to absolute paths, skip missing files, de-dup.
+  // NEW: also populate searchTreeRawPriorities (parallel to trePaths, raw cfg priority).
+  const orderedTree = entries
+    .filter(e => e.family === 'searchTree' && e.priority <= maxPriority)
+    .sort(sortFn);
+
+  // Shared seen set — de-dup across ALL three families by resolved absolute path.
   const seen = new Set<string>();
   const trePaths: string[] = [];
-  for (const e of ordered) {
+  const searchTreeRawPriorities: number[] = [];
+
+  for (const e of orderedTree) {
     const abs = path.isAbsolute(e.fileName) ? e.fileName : path.join(installRoot, e.fileName);
     const key = abs.toLowerCase();
     if (seen.has(key)) continue;
-    if (!fs.existsSync(abs)) continue;
+    if (!fs.existsSync(abs)) continue;   // skip missing .tre files (client WARNs + skips)
     seen.add(key);
     trePaths.push(abs);
+    searchTreeRawPriorities.push(e.priority);  // raw cfg priority, parallel to trePaths
   }
 
-  if (trePaths.length === 0) return null;
-
-  // Strictly-descending priorities preserve the exact precedence through the native mount
-  // (which resolves higher-priority-first): index 0 gets the largest number.
+  // Strictly-descending compact priorities preserve the exact precedence through the native
+  // mount (which resolves higher-priority-first): index 0 gets the largest number.
+  // Plan 03 ignores these in favor of searchTreeRawPriorities for unified compaction.
   const priorities = trePaths.map((_, i) => trePaths.length - i);
-  return { trePaths, priorities };
+
+  // ── searchPath family (loose dirs) ────────────────────────────────────────
+  // Sorted priority DESC: looseDirs[0] = max-priority = deploy target dir.
+  // looseDirPriorities is the parallel raw-priority array for Plan 03 compaction.
+  // No existsSync check: dirs may not exist yet (created at deploy time).
+  const orderedPath = entries
+    .filter(e => e.family === 'searchPath' && e.priority <= maxPriority)
+    .sort(sortFn);
+
+  const looseDirs: string[] = [];
+  const looseDirPriorities: number[] = [];
+
+  for (const e of orderedPath) {
+    const abs = path.isAbsolute(e.fileName) ? e.fileName : path.join(installRoot, e.fileName);
+    const key = abs.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    looseDirs.push(abs);
+    looseDirPriorities.push(e.priority);
+  }
+
+  // ── searchTOC family ──────────────────────────────────────────────────────
+  // TOC entries are NOT expanded here — expansion (tree-name block read + TOCTreePath prefix)
+  // is performed by Plan 03 treAutoMount / tocReader.ts.
+  // Priority order matches the other families (DESC): tocEntries[0] = highest-priority TOC.
+  const orderedToc = entries
+    .filter(e => e.family === 'searchTOC' && e.priority <= maxPriority)
+    .sort(sortFn);
+
+  const tocEntries: Array<{ tocFilePath: string; priority: number }> = [];
+
+  for (const e of orderedToc) {
+    const abs = path.isAbsolute(e.fileName) ? e.fileName : path.join(installRoot, e.fileName);
+    const key = abs.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tocEntries.push({ tocFilePath: abs, priority: e.priority });
+  }
+
+  // Return null ONLY when all three families have zero entries after filtering.
+  // A pure-searchTOC client (no searchTree) is valid — Plan 03 needs tocEntries.
+  if (trePaths.length === 0 && looseDirs.length === 0 && tocEntries.length === 0) {
+    return null;
+  }
+
+  return {
+    trePaths,
+    priorities,
+    searchTreeRawPriorities,
+    looseDirs,
+    looseDirPriorities,
+    tocEntries,
+    tocTreePaths,
+    maxPriority,
+  };
 }
