@@ -187,10 +187,14 @@ export function detectClients(): DetectedClient[] {
   // D-13: cfgFile is no longer hardcoded; resolveLayout() determines it from the
   // release-pattern table so we correctly handle Live/-subdir vs root layouts.
   const knownPaths: Array<{ name: string; installPath: string }> = [
-    { name: 'SWG Infinity',      installPath: 'D:\\SWG Infinity\\SWG Infinity' },
-    { name: 'SWGEmu',            installPath: 'D:\\SWGEmu Client\\SWGEmu'      },
-    { name: 'SWG Infinity (C:)', installPath: 'C:\\SWG Infinity\\SWG Infinity' },
-    { name: 'SWGEmu (C:)',       installPath: 'C:\\SWGEmu\\SWGEmu'             },
+    { name: 'SWG Infinity',              installPath: 'D:\\SWG Infinity\\SWG Infinity'          },
+    { name: 'SWGEmu',                    installPath: 'D:\\SWGEmu Client\\SWGEmu'               },
+    { name: 'SWG Infinity (C:)',         installPath: 'C:\\SWG Infinity\\SWG Infinity'          },
+    { name: 'SWGEmu (C:)',               installPath: 'C:\\SWGEmu\\SWGEmu'                      },
+    // swg-client-v2: decoupled dev client — binary in stage-x64, data dir external (treDirFromCfg).
+    // client.cfg present; zero local .tre files. resolveLayout uses treDirFromCfg path.
+    // Source: 04.2-PATTERNS.md §clientLocator.ts; 04.2-RESEARCH.md §Capability 1.
+    { name: 'swg-client-v2 (stage-x64)', installPath: 'D:\\Code\\swg-client-v2\\stage-x64'     },
   ];
 
   for (const known of knownPaths) {
@@ -267,16 +271,42 @@ export function detectClients(): DetectedClient[] {
 /**
  * Validate and construct a DetectedClient from a user-supplied install path.
  *
- * Returns null if the path does not look like a valid SWG install
- * (swgemu.cfg must exist at the given path).
+ * Returns null if the path does not look like a valid SWG install.
  *
  * D-04-11: workspace is fully usable offline; manual override is the final fallback.
  *
+ * Extended for CLIENT-02: when `opts.cfgFileName` is supplied, bypasses resolveLayout
+ * entirely so that decoupled installs (e.g. swg-client-v2) with external TRE dirs can
+ * be registered even when auto-detection would return null.
+ *
  * @param installPath  Absolute path to the client install root (user-supplied).
- * @returns DetectedClient if valid, null if swgemu.cfg not found.
+ * @param opts         Optional explicit overrides — bypass resolveLayout when present.
+ *   opts.cfgFileName  cfg filename to use instead of auto-detecting (e.g. 'client.cfg').
+ *   opts.treDir       Absolute path to the TRE directory; passed to _detectTreVersion so
+ *                     the version probe reads from the real data dir, not the binary dir.
+ * @returns DetectedClient if valid, null on any error.
+ *
+ * Source: 04.2-PATTERNS.md §clientLocator.ts; CLIENT-02.
  */
-export function addManualClient(installPath: string): DetectedClient | null {
+export function addManualClient(
+  installPath: string,
+  opts?: { cfgFileName?: string; treDir?: string },
+): DetectedClient | null {
   try {
+    if (opts?.cfgFileName) {
+      // Explicit override: bypass resolveLayout; construct the client directly.
+      // Used for decoupled installs (swg-client-v2) where resolveLayout would return null
+      // because auto-detect requires the TRE dir at the install root (which is absent here).
+      const cfgRootPath = path.join(installPath, opts.cfgFileName);
+      const treVersion  = _detectTreVersion(installPath, opts.treDir);
+      return {
+        name: 'Manual Install',
+        installPath,
+        cfgRootPath,
+        treVersion,
+      };
+    }
+
     // D-13: resolveLayout() replaces the hardcoded 'swgemu.cfg' check so that
     // manual installs with a known non-standard cfgFile are still accepted.
     const layout = resolveLayout(installPath);
@@ -298,27 +328,39 @@ export function addManualClient(installPath: string): DetectedClient | null {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
- * Read the TRE version string from the first archive found in the client's Live/ dir.
+ * Read the TRE version string from the first archive found in the TRE directory.
  * Returns '5000' for Infinity (EERT5000), '0005' for older clients, or 'unknown'.
  *
  * Reads just the first 8 bytes (magic + version) of the first .tre file found.
  * Fails silently and returns 'unknown' if no .tre files are present or inaccessible.
  *
+ * @param installPath     Absolute path to the client install root.
+ * @param explicitTreDir  When supplied, use this dir instead of computing from installPath +
+ *                        treSubdir. Required for decoupled installs (treDirFromCfg layouts)
+ *                        where the TRE data lives in an external dir, not under installPath.
+ *
  * Source: 04-RESEARCH.md §Pitfall 1 (v5000 magic bytes; hexdump verified).
+ *         CLIENT-02 extension: explicit treDir for swg-client-v2 decoupled layout.
  */
-function _detectTreVersion(installPath: string): string {
+function _detectTreVersion(installPath: string, explicitTreDir?: string): string {
   try {
-    // D-13: resolveLayout() replaces the hardcoded 'Live/' subdir assumption.
-    // SWGEmu stores TREs at the install root; Infinity in Live/. Both are resolved
-    // correctly by the release-pattern table.
-    const layout = resolveLayout(installPath);
-    if (!layout) return 'unknown';
+    let treDir: string;
+    if (explicitTreDir !== undefined) {
+      // Caller supplied the TRE dir directly (addManualClient with opts.treDir).
+      // Bypasses resolveLayout — used for decoupled installs with external data.
+      treDir = explicitTreDir;
+    } else {
+      // D-13: resolveLayout() replaces the hardcoded 'Live/' subdir assumption.
+      // SWGEmu stores TREs at the install root; Infinity in Live/. Both are resolved
+      // correctly by the release-pattern table.
+      const layout = resolveLayout(installPath);
+      if (!layout) return 'unknown';
+      treDir = layout.treSubdir
+        ? path.join(installPath, layout.treSubdir)
+        : installPath;
+    }
 
-    const treDir = layout.treSubdir
-      ? path.join(installPath, layout.treSubdir)
-      : installPath;
     if (!fs.existsSync(treDir)) return 'unknown';
-
     const treFiles = fs.readdirSync(treDir).filter(f => f.endsWith('.tre'));
     if (treFiles.length === 0) return 'unknown';
 

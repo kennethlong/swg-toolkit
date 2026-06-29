@@ -99,9 +99,20 @@ export const KNOWN_LAYOUTS: ClientLayout[] = [
     treSubdir:         '',
     maxSearchPriority: 27,
   },
-  // [A1] 'client.cfg' releases — cfgFile and treSubdir vary by release/server;
-  // these cannot be auto-detected without measuring a real install.
-  // → resolveLayout returns null; user enters manual override (wizard + ProjectBindingBar).
+  // swg-client-v2 style: binary dir has client.cfg but ZERO local .tre files.
+  // treSubdir='' here because the TRE data dir is NOT a fixed subdir of the install root;
+  // it is resolved at mount time from cfg's TOCTreePath/searchTOC values (treDirFromCfg=true).
+  // This row is LAST so the swgemu.cfg rows above are always checked first, preventing
+  // mis-classification of a swgemu.cfg install as client.cfg (T-04.2-06 + A4 regression safety).
+  //
+  // Source: 04.2-PATTERNS.md §clientLayout.ts; 04.2-RESEARCH.md §Capability 1; CLIENT-02.
+  {
+    release:           'swg-client-v2',
+    cfgFile:           'client.cfg',
+    treSubdir:         '',
+    maxSearchPriority: 12,
+    treDirFromCfg:     true,
+  },
 ];
 
 // ─── resolveLayout ────────────────────────────────────────────────────────────
@@ -136,12 +147,21 @@ export function resolveLayout(installPath: string): ClientLayout | null {
         ? path.join(installPath, layout.treSubdir)
         : installPath;
 
-      if (
-        fs.existsSync(cfgPath) &&
-        fs.existsSync(treDir) &&
-        fs.readdirSync(treDir).some((f) => f.endsWith('.tre'))
-      ) {
-        return layout;
+      if (layout.treDirFromCfg) {
+        // Decoupled install: presence of client.cfg alone is the signal.
+        // The TRE data dir is resolved from cfg's TOCTreePath/searchTOC values at mount time.
+        // Do NOT require local .tre files — this layout class (e.g. swg-client-v2) never has them.
+        // T-04.2-05: fs.existsSync is read-only; wrapped in the outer try/catch.
+        if (fs.existsSync(cfgPath)) return layout;
+      } else {
+        // Standard install: cfg must exist AND treDir must contain at least one .tre archive.
+        if (
+          fs.existsSync(cfgPath) &&
+          fs.existsSync(treDir) &&
+          fs.readdirSync(treDir).some((f) => f.endsWith('.tre'))
+        ) {
+          return layout;
+        }
       }
     } catch {
       // Directory unreadable / broken symlink / permission error — skip this layout
