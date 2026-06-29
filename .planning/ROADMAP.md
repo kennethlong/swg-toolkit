@@ -219,7 +219,7 @@ Plans:
 
 **Ground-truth gate** (de-anchoring protocol — verify against `../swg-client-v2` source + real bytes, NOT consensus): mount semantics are LOCKED from the 2026-06-28 source trace — `TreeFile::install` reads `searchPath`/`searchTree`/`searchTOC` per priority 0→maxSearchPriority (`TreeFile.cpp:118-148`); `.toc` = token "TOC"/TAG_0001 (`TreeFile_SearchNode.h:270-299`); `TOCTreePath` prepended to in-toc archive names (`TreeFile_SearchNode.cpp:639-671`); precedence priority-DESC, same-priority ties → **LATER-added wins** (do NOT re-derive as first-added). See memory `reference-swg-client-mount-mechanisms` + todo `client-detection-and-layout-model.md`.
 
-**Plans:** 2/6 plans executed
+**Plans:** 4/6 plans executed
 Plans:
 **Wave 1**
 - [x] 04.2-01-PLAN.md — Contracts + RED test scaffolding: LooseDeployRecord type, 'loose-override' DeployModel, SwgChangeset.deployRecord union; RED stubs for tocReader, looseOverrideDeploy, clientLayout (treDirFromCfg case), clientSearchOrder (quote-stripping, looseDirs)
@@ -228,8 +228,8 @@ Plans:
 - [x] 04.2-02-PLAN.md — Client detection: clientLayout treDirFromCfg flag + swg-client-v2 KNOWN_LAYOUTS row; clientLocator swg-client-v2 knownPath; clientSearchOrder rename parseSearchNodes + family tags + stripQuotes + searchTOC/searchPath/TOCTreePath parsing + looseDirs/tocEntries/tocTreePaths
 
 **Wave 3** *(blocked on Wave 2 completion — parallel pair)*
-- [ ] 04.2-03-PLAN.md — TOC reader + unified mount: tocReader.ts full-index reader (parseTocHeader + readTocTreeNames + readTocIndex resolving via engine-faithful CRC binary search per `localExists`, `crc32.ts` port of Crc.cpp); treAutoMount ONE ordered mount across searchTOC/searchTree/searchPath (B1/B2/B4); treMount injectLooseDirOverlay (conditional isOverride); treStore appendLooseEntries
-- [ ] 04.2-04-PLAN.md — Loose-override deploy: looseOverrideDeploy.ts (resolveOverrideDir max-priority; deployLoose snapshots pre-existing files + prunes prior record; resetLoose RESTORES from snapshot; path-safety hardened — drive-relative + trailing-sep confinement); changesetService broadened type
+- [x] 04.2-03-PLAN.md — TOC reader + unified mount: tocReader.ts full-index reader (parseTocHeader + readTocTreeNames + readTocIndex resolving via engine-faithful CRC binary search per `localExists`, `crc32.ts` port of Crc.cpp); treAutoMount ONE ordered mount across searchTOC/searchTree/searchPath (B1/B2/B4); treMount injectLooseDirOverlay (conditional isOverride); treStore appendLooseEntries
+- [x] 04.2-04-PLAN.md — Loose-override deploy: looseOverrideDeploy.ts (resolveOverrideDir max-priority; deployLoose snapshots pre-existing files + prunes prior record; resetLoose RESTORES from snapshot; path-safety hardened — drive-relative + trailing-sep confinement); changesetService broadened type
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 04.2-05-PLAN.md — DeployDialog: third radio 'Loose override dir' + resolvedOverrideDir preview; generalize handleBrowse via resolveLayout; handleDeploy + handleReset loose-override branches (deployLoose/resetLoose only, no packPatch/cfgActivator)
