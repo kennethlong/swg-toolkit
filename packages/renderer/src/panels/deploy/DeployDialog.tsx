@@ -366,6 +366,77 @@ export function DeployDialog({
         return;
       }
 
+      // ── Loose-override path (DEPLOY-08) ─────────────────────────────────
+      // No TRE pack or cfg surgery — write staged files directly into the client's
+      // highest-priority searchPath override dir.  The two existing branches below
+      // are UNCHANGED.
+      if (deployModel === 'loose-override') {
+        // Step 1: override dir must have been resolved via the useEffect.
+        if (!resolvedOverrideDir) {
+          setPhase({
+            kind: 'error',
+            step: 'activate',
+            message: 'No override dir resolved — bind a client with a searchPath override',
+            cfgRestored: false,
+          });
+          return;
+        }
+
+        // Step 1b: W1 override-dir guard — check that looseDirPriorities[0] ≤ maxSearchPriority.
+        // A searchPath with priority ABOVE maxSearchPriority is never read by the engine (Opus Q3).
+        const order = resolveClientMountOrder(
+          selectedClient!.cfgRootPath,
+          selectedClient!.installPath,
+        );
+        if (
+          !order ||
+          order.looseDirs.length === 0 ||
+          order.looseDirPriorities[0] > order.maxPriority
+        ) {
+          setPhase({
+            kind: 'error',
+            step: 'activate',
+            message:
+              'Override dir priority ' +
+              (order?.looseDirPriorities[0] ?? 'unknown') +
+              ' exceeds maxSearchPriority ' +
+              (order?.maxPriority ?? 'unknown') +
+              ' — engine would not load files at this priority',
+            cfgRestored: false,
+          });
+          return;
+        }
+
+        setPhase({ kind: 'activating' });
+
+        try {
+          // H2 prune: pass prior LooseDeployRecord when available (discriminant: 'overrideDir' in rec).
+          const prior = deployRecordRef.current;
+          const priorLoose: LooseDeployRecord | undefined =
+            prior && 'overrideDir' in (prior as object)
+              ? (prior as LooseDeployRecord)
+              : undefined;
+
+          const record = deployLoose(flattenedEntries, resolvedOverrideDir, {
+            studioDir,
+            priorRecord: priorLoose,
+          });
+
+          deployRecordRef.current = record;
+          setDeployedVersion(manifest.activeVersionId!);
+          updateChangesetDeployRecord(manifest.activeVersionId!, record);
+          setPhase({ kind: 'done', slot: 'override-dir', cfgPath: resolvedOverrideDir });
+        } catch (e) {
+          setPhase({
+            kind: 'error',
+            step: 'activate',
+            message: (e as Error).message ?? String(e),
+            cfgRestored: false,
+          });
+        }
+        return;
+      }
+
       // B6+N2: buildPatchName sanitizes spaces + adds a UUID fragment.
       // BANNED: 'swgtoolkit_' + workspaceName + '.tre' — spaces truncate cfg values.
       const patchName = buildPatchName(workspaceName);
@@ -508,7 +579,7 @@ export function DeployDialog({
     } finally {
       deployingRef.current = false;  // W9: release mutex
     }
-  }, [selectedClient, deployModel]);
+  }, [selectedClient, deployModel, resolvedOverrideDir]);
 
   // ── handleReset ───────────────────────────────────────────────────────────
   // H5: primary reset = restoreCfg (whole-file, byte-pristine ROOT cfg restore).
@@ -522,6 +593,19 @@ export function DeployDialog({
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rec = deployRecordRef.current as any;
+
+      // ── Loose-override reset ─────────────────────────────────────────────
+      // No cfg surgery, no .tre deletion — resetLoose restores (B3) or removes
+      // only the files written by the prior deployLoose call.
+      if (deployModel === 'loose-override') {
+        resetLoose(rec as LooseDeployRecord);
+        setDeployedVersion(null);
+        deployRecordRef.current = null;
+        setPhase({ kind: 'idle' });
+        setShowResetConfirm(false);
+        return;
+      }
+
       const rootCfgPath = selectedClient?.cfgRootPath ?? (rec.includeTargetPath as string | undefined);
       const snapPath: string | undefined = rec.snapshotPath;
 
@@ -880,6 +964,29 @@ export function DeployDialog({
                   variant="pass"
                   caption={`deployed · slot ${phase.slot}`}
                 />
+                {/* MED delete-skip banner: surfaces unapplied delete actions to the user.
+                    Rendered only when the loose-override deploy skipped one or more
+                    'delete' action entries (base-archive files cannot be tombstoned by override). */}
+                {phase.slot === 'override-dir' &&
+                  ((deployRecordRef.current as LooseDeployRecord)?.skippedDeletes?.length ?? 0) > 0 && (
+                  <div
+                    style={{
+                      padding: 'var(--space-2) var(--space-3)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-warn)',
+                      background: 'var(--color-warn)',
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--color-text)',
+                      opacity: 0.9,
+                    }}
+                  >
+                    ⚠ Note:{' '}
+                    {(deployRecordRef.current as LooseDeployRecord).skippedDeletes.length}{' '}
+                    delete action(s) could not be applied — base-archive files cannot be
+                    tombstoned by override. Skipped:{' '}
+                    {(deployRecordRef.current as LooseDeployRecord).skippedDeletes.join(', ')}.
+                  </div>
+                )}
                 <button
                   style={secondaryBtnStyleLocal}
                   aria-label="Reset deployment"
