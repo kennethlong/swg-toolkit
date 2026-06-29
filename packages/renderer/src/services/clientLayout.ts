@@ -52,6 +52,7 @@ export interface ClientLayout {
    * Subdirectory under the install root that contains .tre files.
    * Empty string ('') = TREs are in the install root itself (SWGEmu layout).
    * 'Live' = TREs are in <installRoot>/Live/ (SWG Infinity layout).
+   * For treDirFromCfg layouts, '' means the actual TRE dir is resolved from the cfg at mount time.
    */
   treSubdir: string;
   /**
@@ -60,6 +61,15 @@ export interface ClientLayout {
    * this value is used for display/confirmation in the wizard (D-13).
    */
   maxSearchPriority: number;
+  /**
+   * When true, the TRE directory is resolved from the cfg's TOCTreePath / searchTOC_* entries
+   * at mount time rather than from a fixed treSubdir under the install root.
+   * Applies to decoupled builds (e.g. swg-client-v2) where the binary dir has zero local .tre.
+   * resolveLayout skips the local .tre check for this layout row (see Plan 02).
+   *
+   * Source: 04.2-PATTERNS.md §clientLayout.ts; CLIENT-02.
+   */
+  treDirFromCfg?: true;
 }
 
 // ─── KNOWN_LAYOUTS ────────────────────────────────────────────────────────────

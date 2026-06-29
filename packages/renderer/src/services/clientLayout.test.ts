@@ -105,4 +105,68 @@ describe('resolveLayout D-13 release-pattern table', () => {
     expect(manualOverride.treSubdir).toBe('GameFiles');
     expect(manualOverride.maxSearchPriority).toBe(45);
   });
+
+  // ---------------------------------------------------------------------------
+  // Wave-0 extensions — RED until Plan 02 adds the client.cfg row + treDirFromCfg logic
+  // ---------------------------------------------------------------------------
+
+  /**
+   * (e) swg-client-v2 style: client.cfg present, ZERO .tre files → 'swg-client-v2' layout.
+   * RED until Plan 02 adds the { release:'swg-client-v2', cfgFile:'client.cfg', treDirFromCfg:true }
+   * row to KNOWN_LAYOUTS and updates resolveLayout to skip the local .tre check for this row.
+   *
+   * CLIENT-02: decoupled client (no co-located .tre) must be auto-classifiable by toolkit.
+   */
+  it('(e) client.cfg + ZERO .tre files → resolveLayout returns swg-client-v2 with treDirFromCfg=true', () => {
+    // Write only client.cfg — NO .tre files anywhere in the dir
+    writeFileSync(join(tmpDir, 'client.cfg'), '[SharedFile]\nmaxSearchPriority=12\n', 'utf8');
+    // Intentionally do NOT create any .tre files
+
+    const layout = resolveLayout(tmpDir);
+
+    // RED: resolveLayout returns null because KNOWN_LAYOUTS has no client.cfg row yet.
+    // After Plan 02 adds the row, layout should be non-null with these fields:
+    expect(layout).not.toBeNull();
+    expect(layout!.release).toBe('swg-client-v2');
+    expect(layout!.cfgFile).toBe('client.cfg');
+    expect(layout!.treDirFromCfg).toBe(true);
+    expect(layout!.maxSearchPriority).toBe(12);
+  });
+
+  /**
+   * (f) Regression: existing SWG Infinity and SWGEmu layouts still classify identically
+   * after the swg-client-v2 row is added to KNOWN_LAYOUTS.
+   *
+   * This test re-checks tests (a) and (b) using fresh temp dirs to confirm the probe order
+   * (Infinity → SWGEmu → client.cfg) doesn't accidentally classify legacy installs as client.cfg.
+   */
+  it('(f) regression: Infinity + SWGEmu layouts still classify correctly after KNOWN_LAYOUTS extension', () => {
+    // Sub-temp dirs for independent fixtures
+    const infinityDir = join(tmpDir, 'infinity');
+    const swgemuDir   = join(tmpDir, 'swgemu');
+    mkdirSync(infinityDir, { recursive: true });
+    mkdirSync(swgemuDir, { recursive: true });
+
+    buildFakeClientDir(infinityDir, {
+      treSubdir:         'Live',
+      cfgFile:           'swgemu.cfg',
+      maxSearchPriority: 60,
+    });
+    buildFakeClientDir(swgemuDir, {
+      treSubdir:         '',
+      cfgFile:           'swgemu.cfg',
+      maxSearchPriority: 27,
+    });
+
+    const infinityLayout = resolveLayout(infinityDir);
+    const swgemuLayout   = resolveLayout(swgemuDir);
+
+    expect(infinityLayout).not.toBeNull();
+    expect(infinityLayout!.release).toBe('SWG Infinity');
+    expect(infinityLayout!.treSubdir).toBe('Live');
+
+    expect(swgemuLayout).not.toBeNull();
+    expect(swgemuLayout!.release).toBe('SWGEmu');
+    expect(swgemuLayout!.treSubdir).toBe('');
+  });
 });
