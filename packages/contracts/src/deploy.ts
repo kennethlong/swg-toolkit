@@ -42,6 +42,8 @@ export interface DetectedClient {
  * hardlink-shadow (opt-in): hardlink (NTFS fs.link) the full client TRE base to a local
  *   shadow dir; apply patches over the shadow; ~0 extra disk for same-volume hardlinks.
  *   Falls back to copyFile (EXDEV cross-device) and shows disk estimate when cross-volume.
+ * Loose Override (opt-in, DEPLOY-08): write staged files directly into the client's
+ *   highest-priority searchPath dir; no TRE pack, no .cfg surgery (see LooseDeployRecord).
  *
  * Legacy names (pre-04.1-07, preserved for backward compat):
  *   'patch-prepend' = absolute-path predecessor (relative patchName wrote to Live/)
@@ -49,7 +51,12 @@ export interface DetectedClient {
  *
  * Source: D-04-10, D-05 (absolute-path default), DEPLOY-06 (hardlink).
  */
-export type DeployModel = 'absolute-path' | 'hardlink-shadow' | 'patch-prepend' | 'shadow-base';
+export type DeployModel =
+  | 'absolute-path'
+  | 'hardlink-shadow'
+  | 'loose-override'
+  | 'patch-prepend'   // legacy
+  | 'shadow-base';    // legacy
 
 // ---------------------------------------------------------------------------
 // CfgInsertionRecord
@@ -81,6 +88,49 @@ export interface CfgInsertionRecord {
    * Required for Reset to call fs.unlinkSync on the correct file (R2-B7 fix).
    */
   patchPath?: string;
+}
+
+// ---------------------------------------------------------------------------
+// LooseDeployRecord
+// ---------------------------------------------------------------------------
+
+/**
+ * Record of a successful loose-file deploy (DEPLOY-08).
+ * Stored in SwgChangeset.deployRecord when the version was deployed via the loose-file
+ * override mode. Used by looseOverrideDeploy.resetLoose() for non-destructive undo.
+ *
+ * Source: DEPLOY-08; looseOverrideDeploy.ts.
+ */
+export interface LooseDeployRecord {
+  /** Absolute path to the override dir that files were written into. */
+  overrideDir: string;
+  /**
+   * Files written during this deploy, with pre-existence + snapshot info for reset safety.
+   * Files where preExisted===false are DELETED on reset.
+   * Files where preExisted===true are RESTORED from snapshotPath on reset (not skipped).
+   */
+  writtenFiles: Array<{
+    /** VFS virtual path (e.g. 'texture/foo.dds'). */
+    virtualPath: string;
+    /** Absolute path on disk where the file was written. */
+    destPath: string;
+    /**
+     * true when a file at destPath already existed before this deploy.
+     * resetLoose RESTORES from snapshotPath (copy back + delete snapshot) for preExisted===true.
+     * resetLoose DELETES destPath for preExisted===false.
+     */
+    preExisted: boolean;
+    /**
+     * Absolute path to snapshot of original bytes; present when preExisted===true.
+     * resetLoose RESTORES from snapshotPath (copy back + delete snapshot), does NOT skip.
+     */
+    snapshotPath?: string;
+  }>;
+  /**
+   * virtualPaths of staged 'delete' entries that were skipped (loose override cannot
+   * tombstone base-archive files). Surfaced as a visible banner in DeployDialog.
+   */
+  skippedDeletes: string[];
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@
  */
 
 import type { StagingAction } from './staging.js';
+import type { LooseDeployRecord } from './deploy.js';
 
 // ---------------------------------------------------------------------------
 // BASELINE_ID
@@ -133,10 +134,13 @@ export interface SwgChangeset {
    */
   deltas: FileDelta[];
   /**
-   * Present when this version was deployed via patch-prepend.
+   * Present when this version was deployed.
    * Undefined until the version is deployed.
+   *
+   * CfgDeployRecord branch: used by deactivatePatch / cfgActivator reset path.
+   * LooseDeployRecord branch: used by looseOverrideDeploy.resetLoose reset path (DEPLOY-08).
    */
-  deployRecord?: CfgDeployRecord;
+  deployRecord?: CfgDeployRecord | LooseDeployRecord;
 }
 
 // ---------------------------------------------------------------------------
