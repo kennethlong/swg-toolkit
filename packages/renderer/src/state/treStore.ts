@@ -131,6 +131,17 @@ export interface TreStore {
   /** Select a VFS entry and set its shadow chain. */
   selectEntry: (path: string | null, chain: ShadowChainDisplay | null) => void;
 
+  /**
+   * Append loose-directory VFS entries without replacing the existing mount.
+   *
+   * Merges `entries` into the existing vfsEntries by prepending new entries;
+   * de-duplicates by lowercased path (new entry wins over existing entry with the
+   * same path). Does NOT replace archives or mountHandle (B1 constraint).
+   *
+   * Called by treMount.ts injectLooseDirOverlay after mountTrePaths completes.
+   */
+  appendLooseEntries: (entries: VfsEntry[]) => void;
+
   /** Clear all mounts and reset to idle. */
   reset: () => void;
 }
@@ -182,6 +193,18 @@ export const useTreStore = create<TreStore>((set) => ({
 
   selectEntry: (path, chain) => {
     set({ selectedEntryPath: path, selectedChain: chain });
+  },
+
+  appendLooseEntries: (entries: VfsEntry[]) => {
+    if (entries.length === 0) return;
+    set((state) => {
+      // New entries are prepended; de-dup by lowercased path (new entry wins).
+      // Existing entries whose lowercase path matches a new entry are dropped.
+      const newPathSet = new Set(entries.map(e => e.path.toLowerCase()));
+      const kept = state.vfsEntries.filter(e => !newPathSet.has(e.path.toLowerCase()));
+      const result = [...entries, ...kept];
+      return { vfsEntries: result, searchResults: result };
+    });
   },
 
   reset: () => {

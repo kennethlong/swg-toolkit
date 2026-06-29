@@ -8,6 +8,8 @@
  * Exports:
  *   mountTrePaths(filePaths, priorities)      — mount archives + populate treStore
  *   decodeMountEntriesColumnar(blob)           — decode native columnar blob → VfsEntry[]
+ *   mountComplete()                           — pipeline-done signal (B1 structural gate)
+ *   injectLooseDirOverlay(dir, opts)          — inject loose-dir VfsEntries (B4 isOverride)
  *
  * Path B addon access: via the ./nativeTre require() seam (nodeIntegration:true).
  * A top-level ESM import of @swg/native-core crashes the real renderer at startup
@@ -25,6 +27,12 @@ import type { TreVersion } from '@swg/contracts';
 // function`). Importing the seam (a local ESM module) keeps the native call mockable in
 // vitest via vi.mock('./nativeTre', …) without loading the .node binary.
 import { nativeCore } from './nativeTre';
+
+// Path B fs/path — never bundled by Vite (same require seam pattern as clientSearchOrder.ts).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodeFs   = require('fs')   as typeof import('fs');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodePath = require('path') as typeof import('path');
 
 // ─── Version helper (moved from TreVfsBrowser) ───────────────────────────────
 
@@ -168,4 +176,87 @@ export async function mountTrePaths(filePaths: string[], priorities: number[]): 
 
   useTreStore.getState().mountComplete(handle, archives, vfsEntries);
   return handle;
+}
+
+// ─── mountComplete (pipeline-done signal) ────────────────────────────────────
+
+/**
+ * Signal that the full mount pipeline (TRE archives + loose-dir overlays) is complete.
+ *
+ * Called ONCE per autoMountClient invocation, AFTER injectLooseDirOverlay for all
+ * loose dirs. B1 structural gate: treAutoMount.test.ts asserts toHaveBeenCalledTimes(1).
+ *
+ * mountTrePaths already invokes the store's mountComplete action (sets status='done').
+ * This exported function re-affirms completion without replacing archives or vfsEntries
+ * (those are managed by mountTrePaths and appendLooseEntries respectively).
+ */
+export function mountComplete(): void {
+  const state = useTreStore.getState();
+  // Idempotent: only update status if the pipeline somehow ended in a non-done state
+  // (e.g. if a future refactor decouples mountTrePaths from the store action).
+  // Does NOT replace archives, vfsEntries, or mountHandle.
+  if (state.mountStatus.kind !== 'done') {
+    useTreStore.setState({ mountStatus: { kind: 'done' } });
+  }
+}
+
+// ─── injectLooseDirOverlay ────────────────────────────────────────────────────
+
+/**
+ * Inject loose-directory VFS entries into the store without replacing the existing mount.
+ *
+ * Recursively scans `dir`; builds a VfsEntry for each file; calls appendLooseEntries.
+ * virtualPath is relative to the dir root with forward-slash normalisation and lowercase.
+ *
+ * Non-fatal: errors are logged and swallowed, consistent with autoMountClient handling.
+ *
+ * @param dir  Absolute path to the loose directory to scan.
+ * @param opts isOverride: true when the dir's raw priority exceeds maxTreRawPriority (B4).
+ */
+export function injectLooseDirOverlay(dir: string, opts: { isOverride: boolean }): void {
+  try {
+    const entries = collectLooseEntries(dir, dir, opts.isOverride);
+    useTreStore.getState().appendLooseEntries(entries);
+  } catch (err) {
+    console.error('[injectLooseDirOverlay] error scanning', dir, ':', err);
+  }
+}
+
+/** Internal recursive helper for injectLooseDirOverlay. */
+function collectLooseEntries(rootDir: string, scanDir: string, isOverride: boolean): VfsEntry[] {
+  const entries: VfsEntry[] = [];
+
+  let items: import('fs').Dirent[];
+  try {
+    items = nodeFs.readdirSync(scanDir, { withFileTypes: true });
+  } catch {
+    return entries; // dir not readable — skip silently
+  }
+
+  for (const item of items) {
+    const fullPath = nodePath.join(scanDir, item.name);
+
+    if (item.isDirectory()) {
+      entries.push(...collectLooseEntries(rootDir, fullPath, isOverride));
+    } else if (item.isFile()) {
+      // Virtual path: relative to rootDir, forward-slash, lowercase.
+      const rel = nodePath.relative(rootDir, fullPath)
+        .replace(/\\/g, '/')
+        .toLowerCase();
+
+      entries.push({
+        path:                  rel,
+        name:                  item.name.toLowerCase(),
+        segments:              rel.split('/'),
+        winnerArchivePath:     fullPath,
+        winnerArchiveFilename: item.name,
+        isOverride,
+        isTombstone:           false,
+        shadowCount:           0,
+        winnerArchiveIndex:    -1,
+      });
+    }
+  }
+
+  return entries;
 }

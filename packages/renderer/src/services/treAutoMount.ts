@@ -1,20 +1,171 @@
 /**
  * packages/renderer/src/services/treAutoMount.ts
- * Shared auto-mount of a project's target TRE set — used by BOTH the initial bind
- * (initProject) and every reopen (openWorkspace), so the TRE browser is populated
- * whenever a project opens (not just when it's first created).
+ * TRE auto-mount helpers for client projects.
  *
- * Client targets mount in true client precedence (resolveClientMountOrder, verified vs
- * TreeFile.cpp); standalone targets fall back to a directory scan.
+ * Exports:
+ *   autoMountClient(installPath) — unified single-mount for a client install
+ *     (B1: one mountTrePaths call; B2: cross-family sort; B4: isOverride gate)
+ *   autoMountTarget(params)      — legacy standalone/tre-set mount (workspaceService compat)
+ *
+ * B1 root cause (treStore.ts:159): the store's mountComplete does a full Zustand set({})
+ * which REPLACES all state. Calling mountTrePaths twice erased everything from the first
+ * call. Fix: build ONE ordered list across all cfg families and call mountTrePaths ONCE.
+ *
+ * B2 root cause: per-family compact sequences ignored raw priority context across families,
+ * allowing a low-priority TOC TRE to silently outrank a high-priority searchTree TRE.
+ * Fix: unified sort on rawPriority DESC before compact assignment.
+ *
+ * B4 root cause: injectLooseDirOverlay was called with unconditional isOverride=true.
+ * Fix: compare looseDirRawPriority against maxTreRawPriority.
+ *
+ * Sources: 04.2-03-PLAN.md; 04.2-RESEARCH.md §Capability 2; 04.2-PATTERNS.md §treAutoMount.ts
  */
 
-import path from 'path';
+import * as path from 'path';
+import * as fs   from 'fs';
 import { resolveClientMountOrder } from './clientSearchOrder';
-import { mountTrePaths } from './treMount';
+import { readTocTreeNames }        from './tocReader';
+import { mountTrePaths, mountComplete, injectLooseDirOverlay } from './treMount';
+import type { ClientMountOrder }   from './clientSearchOrder';
+
+// ─── MountNode (internal) ─────────────────────────────────────────────────────
+
+/** Internal ordered TRE descriptor — NOT exported. */
+interface MountNode {
+  kind:        'tre';
+  path:        string;
+  rawPriority: number;
+  /** Tie-break: sku of origin (0 for searchTree, tocEntry index for TOC family). */
+  sku:         number;
+  /** Tie-break within same sku/priority. */
+  cfgIndex:    number;
+}
+
+// ─── buildTreNodes ────────────────────────────────────────────────────────────
+
+/**
+ * Build the unified ordered TRE node list from a ClientMountOrder.
+ *
+ * 1. searchTree family: one node per trePath (rawPriority from searchTreeRawPriorities).
+ * 2. tocEntry family: for each tocEntry, expand to .tre names via readTocTreeNames; try
+ *    each TOCTreePath prefix with existsSync; push on first match; warn + skip on miss.
+ * 3. Sort all nodes: rawPriority DESC, sku DESC, cfgIndex DESC.
+ */
+function buildTreNodes(order: ClientMountOrder): MountNode[] {
+  const nodes: MountNode[] = [];
+
+  // ── searchTree family ──────────────────────────────────────────────────────
+  for (let i = 0; i < order.trePaths.length; i++) {
+    nodes.push({
+      kind:        'tre',
+      path:        order.trePaths[i]!,
+      rawPriority: order.searchTreeRawPriorities[i] ?? 0,
+      sku:         0,
+      cfgIndex:    i,
+    });
+  }
+
+  // ── tocEntry family ────────────────────────────────────────────────────────
+  for (let t = 0; t < order.tocEntries.length; t++) {
+    const tocEntry = order.tocEntries[t]!;
+    let treeNames: string[];
+    try {
+      treeNames = readTocTreeNames(tocEntry.tocFilePath);
+    } catch (err) {
+      console.warn('[treAutoMount] failed to read TOC tree names from', tocEntry.tocFilePath, ':', err);
+      continue;
+    }
+
+    for (const name of treeNames) {
+      let found = false;
+      for (const prefix of order.tocTreePaths) {
+        const candidate = path.join(prefix, name);
+        if (fs.existsSync(candidate)) {
+          nodes.push({
+            kind:        'tre',
+            path:        candidate,
+            rawPriority: tocEntry.priority,
+            sku:         t,
+            cfgIndex:    t,
+          });
+          found = true;
+          break; // next name
+        }
+      }
+      if (!found) {
+        console.warn('[treAutoMount] missing .tre (no matching TOCTreePath prefix):', name);
+      }
+    }
+  }
+
+  // ── Unified sort: rawPriority DESC, sku DESC, cfgIndex DESC ───────────────
+  nodes.sort(
+    (a, b) =>
+      (b.rawPriority - a.rawPriority) ||
+      (b.sku         - a.sku        ) ||
+      (b.cfgIndex    - a.cfgIndex   ),
+  );
+
+  return nodes;
+}
+
+// ─── autoMountClient ──────────────────────────────────────────────────────────
+
+/**
+ * Mount the full client TRE set for `installPath` using the unified single-mount strategy.
+ *
+ * Step sequence (B1 compliance — each called EXACTLY ONCE):
+ *   1. resolveClientMountOrder → unified ClientMountOrder
+ *   2. buildTreNodes → ONE ordered list (searchTree + expanded TOC, sorted by rawPriority DESC)
+ *   3. Assign compact priorities (treNodes.length down to 1)
+ *   4. mountTrePaths(allPaths, compactPriorities) — ONCE
+ *   5. injectLooseDirOverlay for each loose dir (isOverride gated on B4 condition)
+ *   6. mountComplete() — ONCE
+ *
+ * Non-fatal: errors are logged, never thrown.
+ */
+export async function autoMountClient(installPath: string): Promise<void> {
+  try {
+    const order = resolveClientMountOrder(installPath, installPath);
+    if (!order) {
+      console.warn('[autoMountClient] no mount order resolved for', installPath);
+      return;
+    }
+
+    // Build ONE ordered list across all TRE families.
+    const treNodes = buildTreNodes(order);
+
+    // Compact priorities: highest compact = most important (index 0 = treNodes.length).
+    const compactPriorities = treNodes.map((_, i) => treNodes.length - i);
+
+    // Mount all TRE archives in a single call (B1 fix — no second call).
+    await mountTrePaths(treNodes.map(n => n.path), compactPriorities);
+
+    // maxTreRawPriority: the highest raw priority among searchTree TREs.
+    // Used to gate isOverride for loose dirs (B4 fix).
+    const maxTreRawPriority = order.searchTreeRawPriorities.length > 0
+      ? Math.max(...order.searchTreeRawPriorities)
+      : 0;
+
+    // Inject loose-dir overlays (B4: conditional isOverride).
+    for (let i = 0; i < order.looseDirs.length; i++) {
+      const dir         = order.looseDirs[i]!;
+      const rawPriority = order.looseDirPriorities[i] ?? 0;
+      injectLooseDirOverlay(dir, { isOverride: rawPriority > maxTreRawPriority });
+    }
+
+    // Signal pipeline complete (B1 structural gate — called ONCE).
+    mountComplete();
+  } catch (err) {
+    console.error('[autoMountClient] mount failed:', err);
+  }
+}
+
+// ─── autoMountTarget (legacy) ─────────────────────────────────────────────────
 
 // Path B fs (nodeIntegration:true) — never bundled by Vite.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const fs = require('fs') as typeof import('fs');
+const legacyFs = require('fs') as typeof import('fs');
 
 export interface AutoMountParams {
   kind:     'client' | 'tre-set' | 'mod-project';
@@ -27,8 +178,9 @@ export interface AutoMountParams {
 }
 
 /**
- * Mount the project's target TRE set. Non-fatal: errors are logged, never thrown — a
- * workspace is still usable without a mount. No-op when there is no treDir.
+ * Legacy mount for standalone targets (workspaceService.ts compat).
+ * Mount the project's target TRE set. Non-fatal: errors are logged, never thrown.
+ * No-op when there is no treDir.
  */
 export async function autoMountTarget(params: AutoMountParams): Promise<void> {
   const { kind, cfgPath, treDir, target } = params;
@@ -44,7 +196,7 @@ export async function autoMountTarget(params: AutoMountParams): Promise<void> {
     } else {
       // Standalone target (or a cfg with no searchTree): plain directory scan.
       // T-04.1-03: only .tre files directly in treDir (no sub-dirs / path injection).
-      const treFiles = fs.readdirSync(treDir)
+      const treFiles = legacyFs.readdirSync(treDir)
         .filter((f) => f.endsWith('.tre') && !f.includes('/') && !f.includes('\\'))
         .sort();  // ascending alphabetical = ascending priority
       if (treFiles.length === 0) return;
