@@ -191,10 +191,12 @@ export function detectClients(): DetectedClient[] {
     { name: 'SWGEmu',                    installPath: 'D:\\SWGEmu Client\\SWGEmu'               },
     { name: 'SWG Infinity (C:)',         installPath: 'C:\\SWG Infinity\\SWG Infinity'          },
     { name: 'SWGEmu (C:)',               installPath: 'C:\\SWGEmu\\SWGEmu'                      },
-    // swg-client-v2: decoupled dev client — binary in stage-x64, data dir external (treDirFromCfg).
-    // client.cfg present; zero local .tre files. resolveLayout uses treDirFromCfg path.
+    // swg-client-v2: decoupled dev client — binary in stage/stage-x64, data dir external
+    // (treDirFromCfg). client.cfg present; zero local .tre files. resolveLayout uses the
+    // treDirFromCfg path. Both the 64-bit (stage-x64) and 32-bit (stage) builds are probed.
     // Source: 04.2-PATTERNS.md §clientLocator.ts; 04.2-RESEARCH.md §Capability 1.
     { name: 'swg-client-v2 (stage-x64)', installPath: 'D:\\Code\\swg-client-v2\\stage-x64'     },
+    { name: 'swg-client-v2 (stage, 32-bit)', installPath: 'D:\\Code\\swg-client-v2\\stage'     },
   ];
 
   for (const known of knownPaths) {

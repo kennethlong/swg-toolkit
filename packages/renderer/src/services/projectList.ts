@@ -25,6 +25,9 @@ export interface ProjectListEntry {
   kind:          WorkspaceBindingMeta['kind'];
   /** Bound client label (when kind === 'client'). */
   clientName?:   string;
+  /** Bound client install path (when kind === 'client') — used to filter already-bound
+   *  installs out of the "Detected clients" auto-scan list on the entry screen. */
+  clientPath?:   string;
 }
 
 /**
@@ -51,6 +54,7 @@ export function listProjects(): ProjectListEntry[] {
           clientName:    meta.kind === 'client'
             ? (meta.pattern ?? (meta.clientPath ? path.basename(meta.clientPath) : undefined))
             : undefined,
+          clientPath:    meta.kind === 'client' ? (meta.clientPath ?? undefined) : undefined,
         });
       } catch {
         // skip a malformed / unreadable studio dir

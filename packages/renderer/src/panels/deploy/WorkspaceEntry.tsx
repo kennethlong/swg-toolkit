@@ -16,13 +16,16 @@ import { openWorkspace, getDefaultProjectFolder, getStudioDir } from '../../serv
 import { useOpenProjectStore } from '../../state/openProjectStore';
 import * as projectBinding from '../../services/projectBinding';
 import { detectClients } from '../../services/clientLocator';
+import { listProjects } from '../../services/projectList';
 import { getRecentProjects, pruneRecentProjects, type RecentProject } from '../../services/recentProjects';
 import type { DetectedClient } from '@swg/contracts';
 import AsyncProgress from '../../shared/AsyncProgress';
 
-// Path B fs — used only to self-heal recents (drop entries whose studio dir is gone).
+// Path B fs/path — used to self-heal recents and to compare bound client install paths.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const nodeFs = require('fs') as typeof import('fs');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodePath = require('path') as typeof import('path');
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -141,7 +144,20 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
 
   // Auto-scan detected clients + load recents on mount.
   useEffect(() => {
-    try { setDetectedClients(detectClients()); } catch (err) { console.error('[WorkspaceEntry] detectClients error:', err); }
+    try {
+      // Exclude installs already bound to a project — once you open a project against a
+      // detected client it should no longer appear in the auto-scan list as bindable.
+      const boundPaths = new Set(
+        listProjects()
+          .filter((p) => p.kind === 'client' && p.clientPath)
+          .map((p) => nodePath.resolve(p.clientPath!).toLowerCase()),
+      );
+      setDetectedClients(
+        detectClients().filter(
+          (c) => !boundPaths.has(nodePath.resolve(c.installPath).toLowerCase()),
+        ),
+      );
+    } catch (err) { console.error('[WorkspaceEntry] detectClients error:', err); }
     // Self-heal: drop recents whose project studio no longer exists (e.g. after cleanup).
     try {
       setRecents(pruneRecentProjects((r) => nodeFs.existsSync(getStudioDir(r.folderPath))));
