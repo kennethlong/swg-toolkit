@@ -329,13 +329,23 @@ export default function ProjectBindingBar({
           </span>
         )}
 
-        {/* TRE directory */}
+        {/* TRE directory. For treDirFromCfg clients (decoupled dev clients like swg-client-v2)
+            the .tre data is NOT under the install root — it is resolved from the cfg's
+            searchTOC/searchPath at mount time, so the "(install root)" label is misleading. */}
         {treDirBase !== null && (
-          <span title={wsInfo?.treDir}>
+          <span
+            title={
+              detectedLayout?.treDirFromCfg
+                ? `TRE data resolved from ${cfgFile ?? 'cfg'} (searchTOC/searchPath)`
+                : wsInfo?.treDir
+            }
+          >
             TREs: <span style={{ color: 'var(--color-text)' }}>
-              {treDirBase === nodePath.basename(clientPath ?? '') || treDirBase === ''
-                ? '(install root)'
-                : `${treDirBase}/`}
+              {detectedLayout?.treDirFromCfg
+                ? `from ${cfgFile ?? 'cfg'}`
+                : (treDirBase === nodePath.basename(clientPath ?? '') || treDirBase === '')
+                  ? '(install root)'
+                  : `${treDirBase}/`}
             </span>
           </span>
         )}

@@ -31,7 +31,7 @@ import { useChangesetStore } from '../state/changesetStore';
 import type { WorkspaceBindingMeta } from '@swg/contracts';
 import { seedBaseline } from './changesetService';
 import { addRecentProject } from './recentProjects';
-import { autoMountTarget } from './treAutoMount';
+import { autoMountClient, autoMountTarget } from './treAutoMount';
 
 const execFileAsync = promisify(execFile);
 
@@ -300,13 +300,23 @@ export async function openWorkspace(folderPath: string): Promise<void> {
 
     // Auto-mount the project's target TRE set on EVERY open (fresh bind via initProject
     // AND reopen via recents / Open Project), so the TRE browser is always populated.
-    // Non-fatal (autoMountTarget swallows mount errors).
-    await autoMountTarget({
-      kind:    bindingMeta.kind,
-      cfgPath: bindingMeta.cfgPath,
-      treDir:  bindingMeta.treDir,
-      target:  bindingMeta.clientPath ?? normalized,
-    });
+    // Client installs use the unified single-mount (searchTree + searchTOC + searchPath) so
+    // a searchTOC-based dev client (swg-client-v2) mounts its full base; standalone/tre-set
+    // projects use the legacy directory scan. Non-fatal (both swallow mount errors).
+    if (bindingMeta.kind === 'client') {
+      await autoMountClient(
+        bindingMeta.clientPath ?? normalized,
+        bindingMeta.cfgPath ?? undefined,
+        bindingMeta.treDir ?? undefined,
+      );
+    } else {
+      await autoMountTarget({
+        kind:    bindingMeta.kind,
+        cfgPath: bindingMeta.cfgPath,
+        treDir:  bindingMeta.treDir,
+        target:  bindingMeta.clientPath ?? normalized,
+      });
+    }
   } catch (err) {
     const reason = String((err as Error)?.message ?? err);
     useWorkspaceStore.getState().openError(reason);

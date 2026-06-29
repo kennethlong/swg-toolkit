@@ -3,8 +3,12 @@
  * TRE auto-mount helpers for client projects.
  *
  * Exports:
- *   autoMountClient(installPath) — unified single-mount for a client install
- *     (B1: one mountTrePaths call; B2: cross-family sort; B4: isOverride gate)
+ *   autoMountClient(installPath, cfgPath?) — unified single-mount for a client install
+ *     (B1: one mountTrePaths call; B2: cross-family sort; B4: isOverride gate).
+ *     cfgPath = the binding's resolved client cfg; when omitted, the cfg is derived from
+ *     installPath (directory form). This is the live mount path for kind:'client' projects
+ *     (workspaceService.openWorkspace) — it expands searchTOC into the full archive set,
+ *     which the legacy autoMountTarget (searchTree-only) does NOT.
  *   autoMountTarget(params)      — legacy standalone/tre-set mount (workspaceService compat)
  *
  * B1 root cause (treStore.ts:159): the store's mountComplete does a full Zustand set({})
@@ -124,10 +128,29 @@ function buildTreNodes(order: ClientMountOrder): MountNode[] {
  *
  * Non-fatal: errors are logged, never thrown.
  */
-export async function autoMountClient(installPath: string): Promise<void> {
+export async function autoMountClient(installPath: string, cfgPath?: string, treDir?: string): Promise<void> {
   try {
-    const order = resolveClientMountOrder(installPath, installPath);
+    // Use the binding's resolved client cfg when provided so we mount the EXACT cfg the
+    // client loads (e.g. stage-x64/client.cfg for swg-client-v2). Fall back to installPath
+    // (directory form — resolveClientMountOrder derives the cfg via resolveLayout) for
+    // one-arg callers/tests. installPath is always the install root for relative resolution.
+    const order = resolveClientMountOrder(cfgPath ?? installPath, installPath);
     if (!order) {
+      // No cfg-declared mount order (the cfg has no searchTree/searchTOC/searchPath entries).
+      // Fall back to a plain directory scan of treDir — preserves the legacy autoMountTarget
+      // behavior for a minimal-cfg client (e.g. a swgemu.cfg with no searchTree but .tre files
+      // present in Live/). A real client cfg always declares its set, so this only fires for
+      // the simplified/standalone case. T-04.1-03: only .tre directly in treDir (no sub-dirs).
+      if (treDir) {
+        const treFiles = fs.readdirSync(treDir)
+          .filter(f => f.endsWith('.tre') && !f.includes('/') && !f.includes('\\'))
+          .sort();
+        if (treFiles.length > 0) {
+          await mountTrePaths(treFiles.map(f => path.join(treDir, f)), treFiles.map((_, i) => i + 1));
+          mountComplete();
+          return;
+        }
+      }
       console.warn('[autoMountClient] no mount order resolved for', installPath);
       return;
     }
