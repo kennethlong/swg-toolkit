@@ -1074,3 +1074,109 @@ export function parseAnimation(
   iffResult: IffParseResultNative,
   srcBytes: ArrayBuffer | Uint8Array,
 ): AnimationParseResult;
+
+// ─── Phase 4.3 Plan 03: Pillar-B Typing Stubs (DECLARATION ONLY — runtime in plan 10) ──
+
+/**
+ * Result of extractMountAt() — either extracted bytes or an encrypted-payload signal.
+ *
+ * When bytes is present: payload was successfully inflated (swg-source v6000 plain-zlib case).
+ * When encrypted is true: inflate failed — payload is Restoration-encrypted (or unknown).
+ * bytes and encrypted are mutually exclusive.
+ *
+ * Source: Pillar B H1 redesign — descriptor-based extraction replaces internal-TOC-index lookup
+ * for master-.toc-sourced payloads from empty-internal-TOC (numberOfFiles=0) v6000 containers.
+ */
+export interface ExtractAtResult {
+  /** Decompressed payload bytes. Present on success; absent when encrypted/failed. */
+  bytes?: ArrayBuffer;
+  /**
+   * True when inflate failed and the payload is classified as encrypted/unreadable.
+   * Triggers the 'enumerate-only (encrypted)' chip in the UI (MOUNT-05).
+   * Mirrors tre_decrypt.py::try_read_tre_payload classify-on-failure logic.
+   */
+  encrypted?: boolean;
+}
+
+/**
+ * Extract a payload from a mounted container using an EXTERNALLY-SUPPLIED entry descriptor.
+ *
+ * This is the Pillar-B H1 fix: the master .toc provides offset/length/compressedLength/
+ * compressor; the container is identified by (handle, archiveIndex) — the same container
+ * locator that readMountEntry uses (mount.nodeAt(archiveIndex).path, tre_binding.cpp:543-547).
+ * Offset ALONE is NOT a sufficient locator; the container identity is mandatory.
+ *
+ * Use case: extracting from a v6000 container whose internal TOC is empty (numberOfFiles=0).
+ * The container's own TOC has zero entries; only the master .toc carries offset+length for
+ * virtual paths inside this container. The native path must NOT consult the container's
+ * empty internal TOC — it must use the supplied descriptor directly.
+ *
+ * Per-payload inflate-then-classify (MOUNT-04):
+ *   - Attempt inflate with descriptor.compressor
+ *   - On success → return { bytes }
+ *   - On inflate failure → return { encrypted: true } (Restoration-encrypted or unknown)
+ *   This replaces the blanket version-tag isEnumerateOnly(V6000)==true refusal.
+ *
+ * Binary stays binary: bytes cross the bridge as ArrayBuffer, never JSON (AGENTS.md).
+ *
+ * Security (T-01-02 pattern): bounds-check offset+compressedLength against file size
+ * before reading (subtraction form, as in TreArchive::extractEntry:327).
+ *
+ * DECLARATION ONLY — runtime implementation lands in plan 10 (MOUNT-03/04).
+ *
+ * @param handle        Mount handle from mountTreMount() / mountTreMountWithToc().
+ * @param archiveIndex  Archive (container) index in the priority list.
+ *                      Identifies the .tre file via mount.nodeAt(archiveIndex).path.
+ * @param descriptor    Externally-supplied entry descriptor from the master .toc:
+ *                        offset          — byte offset into the container .tre
+ *                        length          — declared uncompressed length
+ *                        compressedLength — compressed byte count to read
+ *                        compressor      — 0=none, 2=zlib (matches SearchTOC compressor field)
+ * @returns             ExtractAtResult: { bytes } on success, { encrypted: true } on failure.
+ *
+ * Source: TreArchive.cpp::extractEntry (existing internal-TOC path, adapted for external desc);
+ *         tre_reader.py::read_tre_payload + tre_decrypt.py::try_read_tre_payload (per-payload classify).
+ */
+export function extractMountAt(
+  handle: string,
+  archiveIndex: number,
+  descriptor: {
+    offset: number;
+    length: number;
+    compressedLength: number;
+    compressor: number;
+  },
+): ExtractAtResult;
+
+/**
+ * Create a priority-ordered virtual filesystem mount from the given archives, sourcing
+ * ALL entries from the master .toc index (not per-archive internal TOCs).
+ *
+ * This is the MOUNT-01/02 fix: for searchTOC clients, empty-internal-TOC v6000 containers
+ * (numberOfFiles=0) contribute entries because the master .toc indexes them. The mount uses
+ * the master .toc as the SINGLE index, preventing double-counting of paths that appear in both
+ * self-indexed and master-indexed containers (MOUNT-02).
+ *
+ * Extends mountTreMount (index.d.ts:195) with two additional parameters that wire the master
+ * .toc entry set into getMountEntriesColumnar (each external entry carries its container
+ * archiveIndex + descriptor for extractMountAt). TOCTreePath prefix is applied when resolving
+ * container names from treeFileIndex → treeNames[i] → tocTreePath + "/" + name.
+ *
+ * DECLARATION ONLY — runtime implementation lands in plan 10 (MOUNT-01/02).
+ *
+ * @param paths        Array of absolute filesystem paths to .tre archives.
+ * @param priorities   Parallel array of integer priorities (higher = higher precedence).
+ * @param tocPath      Absolute path to the master .toc file (e.g. sku3_client.toc).
+ * @param tocTreePath  Absolute path prefix for resolving container names from the .toc
+ *                     (equivalent to the client's TOCTreePath cfg value).
+ * @returns            Opaque mount handle string for subsequent calls (same as mountTreMount).
+ *
+ * Source: swg-client-v2 TreeFile.cpp (searchTOC mount + TOCTreePath prefix logic);
+ *         tocReader.ts::readTocIndex (master .toc parser, already built in plan 04.2-03).
+ */
+export function mountTreMountWithToc(
+  paths: string[],
+  priorities: number[],
+  tocPath: string,
+  tocTreePath: string,
+): string;
