@@ -99,6 +99,40 @@ const nodeOs   = require('os')   as typeof import('os');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const nodePath = require('path') as typeof import('path');
 
+/**
+ * Read the winner bytes for a VFS entry as a standalone ArrayBuffer, transparently handling BOTH
+ * TRE-archived entries (resolved via the native mount) and loose-overlay entries — files injected
+ * from a client searchPath override dir by injectLooseDirOverlay, which are NOT in the native mount
+ * index (winnerArchiveIndex < 0) and must be read directly from disk. Returns null if unreadable.
+ *
+ * Shared by Extract→Add and the IFF Structure viewer so loose-override files behave like archived
+ * ones for read-only operations. (The 3D mesh viewport still needs the native mount index, so loose
+ * mesh-like files fall back to IFF Structure only until the searchTOC/loose-overlay mount lands.)
+ */
+function readVfsEntryBytes(entry: VfsEntry, mountHandle: string | null): ArrayBuffer | null {
+  if (entry.winnerArchiveIndex < 0) {
+    if (!entry.winnerArchivePath) return null;
+    try {
+      const buf = nodeFs.readFileSync(entry.winnerArchivePath);
+      // Standalone copy — a Buffer's .buffer may be a shared pool slice (byteOffset/byteLength).
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    } catch {
+      return null;
+    }
+  }
+  if (!mountHandle) return null;
+  try {
+    const chain = nativeCore.resolveChain(mountHandle, entry.path);
+    if (!chain.winner || chain.tombstone ||
+        chain.winnerArchiveIndex < 0 || chain.winnerEntryIndex < 0) {
+      return null;
+    }
+    return nativeCore.readMountEntry(mountHandle, chain.winnerArchiveIndex, chain.winnerEntryIndex);
+  } catch {
+    return null;
+  }
+}
+
 /** File extensions that trigger the appearance resolver + viewport. */
 const MESH_EXTENSIONS = new Set(['msh', 'mgn', 'sat', 'apt']);
 
@@ -211,49 +245,42 @@ export default function TreVfsBrowser(): React.ReactElement {
 
       store.selectEntry(entry.path, chain);
 
-      // Attempt to extract and parse the selected file as IFF.
-      // If extraction succeeds and the file has an IFF FORM header, parse it.
-      // (D-08: read-only; the write path is proven by the harness, not the UI.)
-      // Note: mountHandle is already destructured above and verified non-null.
-      if (mountHandle) {
+      // Parse the selected file as IFF for the IFF Structure panel, and (for archived mesh-like
+      // files) drive the 3D viewport. (D-08: read-only; the write path is harness-proven, not UI.)
+      const filename = entry.name;
+
+      // ── IFF parse — works for archived AND loose-overlay entries ───────────
+      // readVfsEntryBytes reads loose searchPath-override files from disk and archived files via the
+      // mount, so the IFF Structure panel works for loose entries (winnerArchiveIndex < 0) too.
+      const iffBytes = readVfsEntryBytes(entry, mountHandle);
+      if (iffBytes) {
+        iffStore.beginParse(filename);
+        try {
+          const raw = nativeCore.parseIff(iffBytes);
+          const result: IffParseResult = {
+            roots: raw.roots as IffParseResult['roots'],
+            trailingBytes: raw.trailingBytes,
+            roundTrip: raw.roundTrip,
+          };
+          iffStore.parseComplete(filename, result, iffBytes);
+        } catch (iffErr) {
+          const reason = iffErr instanceof Error ? iffErr.message : String(iffErr);
+          // Extract offset from "@ 0x..." in the error message if present.
+          const m = /0x([0-9A-Fa-f]+)/.exec(reason);
+          const offset = m ? parseInt(m[1], 16) : undefined;
+          iffStore.parseError(filename, reason, offset);
+        }
+      }
+
+      // ── Viewport resolver (TRE-archived mesh-like entries only) ────────────
+      // resolveAppearance/beginLoad are native-mount-index based, so a loose-overlay mesh cannot
+      // resolve its dependencies through the mount yet (searchTOC/loose-overlay mount redesign);
+      // the IFF Structure above still renders for loose mesh files.
+      if (mountHandle && entry.winnerArchiveIndex >= 0) {
         const winnerResult = nativeCore.resolveChain(mountHandle, entry.path);
         if (winnerResult.winner && !winnerResult.tombstone &&
             winnerResult.winnerArchiveIndex >= 0 && winnerResult.winnerEntryIndex >= 0) {
-          const filename = entry.name;
-
-          // ── IFF parse (always, for the IFF Structure panel) ────────────────
-          iffStore.beginParse(filename);
-          try {
-            const bytes = nativeCore.readMountEntry(
-              mountHandle,
-              winnerResult.winnerArchiveIndex,
-              winnerResult.winnerEntryIndex,
-            );
-            // Try to parse as IFF — if it fails, show a clean parse error.
-            try {
-              const raw = nativeCore.parseIff(bytes);
-              // Convert from native types to contract types.
-              const result: IffParseResult = {
-                roots: raw.roots as IffParseResult['roots'],
-                trailingBytes: raw.trailingBytes,
-                roundTrip: raw.roundTrip,
-              };
-              iffStore.parseComplete(filename, result, bytes);
-            } catch (iffErr) {
-              const reason = iffErr instanceof Error ? iffErr.message : String(iffErr);
-              // Extract offset from "@ 0x..." in the error message if present.
-              const m = /0x([0-9A-Fa-f]+)/.exec(reason);
-              const offset = m ? parseInt(m[1], 16) : undefined;
-              iffStore.parseError(filename, reason, offset);
-            }
-          } catch (readErr) {
-            const reason = readErr instanceof Error ? readErr.message : String(readErr);
-            iffStore.parseError(filename, `could not read file — ${reason}`);
-          }
-
-          // ── Viewport resolver (mesh-like extensions only) ──────────────────
-          // .msh / .mgn / .sat / .apt: drive idle→loading→done pipeline so
-          // the R3F viewport renders the mesh (PRIMARY gap-closure fix).
+          // .msh / .mgn / .sat / .apt: drive idle→loading→done so the R3F viewport renders.
           const ext = filename.split('.').pop()?.toLowerCase() ?? '';
           if (MESH_EXTENSIONS.has(ext)) {
             viewportStore.beginLoad(
@@ -368,38 +395,18 @@ export default function TreVfsBrowser(): React.ReactElement {
     // a temp file here. Without it the entry flattens back with replacementFilePath:undefined
     // and packPatch throws "path argument must be of type string … Received undefined".
     try {
-      let bytes: Buffer;
-
-      // Loose-overlay entries (injected from a client searchPath override dir by
-      // injectLooseDirOverlay) live on disk and are NOT in the native TRE mount index
-      // (winnerArchiveIndex === -1). Read the winner file directly — resolveChain/readMountEntry
-      // only know TRE-archived entries and return "not resolvable" for loose files.
-      if (entry.winnerArchiveIndex < 0) {
-        if (!entry.winnerArchivePath) {
-          console.warn('[TreVfsBrowser] Extract→Add: loose entry has no winnerArchivePath:', vpath);
-          return;
-        }
-        bytes = nodeFs.readFileSync(entry.winnerArchivePath);
-      } else {
-        const mountHandle = store.mountHandle;
-        if (!mountHandle) {
-          console.warn('[TreVfsBrowser] Extract→Add: no mount handle');
-          return;
-        }
-        const chain = nativeCore.resolveChain(mountHandle, vpath);
-        if (!chain.winner || chain.tombstone ||
-            chain.winnerArchiveIndex < 0 || chain.winnerEntryIndex < 0) {
-          console.warn('[TreVfsBrowser] Extract→Add: entry not resolvable in mount:', vpath);
-          return;
-        }
-        bytes = Buffer.from(nativeCore.readMountEntry(mountHandle, chain.winnerArchiveIndex, chain.winnerEntryIndex));
+      // Reads archived entries via the mount AND loose-overlay entries (searchPath dirs) from disk.
+      const bytes = readVfsEntryBytes(entry, store.mountHandle);
+      if (!bytes) {
+        console.warn('[TreVfsBrowser] Extract→Add: entry not readable (no mount winner / loose file missing):', vpath);
+        return;
       }
 
       const tmpDir   = nodePath.join(nodeOs.tmpdir(), 'swg-toolkit-extract');
       nodeFs.mkdirSync(tmpDir, { recursive: true });
       const safeName = vpath.replace(/[\\/:*?"<>|]/g, '_');
       const tmpPath  = nodePath.join(tmpDir, `${Date.now()}-${safeName}`);
-      nodeFs.writeFileSync(tmpPath, bytes);
+      nodeFs.writeFileSync(tmpPath, Buffer.from(bytes));
 
       // Add to staging store directly — no VirtualPathModal prompt (DEPLOY-07).
       // Action is 'add': an Extract→Add is a copy of the base bytes (unchanged). It only
