@@ -51,9 +51,20 @@ vs loose-files) and (b) exactly which files it owns.
    target set. The snapshot is of the STOCK base (not an intermediate version) — intermediate versions'
    bytes come from their version folders, so any target is reachable directly.
 
+## Deploy-model picker scope (maintainer, 2026-06-29)
+
+The deploy-model radio (absolute-path / loose-override / Advanced) governs ONLY a NEW forward
+deploy of the working/new version — it sets how THAT version is written. It must NOT be selectable
+when reverting or navigating to an existing version: every existing version already carries its own
+loose/absolute flag, and the reconcile engine uses each version's own flag to apply/revert its files.
+⇒ Hide/disable the picker in any revert/navigate context (Baseline reset, clicking an existing
+version); show it only when staging+deploying a new version forward.
+
 ## Acceptance criteria
 
 1. Each deployed version records its deploy model; revert uses it (not the live radio).
+6. Deploy-model picker is shown ONLY for a new forward deploy; hidden when reverting/navigating to an
+   existing version (each version's stored flag drives its own apply/revert).
 2. Clicking version V (incl. Baseline) reconciles the live client to flatten(V): added/changed files
    written via the right path; removed files restored to stock (B3 sha256 match).
 3. Forward then backward then forward navigation is idempotent: live bytes for a path == that version's
