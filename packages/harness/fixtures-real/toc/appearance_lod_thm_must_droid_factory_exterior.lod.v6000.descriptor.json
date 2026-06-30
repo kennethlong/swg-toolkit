@@ -1,0 +1,12 @@
+{
+  "fixtureName": "appearance_lod_thm_must_droid_factory_exterior.lod",
+  "virtualPath": "appearance/lod/thm_must_droid_factory_exterior.lod",
+  "container": "patch_sku3_24_client_00.tre",
+  "offset": 26174,
+  "length": 1092,
+  "compressedLength": 564,
+  "compressor": 2,
+  "crc": 93266270,
+  "sourceNote": "SWG-Source v6000 plain-zlib — NOT Restoration-encrypted",
+  "groundTruthOracle": "../swg-blender-plugin/swg_pipeline/tre_reader.py::read_tre_payload"
+}
