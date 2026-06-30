@@ -263,7 +263,7 @@ export default function StatusBar(): React.ReactElement {
         <>
           <Dot />
           <span style={{ color: 'var(--color-warn)' }}>
-            ⟳ mounting {treMountStatus.filename} {treMountStatus.pct}%
+            ⟳ mounting {treMountStatus.filename}{treMountStatus.pct !== undefined ? ` ${treMountStatus.pct}%` : '…'}
           </span>
         </>
       )}

@@ -519,7 +519,7 @@ export default function TreVfsBrowser(): React.ReactElement {
       {/* Mounting progress (replaces tree area) */}
       {isMounting && mountStatus.kind === 'mounting' && (
         <AsyncProgress
-          caption={`Mounting ${mountStatus.filename} · ${mountStatus.pct}%`}
+          caption={`Mounting ${mountStatus.filename}${mountStatus.pct !== undefined ? ` · ${mountStatus.pct}%` : '…'}`}
           pct={mountStatus.pct}
           cancelLabel="Cancel mount"
           onCancel={() => store.reset()}

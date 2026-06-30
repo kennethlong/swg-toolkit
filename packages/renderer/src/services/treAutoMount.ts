@@ -29,7 +29,7 @@ import * as path from 'path';
 import * as fs   from 'fs';
 import { resolveClientMountOrder } from './clientSearchOrder';
 import { readTocTreeNames }        from './tocReader';
-import { mountTrePaths, mountComplete, injectLooseDirOverlay } from './treMount';
+import { mountTrePaths, mountComplete, injectLooseDirOverlay, beginMountStatus, endMountStatusIfPending } from './treMount';
 import type { ClientMountOrder }   from './clientSearchOrder';
 
 // ─── MountNode (internal) ─────────────────────────────────────────────────────
@@ -129,6 +129,7 @@ function buildTreNodes(order: ClientMountOrder): MountNode[] {
  * Non-fatal: errors are logged, never thrown.
  */
 export async function autoMountClient(installPath: string, cfgPath?: string, treDir?: string): Promise<void> {
+  beginMountStatus('Client TRE set');  // show the TRE-browser spinner for the whole auto-mount
   try {
     // Use the binding's resolved client cfg when provided so we mount the EXACT cfg the
     // client loads (e.g. stage-x64/client.cfg for swg-client-v2). Fall back to installPath
@@ -152,6 +153,7 @@ export async function autoMountClient(installPath: string, cfgPath?: string, tre
         }
       }
       console.warn('[autoMountClient] no mount order resolved for', installPath);
+      endMountStatusIfPending();  // nothing mounted — clear the spinner
       return;
     }
 
@@ -181,6 +183,7 @@ export async function autoMountClient(installPath: string, cfgPath?: string, tre
     mountComplete();
   } catch (err) {
     console.error('[autoMountClient] mount failed:', err);
+    endMountStatusIfPending();  // clear the spinner on failure
   }
 }
 
@@ -208,6 +211,7 @@ export interface AutoMountParams {
 export async function autoMountTarget(params: AutoMountParams): Promise<void> {
   const { kind, cfgPath, treDir, target } = params;
   if (!treDir) return;
+  beginMountStatus('TRE set');  // show the TRE-browser spinner for the whole auto-mount
   try {
     let trePaths:   string[];
     let priorities: number[];
@@ -222,7 +226,7 @@ export async function autoMountTarget(params: AutoMountParams): Promise<void> {
       const treFiles = legacyFs.readdirSync(treDir)
         .filter((f) => f.endsWith('.tre') && !f.includes('/') && !f.includes('\\'))
         .sort();  // ascending alphabetical = ascending priority
-      if (treFiles.length === 0) return;
+      if (treFiles.length === 0) { endMountStatusIfPending(); return; }
       trePaths   = treFiles.map((f) => path.join(treDir, f));
       priorities = treFiles.map((_, i) => i + 1);
     }
@@ -230,5 +234,6 @@ export async function autoMountTarget(params: AutoMountParams): Promise<void> {
     await mountTrePaths(trePaths, priorities);
   } catch (err) {
     console.error('[autoMountTarget] mount failed:', err);
+    endMountStatusIfPending();  // clear the spinner on failure
   }
 }

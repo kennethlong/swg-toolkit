@@ -200,6 +200,29 @@ export function mountComplete(): void {
   }
 }
 
+// ─── beginMountStatus / endMountStatusIfPending ──────────────────────────────
+
+/**
+ * Show the TRE-browser mount spinner BEFORE a long auto-mount (project open). The status is
+ * indeterminate (no pct) — the native mountSearchableAsync is a single async call with no progress
+ * events, so an animated sweep is the honest affordance. mountTrePaths → store.mountComplete clears
+ * it to 'done' on success; mount paths that produce no archives must call endMountStatusIfPending().
+ */
+export function beginMountStatus(label: string): void {
+  useTreStore.setState({ mountStatus: { kind: 'mounting', filename: label } });
+}
+
+/**
+ * Clear a still-pending 'mounting' status back to 'idle'. Called on auto-mount exit paths that did
+ * NOT mount anything (no cfg order + no treDir files, or a thrown error) so the spinner never hangs.
+ * No-op when the status already advanced to 'done'/'error'.
+ */
+export function endMountStatusIfPending(): void {
+  if (useTreStore.getState().mountStatus.kind === 'mounting') {
+    useTreStore.setState({ mountStatus: { kind: 'idle' } });
+  }
+}
+
 // ─── injectLooseDirOverlay ────────────────────────────────────────────────────
 
 /**

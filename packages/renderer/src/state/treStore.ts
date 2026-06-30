@@ -73,7 +73,7 @@ export interface ShadowChainDisplay {
 /** Mount operation status. */
 export type MountStatus =
   | { kind: 'idle' }
-  | { kind: 'mounting'; filename: string; pct: number }
+  | { kind: 'mounting'; filename: string; pct?: number }  // pct omitted → indeterminate spinner
   | { kind: 'done' }
   | { kind: 'error'; filename: string; reason: string };
 

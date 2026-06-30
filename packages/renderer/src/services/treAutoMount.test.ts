@@ -22,6 +22,8 @@ vi.mock('./treMount', () => ({
   mountTrePaths:        vi.fn().mockResolvedValue('mock-handle'),
   mountComplete:        vi.fn(),
   injectLooseDirOverlay: vi.fn(),
+  beginMountStatus:        vi.fn(),
+  endMountStatusIfPending: vi.fn(),
 }));
 
 vi.mock('./tocReader', () => ({
