@@ -2,8 +2,7 @@
  * packages/renderer/src/state/undoStore.ts
  * Session-scoped undo stack for live-reconcile operations (D-06/VER-04).
  *
- * Wave-0 stub: all mutators (push, undo, clear) are no-ops.
- * Wave-1 plan 04 implements the real push/pop/clear logic.
+ * Wave-1 implementation: real push/pop/clear LIFO stack.
  *
  * Design:
  *   - Session-scoped ONLY — NOT persisted. No persist middleware; no localStorage write.
@@ -14,7 +13,7 @@
  *   - LIFO stack: undo() returns and pops the most recently pushed snapshot.
  *   - canUndo: derived from stack.length > 0; updated by push/undo/clear.
  *
- * Source: 04.3-02-PLAN.md Task 2; 04.3-RESEARCH.md D-06/VER-04 session undo stack.
+ * Source: 04.3-04-PLAN.md Task 2; 04.3-RESEARCH.md D-06/VER-04 session undo stack.
  */
 
 import { create } from 'zustand';
@@ -57,36 +56,46 @@ export interface UndoStore {
   canUndo: boolean;
   /**
    * Push a pre-reconcile snapshot onto the top of the stack.
-   * STUB: no-op until Wave-1 plan 04.
+   * Appends to stack; sets canUndo = true.
    */
   push: (snapshot: ReconcileSnapshot) => void;
   /**
    * Pop and return the top snapshot (LIFO) for undo.
    * Returns undefined when the stack is empty.
-   * STUB: always returns undefined.
    */
   undo: () => ReconcileSnapshot | undefined;
   /**
    * Clear the entire undo stack (e.g. on workspace close or new project open).
-   * STUB: no-op until Wave-1 plan 04.
+   * Sets stack = [] and canUndo = false.
    */
   clear: () => void;
 }
 
 // ---------------------------------------------------------------------------
-// Store implementation (Wave-0 stub — no-ops)
+// Store implementation (session-scoped — no persist middleware)
 // ---------------------------------------------------------------------------
 
-export const useUndoStore = create<UndoStore>(() => ({
+export const useUndoStore = create<UndoStore>((set, get) => ({
   stack: [],
   canUndo: false,
 
-  // Stub: no-op — push does NOT update stack or canUndo
-  push: (_snapshot: ReconcileSnapshot) => {},
+  push: (snapshot: ReconcileSnapshot) =>
+    set(state => ({
+      stack: [...state.stack, snapshot],
+      canUndo: true,
+    })),
 
-  // Stub: always returns undefined — stack is never popped
-  undo: () => undefined,
+  undo: (): ReconcileSnapshot | undefined => {
+    const { stack } = get();
+    if (stack.length === 0) return undefined;
+    const last = stack[stack.length - 1];
+    const remaining = stack.slice(0, -1);
+    set({
+      stack: remaining,
+      canUndo: remaining.length > 0,
+    });
+    return last;
+  },
 
-  // Stub: no-op — stack is not cleared
-  clear: () => {},
+  clear: () => set({ stack: [], canUndo: false }),
 }));
