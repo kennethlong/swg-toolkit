@@ -1,8 +1,7 @@
 /**
  * packages/renderer/src/panels/deploy/DeployPanel.test.tsx
  * Component tests for DeployPanel — DEPLOY-05 + non-client gating + Baseline dedupe + selectVersion
- *
- * TDD RED: tests compile but fail until Task 3 creates DeployPanel.tsx.
+ *                                  + DEPLOYUI-01..05/11..12 (plan 04.3-07 Task 1)
  *
  * Tests:
  *   1 — renders staging section + version-history section + Baseline node + Deploy CTA in ONE panel
@@ -10,8 +9,13 @@
  *   3 — Save version calls sealVersion({ sealedBy: 'manual' })
  *   4 — mod-project (status.info.kind) → Deploy CTA disabled with hint copy
  *   5 — Baseline node renders EXACTLY ONCE when changeset with id BASELINE_ID is seeded
+ *   6 — DEPLOYUI-03/D5: section headers "Working changes (uncommitted)" + "Version History" present
+ *   7 — DEPLOYUI-01/D3: collapsing staging section hides its body; caret changes
+ *   8 — DEPLOYUI-02/D4: splitter hidden when staging section is collapsed
+ *   9 — DEPLOYUI-11/D13: footer instructional hint is present
+ *  10 — DEPLOYUI-12/D14: Deploy CTA is full-width (width:100%)
  *
- * Source: 04.1-03-PLAN.md Task 1; 04.1-VALIDATION.md DEPLOY-05/07 rows.
+ * Source: 04.1-03-PLAN.md Task 1; 04.3-07-PLAN.md Task 1.
  */
 
 import React from 'react';
@@ -137,14 +141,11 @@ describe('DeployPanel', () => {
     render(<DeployPanel />);
 
     // Click the version row to expand it
-    // D-04: row click now reconciles (syncLiveToVersion) instead of calling selectVersion.
-    // The ▸ delta expansion is still triggered on click (KEEP item from 04.3-06).
     const v1LabelEl = screen.getByText('Add armor');
     expect(v1LabelEl).not.toBeNull();
     fireEvent.click(v1LabelEl);
 
     // D-04 NOTE: selectVersion is no longer called (replaced by syncLiveToVersion).
-    // syncLiveToVersion hits the flatEqual noop path in tests (changesetService.flatten/flatEqual mocked).
     expect(selectVersion).not.toHaveBeenCalled();
 
     // Delta virtualPath should still appear (▸ expansion KEEP item preserved)
@@ -195,10 +196,8 @@ describe('DeployPanel', () => {
     render(<DeployPanel />);
 
     // Deploy CTA should be disabled for mod-project
-    // Use aria-label which is specific to the button (not the hint text)
     const deployBtn = screen.getByRole('button', { name: /Deploy disabled/i });
     expect(deployBtn).toBeDefined();
-    // For a mod-project, the button should be disabled
     const isDisabled =
       (deployBtn as HTMLButtonElement).disabled === true ||
       deployBtn.getAttribute('aria-disabled') === 'true';
@@ -209,7 +208,6 @@ describe('DeployPanel', () => {
   });
 
   it('Test 5: Baseline node renders EXACTLY ONCE when changeset with id BASELINE_ID is seeded', () => {
-    // Seed a Baseline changeset — the component should NOT add a second placeholder
     const manifest = buildManifest([
       { id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] },
       { id: 'v1', parentId: BASELINE_ID, label: 'First version', deltas: [] },
@@ -218,9 +216,98 @@ describe('DeployPanel', () => {
 
     render(<DeployPanel />);
 
-    // Baseline node should appear exactly once
     const baselineEls = screen.queryAllByText(/Baseline \(pristine\)/i);
     expect(baselineEls.length).toBe(1);
+  });
+
+  // ── Plan 04.3-07 Task 1 — DEPLOYUI-01..05/11..12 ──────────────────────────
+
+  it('Test 6: DEPLOYUI-03/D5: section headers "Working changes (uncommitted)" and "Version History" present', () => {
+    useChangesetStore.setState({
+      manifest: buildManifest(
+        [{ id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] }],
+        BASELINE_ID,
+      ),
+    });
+    render(<DeployPanel />);
+
+    expect(screen.getByText(/Working changes \(uncommitted\)/i)).toBeDefined();
+    expect(screen.getByText(/Version History/i)).toBeDefined();
+  });
+
+  it('Test 7: DEPLOYUI-01/D3: clicking staging header collapses the staging body', async () => {
+    const { useStagingStore } = await import('../../state/stagingStore');
+    useStagingStore.setState({
+      entries: [{ virtualPath: 'test/file.iff', action: 'add' }],
+      buildStatus: { kind: 'idle' },
+    });
+    useChangesetStore.setState({
+      manifest: buildManifest(
+        [{ id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] }],
+        BASELINE_ID,
+      ),
+    });
+    render(<DeployPanel />);
+
+    // Staging entry visible before collapse
+    expect(screen.getByText('test/file.iff')).toBeDefined();
+
+    // Click the FIRST section header (staging) to collapse it.
+    // Both headers have role="button"; the first is the staging header.
+    const allCollapseBtns = screen.getAllByRole('button', { name: /Collapse section/i });
+    expect(allCollapseBtns.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(allCollapseBtns[0]!);
+
+    // After collapsing, the staging body (virtualized list) is gone
+    expect(screen.queryByText('test/file.iff')).toBeNull();
+  });
+
+  it('Test 8: DEPLOYUI-02/D4: splitter is NOT rendered when staging section is collapsed', async () => {
+    useChangesetStore.setState({
+      manifest: buildManifest(
+        [{ id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] }],
+        BASELINE_ID,
+      ),
+    });
+    const { container } = render(<DeployPanel />);
+
+    // Splitter visible when both expanded
+    expect(container.querySelector('[data-testid="section-splitter"]')).not.toBeNull();
+
+    // Collapse staging (first section header) — splitter must disappear (D4)
+    const allCollapseBtns = screen.getAllByRole('button', { name: /Collapse section/i });
+    fireEvent.click(allCollapseBtns[0]!);
+
+    expect(container.querySelector('[data-testid="section-splitter"]')).toBeNull();
+  });
+
+  it('Test 9: DEPLOYUI-11/D13: deploy footer instructional hint is rendered', () => {
+    useChangesetStore.setState({
+      manifest: buildManifest(
+        [{ id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] }],
+        BASELINE_ID,
+      ),
+    });
+    render(<DeployPanel />);
+
+    const hint = screen.getByTestId('deploy-hint');
+    expect(hint).not.toBeNull();
+    expect(hint.textContent).toMatch(/collapse a section/i);
+  });
+
+  it('Test 10: DEPLOYUI-12/D14: Deploy CTA button has full-width style (width 100%)', () => {
+    useChangesetStore.setState({
+      manifest: buildManifest(
+        [{ id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] }],
+        BASELINE_ID,
+      ),
+    });
+    render(<DeployPanel />);
+
+    // Find the Deploy button by its aria-label
+    const deployBtn = screen.getByRole('button', { name: /Deploy/i, hidden: false });
+    // The button should have width:100% inline style
+    expect((deployBtn as HTMLButtonElement).style.width).toBe('100%');
   });
 
 });

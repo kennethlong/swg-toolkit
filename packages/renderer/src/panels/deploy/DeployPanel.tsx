@@ -1,26 +1,23 @@
 /**
  * packages/renderer/src/panels/deploy/DeployPanel.tsx
- * ONE combined deploy surface — Phase 04.1 DEPLOY-05.
+ * ONE combined deploy surface — Phase 04.1 DEPLOY-05 + Phase 04.3 DEPLOYUI-01..05/11..12.
  *
- * Replaces the 3-tab split (StagingPanel + ChangesetTimelinePanel + VcsPanel) with
- * the approved sketch 005-B/006-D single surface. Vertically stacks:
+ * 04.3 additions (plan 07):
+ *   DEPLOYUI-01/D3: collapsible Working changes / Version history sections (▾/▸ caret)
+ *   DEPLOYUI-02/D4: splitter auto-hidden when a section is collapsed (006-D contract)
+ *   DEPLOYUI-03/D5: section headers with file count + "Version History" label
+ *   DEPLOYUI-11/D13: deploy footer instructional hint
+ *   DEPLOYUI-12/D14: Deploy CTA full-width
  *
- *   1. StagingPanelBody  — working changes (Add… + Save version + virtualized list)
- *   2. Resizable splitter
- *   3. VersionHistoryBody — Baseline root node + ▸-expandable version graph
- *   4. Sticky footer CTA  — Deploy <version>… button → DeployDialog
+ * Vertically stacks:
+ *   1. Section header "● Working changes (uncommitted)" — collapsible
+ *   2. StagingPanelBody  — body, hidden when staging collapsed
+ *   3. Resizable splitter — hidden when either section collapsed (D4)
+ *   4. Section header "Version History" — collapsible
+ *   5. VersionHistoryBody — body, hidden when history collapsed
+ *   6. Sticky footer CTA  — Deploy <version>… button (full-width) + hint
  *
- * Workspace gate (matches StagingPanel pattern):
- *   - status.kind !== 'ready' → renders <WorkspaceEntry />
- *   - status.kind === 'ready' → full surface
- *
- * Deploy CTA logic (D-12):
- *   - ENABLED by default when a bound client is present (clientPath != null)
- *   - "Deploy Baseline…" stays ENABLED for a bound client (H1 — Baseline = reset-to-stock)
- *   - DISABLED only when project kind is 'mod-project' (status.info.kind) or no clientPath
- *   - Reads kind via workspaceStore.status.info.kind — NEVER workspaceStore.kind (H4)
- *
- * Source: 04.1-03-PLAN.md Task 3; 04.1-PATTERNS.md §DeployPanel.tsx; 04.1-UI-SPEC.md Surface 1.
+ * Source: 04.1-03-PLAN.md Task 3; 04.3-07-PLAN.md Task 1.
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
@@ -36,22 +33,55 @@ import { useChangesetStore } from '../../state/changesetStore';
 
 import { BASELINE_ID } from '@swg/contracts';
 
-// ─── Button styles (W1 fix — LOCAL, NOT shared via ExportDialog) ──────────────
+// ─── Section header ────────────────────────────────────────────────────────────
 
-function deployBtnStyle(disabled: boolean): React.CSSProperties {
-  return {
-    background:   disabled ? 'var(--color-widget)' : 'var(--color-accent)',
-    border:       'none',
-    color:        disabled ? 'var(--color-text-faint)' : 'var(--color-accent-text)',
-    borderRadius: 'var(--radius-sm)',
-    padding:      '4px 14px',
-    cursor:       disabled ? 'not-allowed' : 'pointer',
-    fontSize:     'var(--text-sm)',
-    fontWeight:   600,
-    opacity:      disabled ? 0.6 : 1,
-    transition:   'opacity 0.1s ease',
-    flexShrink:   0,
-  };
+interface SectionHeadProps {
+  collapsed:  boolean;
+  onToggle:   () => void;
+  children:   React.ReactNode;
+}
+
+function SectionHead({ collapsed, onToggle, children }: SectionHeadProps): React.ReactElement {
+  return (
+    <div
+      onClick={onToggle}
+      role="button"
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? 'Expand section' : 'Collapse section'}
+      style={{
+        display:      'flex',
+        alignItems:   'center',
+        gap:          'var(--space-2)',
+        height:       'var(--tabstrip-h)',
+        padding:      '0 var(--space-3)',
+        background:   'var(--color-header)',
+        borderBottom: '1px solid var(--color-border)',
+        cursor:       'pointer',
+        userSelect:   'none',
+        flexShrink:   0,
+        fontSize:     'var(--text-xs)',
+        fontWeight:   600,
+        color:        'var(--color-text-muted)',
+      }}
+    >
+      {/* Caret — rotates when collapsed */}
+      <span
+        aria-hidden="true"
+        style={{
+          display:          'inline-block',
+          width:            10,
+          fontSize:         9,
+          color:            'var(--color-text-faint)',
+          transition:       'transform 0.12s',
+          transform:        collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+          transformOrigin:  'center',
+        }}
+      >
+        ▾
+      </span>
+      {children}
+    </div>
+  );
 }
 
 // ─── DeployPanel ──────────────────────────────────────────────────────────────
@@ -67,8 +97,6 @@ export default function DeployPanel(_props?: IDockviewPanelProps): React.ReactEl
   // ── Workspace gate ─────────────────────────────────────────────────────────
 
   if (status.kind !== 'ready') {
-    // No project: a brief hint — the first-run Welcome lives in the Assets panel, so the
-    // Deploy panel must NOT duplicate it (and must not steal focus on startup).
     return (
       <div
         style={{
@@ -93,8 +121,6 @@ export default function DeployPanel(_props?: IDockviewPanelProps): React.ReactEl
     );
   }
 
-  // ── Ready — full surface ───────────────────────────────────────────────────
-
   return (
     <DeployPanelReady status={status} clientPath={clientPath} />
   );
@@ -116,22 +142,31 @@ function DeployPanelReady({ status, clientPath }: DeployPanelReadyProps): React.
 
   const [deployOpen, setDeployOpen] = useState(false);
 
-  // Resizable splitter state
-  const [splitterRatio, setSplitterRatio] = useState(0.45); // 45% staging / 55% history
-  const isDragging = useRef(false);
+  // ── DEPLOYUI-01/D3: collapsible section state ──────────────────────────────
+  const [stagingCollapsed,  setStagingCollapsed]  = useState(false);
+  const [historyCollapsed,  setHistoryCollapsed]  = useState(false);
+
+  // Splitter is only meaningful when BOTH sections are expanded (D4 — 006-D contract).
+  const splitterVisible = !stagingCollapsed && !historyCollapsed;
+
+  // ── Resizable splitter ─────────────────────────────────────────────────────
+  const [splitterRatio, setSplitterRatio] = useState(0.45);
+  const isDragging   = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // ── Deploy CTA logic ───────────────────────────────────────────────────────
-  // DISABLED only for non-client project kind (status.info.kind === 'mod-project')
-  // or no clientPath. NEVER disabled just because Baseline is active (H1).
-  // NEVER reads workspaceStore.kind (does not exist — H4).
+  // Flex values for each section:
+  //   Both expanded → splitterRatio / (1 - splitterRatio)
+  //   Staging collapsed → staging header only; history fills (flex: 1)
+  //   History collapsed → history header only; staging fills (flex: 1)
+  const stagingFlexGrow = stagingCollapsed ? 0 : (historyCollapsed ? 1 : splitterRatio);
+  const historyFlexGrow = historyCollapsed ? 0 : (stagingCollapsed ? 1 : 1 - splitterRatio);
 
-  const projectKind = status.info.kind;
+  // ── Deploy CTA logic ───────────────────────────────────────────────────────
+  const projectKind       = status.info.kind;
   const isNonClientProject = projectKind === 'mod-project' || clientPath == null;
-  const deployDisabled = isNonClientProject;
+  const deployDisabled    = isNonClientProject;
 
   // ── Active version label for CTA ──────────────────────────────────────────
-
   const versionLabel = (() => {
     if (!activeVersionId) return '…';
     if (activeVersionId === BASELINE_ID) return 'Baseline';
@@ -163,8 +198,6 @@ function DeployPanelReady({ status, clientPath }: DeployPanelReadyProps): React.
     document.addEventListener('mouseup', onMouseUp);
   }, []);
 
-  // ── Cleanup on unmount ────────────────────────────────────────────────────
-
   useEffect(() => {
     return () => {
       isDragging.current = false;
@@ -184,81 +217,165 @@ function DeployPanelReady({ status, clientPath }: DeployPanelReadyProps): React.
         overflow:      'hidden',
       }}
     >
-      {/* ── Staging section (top) ── */}
-      <div style={{ flex: splitterRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-        <StagingPanelBody
-          entries={entries}
-          buildStatus={buildStatus}
-          workspaceName={workspaceName}
-        />
+      {/* ── DEPLOYUI-03/D5: "● Working changes (uncommitted)" section ── */}
+      <div
+        data-testid="staging-section"
+        style={{
+          display:       'flex',
+          flexDirection: 'column',
+          flexGrow:      stagingFlexGrow,
+          flexShrink:    stagingCollapsed ? 0 : 1,
+          flexBasis:     stagingCollapsed ? 'auto' : 0,
+          overflow:      'hidden',
+          minHeight:     0,
+        }}
+      >
+        <SectionHead
+          collapsed={stagingCollapsed}
+          onToggle={() => setStagingCollapsed((c) => !c)}
+        >
+          <span aria-hidden="true" style={{ color: 'var(--color-accent)' }}>●</span>
+          <span>Working changes (uncommitted)</span>
+          <span
+            style={{
+              marginLeft: 'auto',
+              fontWeight: 400,
+              color:      'var(--color-text-faint)',
+            }}
+          >
+            {entries.length} {entries.length === 1 ? 'file' : 'files'}
+          </span>
+        </SectionHead>
+
+        {!stagingCollapsed && (
+          <StagingPanelBody
+            entries={entries}
+            buildStatus={buildStatus}
+            workspaceName={workspaceName}
+          />
+        )}
       </div>
 
-      {/* ── Resizable splitter ── */}
-      <div
-        onMouseDown={handleSplitterMouseDown}
-        style={{
-          height:     4,
-          cursor:     'ns-resize',
-          background: 'var(--color-border)',
-          flexShrink: 0,
-          userSelect: 'none',
-        }}
-        title="Drag to resize"
-      />
+      {/* ── DEPLOYUI-02/D4: Resizable splitter — hidden when either section collapsed ── */}
+      {splitterVisible && (
+        <div
+          data-testid="section-splitter"
+          onMouseDown={handleSplitterMouseDown}
+          style={{
+            height:     7,
+            cursor:     'ns-resize',
+            background: 'var(--color-header)',
+            borderTop:  '1px solid var(--color-border)',
+            borderBottom: '1px solid var(--color-border)',
+            flexShrink: 0,
+            userSelect: 'none',
+            position:   'relative',
+          }}
+          title="Drag to resize"
+        >
+          {/* Drag handle indicator */}
+          <div
+            style={{
+              position:     'absolute',
+              left:         '50%',
+              top:          '50%',
+              transform:    'translate(-50%, -50%)',
+              width:        30,
+              height:       2,
+              borderRadius: 2,
+              background:   'var(--color-text-faint)',
+              opacity:      0.5,
+            }}
+          />
+        </div>
+      )}
 
-      {/* ── Version history section (bottom) ── */}
-      <div style={{ flex: 1 - splitterRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-        <VersionHistoryBody />
+      {/* ── DEPLOYUI-03/D5: "Version History" section ── */}
+      <div
+        data-testid="history-section"
+        style={{
+          display:       'flex',
+          flexDirection: 'column',
+          flexGrow:      historyFlexGrow,
+          flexShrink:    historyCollapsed ? 0 : 1,
+          flexBasis:     historyCollapsed ? 'auto' : 0,
+          overflow:      'hidden',
+          minHeight:     0,
+        }}
+      >
+        <SectionHead
+          collapsed={historyCollapsed}
+          onToggle={() => setHistoryCollapsed((c) => !c)}
+        >
+          <span>Version History</span>
+        </SectionHead>
+
+        {!historyCollapsed && <VersionHistoryBody />}
       </div>
 
       {/* ── Sticky footer CTA ── */}
       <div
         style={{
-          display:        'flex',
-          flexDirection:  'column',
-          gap:            'var(--space-1)',
-          flexShrink:     0,
+          display:       'flex',
+          flexDirection: 'column',
+          gap:           'var(--space-1)',
+          flexShrink:    0,
+          padding:       'var(--space-2) var(--space-3)',
+          borderTop:     '1px solid var(--color-border)',
+          background:    'var(--color-header)',
         }}
       >
         {/* Non-client hint copy (shown ONLY for mod-project / no clientPath) */}
         {isNonClientProject && (
           <div
             style={{
-              fontSize:   'var(--text-xs)',
-              color:      'var(--color-text-faint)',
-              padding:    '0 var(--space-4)',
-              paddingTop: 'var(--space-1)',
+              fontSize: 'var(--text-xs)',
+              color:    'var(--color-text-faint)',
             }}
           >
             No bound client — deploy-to-client is disabled
           </div>
         )}
 
-        <div
+        {/* DEPLOYUI-12/D14: Full-width Deploy CTA */}
+        <button
           style={{
-            display:     'flex',
-            justifyContent: 'flex-end',
-            alignItems:  'center',
-            gap:         'var(--space-2)',
-            padding:     'var(--space-2) var(--space-3)',
-            borderTop:   '1px solid var(--color-border)',
-            background:  'var(--color-header)',
+            width:        '100%',
+            background:   deployDisabled ? 'var(--color-widget)' : 'var(--color-accent)',
+            border:       'none',
+            color:        deployDisabled ? 'var(--color-text-faint)' : 'var(--color-accent-text)',
+            borderRadius: 'var(--radius-sm)',
+            padding:      '7px 0',
+            cursor:       deployDisabled ? 'not-allowed' : 'pointer',
+            fontSize:     'var(--text-sm)',
+            fontWeight:   600,
+            opacity:      deployDisabled ? 0.6 : 1,
+            transition:   'opacity 0.1s ease',
+          }}
+          disabled={deployDisabled}
+          aria-disabled={deployDisabled}
+          onClick={deployDisabled ? undefined : () => setDeployOpen(true)}
+          aria-label={deployDisabled ? 'Deploy disabled — no bound client' : `Deploy ${versionLabel}`}
+          title={
+            deployDisabled
+              ? 'Non-client project — deploy-to-client is not available'
+              : `Deploy ${versionLabel} to the bound client`
+          }
+        >
+          Deploy {versionLabel}…
+        </button>
+
+        {/* DEPLOYUI-11/D13: footer instructional hint */}
+        <div
+          data-testid="deploy-hint"
+          style={{
+            fontSize:   10,
+            color:      'var(--color-text-faint)',
+            textAlign:  'center',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          <button
-            style={deployBtnStyle(deployDisabled)}
-            disabled={deployDisabled}
-            aria-disabled={deployDisabled}
-            onClick={deployDisabled ? undefined : () => setDeployOpen(true)}
-            aria-label={deployDisabled ? 'Deploy disabled — no bound client' : `Deploy ${versionLabel}`}
-            title={
-              deployDisabled
-                ? 'Non-client project — deploy-to-client is not available'
-                : `Deploy ${versionLabel} to the bound client`
-            }
-          >
-            Deploy {versionLabel}…
-          </button>
+          collapse a section or drag the divider · expand a version (▸) to list its files
         </div>
       </div>
 
