@@ -56,6 +56,17 @@ the entries are not sourced (empty internal TOC) — the master-index mount is t
 6. Regression: v5000 self-indexed base/patches (bottom.tre, patch_11_*) still resolve; Infinity/SWGEmu
    searchTree clients unaffected. Native byte-exact test on a real swg-client-v2 v6000 archive (skipIf absent).
 
+## Related: loose-overlay over-enumeration (found during UAT 2026-06-29)
+
+`treAutoMount.injectLooseDirOverlay` recursively enumerates EVERY file in each client `searchPath` dir
+and adds them as VFS entries. For swg-client-v2 `client.cfg` lists `searchPath_00_9="D:/Code/SWGSource
+Client v3.0/"` — the whole data root — so it surfaces thousands of loose files AND the `.tre` archives
+in that dir as bogus loose VFS entries. The real client does on-demand searchPath lookups, not full
+enumeration. Fix candidates: only overlay the top-priority override dir (looseDirs[0]); skip `.tre`/.toc
+and known-archive files; or make searchPath lookups lazy. (Extract from loose entries was separately
+fixed in a3b825f by reading winnerArchivePath directly when winnerArchiveIndex < 0; the IFF/mesh
+"Open in viewer" read paths still have the same loose-entry gap — fix with a shared readVfsEntryBytes.)
+
 ## UAT impact + notes
 
 - NOT blocking 04.2-06: `texture/ksk_all_spaceterminal.dds` is in `patch_11_0x.tre` (v5000, self-indexed) →
