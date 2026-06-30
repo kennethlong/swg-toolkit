@@ -191,7 +191,7 @@ Plans:
 - [x] 04.3-05-PLAN.md — Branch-tree graph primitives (laneLayout + LaneGutter SVG, 002-A)
 - [x] 04.3-06-PLAN.md — VersionHistoryBody rework (two-column graph + silent reconcile wiring)
 - [x] 04.3-07-PLAN.md — Deploy panel + staging chrome + forward-deploy-only modal (005/006)
-- [ ] 04.3-08-PLAN.md — Project-entry front-door polish (007)
+- [x] 04.3-08-PLAN.md — Project-entry front-door polish (007)
 - [ ] 04.3-09-PLAN.md — Shell-composition polish (008); VCS-tab S3 left AMBIGUOUS
 - [ ] 04.3-10-PLAN.md — Native per-payload v6000 extraction + extractAt(descriptor)
 - [ ] 04.3-11-PLAN.md — Renderer master-.toc mount sourcing + lazy searchPath
@@ -332,7 +332,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
-| 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-06-27 |
+| 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-06-30 |
 | 4.1 Deploy & Project UX *(INSERTED)* | 10/11 | In Progress|  |
 | 4.2 Dev-Client Support & Loose-Override Deploy *(INSERTED)* | 0/6 | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
