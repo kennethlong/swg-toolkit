@@ -5,7 +5,7 @@
  * Wave-1 implementation: real push/pop/clear LIFO stack.
  *
  * Design:
- *   - Session-scoped ONLY — NOT persisted. No persist middleware; no localStorage write.
+ *   - Session-scoped ONLY — NOT persisted. No persist middleware; in-memory only.
  *   - Each entry captures enough to reverse a syncLiveToVersion call:
  *       priorLiveVersionId: the version that was live BEFORE the reconcile.
  *       priorDeployRecord:  the deploy record that was active (for the undo apply path).
