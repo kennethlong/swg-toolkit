@@ -60,11 +60,26 @@ loose/absolute flag, and the reconcile engine uses each version's own flag to ap
 ⇒ Hide/disable the picker in any revert/navigate context (Baseline reset, clicking an existing
 version); show it only when staging+deploying a new version forward.
 
+## Version-history is not drawn as a branch tree (maintainer, 2026-06-29)
+
+`VersionHistoryBody.tsx` renders a FLAT list — branch nodes only get a left-border + extra indent,
+NOT the visual branching graph specced in sketches `002-version-graph-timeline` and
+`005-deploy-inspect-tab` (`.planning/sketches/…`). The data model IS correct (selecting an older
+version then Save sets the new node's `parentId` to it → a real branch; `branchSet()` detects it), but
+the maintainer's branch off v-prior shows as a plain row, not a tree. The rework must render the graph
+faithfully to the sketch: node circles connected by lines, the curved branch-from connector (e.g. "v4
+branch from v2"), active (●teal) / deployed (●) / `root` / `main` markers, branch-point labels, and the
+footer summary ("N versions · M branches · active: … · deployed: …"). Sketches are the source of truth
+([[feedback-sketches-are-ui-source-of-truth]]).
+
 ## Acceptance criteria
 
 1. Each deployed version records its deploy model; revert uses it (not the live radio).
 6. Deploy-model picker is shown ONLY for a new forward deploy; hidden when reverting/navigating to an
    existing version (each version's stored flag drives its own apply/revert).
+7. Version history renders as the visual branch TREE per sketches 002 + 005 (connector lines, branch-from
+   curve, active/deployed/root/main markers) — a branch created off a non-tip version is drawn as a branch,
+   not a flat row.
 2. Clicking version V (incl. Baseline) reconciles the live client to flatten(V): added/changed files
    written via the right path; removed files restored to stock (B3 sha256 match).
 3. Forward then backward then forward navigation is idempotent: live bytes for a path == that version's
