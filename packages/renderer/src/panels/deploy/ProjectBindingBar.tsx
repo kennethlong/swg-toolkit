@@ -24,6 +24,8 @@ import { useWorkspaceStore } from '../../state/workspaceStore';
 import { useTreStore } from '../../state/treStore';
 import { useOpenProjectStore } from '../../state/openProjectStore';
 import { resolveLayout } from '../../services/clientLayout';
+import { getRecentProjects, type RecentProject } from '../../services/recentProjects';
+import { openWorkspace } from '../../services/workspaceService';
 
 // Path B: require() for Node modules (nodeIntegration:true)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -89,11 +91,13 @@ export default function ProjectBindingBar({
   onMount,
   archiveCount,
 }: ProjectBindingBarProps): React.ReactElement {
-  const clientPath  = useWorkspaceStore((s) => s.clientPath);
-  const wsInfo      = useWorkspaceStore((s) => s.status.kind === 'ready' ? s.status.info : null);
-  const archives    = useTreStore((s) => s.archives);
+  const clientPath      = useWorkspaceStore((s) => s.clientPath);
+  const workspaceName   = useWorkspaceStore((s) => s.workspaceName);
+  const wsInfo          = useWorkspaceStore((s) => s.status.kind === 'ready' ? s.status.info : null);
+  const archives        = useTreStore((s) => s.archives);
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recents, setRecents] = useState<RecentProject[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Derived chip values
@@ -108,6 +112,11 @@ export default function ProjectBindingBar({
     () => (clientPath ? resolveLayout(clientPath) : null),
     [clientPath],
   );
+
+  // P3: load recent projects once on mount (powers the live Open Recent links).
+  useEffect(() => {
+    try { setRecents(getRecentProjects()); } catch { /* ignore — recent list is non-critical */ }
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -131,6 +140,17 @@ export default function ProjectBindingBar({
     setMenuOpen(false);
     onNewProject();
   }, [onNewProject]);
+
+  // P3: open a recent project by folder path.
+  const handleOpenRecent = useCallback(async (folderPath: string) => {
+    setMenuOpen(false);
+    setError(null);
+    try {
+      await openWorkspace(folderPath);
+    } catch (err) {
+      setError(String((err as Error)?.message ?? err));
+    }
+  }, []);
 
   // D-13: binding detail fields derived from wsInfo (written by initProject via workspace.json)
   const cfgFile      = wsInfo?.cfgPath  ? nodePath.basename(wsInfo.cfgPath)  : null;
@@ -219,14 +239,45 @@ export default function ProjectBindingBar({
             >
               Open…
             </div>
-            <div
-              role="menuitem"
-              aria-disabled="true"
-              style={menuItemStyle(true)}
-              title="No recent projects"
-            >
-              Open Recent
-            </div>
+            {/* P3: Open Recent — live links when recents exist; disabled label when empty */}
+            {recents.length > 0 ? (
+              <>
+                <div
+                  style={{
+                    padding:       'var(--space-1) var(--space-4)',
+                    fontSize:      'var(--text-xs)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color:         'var(--color-text-faint)',
+                    userSelect:    'none',
+                  }}
+                >
+                  Open Recent
+                </div>
+                {recents.map((r) => (
+                  <div
+                    key={r.folderPath}
+                    role="menuitem"
+                    tabIndex={0}
+                    style={menuItemStyle(false)}
+                    onClick={() => void handleOpenRecent(r.folderPath)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void handleOpenRecent(r.folderPath); }}
+                    title={r.folderPath}
+                  >
+                    {r.name}
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div
+                role="menuitem"
+                aria-disabled="true"
+                style={menuItemStyle(true)}
+                title="No recent projects"
+              >
+                Open Recent
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -257,24 +308,7 @@ export default function ProjectBindingBar({
       {/* ── Spacer ────────────────────────────────────────────────────── */}
       <div style={{ flex: 1 }} />
 
-      {/* ── Bound-client chip (007-A, glyph + mono text) ─────────────── */}
-      {/* Accessibility Rule 1: glyph ⛁ + text + mono color — never color-only */}
-      {clientPath && clientName && (
-        <span
-          title={clientPath}
-          style={{
-            fontFamily:   'var(--font-mono)',
-            fontSize:     'var(--text-xs)',
-            color:        'var(--color-text-muted)',
-            overflow:     'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace:   'nowrap',
-            maxWidth:     220,
-          }}
-        >
-          ⛁ {clientName}{treVersion ? ` · EERT${treVersion}` : ''}
-        </span>
-      )}
+      {/* Chip area is now rendered in the proj-bar below (P1+P2). */}
 
       {/* ── Inline error feedback ─────────────────────────────────────── */}
       {error && (
@@ -295,6 +329,68 @@ export default function ProjectBindingBar({
         </span>
       )}
     </div>{/* end main button row */}
+
+    {/* ── P1 + P2: proj-bar (sketch 007-A) — shown when a project is bound ──── */}
+    {/* P1: project name "◆ projectName"; P2: pill chip "⛁ client · EERTver"   */}
+    {/* Accessibility Rule 1: glyph + text + bg + border — never color-only.    */}
+    {clientPath && clientName && (
+      <div
+        style={{
+          display:        'flex',
+          alignItems:     'center',
+          gap:            'var(--space-2)',
+          padding:        '5px var(--space-4)',
+          background:     'var(--color-surface-2)',
+          borderBottom:   '1px solid var(--color-border-soft)',
+          flexShrink:     0,
+        }}
+      >
+        {/* P1: project name */}
+        <div
+          style={{
+            fontWeight:  600,
+            fontSize:    'var(--text-sm)',
+            display:     'flex',
+            alignItems:  'center',
+            gap:         6,
+            color:       'var(--color-text)',
+            overflow:    'hidden',
+            textOverflow:'ellipsis',
+            whiteSpace:  'nowrap',
+            flex:        1,
+            minWidth:    0,
+          }}
+        >
+          <span style={{ color: 'var(--color-accent)' }}>◆</span>
+          {wsInfo?.projectName ?? workspaceName ?? '—'}
+        </div>
+
+        {/* P2: pill chip — accent-dim bg + accent-line border + radius-full */}
+        <span
+          title={clientPath}
+          style={{
+            display:      'inline-flex',
+            alignItems:   'center',
+            gap:          5,
+            padding:      '2px 8px',
+            fontSize:     'var(--text-xs)',
+            fontFamily:   'var(--font-mono)',
+            background:   'var(--color-accent-dim, rgba(46,160,160,.12))',
+            border:       '1px solid var(--color-accent-line)',
+            borderRadius: 'var(--radius-full, 999px)',
+            color:        'var(--color-text)',
+            whiteSpace:   'nowrap',
+            flexShrink:   0,
+          }}
+        >
+          <span aria-hidden="true" style={{ color: 'var(--color-accent)' }}>⛁</span>
+          {clientName}
+          {treVersion && (
+            <span style={{ color: 'var(--color-text-muted)' }}>· EERT{treVersion}</span>
+          )}
+        </span>
+      </div>
+    )}
 
     {/* ── D-13: Binding-details sub-row (M4: canonical layout home) ─────── */}
     {/* Shown when a client is bound — pattern, cfg, TRE dir, mSP, serverConfig. */}
