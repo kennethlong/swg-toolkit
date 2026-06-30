@@ -180,7 +180,7 @@ Out of scope (separate future item): `delete-project-with-restore`.
 
 **Requirements**: Completes parent reqs **TRE-05** (Pillar B searchTOC/v6000 mount), **DEPLOY-03** (rollback/version-navigation), **DEPLOY-08** (loose-override substrate). Phase-internal candidate IDs (carried in plan frontmatter): VER-01..09, GRAPH-01..08, DEPLOYUI-01..15, PROJUI-01..09, SHELL-01..06, MOUNT-01..07.
 **Depends on:** Phase 4.2 (searchTOC/loose-override mount + deploy engine it completes), Phase 4.1 (version graph + deploy UX it reworks). Both phases' in-client UATs (04.1-11, 04.2-06) remain open; this phase's combined UAT supersedes re-running them piecemeal.
-**Plans:** 3/12 plans executed
+**Plans:** 4/12 plans executed
 
 Plans:
 **Wave 0 — test scaffolds & fixtures**
@@ -188,7 +188,7 @@ Plans:
 - [x] 04.3-03-PLAN.md — Pillar B swg-source v6000 byte-exact fixture + native/resolveFull RED scaffolds
 **Wave 1 — parallel reworks**
 - [x] 04.3-04-PLAN.md — Pillar A reconcile engine + session undo + single live pointer
-- [ ] 04.3-05-PLAN.md — Branch-tree graph primitives (laneLayout + LaneGutter SVG, 002-A)
+- [x] 04.3-05-PLAN.md — Branch-tree graph primitives (laneLayout + LaneGutter SVG, 002-A)
 - [ ] 04.3-06-PLAN.md — VersionHistoryBody rework (two-column graph + silent reconcile wiring)
 - [ ] 04.3-07-PLAN.md — Deploy panel + staging chrome + forward-deploy-only modal (005/006)
 - [ ] 04.3-08-PLAN.md — Project-entry front-door polish (007)
