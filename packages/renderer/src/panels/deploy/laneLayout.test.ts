@@ -225,13 +225,17 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
     );
     expect(v5TrunkConn).toBeDefined();
 
-    // v5 must NOT have a cross-lane branch connector to v3's row
+    // v5 must NOT have a cross-lane branch connector whose ENDPOINT y is at v3's row.
+    // The bezier d format is 'M px py C px+34 py bx midY bx by'; the LAST value is `by`.
+    // We check endsWith(' ${rowY(v3)}') to match endpoint-at-v3, not midY coincidences.
+    // (Rule 1 bug-fix: original .includes('130') matched the valid v4 bezier midY=130,
+    //  causing a false failure. The correct check is .endsWith(' 130') — endpoint only.)
     const falseTrunkToV3 = layout.connectors.find(
       (c) =>
         c.kind === 'branch' &&
         c.d !== undefined &&
         v3Row !== undefined &&
-        c.d.includes(String(rowY(v3Row.rowIndex))),
+        c.d.endsWith(` ${rowY(v3Row.rowIndex)}`),
     );
     expect(falseTrunkToV3).toBeUndefined();
 
