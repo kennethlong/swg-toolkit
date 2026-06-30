@@ -15,7 +15,8 @@ import { useWorkspaceStore } from '../../state/workspaceStore';
 import { openWorkspace, getDefaultProjectFolder, getStudioDir } from '../../services/workspaceService';
 import { useOpenProjectStore } from '../../state/openProjectStore';
 import * as projectBinding from '../../services/projectBinding';
-import { detectClients } from '../../services/clientLocator';
+import { detectClients, getKnownClientPaths, type KnownClientPath } from '../../services/clientLocator';
+import { setClientScanMessage } from '../../state/clientScanStore';
 import { listProjects } from '../../services/projectList';
 import { getRecentProjects, pruneRecentProjects, type RecentProject } from '../../services/recentProjects';
 import type { DetectedClient } from '@swg/contracts';
@@ -139,11 +140,13 @@ function Row({
 export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntryProps = {}): React.ReactElement {
   const status = useWorkspaceStore((s) => s.status);
   const [detectedClients, setDetectedClients] = useState<DetectedClient[]>([]);
+  const [missingClients, setMissingClients] = useState<KnownClientPath[]>([]);
   const [recents, setRecents] = useState<RecentProject[]>([]);
   const [clientError, setClientError] = useState<string | null>(null);
 
   // Auto-scan detected clients + load recents on mount.
   useEffect(() => {
+    let detected: ReturnType<typeof detectClients> = [];
     try {
       // Exclude installs already bound to a project — once you open a project against a
       // detected client it should no longer appear in the auto-scan list as bindable.
@@ -152,12 +155,29 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
           .filter((p) => p.kind === 'client' && p.clientPath)
           .map((p) => nodePath.resolve(p.clientPath!).toLowerCase()),
       );
-      setDetectedClients(
-        detectClients().filter(
-          (c) => !boundPaths.has(nodePath.resolve(c.installPath).toLowerCase()),
-        ),
+      detected = detectClients().filter(
+        (c) => !boundPaths.has(nodePath.resolve(c.installPath).toLowerCase()),
       );
+      setDetectedClients(detected);
     } catch (err) { console.error('[WorkspaceEntry] detectClients error:', err); }
+
+    // P4: compute not-found client rows — known paths that weren't detected on disk.
+    try {
+      const known = getKnownClientPaths();
+      const detectedInstalls = new Set(detected.map((c) => c.installPath.toLowerCase()));
+      const missing = known.filter((k) => !detectedInstalls.has(k.installPath.toLowerCase()));
+      setMissingClients(missing);
+
+      // P9: write first-run scan message to clientScanStore (plan 09 statusbar reads it).
+      // Format: "detected: SWG Infinity ✓ · SWGEmu ✗"
+      const foundParts   = detected.map((c) => `${c.name} ✓`);
+      const missingParts = missing.map((k) => `${k.name} ✗`);
+      const all = [...foundParts, ...missingParts];
+      if (all.length > 0) {
+        setClientScanMessage(`detected: ${all.join(' · ')}`);
+      }
+    } catch (err) { console.error('[WorkspaceEntry] missing-clients / scan-message error:', err); }
+
     // Self-heal: drop recents whose project studio no longer exists (e.g. after cleanup).
     try {
       setRecents(pruneRecentProjects((r) => nodeFs.existsSync(getStudioDir(r.folderPath))));
@@ -264,13 +284,14 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
         </div>
       )}
 
-      {/* Detected clients · auto-scan */}
-      {detectedClients.length > 0 && (
+      {/* Detected clients · auto-scan (P4: shows found + not-found rows) */}
+      {(detectedClients.length > 0 || missingClients.length > 0) && (
         <div>
           <div style={secTitleStyle}>
             Detected clients{' '}
             <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-text-faint)' }}>· auto-scan</span>
           </div>
+          {/* Found clients — clickable (open or bind) */}
           {detectedClients.map((client) => (
             <Row
               key={client.installPath}
@@ -282,6 +303,29 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
               pill={(
                 <span style={{ ...pillBase, background: 'var(--color-accent-dim, rgba(46,160,160,.12))', border: '1px solid var(--color-accent-line)', color: 'var(--color-accent)' }}>
                   <span aria-hidden="true">✓</span>ready
+                </span>
+              )}
+            />
+          ))}
+          {/* P4: Not-found rows — greyed/disabled, Sketch 007-B "✗ not found" pill */}
+          {missingClients.map((client) => (
+            <Row
+              key={client.installPath}
+              ico="⛁"
+              name={client.name}
+              sub="not found on disk"
+              title={`${client.name} — not found at ${client.installPath}`}
+              disabled
+              pill={(
+                <span
+                  style={{
+                    ...pillBase,
+                    background: 'rgba(224,88,79,.12)',
+                    border:     '1px solid rgba(224,88,79,.40)',
+                    color:      'var(--color-danger, #e0584f)',
+                  }}
+                >
+                  <span aria-hidden="true">✗</span>not found
                 </span>
               )}
             />

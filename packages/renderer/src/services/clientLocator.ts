@@ -164,6 +164,36 @@ export function chooseSlot(scan: SharedFileScan): number {
   return Math.max(...scan.occupiedSlots) + 1;
 }
 
+// ─── Known client paths ───────────────────────────────────────────────────────
+
+/**
+ * A well-known candidate client install — name + expected installPath.
+ * Used by the welcome screen to show "not found" rows for clients that are
+ * configured in the scan list but weren't found on disk (P4 sketch 007-B).
+ */
+export interface KnownClientPath {
+  name: string;
+  installPath: string;
+}
+
+/**
+ * Return the primary well-known SWG client install paths.
+ * These are the entries the auto-scan probes; callers compare against
+ * detectClients() results to find the "configured-but-missing" installs
+ * to show as "✗ not found" in the welcome list.
+ *
+ * Only the primary (most-expected) paths are returned — not drive-letter
+ * variants or dev builds, which are lower-signal for the welcome screen.
+ *
+ * Source: 04.3-08-PLAN.md P4; sketch 007-B "not found" row.
+ */
+export function getKnownClientPaths(): KnownClientPath[] {
+  return [
+    { name: 'SWG Infinity', installPath: 'D:\\SWG Infinity\\SWG Infinity' },
+    { name: 'SWGEmu',       installPath: 'D:\\SWGEmu Client\\SWGEmu' },
+  ];
+}
+
 // ─── detectClients ────────────────────────────────────────────────────────────
 
 /**

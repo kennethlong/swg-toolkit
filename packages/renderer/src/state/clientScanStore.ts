@@ -8,8 +8,8 @@
  *   - Plan 09 reader: statusbar left-chip reads useClientScanStatus() to surface
  *     the scan progress/result to the user (PROJUI first-run statusbar message).
  *
- * Wave-0 stub: setMessage is a no-op.
- * Wave-1 plan 08 implements the real setter when the scan service wires up.
+ * Wave-1 plan 08: setMessage is the real setter (turns plan 02 RED tests GREEN).
+ * Called by WorkspaceEntry after the first-run client detection scan.
  *
  * Design:
  *   - Session-scoped ONLY — NOT persisted. Plain in-memory Zustand store.
@@ -31,10 +31,10 @@ interface ClientScanState {
   setMessage: (msg: string | null) => void;
 }
 
-export const useClientScanStore = create<ClientScanState>(() => ({
+export const useClientScanStore = create<ClientScanState>((set) => ({
   message: null,
-  // Stub: no-op — does NOT update message
-  setMessage: (_msg: string | null) => {},
+  // Wave-1 plan 08 implementation: real setter updates store message.
+  setMessage: (msg: string | null) => set({ message: msg }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ export function useClientScanStatus(): { message: string | null } {
  * Called by Plan-08 writer from the client-detection service (not a React hook).
  * Pass null to clear the message.
  *
- * STUB: no-op until Wave-1 plan 08 wires this up.
+ * Wave-1 plan 08: real setter — updates the message in the Zustand store.
  */
 export function setClientScanMessage(msg: string | null): void {
   useClientScanStore.getState().setMessage(msg);
