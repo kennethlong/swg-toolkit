@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 04.3 context gathered (discuss-phase complete)
-last_updated: "2026-06-30T21:26:09.438Z"
+last_updated: "2026-06-30T21:47:40.774Z"
 last_activity: 2026-06-30
 progress:
   total_phases: 12
   completed_phases: 5
   total_plans: 58
-  completed_plans: 45
-  percent: 78
+  completed_plans: 46
+  percent: 79
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.3 (versioning-and-searchtoc-mount) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
@@ -45,7 +45,7 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       REQUIREMENTS DEPLOY-01..04 → Complete).
 Last activity: 2026-06-30
 
-Progress: [████████░░] 78%
+Progress: [████████░░] 79%
 
 ### 02-03 key facts (crew-verified)
 
@@ -106,6 +106,7 @@ Progress: [████████░░] 78%
 | Phase 04.1 P09 | 60 | 3 tasks | 6 files |
 | Phase 04.1 P10 | 6 | 3 tasks | 11 files |
 | Phase 04.3 P02 | 20 | 3 tasks | 10 files |
+| Phase 04.3 P03 | 12 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -226,6 +227,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: absolute-path default deploy model (D-05): writes absolute outputPath as searchTree value, no copy to Live required (04.1-07)
 - [Phase ?]: handleReset H5: restoreCfg whole-file as primary; deactivatePatch/resetShadow fallback for pre-07 records lacking snapshotPath (04.1-07)
 - [Phase ?]: 04.1-09-SUMMARY.md
+- [Phase ?]: swg-source v6000 plain-zlib fixture confirmed at 26174 bytes offset in patch_sku3_24_client_00.tre; resolveFull RED test uses synthetic TOC (CI-safe)
+- [Phase ?]: extractMountAt(handle, archiveIndex, descriptor) — container via archiveIndex not offset; plan 11 uses stubs without plan-10 wave dependency (checker W2 fix)
 
 ### Pending Todos
 
@@ -249,6 +252,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-30T21:26:09.412Z
+Last session: 2026-06-30T21:47:21.357Z
 Stopped at: Phase 04.3 context gathered (discuss-phase complete)
 Resume file: None

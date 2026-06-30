@@ -180,12 +180,12 @@ Out of scope (separate future item): `delete-project-with-restore`.
 
 **Requirements**: Completes parent reqs **TRE-05** (Pillar B searchTOC/v6000 mount), **DEPLOY-03** (rollback/version-navigation), **DEPLOY-08** (loose-override substrate). Phase-internal candidate IDs (carried in plan frontmatter): VER-01..09, GRAPH-01..08, DEPLOYUI-01..15, PROJUI-01..09, SHELL-01..06, MOUNT-01..07.
 **Depends on:** Phase 4.2 (searchTOC/loose-override mount + deploy engine it completes), Phase 4.1 (version graph + deploy UX it reworks). Both phases' in-client UATs (04.1-11, 04.2-06) remain open; this phase's combined UAT supersedes re-running them piecemeal.
-**Plans:** 12 plans (plan 01 = the DONE crew UI-vs-sketch gap review → 04.3-01-CREW-GAP-REVIEW.md)
+**Plans:** 2/12 plans executed
 
 Plans:
 **Wave 0 — test scaffolds & fixtures**
 - [x] 04.3-02-PLAN.md — Pillar A contract stubs + RED tests (syncLiveToVersion, undoStore, laneLayout, LaneGutter)
-- [ ] 04.3-03-PLAN.md — Pillar B swg-source v6000 byte-exact fixture + native/resolveFull RED scaffolds
+- [x] 04.3-03-PLAN.md — Pillar B swg-source v6000 byte-exact fixture + native/resolveFull RED scaffolds
 **Wave 1 — parallel reworks**
 - [ ] 04.3-04-PLAN.md — Pillar A reconcile engine + session undo + single live pointer
 - [ ] 04.3-05-PLAN.md — Branch-tree graph primitives (laneLayout + LaneGutter SVG, 002-A)
