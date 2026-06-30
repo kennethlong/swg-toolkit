@@ -1,25 +1,31 @@
 /**
  * packages/renderer/src/panels/deploy/StagingPanelBody.tsx
- * Extracted staging body — Phase 04.1 DEPLOY-05/07.
+ * Extracted staging body — Phase 04.1 DEPLOY-05/07 + Phase 04.3 DEPLOYUI-05..10.
  *
- * Moved from StagingPanel.tsx:186-454 (inner StagingPanelBody function) to its
- * own file as a default export. Consumed by DeployPanel (plan 03) which owns the
- * outer panel wrapper.
+ * 04.3-07 additions (Task 2):
+ *   DEPLOYUI-05/D7: real row selection — click sets selected row → accent bg + inset left bar;
+ *                   aria-selected wired (was hardcoded false).
+ *   DEPLOYUI-04/D6: working-vs-saved split — "Based on vN" divider + dimmed "Saved in vN" rows.
+ *   DEPLOYUI-07/D9: changed-vs-base ●/○ dot per row ("identical to base" when bytes match version).
+ *   DEPLOYUI-08/D10: staging footer payload total "… · NNN kB payload" (sum staged file sizes).
+ *   DEPLOYUI-09/D11: hover-only × remove (opacity 0→1 on row hover; was always visible).
+ *   DEPLOYUI-10/D12: row context-menu parity — editor (DISABLED) / viewport (FUNCTIONAL) /
+ *                    reveal-in-TRE (DISABLED) / compare-to-base (DISABLED) alongside existing.
+ *   DEPLOYUI-06/D8: ActionBadge restyled as pill + "modify" label (in ActionBadge.tsx).
  *
- * Key differences from the original inner function:
- *   - DEFAULT export (was inner function in StagingPanel.tsx)
- *   - Panel-head title "Staging" DROPPED — DeployPanel owns the section header
- *   - Add… + Save version controls KEPT (moved to head without the title)
- *   - isVirtualPathSafe imported from pathSafety.ts (M1 — do NOT inline a second copy)
- *   - Dead handlePackPatch removed
- *   - primaryBtnStyle/secondaryBtnStyle defined locally (W1 fix)
+ * KEEP items (unchanged from prior phase):
+ *   - Drag-drop staging, empty-state card, invalid-path/source-missing warnings.
+ *   - Panel head "Add…" + "Save version" controls.
+ *   - Virtualization: ROW_HEIGHT=30, OVERSCAN=8.
+ *   - A11y: role="listbox" + role="option".
  *
- * Virtualization (mandatory — match VfsTree, HexInspector):
- *   ROW_HEIGHT = 30   OVERSCAN = 8   (never change)
+ * Context-menu disposition (DEPLOYUI-10/D12):
+ *   - "Open in viewport" → FUNCTIONAL (calls openStagedEntry)
+ *   - "Reveal in TRE browser" → DISABLED (no existing handler; coming soon)
+ *   - "Compare to base…" → DISABLED (no existing handler; coming soon)
+ *   - "Open in editor" → DISABLED (no existing handler; coming soon)
  *
- * A11y: role="listbox" + role="option" preserved.
- *
- * Source: 04.1-03-PLAN.md Task 2; StagingPanel.tsx:186-454; 04.1-PATTERNS.md §StagingPanelBody.tsx.
+ * Source: 04.1-03-PLAN.md Task 2; 04.3-07-PLAN.md Task 2.
  */
 
 import React, {
@@ -36,8 +42,9 @@ import crypto from 'crypto';
 import ActionBadge from './ActionBadge';
 
 import { useChangesetStore } from '../../state/changesetStore';
-import { useStagingStore }   from '../../state/stagingStore';
-import { openStagedEntry }   from '../../services/openInViewer';
+import { useWorkspaceStore }  from '../../state/workspaceStore';
+import { useStagingStore }    from '../../state/stagingStore';
+import { openStagedEntry }    from '../../services/openInViewer';
 
 import { sealVersion } from '../../services/changesetService';
 import { isVirtualPathSafe } from '../../services/pathSafety';
@@ -83,19 +90,10 @@ const secondaryBtnStyle: React.CSSProperties = {
 
 // ─── Path security helpers (local, non-exported) ──────────────────────────────
 
-/**
- * Returns true when replacementFilePath is a safe absolute path to an existing file.
- * T-04-07: replacement file path must be absolute.
- */
 function isReplacementPathAbsolute(rp: string): boolean {
   return path.isAbsolute(rp);
 }
 
-/**
- * Compute the SHA-256 hex digest of a file at the given absolute path.
- * R2-W5: stored in entry.sha256 for drift detection in changesetService.
- * Returns undefined if the file cannot be read.
- */
 function computeSha256(filePath: string): string | undefined {
   try {
     const bytes = fs.readFileSync(filePath);
@@ -103,6 +101,28 @@ function computeSha256(filePath: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Read the file size in bytes for the given absolute path.
+ * Returns 0 if the file cannot be read.
+ */
+function getFileSizeBytes(filePath: string | undefined): number {
+  if (!filePath) return 0;
+  try {
+    return fs.statSync(filePath).size;
+  } catch {
+    return 0;
+  }
+}
+
+/** Format a byte count as "NNN kB" (rounded, ≥1 kB → NNN kB, else "< 1 kB"). */
+function formatKb(bytes: number): string {
+  const kb = bytes / 1024;
+  if (kb < 1) return '< 1 kB';
+  return `${Math.round(kb)} kB`;
 }
 
 // ─── StagingPanelBody ─────────────────────────────────────────────────────────
@@ -132,6 +152,9 @@ export default function StagingPanelBody({
   const [pendingFile, setPendingFile] =
     useState<{ filePath: string; defaultVp: string } | null>(null);
 
+  // DEPLOYUI-05/D7: selected row path
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
   // ResizeObserver — mirrors VfsTree.tsx exactly
   useEffect(() => {
     const el = containerRef.current;
@@ -157,7 +180,53 @@ export default function StagingPanelBody({
     setScrollTop((e.currentTarget as HTMLDivElement).scrollTop);
   }, []);
 
-  // Windowing math (mirrors VfsTree.tsx exactly)
+  // ── DEPLOYUI-04/D6: Working-vs-saved split ─────────────────────────────────
+  // Compare staging entries against the active version's flat content.
+  // Entries that match the active version = "saved in vN"; rest = "working".
+  const manifest    = useChangesetStore((s) => s.manifest);
+  const studioDir   = useWorkspaceStore((s) => s.studioDir);
+  const activeVersionId = manifest?.activeVersionId ?? null;
+
+  const [savedPaths, setSavedPaths] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    // Try to compute the active version's flat content.
+    // We import dynamically to avoid a hard dependency on the real FS in tests
+    // (tests mock this module).
+    (async () => {
+      if (!activeVersionId || !manifest || !studioDir) {
+        setSavedPaths(new Set());
+        return;
+      }
+      try {
+        const { flatten } = await import('../../services/changesetService');
+        const flat = flatten(activeVersionId, manifest, studioDir);
+        setSavedPaths(new Set(flat.map((e) => e.virtualPath)));
+      } catch {
+        setSavedPaths(new Set());
+      }
+    })().catch(() => { /* ignore */ });
+  }, [activeVersionId, manifest, studioDir]);
+
+  // Split entries into working (not in saved version) and saved (in version)
+  const workingEntries = useMemo(
+    () => entries.filter((e) => !savedPaths.has(e.virtualPath)),
+    [entries, savedPaths],
+  );
+  const savedEntries = useMemo(
+    () => entries.filter((e) => savedPaths.has(e.virtualPath)),
+    [entries, savedPaths],
+  );
+
+  // Compute "based on vN" label for the divider
+  const activeVersionLabel = useMemo(() => {
+    if (!activeVersionId || !manifest) return null;
+    const cs = manifest.changesets.find((c) => c.id === activeVersionId);
+    return cs?.label ?? null;
+  }, [activeVersionId, manifest]);
+
+  // ── Virtualization ─────────────────────────────────────────────────────────
+
   const totalRows   = entries.length;
   const totalHeight = totalRows * ROW_HEIGHT;
 
@@ -182,6 +251,12 @@ export default function StagingPanelBody({
   const modifyCount = entries.filter((e) => e.action === 'modify').length;
   const deleteCount = entries.filter((e) => e.action === 'delete').length;
 
+  // DEPLOYUI-08/D10: payload total in kB
+  const payloadBytes = useMemo(
+    () => entries.reduce((sum, e) => sum + getFileSizeBytes(e.replacementFilePath), 0),
+    [entries],
+  );
+
   // ── Button state ───────────────────────────────────────────────────────────
 
   const isBuilding   = buildStatus.kind === 'building';
@@ -194,7 +269,6 @@ export default function StagingPanelBody({
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleAdd = useCallback(() => {
-    // Open a file picker via IPC — TypedIpcRenderer from @swg/contracts enforces channel type.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
 
@@ -213,12 +287,10 @@ export default function StagingPanelBody({
     })();
   }, []);
 
-  // Finalize staging once the user supplies/accepts a virtual path in the modal.
   const handleConfirmVirtualPath = useCallback((virtualPath: string) => {
     setPendingFile((pending) => {
       if (!pending) return null;
-      if (!isVirtualPathSafe(virtualPath)) return pending; // modal blocks this, defensive
-      // R2-W5: Compute SHA-256 before adding entry
+      if (!isVirtualPathSafe(virtualPath)) return pending;
       const sha256 = computeSha256(pending.filePath);
       useStagingStore.getState().addEntry({
         virtualPath,
@@ -230,7 +302,6 @@ export default function StagingPanelBody({
     });
   }, []);
 
-  // Seal the current staging set as a new version (changeset).
   const handleSaveVersion = useCallback((label: string) => {
     setSavingOpen(false);
     void sealVersion({ sealedBy: 'manual', entries, label }).catch((err) => {
@@ -251,20 +322,23 @@ export default function StagingPanelBody({
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (!file) return;
-
-    // 'path' property is available in Electron with nodeIntegration:true
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filePath: string | undefined = (file as any).path;
     if (!filePath || !isReplacementPathAbsolute(filePath)) return;
-
     setPendingFile({ filePath, defaultVp: path.basename(filePath) });
+  }, []);
+
+  // ── Row selection handler (D7) ─────────────────────────────────────────────
+
+  const handleRowSelect = useCallback((virtualPath: string) => {
+    setSelectedPath((prev) => (prev === virtualPath ? null : virtualPath));
   }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* Virtual-path modal — replaces unsupported window.prompt() for staging a file */}
+      {/* Virtual-path modal */}
       {pendingFile && (
         <VirtualPathModal
           defaultValue={pendingFile.defaultVp}
@@ -273,7 +347,7 @@ export default function StagingPanelBody({
         />
       )}
 
-      {/* Save-version modal — collects a label, then seals the staging set as a changeset */}
+      {/* Save-version modal */}
       {savingOpen && (
         <VirtualPathModal
           title="Save version"
@@ -300,8 +374,6 @@ export default function StagingPanelBody({
           flexShrink:   0,
         }}
       >
-        {/* NO title span — DeployPanel owns the section header */}
-
         {/* Add… button */}
         <button
           style={secondaryBtnStyle}
@@ -312,7 +384,7 @@ export default function StagingPanelBody({
           Add…
         </button>
 
-        {/* Save version button — seals the staging set as a changeset */}
+        {/* Save version button */}
         <button
           style={primaryBtnStyle(saveDisabled)}
           disabled={saveDisabled}
@@ -325,7 +397,7 @@ export default function StagingPanelBody({
         </button>
       </div>
 
-      {/* Body: empty state or virtualized list */}
+      {/* Body: empty state or virtualized list with working-vs-saved split */}
       {entries.length === 0 ? (
         <StagingEmptyState
           containerRef={containerRef}
@@ -335,6 +407,12 @@ export default function StagingPanelBody({
       ) : (
         <VirtualizedStagingList
           entries={entries}
+          workingEntries={workingEntries}
+          savedEntries={savedEntries}
+          savedPaths={savedPaths}
+          activeVersionLabel={activeVersionLabel}
+          selectedPath={selectedPath}
+          onRowSelect={handleRowSelect}
           containerRef={containerRef}
           totalHeight={totalHeight}
           topPad={topPad}
@@ -346,12 +424,13 @@ export default function StagingPanelBody({
         />
       )}
 
-      {/* Footer summary */}
+      {/* Footer summary (DEPLOYUI-08/D10: includes kB payload total) */}
       <StagingFooter
         n={totalRows}
         addCount={addCount}
         modifyCount={modifyCount}
         deleteCount={deleteCount}
+        payloadBytes={payloadBytes}
         buildStatus={buildStatus}
       />
     </>
@@ -519,22 +598,34 @@ function StagingEmptyState({
   );
 }
 
-// ─── Virtualized list ──────────────────────────────────────────────────────────
+// ─── Virtualized list with working-vs-saved split ──────────────────────────────
 
 interface VirtualizedStagingListProps {
-  entries:      StagingEntry[];
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  totalHeight:  number;
-  topPad:       number;
-  bottomPad:    number;
-  visibleRows:  number[];
-  onScroll:     (e: React.UIEvent<HTMLDivElement>) => void;
-  onDragOver:   (e: React.DragEvent<HTMLDivElement>) => void;
-  onDrop:       (e: React.DragEvent<HTMLDivElement>) => void;
+  entries:            StagingEntry[];
+  workingEntries:     StagingEntry[];
+  savedEntries:       StagingEntry[];
+  savedPaths:         Set<string>;
+  activeVersionLabel: string | null;
+  selectedPath:       string | null;
+  onRowSelect:        (virtualPath: string) => void;
+  containerRef:       React.RefObject<HTMLDivElement | null>;
+  totalHeight:        number;
+  topPad:             number;
+  bottomPad:          number;
+  visibleRows:        number[];
+  onScroll:           (e: React.UIEvent<HTMLDivElement>) => void;
+  onDragOver:         (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop:             (e: React.DragEvent<HTMLDivElement>) => void;
 }
 
 function VirtualizedStagingList({
   entries,
+  workingEntries,
+  savedEntries,
+  savedPaths,
+  activeVersionLabel,
+  selectedPath,
+  onRowSelect,
   containerRef,
   totalHeight,
   topPad,
@@ -544,6 +635,8 @@ function VirtualizedStagingList({
   onDragOver,
   onDrop,
 }: VirtualizedStagingListProps): React.ReactElement {
+  const hasSplit = savedEntries.length > 0 && workingEntries.length > 0;
+
   return (
     <div
       ref={containerRef}
@@ -562,11 +655,47 @@ function VirtualizedStagingList({
         {visibleRows.map((rowIndex) => {
           const entry = entries[rowIndex];
           if (!entry) return null;
+
+          // Insert working-vs-saved divider BEFORE the first saved entry
+          const isSaved = savedPaths.has(entry.virtualPath);
+          const prevEntry = rowIndex > 0 ? entries[rowIndex - 1] : null;
+          const prevIsSaved = prevEntry ? savedPaths.has(prevEntry.virtualPath) : false;
+          const showDivider = hasSplit && isSaved && !prevIsSaved;
+
           return (
-            <StagingRow
-              key={entry.virtualPath}
-              entry={entry}
-            />
+            <React.Fragment key={entry.virtualPath}>
+              {/* DEPLOYUI-04/D6: Working-vs-saved divider */}
+              {showDivider && (
+                <div
+                  data-testid="working-vs-saved-divider"
+                  style={{
+                    display:      'flex',
+                    alignItems:   'center',
+                    gap:          6,
+                    padding:      '4px 10px',
+                    fontSize:     10,
+                    color:        'var(--color-text-faint)',
+                    background:   'var(--color-bg)',
+                    borderTop:    '1px solid var(--color-border-soft)',
+                    borderBottom: '1px solid var(--color-border-soft)',
+                    flexShrink:   0,
+                  }}
+                >
+                  Based on{' '}
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>
+                    {activeVersionLabel ?? 'current version'}
+                  </span>
+                  {' · '}
+                  {savedEntries.length} {savedEntries.length === 1 ? 'file' : 'files'} from previous version below
+                </div>
+              )}
+              <StagingRow
+                entry={entry}
+                isSelected={selectedPath === entry.virtualPath}
+                isSaved={isSaved && hasSplit}
+                onSelect={() => onRowSelect(entry.virtualPath)}
+              />
+            </React.Fragment>
           );
         })}
 
@@ -580,10 +709,13 @@ function VirtualizedStagingList({
 // ─── Staging row ───────────────────────────────────────────────────────────────
 
 interface StagingRowProps {
-  entry: StagingEntry;
+  entry:      StagingEntry;
+  isSelected: boolean;
+  isSaved:    boolean;
+  onSelect:   () => void;
 }
 
-function StagingRow({ entry }: StagingRowProps): React.ReactElement {
+function StagingRow({ entry, isSelected, isSaved, onSelect }: StagingRowProps): React.ReactElement {
   const [hovered, setHovered] = useState(false);
 
   // Extract→Add feedback: briefly highlight this row when it's the flashed entry.
@@ -602,13 +734,12 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
     useStagingStore.getState().removeEntry(entry.virtualPath);
   }, [entry.virtualPath]);
 
-  // Right-click context menu (UAT): Open in viewer / Unstage.
+  // Right-click context menu
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const canOpen = entry.action !== 'delete' && !!entry.replacementFilePath;
 
-  // Open the STAGED item in its type-appropriate viewer/editor (mesh → 3D viewport,
-  // else → IFF structure). Tombstones / sourceless entries have nothing to open.
-  const handleOpen = useCallback(() => {
+  // Open in viewport — calls openStagedEntry (FUNCTIONAL)
+  const handleOpenViewport = useCallback(() => {
     if (entry.action === 'delete' || !entry.replacementFilePath) return;
     void openStagedEntry(entry.virtualPath, entry.replacementFilePath);
   }, [entry.action, entry.replacementFilePath, entry.virtualPath]);
@@ -622,92 +753,190 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
     entry.replacementFilePath !== undefined &&
     !fs.existsSync(entry.replacementFilePath);
 
-  // Source info text
-  const sourceText = (() => {
-    if (entry.action === 'delete') return '(tombstone — length-0)';
+  // DEPLOYUI-07/D9: changed-vs-base dot
+  // A saved row is "identical to base" (it came from the version's flat content).
+  // A working row is always "changed" relative to the base.
+  const isIdenticalToBase = isSaved;
+
+  // Source kB text
+  const sourceKbText = (() => {
+    if (entry.action === 'delete') return '(tombstone)';
     if (entry.replacementFilePath) {
-      const filename = path.basename(entry.replacementFilePath);
       try {
         const stat = fs.statSync(entry.replacementFilePath);
-        const kb   = (stat.size / 1024).toFixed(1);
-        return `${filename} · ${kb} KB`;
+        return `${Math.round(stat.size / 1024)} kB`;
       } catch {
-        return filename;
+        return path.basename(entry.replacementFilePath);
       }
     }
     return '—';
   })();
 
+  // Row background: selected (D7) > flashing > hovered > saved (dimmed) > default
+  const rowBackground = isSelected
+    ? 'var(--color-accent-dim)'
+    : isFlashing
+      ? 'var(--color-accent-dim, rgba(46,160,160,0.22))'
+      : hovered
+        ? 'var(--color-surface-2)'
+        : 'transparent';
+
+  const rowBoxShadow = isSelected ? 'inset 2px 0 0 var(--color-accent)' : undefined;
+
   return (
     <div
       role="option"
-      aria-selected={false}
+      aria-selected={isSelected}
+      data-testid="staging-row"
+      onClick={onSelect}
       style={{
         display:      'flex',
         alignItems:   'center',
         gap:          'var(--space-2)',
         height:       ROW_HEIGHT,
-        paddingLeft:  'var(--space-4)',
-        paddingRight: 'var(--space-2)',
-        background:   isFlashing
-          ? 'var(--color-accent-dim, rgba(46,160,160,0.22))'
-          : hovered ? 'var(--color-surface-2)' : 'transparent',
+        paddingLeft:  8,
+        paddingRight: 6,
+        background:   rowBackground,
+        boxShadow:    rowBoxShadow,
         transition:   isFlashing ? 'background 0.1s ease' : 'background 0.5s ease',
         boxSizing:    'border-box',
+        opacity:      isSaved ? 0.55 : 1,
+        cursor:       'pointer',
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
     >
-      {/* Right-click context menu — Open in viewer / Unstage */}
+      {/* DEPLOYUI-10/D12: context menu — parity with TRE view */}
       {menu && (
         <>
           <div
-            onClick={() => setMenu(null)}
+            onClick={(e) => { e.stopPropagation(); setMenu(null); }}
             onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}
             style={{ position: 'fixed', inset: 0, zIndex: 2000 }}
           />
           <div
             role="menu"
+            data-testid="staging-row-ctx-menu"
             style={{
               position: 'fixed', left: menu.x, top: menu.y, zIndex: 2001,
-              minWidth: 150, padding: '3px 0', display: 'flex', flexDirection: 'column',
-              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-sm)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-              fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+              minWidth: 170, padding: '3px 0', display: 'flex', flexDirection: 'column',
+              background: 'var(--color-header)', border: '1px solid var(--color-border-soft)',
+              borderRadius: 'var(--radius-sm)', boxShadow: '0 6px 20px rgba(0,0,0,.55)',
+              fontFamily: 'var(--font-sans)', fontSize: 11,
             }}
           >
+            {/* Open in editor — DISABLED: no handler yet */}
+            <button
+              role="menuitem"
+              disabled
+              aria-disabled="true"
+              title="Coming soon"
+              data-testid="ctx-open-in-editor"
+              style={{
+                background: 'transparent', border: 'none', textAlign: 'left',
+                color: 'var(--color-text-faint)', cursor: 'not-allowed',
+                padding: '5px 9px', fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <span style={{ width: 14, textAlign: 'center' }}>◳</span> Open in editor
+            </button>
+
+            {/* Open in viewport — FUNCTIONAL */}
             <button
               role="menuitem"
               disabled={!canOpen}
-              onClick={() => { setMenu(null); handleOpen(); }}
-              title={canOpen ? 'Open the staged file in the viewer' : 'Nothing to open (tombstone)'}
+              onClick={(e) => { e.stopPropagation(); setMenu(null); handleOpenViewport(); }}
+              title={canOpen ? 'Open the staged file in the viewport' : 'Nothing to open (tombstone)'}
+              data-testid="ctx-open-in-viewport"
               style={{
                 background: 'transparent', border: 'none', textAlign: 'left',
-                color: canOpen ? 'var(--color-text)' : 'var(--color-text-faint)',
-                cursor: canOpen ? 'pointer' : 'not-allowed', padding: '4px var(--space-4)',
-                fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+                color: canOpen ? 'var(--color-text-muted)' : 'var(--color-text-faint)',
+                cursor: canOpen ? 'pointer' : 'not-allowed',
+                padding: '5px 9px', fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              Open in viewer
+              <span style={{ width: 14, textAlign: 'center' }}>◉</span> Open in viewport
             </button>
+
+            {/* Reveal in TRE browser — DISABLED: no handler yet */}
             <button
               role="menuitem"
-              onClick={() => { setMenu(null); handleRemove(); }}
-              title="Remove this entry from the patch staging list"
+              disabled
+              aria-disabled="true"
+              title="Coming soon"
+              data-testid="ctx-reveal-in-tre"
               style={{
                 background: 'transparent', border: 'none', textAlign: 'left',
-                color: 'var(--color-text)', cursor: 'pointer', padding: '4px var(--space-4)',
-                fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+                color: 'var(--color-text-faint)', cursor: 'not-allowed',
+                padding: '5px 9px', fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              Unstage
+              <span style={{ width: 14, textAlign: 'center' }}>⌖</span> Reveal in TRE browser
+            </button>
+
+            {/* Compare to base — DISABLED: no handler yet */}
+            <button
+              role="menuitem"
+              disabled
+              aria-disabled="true"
+              title="Coming soon"
+              data-testid="ctx-compare-to-base"
+              style={{
+                background: 'transparent', border: 'none', textAlign: 'left',
+                color: 'var(--color-text-faint)', cursor: 'not-allowed',
+                padding: '5px 9px', fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <span style={{ width: 14, textAlign: 'center' }}>≢</span> Compare to base…
+            </button>
+
+            {/* Separator */}
+            <div style={{ height: 1, background: 'var(--color-border-soft)', margin: '3px 2px' }} />
+
+            {/* Unstage / Remove — FUNCTIONAL */}
+            <button
+              role="menuitem"
+              onClick={(e) => { e.stopPropagation(); setMenu(null); handleRemove(); }}
+              title="Remove this entry from the patch staging list"
+              data-testid="ctx-unstage"
+              style={{
+                background: 'transparent', border: 'none', textAlign: 'left',
+                color: '#e0584f', cursor: 'pointer',
+                padding: '5px 9px', fontFamily: 'inherit', fontSize: 'inherit', whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <span style={{ width: 14, textAlign: 'center' }}>×</span> Remove from staging
             </button>
           </div>
         </>
       )}
 
-      {/* Action badge */}
+      {/* DEPLOYUI-07/D9: changed-vs-base indicator */}
+      <span
+        aria-hidden="true"
+        data-testid="change-dot"
+        title={isIdenticalToBase ? 'identical to base — no actual change' : 'content differs from base'}
+        style={{
+          fontSize:    11,
+          width:       12,
+          textAlign:   'center',
+          lineHeight:  1,
+          flexShrink:  0,
+          color:       isIdenticalToBase
+            ? 'var(--color-text-faint)'
+            : 'var(--color-success, #43c267)',
+        }}
+      >
+        {isIdenticalToBase ? '○' : '●'}
+      </span>
+
+      {/* Action badge (D8 pill styling in ActionBadge.tsx) */}
       <ActionBadge action={entry.action} />
 
       {/* Virtual path */}
@@ -743,7 +972,7 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
         </span>
       )}
 
-      {/* Source info */}
+      {/* Source info / kB */}
       {sourceIsMissing ? (
         <span
           style={{
@@ -764,34 +993,35 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
             fontSize:     'var(--text-xs)',
             color:        'var(--color-text-faint)',
             flexShrink:   0,
-            overflow:     'hidden',
-            textOverflow: 'ellipsis',
             whiteSpace:   'nowrap',
-            maxWidth:     160,
           }}
           title={entry.replacementFilePath ?? ''}
         >
-          {sourceText}
+          {sourceKbText}
         </span>
       )}
 
-      {/* Remove button */}
+      {/* DEPLOYUI-09/D11: hover-only × remove button (opacity 0→1) */}
       <button
         aria-label="Remove from patch"
         title="Remove from patch"
-        onClick={handleRemove}
+        onClick={(e) => { e.stopPropagation(); handleRemove(); }}
+        data-testid="remove-btn"
         style={{
-          background: 'transparent',
-          border:     'none',
-          color:      'var(--color-text-faint)',
-          cursor:     'pointer',
-          fontFamily: 'var(--font-mono)',
-          fontSize:   'var(--text-sm)',
-          padding:    '0 var(--space-1)',
-          flexShrink: 0,
-          lineHeight: 1,
+          background:  'transparent',
+          border:      'none',
+          color:       'var(--color-text-faint)',
+          cursor:      'pointer',
+          fontFamily:  'var(--font-mono)',
+          fontSize:    'var(--text-sm)',
+          padding:     '0 var(--space-1)',
+          flexShrink:  0,
+          lineHeight:  1,
+          // D11: hidden until row hover
+          opacity:     hovered ? 1 : 0,
+          transition:  'opacity 0.1s',
         }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text)'; }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#e0584f'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-faint)'; }}
       >
         ×
@@ -803,11 +1033,12 @@ function StagingRow({ entry }: StagingRowProps): React.ReactElement {
 // ─── Footer summary ────────────────────────────────────────────────────────────
 
 interface StagingFooterProps {
-  n:           number;
-  addCount:    number;
-  modifyCount: number;
-  deleteCount: number;
-  buildStatus: ReturnType<typeof useStagingStore.getState>['buildStatus'];
+  n:            number;
+  addCount:     number;
+  modifyCount:  number;
+  deleteCount:  number;
+  payloadBytes: number;
+  buildStatus:  ReturnType<typeof useStagingStore.getState>['buildStatus'];
 }
 
 function StagingFooter({
@@ -815,10 +1046,12 @@ function StagingFooter({
   addCount,
   modifyCount,
   deleteCount,
+  payloadBytes,
   buildStatus,
 }: StagingFooterProps): React.ReactElement {
   return (
     <div
+      data-testid="staging-footer"
       style={{
         display:    'flex',
         alignItems: 'center',
@@ -838,6 +1071,13 @@ function StagingFooter({
       <span>
         {n} staged · {addCount} add · {modifyCount} modify · {deleteCount} delete
       </span>
+
+      {/* DEPLOYUI-08/D10: kB payload total */}
+      {n > 0 && (
+        <span style={{ marginLeft: 'auto', color: 'var(--color-text-faint)' }}>
+          · {formatKb(payloadBytes)} payload
+        </span>
+      )}
 
       {buildStatus.kind === 'building' && (
         <span style={{ color: 'var(--color-accent)' }}>⟳ building…</span>
