@@ -2,7 +2,17 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-06-29-phase04.2-planned-crew-reviewed.md](2026-06-29-phase04.2-planned-crew-reviewed.md)** — ACTIVE. ← start here.
+- **[2026-06-29-phase04.2-uat-iteration-and-04.3-created.md](2026-06-29-phase04.2-uat-iteration-and-04.3-created.md)** — ACTIVE. ← start here.
+  Phase **04.2 plans 01–05 executed + merged** (worktree, all GREEN); **04.2-06 UAT OPEN** and walked
+  interactively — surfaced a string of bugs/gaps. Small ones fixed inline on `main` (mount wiring, loose-entry
+  Extract/viewer, version-selection messaging + Baseline loose-revert stopgap, Hardlink-shadow→Advanced, mount
+  spinner, detect-list filter). Big reworks captured as 3 todos and bundled into a **new inserted Phase 04.3**
+  (Versioning Model & SearchTOC Mount Completion — plan 01 = crew UI-vs-sketch gap review). Also shipped an
+  AGENTS.md "Sketches are the UI contract" rule and corrected the v6000 memory (dual-format, not encrypted).
+  Nothing marked complete. HEAD `6864b90`, not pushed. **Next:** likely `/gsd:plan-phase 04.3` then a combined
+  UAT (confirm with maintainer); 04.1-11 + 04.2-06 UATs still open and superseded by 04.3's combined UAT.
+
+- **[2026-06-29-phase04.2-planned-crew-reviewed.md](2026-06-29-phase04.2-planned-crew-reviewed.md)** — SUPERSEDED (04.2 was executed; see the handoff above).
   Phase 04.2 (Dev-Client Support & Loose-Override Deploy) **planned, NOT executed**: 6 plans / 5 waves,
   plan-checker PASS (0 blockers), finalized after a full 4-AI de-anchoring crew review + ground-truth
   fact-check that caught **8 defects the plan-checker couldn't see** (mount-wiring B1/B2/B4, reset B3,
