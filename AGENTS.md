@@ -88,6 +88,28 @@ These are authoritative — harvest logic from them and validate formats against
 - Blender bridge: `docs/07-blender/`
 - UI/UX: `docs/08-ui-ux/` · AI/MCP: `docs/09-ai-mcp/`
 
+## Sketches are the UI contract — roll them into plans, don't lose them in refactors
+
+UI/UX sketches in [.planning/sketches/](.planning/sketches/) (one dir per surface, e.g.
+`002-version-graph-timeline`, `005-deploy-inspect-tab`) are the **authoritative UI contract** — the
+same status `docs/` ground truth has for formats. They are frequently the most detailed spec of a
+surface's intended behavior. Treat them as source-of-truth, not inspiration.
+
+This has bitten us: a sketch specced a visual branch-graph version tree, but the implementation shipped
+a flat list because the plan was an "extract/relocate the existing component" task that silently carried
+forward pre-sketch rendering. To prevent that recurrence:
+
+- **Plan rule.** When a phase touches a UI surface that has a governing sketch, the plan MUST name that
+  sketch and enumerate its **distinct visual elements as `must_haves`** (e.g. "branch connector lines",
+  "branch-from-vN label", "active/deployed/root markers") — never a vague "render the panel". A sketch
+  element with no corresponding plan task is a planning gap.
+- **Refactor caveat.** Extracting, moving, or reusing an existing component does **NOT** excuse divergence
+  from its sketch. When a task relocates UI, re-diff the relocated surface against its sketch and fix the
+  drift in the same plan — "it was already like this" is not a pass.
+- **Verify rule.** Verification (and any UI-check) diffs the built surface against the governing sketch;
+  list each sketch element as observed / missing. Don't sign off a UI surface without that diff.
+- Memories: [[feedback-sketches-are-ui-source-of-truth]], [[feedback-spec-internal-consistency-and-review-intent]].
+
 ## Working conventions
 
 - **Match existing code style; minimize diff scope.** Prefer fixing the caller/data over rewriting.
