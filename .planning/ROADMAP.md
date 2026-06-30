@@ -178,12 +178,27 @@ Plans:
 
 Out of scope (separate future item): `delete-project-with-restore`.
 
-**Requirements**: TBD (derived during plan-phase from the two todos + the crew review findings)
+**Requirements**: Completes parent reqs **TRE-05** (Pillar B searchTOC/v6000 mount), **DEPLOY-03** (rollback/version-navigation), **DEPLOY-08** (loose-override substrate). Phase-internal candidate IDs (carried in plan frontmatter): VER-01..09, GRAPH-01..08, DEPLOYUI-01..15, PROJUI-01..09, SHELL-01..06, MOUNT-01..07.
 **Depends on:** Phase 4.2 (searchTOC/loose-override mount + deploy engine it completes), Phase 4.1 (version graph + deploy UX it reworks). Both phases' in-client UATs (04.1-11, 04.2-06) remain open; this phase's combined UAT supersedes re-running them piecemeal.
-**Plans:** 0 plans
+**Plans:** 12 plans (plan 01 = the DONE crew UI-vs-sketch gap review → 04.3-01-CREW-GAP-REVIEW.md)
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 04.3 to break down — plan 01 = the crew UI-vs-sketch gap review)
+**Wave 0 — test scaffolds & fixtures**
+- [ ] 04.3-02-PLAN.md — Pillar A contract stubs + RED tests (syncLiveToVersion, undoStore, laneLayout, LaneGutter)
+- [ ] 04.3-03-PLAN.md — Pillar B swg-source v6000 byte-exact fixture + native/resolveFull RED scaffolds
+**Wave 1 — parallel reworks**
+- [ ] 04.3-04-PLAN.md — Pillar A reconcile engine + session undo + single live pointer
+- [ ] 04.3-05-PLAN.md — Branch-tree graph primitives (laneLayout + LaneGutter SVG, 002-A)
+- [ ] 04.3-06-PLAN.md — VersionHistoryBody rework (two-column graph + silent reconcile wiring)
+- [ ] 04.3-07-PLAN.md — Deploy panel + staging chrome + forward-deploy-only modal (005/006)
+- [ ] 04.3-08-PLAN.md — Project-entry front-door polish (007)
+- [ ] 04.3-09-PLAN.md — Shell-composition polish (008); VCS-tab S3 left AMBIGUOUS
+- [ ] 04.3-10-PLAN.md — Native per-payload v6000 extraction + extractAt(descriptor)
+- [ ] 04.3-11-PLAN.md — Renderer master-.toc mount sourcing + lazy searchPath
+**Wave 2 — verification gate**
+- [ ] 04.3-12-PLAN.md — D-16 de-anchoring crew + byte-exact v6000 gate (GO/NO-GO)
+**Wave 3 — combined in-client UAT**
+- [ ] 04.3-13-PLAN.md — Combined UAT on searchTree + searchTOC clients [autonomous: false] (supersedes 04.1-11 + 04.2-06)
 
 ### Phase 04.1: Deploy & Project UX (INSERTED)
 **Goal**: Make the now-working deploy loop **discoverable and zero-risk** by building the **approved sketch designs** (005-B / 006-D / 007 / 008) — not a fresh redesign. Bind a project to a client install as the workflow front door (auto-mount its base TRE set); compose the deploy surface into ONE combined Deploy tab (staging over the version graph with per-node expandable changed-file lists + a `Deploy…` modal CTA) inside a single `Inspect | Deploy` dock group; enable staging assets directly from the TRE browser; and re-architect the shadow-sandbox model to **lazy/virtual** (only modified files materialize; original client config snapshot+restorable) so the original client can never be permanently broken. The Phase 4 deploy **engine** (`packPatch`, `changesetService` flatten/seal/select, `cfgActivator`, `DeployDialog`) is reused as-is — this phase is UI/UX composition + the project-binding workflow + the shadow re-architecture, NOT new byte-level format work.
