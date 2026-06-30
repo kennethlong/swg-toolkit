@@ -85,6 +85,9 @@ export function DeployDialog({
   const [unsavedPromptOpen, setUnsavedPromptOpen] = useState(false);
   const [pendingVersionName, setPendingVersionName] = useState('');
   const [staleWarning, setStaleWarning] = useState(false);  // W7: stale-deployment banner
+  // True when the SELECTED (active) version is the Baseline — used to phrase the stale banner
+  // and CTA as a "revert to stock" rather than a forward deploy. Computed alongside staleWarning.
+  const [activeIsBaseline, setActiveIsBaseline] = useState(false);
   const [diskEstimate, setDiskEstimate] = useState<number | null>(null);
   const [resolvedOverrideDir, setResolvedOverrideDir] = useState<string | null>(null);
 
@@ -165,8 +168,10 @@ export function DeployDialog({
       setStaleWarning(
         m.deployedVersionId !== null && m.activeVersionId !== m.deployedVersionId,
       );
+      setActiveIsBaseline(m.activeVersionId === BASELINE_ID);
     } else {
       setStaleWarning(false);
+      setActiveIsBaseline(false);
     }
   }, [open]);
 
@@ -345,7 +350,19 @@ export function DeployDialog({
       if (manifest.activeVersionId === BASELINE_ID || flattenedEntries.length === 0) {
         const rootCfgPath = selectedClient!.cfgRootPath;
         const swgtoolkitCfgPath = getToolkitCfgPath(studioDir);  // studio, not client
-        const existingRec = deployRecordRef.current as (CfgDeployRecord | null);
+        const existingRec = deployRecordRef.current as (CfgDeployRecord | LooseDeployRecord | null);
+
+        // Loose-override reset-to-stock: the live deploy wrote loose files into the override
+        // dir (no cfg surgery), so revert via resetLoose (B3: restore pre-existing originals /
+        // remove toolkit-added). Discriminate on the record shape — the deployModel radio resets
+        // to absolute-path on a fresh dialog open and can't be trusted to know the live model here.
+        if (existingRec && 'overrideDir' in existingRec) {
+          resetLoose(existingRec as LooseDeployRecord);
+          setDeployedVersion(null);
+          deployRecordRef.current = null;
+          setPhase({ kind: 'done', slot: 'Baseline (reset to stock)', cfgPath: rootCfgPath });
+          return;
+        }
 
         // Attempt root cfg restore from snapshot (if we have one)
         const snap = existingRec?.snapshotPath;
@@ -714,7 +731,9 @@ export function DeployDialog({
               margin: 'var(--space-2)',
             }}
           >
-            You have unsaved changes — the current edit version differs from the deployed version.
+            {activeIsBaseline
+              ? 'You’re on the Baseline (stock) version, but a later version is still deployed to the client. Deploying below reverts the client to stock — selecting Baseline alone does not undo the live deploy.'
+              : 'The selected version isn’t the one deployed to the client — you’re viewing a different version, not unsaved edits. Deploy below to apply it.'}
           </div>
         )}
 
@@ -1103,16 +1122,18 @@ export function DeployDialog({
               disabled={isDeployDisabled}
               aria-disabled={isDeployDisabled}
               onClick={isDeployDisabled ? undefined : () => { void handleDeploy(); }}
-              aria-label="Deploy patch"
+              aria-label={activeIsBaseline ? 'Deploy Baseline (revert to stock)' : 'Deploy patch'}
               title={
                 !selectedClient
                   ? 'No client selected — point me at a SWG client to deploy.'
                   : phase.kind !== 'idle'
                   ? 'Deploy in progress…'
+                  : activeIsBaseline
+                  ? 'Revert the client to stock (Baseline — removes the deployed patch)'
                   : 'Build and deploy the patch'
               }
             >
-              Deploy patch
+              {activeIsBaseline ? 'Deploy Baseline (revert to stock)' : 'Deploy patch'}
             </button>
             )}
           </div>
