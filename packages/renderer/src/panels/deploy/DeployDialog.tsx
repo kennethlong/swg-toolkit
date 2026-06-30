@@ -33,6 +33,7 @@ import {
   flatten,
   sealVersion,
   setDeployedVersion,
+  setLiveVersion,
   readManifest,
   flatEqual,
   updateChangesetDeployRecord,
@@ -65,9 +66,16 @@ type DeployPhase =
 export function DeployDialog({
   open,
   onClose,
+  isForwardDeploy = true,
 }: {
   open: boolean;
   onClose: () => void;
+  /**
+   * VER-07: When false (navigate/revert paths), the deploy-model picker is hidden —
+   * the user is browsing versions, not initiating a new forward deploy.
+   * Default: true (forward deploy — show model picker).
+   */
+  isForwardDeploy?: boolean;
 }): React.ReactElement | null {
   const [phase, setPhase] = useState<DeployPhase>({ kind: 'idle' });
   const [clients, setClients] = useState<DetectedClient[]>([]);
@@ -84,10 +92,11 @@ export function DeployDialog({
   // the user to name a version instead of silently auto-snapshotting.
   const [unsavedPromptOpen, setUnsavedPromptOpen] = useState(false);
   const [pendingVersionName, setPendingVersionName] = useState('');
-  const [staleWarning, setStaleWarning] = useState(false);  // W7: stale-deployment banner
-  // True when the SELECTED (active) version is the Baseline — used to phrase the stale banner
-  // and CTA as a "revert to stock" rather than a forward deploy. Computed alongside staleWarning.
+  // True when the SELECTED (active) version is the Baseline — used to phrase the
+  // CTA as "revert to stock" rather than a forward deploy.
   const [activeIsBaseline, setActiveIsBaseline] = useState(false);
+  // D13: title label — "Deploy vN — label" from manifest's active version
+  const [titleLabel, setTitleLabel] = useState<string>('Deploy patch');
   const [diskEstimate, setDiskEstimate] = useState<number | null>(null);
   const [resolvedOverrideDir, setResolvedOverrideDir] = useState<string | null>(null);
 
@@ -159,19 +168,30 @@ export function DeployDialog({
       setSelectedClient(bound);
     }
 
-    // W7: stale-deployment warning — warn when the currently active version in the
-    // manifest differs from the version that was last deployed to the client.
-    // Does NOT block deploy; informational only.
+    // D13: compute title "Deploy vN — label" from active version + activeIsBaseline
     const studioDir = useWorkspaceStore.getState().studioDir;
     if (studioDir) {
-      const m = readManifest(studioDir);
-      setStaleWarning(
-        m.deployedVersionId !== null && m.activeVersionId !== m.deployedVersionId,
-      );
-      setActiveIsBaseline(m.activeVersionId === BASELINE_ID);
+      try {
+        const m = readManifest(studioDir);
+        setActiveIsBaseline(m.activeVersionId === BASELINE_ID);
+        if (m.activeVersionId && m.activeVersionId !== BASELINE_ID) {
+          const idx = m.changesets.findIndex((c) => c.id === m.activeVersionId);
+          const vN = idx >= 0 ? `v${idx + 1}` : 'v?';
+          const cs = m.changesets[idx];
+          const label = cs?.label ? ` — ${cs.label}` : '';
+          setTitleLabel(`Deploy ${vN}${label}`);
+        } else if (m.activeVersionId === BASELINE_ID) {
+          setTitleLabel('Deploy Baseline (revert to stock)');
+        } else {
+          setTitleLabel('Deploy patch');
+        }
+      } catch {
+        setActiveIsBaseline(false);
+        setTitleLabel('Deploy patch');
+      }
     } else {
-      setStaleWarning(false);
       setActiveIsBaseline(false);
+      setTitleLabel('Deploy patch');
     }
   }, [open]);
 
@@ -445,7 +465,7 @@ export function DeployDialog({
           });
 
           deployRecordRef.current = record;
-          setDeployedVersion(manifest.activeVersionId!);
+          setLiveVersion(manifest.activeVersionId!);   // D-08: moves both activeVersionId + deployedVersionId
           updateChangesetDeployRecord(manifest.activeVersionId!, record);
           setPhase({ kind: 'done', slot: 'override-dir', cfgPath: resolvedOverrideDir });
         } catch (e) {
@@ -495,7 +515,7 @@ export function DeployDialog({
             (_pct) => {},
           );
           deployRecordRef.current = { ...shadowRecord, snapshotPath: shadowSnapshotPath };
-          setDeployedVersion(manifest.activeVersionId!);  // W2: persist deployedVersionId
+          setLiveVersion(manifest.activeVersionId!);  // D-08: moves both activeVersionId + deployedVersionId
           // R2-B8: persist deploy record to manifest (survives component unmount)
           updateChangesetDeployRecord(manifest.activeVersionId!, {
             cfgPath: shadowRecord.cfgPath,
@@ -563,7 +583,7 @@ export function DeployDialog({
         // M9: ensureInclude on absolute-path path — the root cfg gains a single absolute,
         // quoted .include pointing at the studio cfg (ConfigFile.cpp opens absolute paths).
         ensureInclude(selectedClient!.cfgRootPath, swgtoolkitCfgPath);
-        setDeployedVersion(manifest.activeVersionId!);  // W2: persist deployedVersionId
+        setLiveVersion(manifest.activeVersionId!);  // D-08: moves both activeVersionId + deployedVersionId
 
         // R2-B8: persist deploy record (incl. snapshotPath for M8 cross-session Reset)
         const deployRecord: CfgDeployRecord = {
@@ -677,6 +697,11 @@ export function DeployDialog({
 
   if (!open) return null;
 
+  // ── DEPLOYUI-12/D14: not-found row for bound client missing from detected list ─
+  const boundClientPath = useWorkspaceStore.getState().clientPath;
+  const boundClientIsDetected = !!boundClientPath && clients.some((c) => c.installPath === boundClientPath);
+  const showNotFoundRow = !!boundClientPath && !boundClientIsDetected;
+
   // ── Derived values ────────────────────────────────────────────────────────
 
   // Section C: slot preview for patch-prepend model (B1: always uses fullChainScan from cfgRootPath)
@@ -696,16 +721,20 @@ export function DeployDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Deploy patch"
+      aria-label={titleLabel}
+      data-testid="deploy-dialog"
       style={overlayStyle}
       onClick={handleClose}
     >
       <div style={panelStyle} onClick={(e) => e.stopPropagation()}>
 
-        {/* Header */}
+        {/* Header — DEPLOYUI-11/D13: "Deploy vN — label" */}
         <div style={headerStyle}>
-          <span style={{ fontWeight: 600, fontSize: 'var(--text-md)', color: 'var(--color-text)' }}>
-            Deploy patch
+          <span
+            data-testid="deploy-dialog-title"
+            style={{ fontWeight: 600, fontSize: 'var(--text-md)', color: 'var(--color-text)' }}
+          >
+            {titleLabel}
           </span>
           <button
             aria-label="Close deploy dialog"
@@ -719,25 +748,7 @@ export function DeployDialog({
 
         <div style={{ height: 1, background: 'var(--color-border)' }} />
 
-        {/* W7: stale-deployment warning banner */}
-        {staleWarning && (
-          <div
-            style={{
-              background: 'var(--color-warn)',
-              color: 'var(--color-text)',
-              padding: 'var(--space-4)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: 'var(--text-xs)',
-              margin: 'var(--space-2)',
-            }}
-          >
-            {activeIsBaseline
-              ? 'You’re on the Baseline (stock) version, but a later version is still deployed to the client. Deploying below reverts the client to stock — selecting Baseline alone does not undo the live deploy.'
-              : 'The selected version isn’t the one deployed to the client — you’re viewing a different version, not unsaved edits. Deploy below to apply it.'}
-          </div>
-        )}
-
-        {/* Section A — Target client (D-04-09) */}
+        {/* Section A — Target client (DEPLOYUI-12/D14: "detected" badge + "not found" row) */}
         <div style={sectionStyle}>
           <div style={sectionLabelStyle}>Target client</div>
           {clients.length === 0 ? (
@@ -748,6 +759,7 @@ export function DeployDialog({
             clients.map((client) => (
               <label
                 key={client.installPath}
+                data-testid="client-row"
                 style={{
                   display: 'flex',
                   alignItems: 'flex-start',
@@ -772,13 +784,25 @@ export function DeployDialog({
                   onChange={() => setSelectedClient(client)}
                   style={{ accentColor: 'var(--color-accent)', marginTop: 2, flexShrink: 0 }}
                 />
-                <div>
-                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{client.name}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{client.name}</span>
+                    {/* DEPLOYUI-12/D14: "detected" badge for auto-detected clients */}
+                    <span
+                      data-testid="client-detected-badge"
+                      style={{ fontSize: 10, color: 'var(--color-accent)' }}
+                    >
+                      detected
+                    </span>
+                  </div>
                   <div
                     style={{
                       fontFamily: 'var(--font-mono)',
                       fontSize: 'var(--text-xs)',
                       color: 'var(--color-info)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {client.installPath}
@@ -796,6 +820,48 @@ export function DeployDialog({
               </label>
             ))
           )}
+
+          {/* DEPLOYUI-12/D14: greyed "not found" row for bound client not in detected list */}
+          {showNotFoundRow && (
+            <div
+              data-testid="client-row-not-found"
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 'var(--space-2)',
+                padding: 'var(--space-2)',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px dashed var(--color-border-soft)',
+                opacity: 0.55,
+                cursor: 'not-allowed',
+              }}
+            >
+              <input
+                type="radio"
+                name="client"
+                disabled
+                checked={false}
+                onChange={() => {}}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Bound client</span>
+                  <span style={{ fontSize: 10, color: 'var(--color-text-faint)' }}>not found</span>
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text-faint)',
+                  }}
+                >
+                  {boundClientPath}
+                </div>
+              </div>
+            </div>
+          )}
+
           <button
             style={secondaryBtnStyleLocal}
             onClick={handleBrowse}
@@ -807,8 +873,8 @@ export function DeployDialog({
 
         <div style={{ height: 1, background: 'var(--color-border)' }} />
 
-        {/* Section B — Deploy model (D-04-10, D-05) */}
-        <div style={sectionStyle}>
+        {/* Section B — Deploy model (VER-07: hidden when isForwardDeploy=false) */}
+        {isForwardDeploy && <div style={sectionStyle}>
           <div style={sectionLabelStyle}>Deploy model</div>
 
           {/* Absolute-path option (default, D-05) — accent ring when selected */}
@@ -836,7 +902,16 @@ export function DeployDialog({
                 style={{ accentColor: 'var(--color-accent)', flexShrink: 0 }}
               />
               <div>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Absolute path</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Absolute path</span>
+                  {/* DEPLOYUI-13/D15: (recommended) label per sketch 006-D */}
+                  <span
+                    data-testid="model-recommended-label"
+                    style={{ fontSize: 10, color: 'var(--color-accent)' }}
+                  >
+                    (recommended)
+                  </span>
+                </div>
                 <div style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
                   points the client cfg directly at the patch in .studio/build — no copy needed
                 </div>
@@ -958,7 +1033,7 @@ export function DeployDialog({
               )}
             </div>
           )}
-        </div>
+        </div>}
 
         <div style={{ height: 1, background: 'var(--color-border)' }} />
 
