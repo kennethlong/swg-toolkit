@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
-last_updated: "2026-06-29T13:55:43.168Z"
+last_updated: "2026-06-30T02:03:13.783Z"
 last_activity: 2026-06-29 -- Phase 04.2 execution started
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 5
   total_plans: 46
-  completed_plans: 39
-  percent: 85
+  completed_plans: 44
+  percent: 96
 ---
 
 # Project State
@@ -112,6 +112,7 @@ Progress: [██████████] 98%
 
 - Phase 04.1 inserted after Phase 4: Deploy & Project UX — redesign building approved sketches 005-B/006-D/007/008 (combined Deploy tab, project↔client binding front door, lazy/virtual shadow); emerged from Phase 4 in-client UAT (URGENT)
 - Phase 04.2 inserted after Phase 4: Dev-Client Support & Loose-Override Deploy: detect client.cfg + mount searchTOC/searchPath + loose-override deploy mode for the dev/modder decoupled-client class (swg-client-v2) (URGENT)
+- Phase 04.3 inserted after Phase 4.2: Versioning Model & SearchTOC Mount Completion — crew UI-vs-sketch gap review first, then version-navigation rework + searchTOC/v6000 master-index mount (bundles the two big queued UAT-blocking reworks) (URGENT)
 
 ### Decisions
 

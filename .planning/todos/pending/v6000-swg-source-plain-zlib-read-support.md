@@ -6,6 +6,7 @@ origin: Maintainer UAT note during 04.2-06 — swg-client-v2 mounts patch_sku3_*
 severity: medium-high (the v6000/empty-TOC content set is silently missing from the mount; NOT blocking the 04.2-06 UAT — the space-terminal texture is in a v5000 self-indexed patch and resolves fine)
 area: renderer (treAutoMount + tocReader) + native-core (tre extraction for toc-indexed entries; v6000 enumerate-only)
 status: pending
+resolves_phase: "04.3"
 related: tre-version-oracles-and-v6000-encryption, feedback-crew-catches-what-plancheck-cannot, project-binds-and-automounts-client-tres
 ---
 

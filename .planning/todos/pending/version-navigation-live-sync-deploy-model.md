@@ -6,6 +6,7 @@ origin: Maintainer UAT 04.x — "The version needs to keep track of what type of
 severity: high (core deploy/revert value loop; current model is confusing — selecting a version only updates a preview, the live client is a separate sticky deploy; reverting/Baseline does not make the client mirror the selected version)
 area: renderer (changesetService + new deploy-navigation service + DeployDialog/VersionHistoryBody) + deploy primitives (looseOverrideDeploy / cfgActivator)
 status: pending
+resolves_phase: "04.3"
 related: deploy-tab-combine-staging-and-changesets, product-thesis-shadow-sandbox-and-server-push, client-deploy-design-tenets, project-binds-and-automounts-client-tres
 ---
 

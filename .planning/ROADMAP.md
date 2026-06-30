@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs (completed 2026-06-27)
 - [ ] **Phase 4.1: Deploy & Project UX** *(INSERTED)* - Project↔client binding front door, one combined Deploy tab, stage-from-TRE, lazy/virtual shadow sandbox (build approved sketches 005-B/006-D/007/008)
 - [ ] **Phase 4.2: Dev-Client Support & Loose-Override Deploy** *(INSERTED)* - Detect `client.cfg` clients whose binary is decoupled from an external TRE set; mount the full base via `searchTOC`/`searchPath` (not just `searchTree`); deploy by dropping loose files into the top-priority override dir (the lazy/virtual-shadow thesis, proven on swg-client-v2)
+- [ ] **Phase 4.3: Versioning Model & SearchTOC Mount Completion** *(INSERTED)* - Crew UI-vs-sketch gap review first; then rework the deploy/version model (live client mirrors the SELECTED version; per-version deploy flag; reconcile-to-version forward-apply/backward-revert; visual branch-tree history per sketches 002/005) and complete the searchTOC/v6000 master-index mount (read swg-client-v2's full base; v6000 per-payload zlib)
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
 - [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
 - [ ] **Phase 7: Format Editors** - Terrain, world snapshots, flora, collision/portals, UI, audio/FX — parallelizable leaves on the IFF root
@@ -167,6 +168,22 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 - [x] 04-06-PLAN.md — DeployDialog (Sections A/B/C: client picker, patch-prepend/shadow-base, cfg slot preview; handleDeploy branches on deployModel — dispatches to deployShadowBase or cfgActivator 6-step sequence; in-client UAT checkpoint on SWG Infinity) [autonomous: false]
 **UI hint**: yes
+
+### Phase 04.3: Versioning Model & SearchTOC Mount Completion (INSERTED)
+
+**Goal:** Land the two big reworks the 04.1/04.2 in-client UAT surfaced as blocking, gated by a sketch-fidelity review, then re-run a single combined UAT.
+- **(0) FIRST — Crew UI-vs-sketch gap review.** Before any rework, run the cross-AI consult crew (CLAUDE.md "phone a friend") to diff the **as-built UI against the sketches** (`.planning/sketches/`, esp. 002-version-graph-timeline / 005-deploy-inspect-tab / 006-combined-deploy-tab / 007 / 008) and enumerate every gap (element-by-element, observed/missing). Operationalizes the new AGENTS.md "Sketches are the UI contract" rule; its findings feed the plan list (the flat-vs-branch-tree version history is one known gap — surface the rest).
+- **(1) Versioning rework** — couple the live client to the SELECTED version so navigating the version tree IS deploying/reverting: per-version deploy model (first-class, not the live radio), a reconcile-to-version engine (forward apply / backward revert in one op) wired to selection behind a confirm, B3 stock snapshot/restore across versions, deploy-model picker shown only for a new forward deploy, first-class revert from any state (subsumes the reopen-Reset gap), and the **visual branch-tree** version history per sketches 002/005. Spec: `todos/pending/version-navigation-live-sync-deploy-model.md`.
+- **(2) SearchTOC / v6000 mount completion** — mount SearchTOC clients from the master `.toc` index (so swg-client-v2's empty-internal-TOC v6000 container `.tre` files contribute entries; payloads read by offset), make v6000 enumerate-only a per-payload runtime check (plain zlib for SWG-Source, encrypted only for Restoration), fix loose-overlay over-enumeration, and the loose-entry mesh viewport. Spec: `todos/pending/v6000-swg-source-plain-zlib-read-support.md`.
+
+Out of scope (separate future item): `delete-project-with-restore`.
+
+**Requirements**: TBD (derived during plan-phase from the two todos + the crew review findings)
+**Depends on:** Phase 4.2 (searchTOC/loose-override mount + deploy engine it completes), Phase 4.1 (version graph + deploy UX it reworks). Both phases' in-client UATs (04.1-11, 04.2-06) remain open; this phase's combined UAT supersedes re-running them piecemeal.
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 04.3 to break down — plan 01 = the crew UI-vs-sketch gap review)
 
 ### Phase 04.1: Deploy & Project UX (INSERTED)
 **Goal**: Make the now-working deploy loop **discoverable and zero-risk** by building the **approved sketch designs** (005-B / 006-D / 007 / 008) — not a fresh redesign. Bind a project to a client install as the workflow front door (auto-mount its base TRE set); compose the deploy surface into ONE combined Deploy tab (staging over the version graph with per-node expandable changed-file lists + a `Deploy…` modal CTA) inside a single `Inspect | Deploy` dock group; enable staging assets directly from the TRE browser; and re-architect the shadow-sandbox model to **lazy/virtual** (only modified files materialize; original client config snapshot+restorable) so the original client can never be permanently broken. The Phase 4 deploy **engine** (`packPatch`, `changesetService` flatten/seal/select, `cfgActivator`, `DeployDialog`) is reused as-is — this phase is UI/UX composition + the project-binding workflow + the shadow re-architecture, NOT new byte-level format work.
