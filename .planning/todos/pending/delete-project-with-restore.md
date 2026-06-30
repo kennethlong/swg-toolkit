@@ -46,6 +46,10 @@ The restore machinery already exists and is exactly what the Deploy dialog's **R
    dirs to a trash/undo area (e.g. `studios/.trash/<id>-<token>/`) rather than deleting, with an Undo
    affordance that restores them (and re-applies the live deploy if it was reverted on delete). Append-only
    history invariant (changesetService) extends to delete — nothing is destroyed, only parked for undo.
+   - **Undo is SESSION-SCOPED (maintainer, 2026-06-29):** the undo stack does NOT persist across app
+     restarts. On app teardown/shutdown, CLEAR the undo stack — purge the parked `.trash` entries so the
+     deletes become permanent and disk is reclaimed. A delete is therefore undoable only until the app
+     closes. (Also covers a crash: stale `.trash` from a prior session is purged on next startup.)
 4. Idempotent + safe: deleting a never-deployed project just parks folders (no cfg touch). Deleting a
    project whose snapshot is missing falls back gracefully (skip restore, warn) — never throws.
 5. Tests: cfg-insertion delete → cfg sha256 == pre-deploy; loose-override delete → pre-existing override
