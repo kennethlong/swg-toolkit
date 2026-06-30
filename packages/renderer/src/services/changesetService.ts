@@ -463,7 +463,25 @@ export function setDeployedVersion(id: string | null): void {
  * Source: 04.3-02-PLAN.md Task 1; 04.3-RESEARCH.md D-08 (single "live" pointer).
  */
 export function setLiveVersion(id: string | null): void {
-  throw new Error('not implemented (W1-04)');
+  const studioDir = useWorkspaceStore.getState().studioDir;
+  if (!studioDir) throw new Error('No workspace open');
+
+  const manifest = readManifest(studioDir);
+
+  // Validate id exists — same guard as selectVersion (T-04-15 / H2c).
+  // BASELINE_ID is always valid (pristine zero-override state).
+  if (id !== null && id !== BASELINE_ID && !manifest.changesets.some(c => c.id === id)) {
+    throw new Error('setLiveVersion: version not found: ' + id);
+  }
+
+  // D-08 invariant: BOTH pointers set to id in a SINGLE persist call so they never diverge.
+  manifest.activeVersionId = id;
+  manifest.deployedVersionId = id;
+  writeManifest(studioDir, manifest);
+
+  // Update Zustand stores so UI re-renders reflect the new live pointer.
+  useChangesetStore.getState().setActiveVersion(id);
+  useChangesetStore.getState().setDeployedVersion(id);
 }
 
 // ─── updateChangesetDeployRecord ──────────────────────────────────────────────
