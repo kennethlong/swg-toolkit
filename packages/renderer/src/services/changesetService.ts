@@ -447,6 +447,25 @@ export function setDeployedVersion(id: string | null): void {
   useChangesetStore.getState().setDeployedVersion(id);
 }
 
+// ─── setLiveVersion ───────────────────────────────────────────────────────────
+
+/**
+ * Move BOTH the activeVersionId and deployedVersionId pointers atomically (D-08).
+ *
+ * D-08 invariant: selected ≡ live — the two pointers must NEVER diverge after this call.
+ * `selectVersion` + `setDeployedVersion` must always move together; this function is
+ * the single call site that enforces that invariant.
+ *
+ * STUB: throws 'not implemented (W1-04)' — Wave-1 plan 04 (syncLiveToVersion engine)
+ * implements this. Plan 06 (VersionHistoryBody row-click handler) imports and calls it;
+ * keeping this as a throwing stub locks the single-live-pointer contract at compile time.
+ *
+ * Source: 04.3-02-PLAN.md Task 1; 04.3-RESEARCH.md D-08 (single "live" pointer).
+ */
+export function setLiveVersion(id: string | null): void {
+  throw new Error('not implemented (W1-04)');
+}
+
 // ─── updateChangesetDeployRecord ──────────────────────────────────────────────
 
 /**
