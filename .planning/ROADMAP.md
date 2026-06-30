@@ -184,7 +184,7 @@ Out of scope (separate future item): `delete-project-with-restore`.
 
 Plans:
 **Wave 0 — test scaffolds & fixtures**
-- [ ] 04.3-02-PLAN.md — Pillar A contract stubs + RED tests (syncLiveToVersion, undoStore, laneLayout, LaneGutter)
+- [x] 04.3-02-PLAN.md — Pillar A contract stubs + RED tests (syncLiveToVersion, undoStore, laneLayout, LaneGutter)
 - [ ] 04.3-03-PLAN.md — Pillar B swg-source v6000 byte-exact fixture + native/resolveFull RED scaffolds
 **Wave 1 — parallel reworks**
 - [ ] 04.3-04-PLAN.md — Pillar A reconcile engine + session undo + single live pointer

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
-last_updated: "2026-06-30T02:03:13.783Z"
-last_activity: 2026-06-29 -- Phase 04.2 execution started
+stopped_at: Phase 04.3 context gathered (discuss-phase complete)
+last_updated: "2026-06-30T21:26:09.438Z"
+last_activity: 2026-06-30
 progress:
   total_phases: 12
   completed_phases: 5
-  total_plans: 46
-  completed_plans: 44
-  percent: 96
+  total_plans: 58
+  completed_plans: 45
+  percent: 78
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 04.2 — dev-client-support-loose-override-deploy
+**Current focus:** Phase 04.3 — versioning-and-searchtoc-mount
 
 ## Current Position
 
-Phase: 04.2 (dev-client-support-loose-override-deploy) — EXECUTING
-Plan: 1 of 6
+Phase: 04.3 (versioning-and-searchtoc-mount) — EXECUTING
+Plan: 2 of 12
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
       migration, dynamic auto-widen). Crew briefs: .planning/research/CONSULT-P4.1-*.md.
-Status: Executing Phase 04.2
+Status: Ready to execute
         New Project→Add→Save version→Changeset→Deploy patch-prepend→mod loaded in-game, disk-verified).
         The remaining work is the UI/UX redesign + project-binding/shadow scope surfaced by UAT, now
         framed as INSERTED Phase 04.1 (maintainer chose inserted-phase over new-plans-under-4). Builds
@@ -43,9 +43,9 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       v6000 encrypted/out-of-scope) — server TRE search-path remains open, deferred to Phase 8 w/ server-push.
       Separately still pending: Phase 04 formal close-out (mark 04-06/06b complete, verifier,
       REQUIREMENTS DEPLOY-01..04 → Complete).
-Last activity: 2026-06-29 -- Phase 04.2 execution started
+Last activity: 2026-06-30
 
-Progress: [██████████] 98%
+Progress: [████████░░] 78%
 
 ### 02-03 key facts (crew-verified)
 
@@ -105,6 +105,7 @@ Progress: [██████████] 98%
 | Phase 04.1 P08 | 8 | 3 tasks | 9 files |
 | Phase 04.1 P09 | 60 | 3 tasks | 6 files |
 | Phase 04.1 P10 | 6 | 3 tasks | 11 files |
+| Phase 04.3 P02 | 20 | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -248,6 +249,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-28T00:45:24.226Z
-Stopped at: Completed 04.1-05-PLAN.md (Deploy panel dock registration + layout version guard GREEN)
+Last session: 2026-06-30T21:26:09.412Z
+Stopped at: Phase 04.3 context gathered (discuss-phase complete)
 Resume file: None
