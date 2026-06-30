@@ -28,7 +28,7 @@ import React, {
   useEffect,
   useRef,
 } from 'react';
-import { detectClients } from '../../services/clientLocator';
+import { detectClients, getKnownClientPaths } from '../../services/clientLocator';
 import type { DetectedClient, TypedIpcRenderer } from '@swg/contracts';
 import * as projectBinding from '../../services/projectBinding';
 import type { InitProjectOptions } from '../../services/projectBinding';
@@ -246,20 +246,43 @@ export default function NewProjectWizard({ open, onClose }: NewProjectWizardProp
           fontFamily:    'var(--font-sans)',
         }}
       >
-        {/* ── Header ───────────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 'var(--text-md)', fontWeight: 600 }}>
+        {/* ── Header (P12: + × close button) ──────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <span style={{ fontSize: 'var(--text-md)', fontWeight: 600, flex: 1 }}>
             New Project
           </span>
           <span
             style={{
-              fontSize: 'var(--text-xs)',
-              color:    'var(--color-text-muted)',
+              fontSize:   'var(--text-xs)',
+              color:      'var(--color-text-muted)',
               fontFamily: 'var(--font-mono)',
             }}
           >
             Step {step} of {TOTAL_STEPS}
           </span>
+          {/* P12: × close button (sketch 007-C dialog-header) */}
+          <button
+            aria-label="Close wizard"
+            title="Close"
+            onClick={onClose}
+            disabled={busy}
+            style={{
+              background:   'none',
+              border:       'none',
+              color:        'var(--color-text-faint)',
+              cursor:       busy ? 'not-allowed' : 'pointer',
+              fontSize:     15,
+              lineHeight:   1,
+              padding:      '2px 4px',
+              borderRadius: 'var(--radius-sm)',
+              display:      'flex',
+              alignItems:   'center',
+              justifyContent: 'center',
+              flexShrink:   0,
+            }}
+          >
+            ×
+          </button>
         </div>
 
         {/* ── Step progress dots ─────────────────────────────────────── */}
@@ -374,22 +397,58 @@ function Step1NameLocation({ wizard, setWizard, firstInputRef }: Step1Props): Re
             outline:      'none',
           }}
         />
-        {/* Read-only location hint — informational only (no override; .studio stays internal) */}
-        {wizard.folder && (
-          <span
-            title={wizard.folder}
-            style={{
-              fontFamily:   'var(--font-mono)',
-              fontSize:     'var(--text-xs)',
-              color:        'var(--color-text-faint)',
-              overflow:     'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace:   'nowrap',
-            }}
-          >
-            Stored in {wizard.folder}
+        {/* P6: Editable project folder + Browse (sketch 007-C Step 1 folder-row) */}
+        <div>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            Project folder
           </span>
-        )}
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
+            <input
+              type="text"
+              value={wizard.folder}
+              onChange={(e) => setWizard((w) => ({ ...w, folder: e.target.value }))}
+              placeholder="D:\SWG-Projects\my-project"
+              aria-label="Project folder"
+              style={{ ...{
+                fontFamily:   'var(--font-mono)',
+                fontSize:     'var(--text-xs)',
+                color:        'var(--color-text)',
+                background:   'var(--color-widget)',
+                border:       '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                padding:      '5px 8px',
+                outline:      'none',
+                flex:         1,
+                minWidth:     0,
+              } }}
+            />
+            <button
+              style={{
+                background:   'transparent',
+                border:       '1px solid var(--color-border)',
+                color:        'var(--color-text-muted)',
+                borderRadius: 'var(--radius-sm)',
+                padding:      '4px 10px',
+                cursor:       'pointer',
+                fontSize:     'var(--text-xs)',
+                flexShrink:   0,
+                whiteSpace:   'nowrap',
+              }}
+              onClick={async () => {
+                try {
+                  const paths = await ipcRenderer.invoke('workspace:pick-dir');
+                  if (paths.length > 0 && paths[0]) {
+                    setWizard((w) => ({ ...w, folder: paths[0] ?? w.folder }));
+                  }
+                } catch { /* ignore picker cancel */ }
+              }}
+              title="Browse for project folder"
+              type="button"
+            >
+              ⊕ Browse…
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -523,6 +582,12 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
   /** True when manual override has been fully entered (cfgFile required). */
   const hasManualOverride = wizard.manualLayout !== undefined && wizard.manualLayout.cfgFile !== '';
 
+  // P4 wizard: not-found rows — known clients not in the detected list.
+  const missingClients = (() => {
+    const detectedSet = new Set(clients.map((c) => c.installPath.toLowerCase()));
+    return getKnownClientPaths().filter((k) => !detectedSet.has(k.installPath.toLowerCase()));
+  })();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       <div>
@@ -591,6 +656,61 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* P4 wizard: not-found rows for known clients not detected on disk */}
+      {missingClients.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+          {clients.length === 0 && (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>
+              Detected installs
+            </span>
+          )}
+          {missingClients.map((client) => (
+            <div
+              key={client.installPath}
+              style={{
+                display:      'flex',
+                alignItems:   'center',
+                gap:          'var(--space-2)',
+                padding:      'var(--space-2) var(--space-3)',
+                background:   'var(--color-surface-2)',
+                border:       '1px solid transparent',
+                borderRadius: 'var(--radius-sm)',
+                opacity:      0.55,
+                cursor:       'not-allowed',
+              }}
+              aria-disabled="true"
+              title={`${client.name} — not found at ${client.installPath}`}
+            >
+              <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>○</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 400 }}>{client.name}</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+                  not found on disk
+                </div>
+              </div>
+              {/* ✗ not found pill (Accessibility Rule 1: glyph + border + text) */}
+              <span
+                style={{
+                  display:      'inline-flex',
+                  alignItems:   'center',
+                  gap:          4,
+                  fontSize:     'var(--text-xs)',
+                  padding:      '1px 6px',
+                  borderRadius: 'var(--radius-full, 999px)',
+                  border:       '1px solid rgba(224,88,79,.40)',
+                  background:   'rgba(224,88,79,.12)',
+                  color:        'var(--color-danger, #e0584f)',
+                  flexShrink:   0,
+                  fontFamily:   'var(--font-mono)',
+                }}
+              >
+                <span aria-hidden="true">✗</span>not found
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -813,19 +933,21 @@ function Step3LocalServer({ wizard, setWizard }: Step3Props): React.ReactElement
   const [useServer, setUseServer] = useState(false);
   const [serverType, setServerType] = useState<ServerType>('core3-wsl2');
   const [serverPath, setServerPath] = useState('');
-  const [hostPort, setHostPort] = useState('127.0.0.1:44463');
+  // P8: split host:port into two fields (sketch 007-C Step 3 .hostport grid)
+  const [host, setHost] = useState('127.0.0.1');
+  const [port, setPort] = useState('44463');
 
   // Sync changes to wizard state (capture-only, D-01 — no push UI)
   useEffect(() => {
     if (useServer) {
       setWizard((w) => ({
         ...w,
-        serverConfig: { type: serverType, path: serverPath, hostPort },
+        serverConfig: { type: serverType, path: serverPath, hostPort: `${host}:${port}` },
       }));
     } else {
       setWizard((w) => ({ ...w, serverConfig: undefined }));
     }
-  }, [useServer, serverType, serverPath, hostPort, setWizard]);
+  }, [useServer, serverType, serverPath, host, port, setWizard]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -868,31 +990,58 @@ function Step3LocalServer({ wizard, setWizard }: Step3Props): React.ReactElement
             ))}
           </div>
 
-          {/* Server path */}
+          {/* P7: Server path + Browse (sketch 007-C Step 3 folder-row) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Server path</span>
-            <input
-              type="text"
-              value={serverPath}
-              onChange={(e) => setServerPath(e.target.value)}
-              placeholder={serverType === 'core3-wsl2' ? '/path/to/Core3' : '/path/to/server'}
-              style={inputStyle}
-              aria-label="Server path"
-            />
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <input
+                type="text"
+                value={serverPath}
+                onChange={(e) => setServerPath(e.target.value)}
+                placeholder={serverType === 'core3-wsl2' ? '\\\\wsl$\\Ubuntu\\home\\swg\\Core3\\MMOCoreORB' : '/path/to/server'}
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', flex: 1 }}
+                aria-label="Server path"
+              />
+              <button
+                style={browseButtonStyle}
+                onClick={async () => {
+                  try {
+                    const paths = await ipcRenderer.invoke('workspace:pick-dir');
+                    if (paths.length > 0 && paths[0]) setServerPath(paths[0]);
+                  } catch { /* ignore picker cancel */ }
+                }}
+                title="Browse for server folder"
+                type="button"
+                aria-label="Browse for server folder"
+              >
+                ⊕ Browse…
+              </button>
+            </div>
           </div>
 
-          {/* host:port */}
+          {/* P8: Host : Port — two split fields (sketch 007-C .hostport grid) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-            {/* Copywriting Contract: host:port placeholder 127.0.0.1:44463 */}
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Host:port</span>
-            <input
-              type="text"
-              value={hostPort}
-              onChange={(e) => setHostPort(e.target.value)}
-              placeholder="127.0.0.1:44463"
-              style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
-              aria-label="Server host and port"
-            />
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Host : Port <span style={{ color: 'var(--color-text-faint)' }}>— live status / reload</span>
+            </span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 84px', gap: 'var(--space-2)' }}>
+              <input
+                type="text"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder="127.0.0.1"
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}
+                aria-label="Server host"
+              />
+              <input
+                type="text"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                placeholder="44463"
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}
+                aria-label="Server port"
+              />
+            </div>
           </div>
 
           {/* D-01 notice: CAPTURE ONLY, no server-push UI in Phase 4.1 */}
