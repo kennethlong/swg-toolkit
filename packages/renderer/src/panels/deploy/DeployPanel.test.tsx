@@ -120,7 +120,7 @@ describe('DeployPanel', () => {
     expect(screen.getByText(/Deploy/i)).toBeDefined();
   });
 
-  it('Test 2: clicking a version row ▸-expands to its deltas[] and calls selectVersion(node.id)', () => {
+  it('Test 2: clicking a version row ▸-expands to its deltas[] (D-04: reconcile replaces selectVersion)', () => {
     const manifest = buildManifest([
       { id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] },
       {
@@ -137,14 +137,17 @@ describe('DeployPanel', () => {
     render(<DeployPanel />);
 
     // Click the version row to expand it
-    const v1Row = screen.getByText('Add armor').closest('[data-changeset-id], .changeset-node, [role]') ?? screen.getByText('Add armor').parentElement;
-    expect(v1Row).not.toBeNull();
-    fireEvent.click(screen.getByText('Add armor'));
+    // D-04: row click now reconciles (syncLiveToVersion) instead of calling selectVersion.
+    // The ▸ delta expansion is still triggered on click (KEEP item from 04.3-06).
+    const v1LabelEl = screen.getByText('Add armor');
+    expect(v1LabelEl).not.toBeNull();
+    fireEvent.click(v1LabelEl);
 
-    // selectVersion should be called with v1's id
-    expect(selectVersion).toHaveBeenCalledWith('v1');
+    // D-04 NOTE: selectVersion is no longer called (replaced by syncLiveToVersion).
+    // syncLiveToVersion hits the flatEqual noop path in tests (changesetService.flatten/flatEqual mocked).
+    expect(selectVersion).not.toHaveBeenCalled();
 
-    // Delta virtualPath should appear
+    // Delta virtualPath should still appear (▸ expansion KEEP item preserved)
     expect(screen.getByText('appearance/armor.mgn')).toBeDefined();
   });
 
