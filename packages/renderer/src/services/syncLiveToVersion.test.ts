@@ -30,6 +30,11 @@ vi.mock('./changesetService', () => ({
   setLiveVersion: vi.fn(),
   selectVersion: vi.fn(),
   setDeployedVersion: vi.fn(),
+  // Wave-1 addition: updateChangesetDeployRecord must be present so the GREEN
+  // implementation can call it when persisting a deploy record after a successful
+  // apply (orphaned-file guard). Absent from Wave-0 mock because the stub threw
+  // before reaching the persist step. Rule 1 fix — prevents crash in test (c).
+  updateChangesetDeployRecord: vi.fn(),
 }));
 
 vi.mock('./looseOverrideDeploy', () => ({

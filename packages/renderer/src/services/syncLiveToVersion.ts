@@ -1,25 +1,42 @@
 /**
  * packages/renderer/src/services/syncLiveToVersion.ts
- * Version reconcile service — Wave-0 contract stub (VER-02/VER-03).
+ * Version reconcile engine — Wave-1 implementation (VER-02/VER-03/VER-04/VER-06/VER-09).
  *
- * Exports the FINAL signature for the `syncLiveToVersion` engine; stub body
- * throws 'not implemented (W1-04)' until Wave-1 plan 04 implements it.
+ * Exports the FINAL signature for `syncLiveToVersion`, plus `deployModelOf` (always live)
+ * and the ReconcileCtx / LiveReconcileResult types (consumed by downstream plans 06/07/08/09).
  *
- * Also exports `deployModelOf` — a fully-implemented discriminator that reads
- * the deploy model from a SwgChangeset.deployRecord shape.
+ * Design (H4 — dispatch on the RIGHT model):
+ *   - revertModel is determined from the LIVE version's stored deployRecord (not the target's).
+ *   - applyModel is determined from the TARGET version's stored deployRecord.
+ *   - Keeping them SEPARATE prevents loose-live→Baseline from calling restoreCfg instead of
+ *     resetLoose (Baseline has no deployRecord → 'cfg' fallback → wrong path without H4).
  *
- * Downstream Wave-1 plans (06, 08, 09) import types from this module;
- * they can compile against it without the engine being live yet.
- *
- * Source: 04.3-02-PLAN.md Task 1; 04.3-RESEARCH.md § The new piece (syncLiveToVersion).
+ * Source: 04.3-04-PLAN.md Task 1; 04.3-RESEARCH.md § Pillar A pseudocode + D-01–D-08.
  */
+
+import path from 'path';
 
 import type {
   SwgChangeset,
   WorkspaceChangesetManifest,
   LooseDeployRecord,
   CfgDeployRecord,
+  CfgInsertionRecord,
 } from '@swg/contracts';
+import { BASELINE_ID } from '@swg/contracts';
+
+import {
+  flatten,
+  flatEqual,
+  setLiveVersion,
+  updateChangesetDeployRecord,
+} from './changesetService';
+
+import { deployLoose, resetLoose, resolveOverrideDir } from './looseOverrideDeploy';
+
+import { activatePatch, deactivatePatch, restoreCfg, scanSharedFile } from './cfgActivator';
+
+import { useUndoStore } from '../state/undoStore';
 
 // ---------------------------------------------------------------------------
 // ReconcileCtx
@@ -94,28 +111,182 @@ export function deployModelOf(changeset: SwgChangeset): 'loose' | 'cfg' {
 }
 
 // ---------------------------------------------------------------------------
-// syncLiveToVersion (STUB — Wave 0)
+// syncLiveToVersion
 // ---------------------------------------------------------------------------
 
 /**
  * Make the live client override set EQUAL to flatten(targetId).
  *
- * Covers forward-apply AND backward-revert in one diff-and-apply op:
+ * Covers forward-apply AND backward-revert in one diff-and-apply op (VER-02/03):
  *   - Idempotent: flatEqual(live, target) → returns { noop: true }, no writes.
- *   - Baseline (targetId resolves to empty flatten) → full restore-to-stock:
- *       loose model → resetLoose(priorRecord) to remove override files (H4 revert-only).
- *       cfg model   → restoreCfg(rootCfgPath, snapshotPath).
- *   - Loose model: deployLoose(flatten(target), overrideDir, { priorRecord }).
- *   - Cfg model:   deactivatePatch(prior) then activatePatch(target build).
+ *   - Baseline (targetId resolves to empty flatten) → revert-only (restore-to-stock):
+ *       loose live → resetLoose(priorRecord) removes the override files (H4).
+ *       cfg live   → restoreCfg(cfgPath, snapshotPath) byte-pristine whole-file restore.
+ *   - Loose apply: deployLoose(flatten(target), overrideDir, { priorRecord }).
+ *     deployLoose internally calls resetLoose(priorRecord) (H2 prune), so the revert is
+ *     embedded for the loose→loose case.
+ *   - Cfg apply: deactivatePatch(live record) + deactivatePatch(target prior, idempotency)
+ *     + activatePatch(target build).
  *
- * STUB: throws 'not implemented (W1-04)' until Wave-1 plan 04 implements it.
+ * H4 contract: revertModel is dispatched from the LIVE version's deployRecord; applyModel
+ * is dispatched from the TARGET version's deployRecord.  Conflating them breaks the
+ * loose-live→Baseline path (Baseline has no record → 'cfg' → restoreCfg, but the live
+ * files are loose → resetLoose is the correct call).
  *
- * Source: 04.3-02-PLAN.md Task 1; 04.3-RESEARCH.md §syncLiveToVersion.
+ * Source: 04.3-04-PLAN.md Task 1; 04.3-RESEARCH.md § The new piece (syncLiveToVersion).
  */
 export async function syncLiveToVersion(
   targetId: string | null,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   ctx: ReconcileCtx,
 ): Promise<LiveReconcileResult> {
-  throw new Error('not implemented (W1-04)');
+  const { manifest, studioDir, cfgPath, installRoot, priorLiveLooseRecord } = ctx;
+
+  // ─── Live version info ────────────────────────────────────────────────────
+  const liveId = manifest.deployedVersionId;
+  const liveChangeset: SwgChangeset | null = liveId
+    ? (manifest.changesets.find(c => c.id === liveId) ?? null)
+    : null;
+  const liveDeployRecord = liveChangeset?.deployRecord;
+
+  // H4: determine liveModel from the LIVE version's stored record (NOT the target's).
+  // Fallback chain: live record → ctx.priorLiveLooseRecord presence → 'cfg' default.
+  const liveModel: 'loose' | 'cfg' =
+    liveDeployRecord && 'overrideDir' in liveDeployRecord
+      ? 'loose'
+      : priorLiveLooseRecord
+      ? 'loose'
+      : 'cfg';
+
+  // ─── Compute entry sets ──────────────────────────────────────────────────
+  const liveEntries = flatten(liveId, manifest, studioDir);
+  const desired = flatten(targetId, manifest, studioDir);
+
+  // ─── Noop fast path (flatEqual) ──────────────────────────────────────────
+  if (flatEqual(desired, liveEntries)) {
+    return { noop: true, liveVersionId: liveId, model: liveModel };
+  }
+
+  // ─── Undo snapshot — BEFORE any mutation (D-06/VER-04) ───────────────────
+  useUndoStore.getState().push({
+    priorLiveVersionId: liveId,
+    priorDeployRecord: liveDeployRecord,
+    takenAt: new Date().toISOString(),
+  });
+
+  // ─── Apply model — from TARGET version (H4) ──────────────────────────────
+  const targetChangeset: SwgChangeset | null =
+    targetId && targetId !== BASELINE_ID
+      ? (manifest.changesets.find(c => c.id === targetId) ?? null)
+      : null;
+
+  const applyModel: 'loose' | 'cfg' =
+    targetChangeset?.deployRecord && 'overrideDir' in targetChangeset.deployRecord
+      ? 'loose'
+      : 'cfg';
+
+  // Baseline = desired is empty → revert-only (full restore-to-stock).
+  const isBaseline = desired.length === 0;
+
+  let newRecord: LooseDeployRecord | CfgDeployRecord | undefined;
+
+  if (isBaseline) {
+    // ─── REVERT ONLY — dispatch on liveModel (H4) ───────────────────────
+    if (liveModel === 'loose') {
+      // Loose-live → Baseline: resetLoose removes override files (H4 revert-only).
+      if (priorLiveLooseRecord) {
+        resetLoose(priorLiveLooseRecord);
+      }
+    } else {
+      // Cfg-live → Baseline: byte-pristine whole-file restore via snapshotPath.
+      const liveCfgRecord = liveDeployRecord as CfgDeployRecord | undefined;
+      if (liveCfgRecord?.snapshotPath) {
+        // Primary: full restore from snapshot (D-07).
+        restoreCfg(liveCfgRecord.cfgPath, liveCfgRecord.snapshotPath);
+      } else if (liveCfgRecord) {
+        // Fallback (legacy pre-04.1-07 records without snapshotPath): line surgery.
+        deactivatePatch(liveCfgRecord as unknown as CfgInsertionRecord);
+      }
+    }
+  } else {
+    // ─── NON-BASELINE: REVERT live, then APPLY target ────────────────────
+    const liveCfgRecord = liveDeployRecord as CfgDeployRecord | undefined;
+    const targetCfgRecord = targetChangeset?.deployRecord as CfgDeployRecord | undefined;
+
+    if (applyModel === 'loose') {
+      // Loose apply: deployLoose handles the priorRecord revert internally (H2 prune).
+      // For cfg→loose cross-model: deactivate the live cfg entry first.
+      if (liveModel === 'cfg' && liveCfgRecord) {
+        deactivatePatch(liveCfgRecord as unknown as CfgInsertionRecord);
+      }
+
+      const overrideDir = resolveOverrideDir(cfgPath, installRoot);
+      if (!overrideDir) {
+        throw new Error(
+          'syncLiveToVersion: no override dir — client has no searchPath dirs configured (resolveOverrideDir returned null)',
+        );
+      }
+
+      newRecord = deployLoose(desired, overrideDir, {
+        studioDir,
+        priorRecord: priorLiveLooseRecord,
+      });
+    } else {
+      // Cfg apply.
+
+      // Step 1: Deactivate the live version's cfg key (revert).
+      if (liveCfgRecord) {
+        deactivatePatch(liveCfgRecord as unknown as CfgInsertionRecord);
+      }
+
+      // Step 2: Deactivate the target's existing cfg key if different from live
+      // (idempotency guard — target may have been deployed before with its own slot).
+      if (targetCfgRecord && targetCfgRecord.keyName !== liveCfgRecord?.keyName) {
+        deactivatePatch(targetCfgRecord as unknown as CfgInsertionRecord);
+      }
+
+      // Step 3: For loose→cfg cross-model: resetLoose the prior loose override.
+      if (liveModel === 'loose' && priorLiveLooseRecord) {
+        resetLoose(priorLiveLooseRecord);
+      }
+
+      // Step 4: Activate the target cfg entry.
+      const toolkitCfgPath =
+        targetCfgRecord?.cfgPath ?? path.join(studioDir, 'swgtoolkit.cfg');
+      const scan = scanSharedFile(cfgPath);
+      const patchName = targetCfgRecord?.patchPath
+        ? path.basename(targetCfgRecord.patchPath)
+        : 'patch.tre';
+      const insertionRecord = activatePatch(toolkitCfgPath, patchName, scan, studioDir);
+
+      if (insertionRecord) {
+        newRecord = {
+          cfgPath: insertionRecord.cfgPath,
+          includeTargetPath: insertionRecord.includeTargetPath,
+          keyName: insertionRecord.keyName,
+          slot: insertionRecord.slot,
+          backupPath: insertionRecord.backupPath,
+          patchPath: targetCfgRecord?.patchPath ?? '',
+          patchVersion: targetCfgRecord?.patchVersion ?? '5000',
+          snapshotPath: targetCfgRecord?.snapshotPath,
+        } as CfgDeployRecord;
+      }
+    }
+  }
+
+  // ─── Persist new record for the target (orphaned-file guard) ─────────────
+  // updateChangesetDeployRecord stores the record so the next reconcile's
+  // priorRecord is not stale. Not called for Baseline (no record to store).
+  if (targetId && targetId !== BASELINE_ID && newRecord) {
+    updateChangesetDeployRecord(targetId, newRecord);
+  }
+
+  // ─── Move the single live pointer atomically (D-08/VER-06) ───────────────
+  setLiveVersion(targetId);
+
+  return {
+    noop: false,
+    liveVersionId: targetId,
+    model: isBaseline ? liveModel : applyModel,
+    record: newRecord,
+  };
 }
