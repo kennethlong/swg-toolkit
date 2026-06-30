@@ -190,7 +190,7 @@ Plans:
 - [x] 04.3-04-PLAN.md — Pillar A reconcile engine + session undo + single live pointer
 - [x] 04.3-05-PLAN.md — Branch-tree graph primitives (laneLayout + LaneGutter SVG, 002-A)
 - [x] 04.3-06-PLAN.md — VersionHistoryBody rework (two-column graph + silent reconcile wiring)
-- [ ] 04.3-07-PLAN.md — Deploy panel + staging chrome + forward-deploy-only modal (005/006)
+- [x] 04.3-07-PLAN.md — Deploy panel + staging chrome + forward-deploy-only modal (005/006)
 - [ ] 04.3-08-PLAN.md — Project-entry front-door polish (007)
 - [ ] 04.3-09-PLAN.md — Shell-composition polish (008); VCS-tab S3 left AMBIGUOUS
 - [ ] 04.3-10-PLAN.md — Native per-payload v6000 extraction + extractAt(descriptor)
