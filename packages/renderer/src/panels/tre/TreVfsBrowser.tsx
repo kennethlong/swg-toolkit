@@ -367,25 +367,39 @@ export default function TreVfsBrowser(): React.ReactElement {
     // Extract→Add (sourced from the mounted TRE, not a loose file) MUST be materialized to
     // a temp file here. Without it the entry flattens back with replacementFilePath:undefined
     // and packPatch throws "path argument must be of type string … Received undefined".
-    const mountHandle = store.mountHandle;
-    if (!mountHandle) {
-      console.warn('[TreVfsBrowser] Extract→Add: no mount handle');
-      return;
-    }
     try {
-      const chain = nativeCore.resolveChain(mountHandle, vpath);
-      if (!chain.winner || chain.tombstone ||
-          chain.winnerArchiveIndex < 0 || chain.winnerEntryIndex < 0) {
-        console.warn('[TreVfsBrowser] Extract→Add: entry not resolvable in mount:', vpath);
-        return;
+      let bytes: Buffer;
+
+      // Loose-overlay entries (injected from a client searchPath override dir by
+      // injectLooseDirOverlay) live on disk and are NOT in the native TRE mount index
+      // (winnerArchiveIndex === -1). Read the winner file directly — resolveChain/readMountEntry
+      // only know TRE-archived entries and return "not resolvable" for loose files.
+      if (entry.winnerArchiveIndex < 0) {
+        if (!entry.winnerArchivePath) {
+          console.warn('[TreVfsBrowser] Extract→Add: loose entry has no winnerArchivePath:', vpath);
+          return;
+        }
+        bytes = nodeFs.readFileSync(entry.winnerArchivePath);
+      } else {
+        const mountHandle = store.mountHandle;
+        if (!mountHandle) {
+          console.warn('[TreVfsBrowser] Extract→Add: no mount handle');
+          return;
+        }
+        const chain = nativeCore.resolveChain(mountHandle, vpath);
+        if (!chain.winner || chain.tombstone ||
+            chain.winnerArchiveIndex < 0 || chain.winnerEntryIndex < 0) {
+          console.warn('[TreVfsBrowser] Extract→Add: entry not resolvable in mount:', vpath);
+          return;
+        }
+        bytes = Buffer.from(nativeCore.readMountEntry(mountHandle, chain.winnerArchiveIndex, chain.winnerEntryIndex));
       }
-      const bytes = nativeCore.readMountEntry(mountHandle, chain.winnerArchiveIndex, chain.winnerEntryIndex);
 
       const tmpDir   = nodePath.join(nodeOs.tmpdir(), 'swg-toolkit-extract');
       nodeFs.mkdirSync(tmpDir, { recursive: true });
       const safeName = vpath.replace(/[\\/:*?"<>|]/g, '_');
       const tmpPath  = nodePath.join(tmpDir, `${Date.now()}-${safeName}`);
-      nodeFs.writeFileSync(tmpPath, Buffer.from(bytes));
+      nodeFs.writeFileSync(tmpPath, bytes);
 
       // Add to staging store directly — no VirtualPathModal prompt (DEPLOY-07).
       // Action is 'add': an Extract→Add is a copy of the base bytes (unchanged). It only
