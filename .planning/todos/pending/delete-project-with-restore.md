@@ -40,10 +40,17 @@ The restore machinery already exists and is exactly what the Deploy dialog's **R
    b. removes the studio dir (`studios/<id>`), the umbrella folder (`projects/<name>`), and the
       recents entry;
    c. if the deleted project is the currently-open one, closes the workspace + returns to the Welcome entry.
-3. Idempotent + safe: deleting a never-deployed project just removes folders (no cfg touch). Deleting a
+3. **Delete is UNDOABLE (maintainer, 2026-06-29).** Deletion must NOT be a hard `rm`: push the project +
+   its full changeset history (manifest + all `changesets/<id>/files/` version folders + workspace.json)
+   onto an undo stack so the project and every version are recoverable. Options: move the studio/project
+   dirs to a trash/undo area (e.g. `studios/.trash/<id>-<token>/`) rather than deleting, with an Undo
+   affordance that restores them (and re-applies the live deploy if it was reverted on delete). Append-only
+   history invariant (changesetService) extends to delete — nothing is destroyed, only parked for undo.
+4. Idempotent + safe: deleting a never-deployed project just parks folders (no cfg touch). Deleting a
    project whose snapshot is missing falls back gracefully (skip restore, warn) — never throws.
-4. Tests: cfg-insertion delete → cfg sha256 == pre-deploy; loose-override delete → pre-existing override
-   file restored (B3 sha256) + toolkit-added file removed; never-deployed delete → folders gone, no cfg I/O.
+5. Tests: cfg-insertion delete → cfg sha256 == pre-deploy; loose-override delete → pre-existing override
+   file restored (B3 sha256) + toolkit-added file removed; never-deployed delete → folders parked, no cfg I/O;
+   **undo restores the project + all changeset version folders byte-for-byte and re-lists it.**
 
 ## Notes
 

@@ -76,6 +76,10 @@ version); show it only when staging+deploying a new version forward.
 
 - This SUPERSEDES the current "select = preview only, Deploy = apply" model and folds in the Baseline-
   revert + stale-banner messaging issues (e6c2cc0 was a provisional fix on the old model).
+- Subsumes the current "Reset deployment" button gap: today Reset only renders in the dialog's post-deploy
+  `done` phase (DeployDialog open effect forces `phase:'idle'` on reopen), so a reopened deployed project
+  has no visible Reset affordance — the only idle-state revert path is select-Baseline → "Deploy Baseline
+  (revert to stock)". The redesign makes revert a first-class action from any state (click any version).
 - It's a redesign of the deploy↔version coupling (data model + new service + UX) — its own plan/phase,
   not an inline patch. Candidate: a dedicated 04.x phase after the current dev-client UAT, or fold into
   the deploy-tab redesign todo.
