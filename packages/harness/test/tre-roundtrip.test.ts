@@ -9,7 +9,8 @@
  * Fixtures verified (committed, synthesized from Utinni byte recipes per D-09):
  *   - v0005-3record.tre: byte-exact read, tombstone, raw-deflate payload
  *   - v0006-2record.tre: readable, NOT enumerate-only
- *   - v6000-2record.tre: enumerate-only (payload extraction refused)
+ *   - v6000-2record.tre: stored payload (compressor=0) — now readable after plan 04.3-10
+ *   - v6000-encrypted.tre: invalid-zlib payload — refuses extraction with RFC1950 error
  *   - malformed-magic.tre: rejected with Error (no process crash)
  *   - truncated.tre: rejected with Error (no process crash)
  *   - unsupported-version.tre: rejected with Error (no process crash)
@@ -73,7 +74,12 @@ beforeAll(() => {
     {
       name: 'v6000-2record.tre',
       bytes: new Uint8Array(loadFixture('v6000-2record.tre')),
-      loaderSource: 'Utinni TreVersion.cs:79-86 (IsEnumerateOnly => V6000 only)',
+      loaderSource: 'Zlib.cpp:56-58 (compressor=0 passthrough; plan 04.3-10 per-payload classify)',
+    },
+    {
+      name: 'v6000-encrypted.tre',
+      bytes: new Uint8Array(loadFixture('v6000-encrypted.tre')),
+      loaderSource: 'Zlib.cpp:83-89 (RFC1950 header gate; invalid header → throw; D-16 gate fix)',
     },
     {
       name: 'malformed-magic.tre',
@@ -175,24 +181,31 @@ describe('tre roundtrip', () => {
     expect(() => nativeCore.readEntry(archiveIndex, 0)).not.toThrow();
   });
 
-  // ── v6000: enumerate-only (encrypted payload refused) ──────────────────────
-  it('v6000 2-record fixture parses header/TOC/names but refuses payload extraction', () => {
+  // ── v6000: per-payload classify (plan 04.3-10) ────────────────────────────
+  // The blanket isEnumerateOnly(V6000) throw was REMOVED in plan 04.3-10 to support
+  // SWG-Source plain-zlib v6000 payloads. Per-payload classification: stored/plain-zlib
+  // payloads extract correctly; genuinely-encrypted payloads fail with an inflate error.
+  it('v6000 stored-payload fixture parses and payload is readable (per-payload classify)', () => {
     const bytes = loadFixture('v6000-2record.tre');
     const { archiveIndex } = mountFixtureBytes('v6000-2record.tre', bytes);
     const entries = nativeCore.listEntries(archiveIndex) as Array<{ path: string }>;
     expect(entries.length).toBeGreaterThan(0);
-    // Attempting to read an entry from a v6000 archive must throw
-    expect(() => nativeCore.readEntry(archiveIndex, 0)).toThrow(/enumerate-only/i);
+    // Stored payload (compressor=0): must NOT throw after plan 04.3-10 removed enumerate-only gate.
+    expect(() => nativeCore.readEntry(archiveIndex, 0)).not.toThrow();
+    // Payload content matches the fixture's stored bytes
+    const buf = Buffer.from(nativeCore.readEntry(archiveIndex, 0) as ArrayBuffer);
+    expect(buf.toString('ascii')).toBe('v6000-payload-alpha');
   });
 
-  it('v6000 is distinct from v0006: v6000 is enumerate-only, v0006 is NOT', () => {
-    const v6000bytes = loadFixture('v6000-2record.tre');
-    const v0006bytes = loadFixture('v0006-2record.tre');
-    const { archiveIndex: idx6000 } = mountFixtureBytes('v6000-check.tre', v6000bytes);
+  it('v6000 encrypted payload refuses extraction; v0006 is always readable (per-payload classify)', () => {
+    // v6000 with genuinely-encrypted payload (compressor=2, invalid zlib bytes) throws
+    const v6000encBytes = loadFixture('v6000-encrypted.tre');
+    const v0006bytes    = loadFixture('v0006-2record.tre');
+    const { archiveIndex: idxEnc }  = mountFixtureBytes('v6000-enc-check.tre', v6000encBytes);
     const { archiveIndex: idx0006 } = mountFixtureBytes('v0006-check.tre', v0006bytes);
-    // v6000 throws on readEntry
-    expect(() => nativeCore.readEntry(idx6000, 0)).toThrow();
-    // v0006 does NOT throw
+    // v6000 with invalid zlib payload: throws an inflate/RFC1950 error
+    expect(() => nativeCore.readEntry(idxEnc, 0)).toThrow(/inflate|RFC1950|invalid/i);
+    // v0006 payloads are always readable
     expect(() => nativeCore.readEntry(idx0006, 0)).not.toThrow();
   });
 

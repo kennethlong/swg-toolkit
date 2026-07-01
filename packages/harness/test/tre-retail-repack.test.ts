@@ -60,16 +60,19 @@ function findRealTrePath(): string | null {
   const envPath = process.env['TEST_TRE_PATH'];
   if (envPath && existsSync(envPath)) return envPath;
 
-  // 2. Look for any .tre in fixtures-real/ — prefer a non-v6000 archive (v6000 is enumerate-only,
-  //    payload extraction is refused, so the raw-slice identity test must skip v6000 archives).
+  // 2. Look for any .tre in fixtures-real/ — prefer a non-Restoration-encrypted archive
+  //    (Restoration v6000 encrypted payloads throw an inflate error; the raw-slice identity
+  //    test must skip archives where readEntry fails). Note: SWG-Source v6000 plain-zlib
+  //    payloads ARE readable after plan 04.3-10 removed the blanket enumerate-only gate —
+  //    but we still skip on error to be safe.
   if (!existsSync(FIXTURES_REAL)) return null;
   try {
     const files = readdirSync(FIXTURES_REAL).filter(f => f.endsWith('.tre'));
     if (files.length === 0) return null;
 
-    // Try to find a non-v6000 archive by mounting each and checking entryCount
-    // (v6000 archives are also readable — their TOC/names parse fine, only readEntry is refused).
-    // We detect v6000 by attempting to read the first entry: if it throws "enumerate-only", skip.
+    // Try to find a readable archive: mount each, attempt readEntry on the first non-tombstone
+    // entry. For Restoration-encrypted v6000, readEntry throws an inflate error (plan 04.3-10
+    // per-payload classification, D-16 gate); skip those archives.
     for (const f of files) {
       const p = join(FIXTURES_REAL, f);
       try {

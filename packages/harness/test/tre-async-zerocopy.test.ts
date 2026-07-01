@@ -235,20 +235,27 @@ describe('async worker zero-copy', () => {
     expect(elapsed).toBeLessThan(10_000); // sanity ceiling: 10s
   });
 
-  it('readMountEntry on a v6000 archive refuses extraction with encrypted sentinel', () => {
+  it('readMountEntry on a v6000 archive with encrypted payload refuses extraction', () => {
     /**
-     * T-01-20: readEntry on an isEnumerateOnly (V6000) archive refuses extraction.
-     * Returns a defined "encrypted, not extractable" error, never attempts to read payload.
+     * T-01-20 REVISED (plan 04.3-10 + D-16 gate): per-payload classification.
      *
-     * The v6000-2record.tre fixture from Plan 01-01 has isEnumerateOnly=true.
-     * Source: TreVersion.h isEnumerateOnly() — V6000 only.
+     * The blanket isEnumerateOnly(V6000) throw was removed in plan 04.3-10 to support
+     * SWG-Source plain-zlib v6000 payloads. A genuinely-encrypted payload (compressor=2,
+     * invalid zlib bytes) still refuses extraction via the RFC1950 header gate in Zlib.cpp.
+     *
+     * Uses v6000-encrypted.tre: a v6000 archive with 1 entry (compressor=2, payload
+     * bytes 0x4E,0x4F,... — "NOTVALIDZLIB\0" — which fail the RFC1950 header check).
+     *
+     * Source: Zlib.cpp:83-89 (cmf ∉ {0x78,0x58,0x08} → throw "invalid RFC1950 header").
+     *         TreVersion.h isEnumerateOnly() still defined; UI chip driven by it.
+     *         D-16 gate findings F-4/F-5 loop-back.
      */
-    const fixturePath = join(__dirname_es, '..', 'fixtures', 'tre', 'v6000-2record.tre');
+    const fixturePath = join(__dirname_es, '..', 'fixtures', 'tre', 'v6000-encrypted.tre');
     const handle = nativeCore.mountTreMount([fixturePath], [1]);
     try {
-      // Attempting to read any entry from a v6000 archive must throw
+      // Encrypted payload: must throw with an inflate / RFC1950 error
       expect(() => nativeCore.readMountEntry(handle, 0, 0))
-        .toThrowError(/encrypt|enumerate.only|not extractable/i);
+        .toThrowError(/inflate|RFC1950|invalid/i);
     } finally {
       nativeCore.disposeTreMount(handle);
     }

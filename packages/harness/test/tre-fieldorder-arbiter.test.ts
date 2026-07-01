@@ -272,8 +272,8 @@ describe('tre fieldorder arbiter', () => {
 
   // ── (c) Restoration version tag: 6000 not 0006 ───────────────────────────
   it('Restoration real archive (if present) has version tag exactly "6000" (settles 0006 vs 6000)', () => {
-    // Source: RESEARCH.md "v6000 (Restoration) payloads are ENCRYPTED -> enumerate-only;
-    //         applies to '6000' ONLY (NOT '0006')"
+    // Source: RESEARCH.md "v6000 (Restoration) payloads are ENCRYPTED at runtime (per-payload
+    //         classify, plan 04.3-10); applies to '6000' ONLY (NOT '0006')"
     if (v6000Archives.length === 0 && v0006Archives.length === 0) {
       console.log('[ARBITER] No Restoration archives found. Ensure D:\\SWG Restoration is accessible.');
       console.log('[ARBITER] This assertion will be conclusive when a Restoration archive is copied.');
