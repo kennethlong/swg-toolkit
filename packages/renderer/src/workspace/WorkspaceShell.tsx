@@ -48,6 +48,10 @@ import LiveInspectorPanel from '../panels/LiveInspectorPanel';
 // until plan 10 (cleanup); they are simply de-registered here.
 import DeployPanel        from '../panels/deploy/DeployPanel';
 import VcsPanel           from '../panels/deploy/VcsPanel';
+// Plan 04.3-09 (S8): Datatable / Console / Log trio replaces single 'data' panel.
+import DatatablePanel     from '../panels/DatatablePanel';
+import ConsolePanel       from '../panels/ConsolePanel';
+import LogPanel           from '../panels/LogPanel';
 
 // ─── Panel component registry ─────────────────────────────────────────────────
 //
@@ -60,11 +64,18 @@ const panelComponents: Record<string, React.FunctionComponent<IDockviewPanelProp
   sidebar:          SidebarPanel,
   viewport:         ViewportPanel,
   inspector:        InspectorPanel,
+  // 'data' kept for backward-compat fallback (LAYOUT_VERSION 3 discards old layouts via
+  // version guard, but keeping the registration avoids stranded-panel crashes if someone
+  // has an older layout from before the version bump).
   data:             DataPanel,
   'live-inspector': LiveInspectorPanel,  // Phase 3: live injection HUD panel (03-06)
   // Plan 05: ONE combined deploy panel; vcs stays separate.
   deploy:           DeployPanel,
   vcs:              VcsPanel,
+  // Plan 09 (S8): Datatable / Console / Log trio (replaces single 'data' in new layouts)
+  datatable:        DatatablePanel,
+  console:          ConsolePanel,
+  log:              LogPanel,
 };
 
 // ─── Width constants for active-panel auto-widen (M3) ────────────────────────
@@ -78,11 +89,15 @@ const INSPECTOR_WIDTH = 290;  // original Inspector-only width
 const PANEL_TITLES: Record<string, string> = {
   sidebar:          'Assets',
   viewport:         'Viewport',
-  inspector:        'Inspector',
-  data:             'Data',
+  inspector:        'Inspect',   // S4 (sketch 008): renamed from 'Inspector'
+  data:             'Data',      // retired but kept for backward compat registration
   'live-inspector': 'Live Inspector',
   deploy:           'Deploy',
   vcs:              'Version Control',
+  // Plan 09 (S8): bottom-pane trio
+  datatable:        'Datatable',
+  console:          'Console',
+  log:              'Log',
 };
 
 /**
@@ -97,6 +112,10 @@ const PANEL_REOPEN_POSITIONS: Record<string, { direction: string; referencePanel
   'live-inspector': { direction: 'within', referencePanel: 'inspector' },
   deploy:           { direction: 'within', referencePanel: 'inspector' },
   vcs:              { direction: 'within', referencePanel: 'inspector' },
+  // Plan 09 (S8): bottom-pane trio reopen positions
+  datatable:        { direction: 'below',  referencePanel: 'viewport' },
+  console:          { direction: 'within', referencePanel: 'datatable' },
+  log:              { direction: 'within', referencePanel: 'datatable' },
 };
 
 // ─── WorkspaceShell ───────────────────────────────────────────────────────────

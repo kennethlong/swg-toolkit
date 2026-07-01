@@ -31,8 +31,9 @@ export const THEME_STORAGE_KEY   = 'swg-active-theme' as const;
 // returning users from being soft-bricked by retired panel ids (dockview #341).
 // ---------------------------------------------------------------------------
 
-/** Bumped from 1 → 2: retired 'staging'/'changesets', added 'deploy' (plan 05). */
-export const LAYOUT_VERSION     = 2 as const;
+/** Bumped from 2 → 3: renamed 'Inspector'→'Inspect', replaced single 'data' with
+ *  Datatable/Console/Log trio (plan 09 — sketch 008 S4 + S8). */
+export const LAYOUT_VERSION     = 3 as const;
 export const LAYOUT_VERSION_KEY = 'swg-workspace-layout-version' as const;
 
 // ---------------------------------------------------------------------------
@@ -86,22 +87,39 @@ export function buildInitialLayout(api: DockviewApi): void {
   });
 
   // Inspector panel docked to the right of viewport
+  // S4 (sketch 008): renamed from 'Inspector' → 'Inspect'
   const inspectorPanel = api.addPanel({
     id: 'inspector',
     component: 'inspector',
-    title: 'Inspector',
+    title: 'Inspect',
     position: { direction: 'right', referencePanel: 'viewport' },
     initialWidth: 280,
   });
 
-  // Data pane docked below viewport
-  api.addPanel({
-    id: 'data',
-    component: 'data',
-    title: 'Data',
+  // S8 (sketch 008): bottom pane = Datatable / Console / Log tab trio
+  // Replaces single 'data' panel (retired — LAYOUT_VERSION 2→3 clears old saved layouts).
+  // 'datatable' is the first and default-active panel; Console/Log are stub panes.
+  const datatablePanel = api.addPanel({
+    id: 'datatable',
+    component: 'datatable',
+    title: 'Datatable',
     position: { direction: 'below', referencePanel: 'viewport' },
     initialHeight: 200,
   });
+  api.addPanel({
+    id: 'console',
+    component: 'console',
+    title: 'Console',
+    position: { direction: 'within', referencePanel: 'datatable' },
+  });
+  api.addPanel({
+    id: 'log',
+    component: 'log',
+    title: 'Log',
+    position: { direction: 'within', referencePanel: 'datatable' },
+  });
+  // Datatable is the default active tab in the bottom-pane group
+  datatablePanel?.api?.setActive?.();
 
   // Plan 05 (DEPLOY-05 / D-14): ONE combined 'deploy' tab replaces 'staging'+'changesets'.
   // 'vcs' stays as a separate tab in the same inspector group.

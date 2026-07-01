@@ -8,12 +8,18 @@
  *   3 — buildInitialLayout adds a 'deploy' panel within the inspector group (~440px)
  *   4 — buildInitialLayout does NOT add a 'staging' panel (retired id)
  *   5 — buildInitialLayout does NOT add a 'changesets' panel (retired id)
+ *   6 — plan 09 (S4): LAYOUT_VERSION >= 3 after bottom-pane trio bump
+ *   7 — plan 09 (S4): inspector panel title is 'Inspect' (not 'Inspector')
+ *   8 — plan 09 (S8): 'datatable' panel present in bottom-pane group
+ *   9 — plan 09 (S8): 'console' and 'log' panels present in bottom-pane group
+ *  10 — plan 09 (S8): 'data' panel NOT added by buildInitialLayout (retired)
  *
  * RED phase (Task 1): tests fail because LAYOUT_VERSION/LAYOUT_VERSION_KEY are not
  * yet exported and buildInitialLayout still adds staging+changesets.
  * GREEN phase (Task 2): all 5 tests pass once workspace-config.ts is updated.
  *
  * Source: 04.1-05-PLAN.md Task 1; 04.1-RESEARCH.md §Pattern 6.
+ *         04.3-09-PLAN.md Task 3 (Tests 6–10).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -93,6 +99,62 @@ describe('workspace-config — buildInitialLayout panel swap', () => {
     const changesetsPanel = panels.find((p) => p.id === 'changesets');
     // RED: changesets IS still added → changesetsPanel is defined → expect undefined FAILS
     expect(changesetsPanel).toBeUndefined();
+  });
+
+});
+
+// ─── Plan 09 additions (S4 + S8) ─────────────────────────────────────────────
+
+describe('workspace-config — plan 09: Inspect tab + Datatable/Console/Log trio', () => {
+
+  it('Test 6: LAYOUT_VERSION >= 3 after bottom-pane trio bump (plan 09)', () => {
+    expect(LAYOUT_VERSION).toBeGreaterThanOrEqual(3);
+  });
+
+  it('Test 7 (S4): inspector panel title is "Inspect" not "Inspector"', () => {
+    const { mockApi, panels } = buildMockApi();
+    buildInitialLayout(mockApi);
+
+    const inspector = panels.find((p) => p.id === 'inspector');
+    expect(inspector).toBeDefined();
+    expect((inspector as Record<string, unknown>)['title']).toBe('Inspect');
+  });
+
+  it('Test 8 (S8): adds a "datatable" panel below the viewport', () => {
+    const { mockApi, panels } = buildMockApi();
+    buildInitialLayout(mockApi);
+
+    const dt = panels.find((p) => p.id === 'datatable');
+    expect(dt).toBeDefined();
+    expect(
+      (dt as { position?: { direction?: string } } | undefined)?.position?.direction,
+    ).toBe('below');
+  });
+
+  it('Test 9 (S8): adds "console" and "log" panels within the datatable group', () => {
+    const { mockApi, panels } = buildMockApi();
+    buildInitialLayout(mockApi);
+
+    const consolePanel = panels.find((p) => p.id === 'console');
+    const logPanel     = panels.find((p) => p.id === 'log');
+    expect(consolePanel).toBeDefined();
+    expect(logPanel).toBeDefined();
+
+    expect(
+      (consolePanel as { position?: { direction?: string; referencePanel?: string } } | undefined)
+        ?.position?.direction,
+    ).toBe('within');
+    expect(
+      (logPanel as { position?: { direction?: string; referencePanel?: string } } | undefined)
+        ?.position?.direction,
+    ).toBe('within');
+  });
+
+  it('Test 10 (S8): does NOT add a "data" panel (retired by trio)', () => {
+    const { mockApi, panels } = buildMockApi();
+    buildInitialLayout(mockApi);
+
+    expect(panels.find((p) => p.id === 'data')).toBeUndefined();
   });
 
 });
