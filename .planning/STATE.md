@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 04.3 context gathered (discuss-phase complete)
-last_updated: "2026-06-30T23:58:32.956Z"
-last_activity: 2026-06-30
+last_updated: "2026-07-01T00:17:52.057Z"
+last_activity: 2026-07-01
 progress:
   total_phases: 12
   completed_phases: 5
   total_plans: 58
-  completed_plans: 51
-  percent: 88
+  completed_plans: 52
+  percent: 90
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.3 (versioning-and-searchtoc-mount) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
       (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
       reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
       Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
@@ -43,9 +43,9 @@ Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clea
       v6000 encrypted/out-of-scope) — server TRE search-path remains open, deferred to Phase 8 w/ server-push.
       Separately still pending: Phase 04 formal close-out (mark 04-06/06b complete, verifier,
       REQUIREMENTS DEPLOY-01..04 → Complete).
-Last activity: 2026-06-30
+Last activity: 2026-07-01
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 90%
 
 ### 02-03 key facts (crew-verified)
 
@@ -111,6 +111,7 @@ Progress: [█████████░] 88%
 | Phase 04.3 P06 | 25 | 2 tasks | 3 files |
 | Phase 04.3-versioning-and-searchtoc-mount P07 | 90 | 3 tasks | 7 files |
 | Phase 04.3 P08 | 20 | 3 tasks | 10 files |
+| Phase 04.3 P09 | 25 | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -256,6 +257,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-30T23:58:32.893Z
+Last session: 2026-07-01T00:17:52.026Z
 Stopped at: Phase 04.3 context gathered (discuss-phase complete)
 Resume file: None
