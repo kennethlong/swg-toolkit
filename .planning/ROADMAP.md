@@ -194,7 +194,7 @@ Plans:
 - [x] 04.3-08-PLAN.md — Project-entry front-door polish (007)
 - [x] 04.3-09-PLAN.md — Shell-composition polish (008); VCS-tab S3 left AMBIGUOUS
 - [x] 04.3-10-PLAN.md — Native per-payload v6000 extraction + extractAt(descriptor)
-- [ ] 04.3-11-PLAN.md — Renderer master-.toc mount sourcing + lazy searchPath
+- [x] 04.3-11-PLAN.md — Renderer master-.toc mount sourcing + lazy searchPath
 **Wave 2 — verification gate**
 - [ ] 04.3-12-PLAN.md — D-16 de-anchoring crew + byte-exact v6000 gate (GO/NO-GO)
 **Wave 3 — combined in-client UAT**
