@@ -1,17 +1,19 @@
 // @vitest-environment node
 /**
  * packages/renderer/src/services/treAutoMount.test.ts
- * B1/B2/B4 tests for the unified single-mount strategy in autoMountClient.
+ * B1/B2/B4/MOUNT-01/MOUNT-06 tests for the unified single-mount strategy.
  *
  * All external dependencies are mocked so tests run in CI without a real client install.
  *
  * Test inventory:
- *   (a) B1: mountTrePaths called exactly 1x; mountComplete called exactly 1x
- *   (b) B2: searchTree@rawPriority=8 strictly outranks tocEntry@rawPriority=3 in compact order
+ *   (a) B1: single mount call + mountComplete called exactly 1x (searchTOC client)
+ *   (b) B2: searchTree@rawPriority=8 strictly outranks tocEntry@rawPriority=3
  *   (c) B4 isOverride=false: looseDirPriority=5 < maxTreRawPriority=8 → isOverride:false
  *   (d) B4 isOverride=true:  looseDirPriority=10 > maxTreRawPriority=8 → isOverride:true
+ *   (e) MOUNT-01: searchTOC client uses mountTreMountWithTocPaths (not mountTrePaths)
+ *   (f) MOUNT-06: searchTree-only client still uses mountTrePaths (regression guard)
  *
- * Sources: 04.2-03-PLAN.md Task 2; must_haves B1/B2/B4 assertions.
+ * Sources: 04.2-03-PLAN.md Task 2; 04.3-11-PLAN.md MOUNT-01/06.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -19,11 +21,12 @@ import type { ClientMountOrder } from './clientSearchOrder';
 
 // ── Module mocks (hoisted before any imports) ──────────────────────────────
 vi.mock('./treMount', () => ({
-  mountTrePaths:        vi.fn().mockResolvedValue('mock-handle'),
-  mountComplete:        vi.fn(),
-  injectLooseDirOverlay: vi.fn(),
-  beginMountStatus:        vi.fn(),
-  endMountStatusIfPending: vi.fn(),
+  mountTrePaths:                vi.fn().mockResolvedValue('mock-handle'),
+  mountTreMountWithTocPaths:    vi.fn().mockResolvedValue('mock-toc-handle'),
+  mountComplete:                vi.fn(),
+  injectLooseDirOverlay:        vi.fn(),
+  beginMountStatus:             vi.fn(),
+  endMountStatusIfPending:      vi.fn(),
 }));
 
 vi.mock('./tocReader', () => ({
@@ -46,7 +49,7 @@ vi.mock('fs', async () => {
 // ── Deferred imports (after mock registration) ──────────────────────────────
 // Dynamic imports ensure the mocked module is loaded when the imports resolve.
 import { autoMountClient } from './treAutoMount';
-import { mountTrePaths, mountComplete, injectLooseDirOverlay } from './treMount';
+import { mountTrePaths, mountTreMountWithTocPaths, mountComplete, injectLooseDirOverlay } from './treMount';
 import { readTocTreeNames }                                       from './tocReader';
 import { resolveClientMountOrder }                                from './clientSearchOrder';
 
@@ -164,5 +167,57 @@ describe('autoMountClient', () => {
 
     expect(injectLooseDirOverlay).toHaveBeenCalledTimes(1);
     expect(injectLooseDirOverlay).toHaveBeenCalledWith('/install/override', { isOverride: true });
+  });
+
+  // ── (e) MOUNT-01: searchTOC client → mountTreMountWithTocPaths called ────
+  // RED until plan 11 GREEN: autoMountClient currently uses mountTrePaths for ALL clients.
+  // After GREEN: searchTOC clients (tocEntries.length > 0) route through
+  // mountTreMountWithTocPaths so the native layer can source entries from the master .toc.
+  it('(e) MOUNT-01: tocEntries present → mountTreMountWithTocPaths called, mountTrePaths not called', async () => {
+    (resolveClientMountOrder as ReturnType<typeof vi.fn>).mockReturnValue(
+      baseOrder({
+        trePaths:               [],
+        searchTreeRawPriorities: [],
+        tocEntries:             [{ tocFilePath: '/install/sku3.toc', priority: 3 }],
+        tocTreePaths:           ['/install/data/sku3'],
+      }),
+    );
+    (readTocTreeNames as ReturnType<typeof vi.fn>).mockReturnValue(['patch_sku3_24.tre']);
+
+    await autoMountClient('/install');
+
+    // MOUNT-01: for searchTOC clients, the TOC-keyed native mount is used
+    expect(mountTreMountWithTocPaths).toHaveBeenCalledTimes(1);
+    // MOUNT-01 corollary: plain mountTrePaths must NOT be called for searchTOC clients
+    expect(mountTrePaths).not.toHaveBeenCalled();
+    // B1 still holds: mountComplete called exactly once
+    expect(mountComplete).toHaveBeenCalledTimes(1);
+
+    // Verify the tocPath + tocTreePath args are passed through correctly
+    const [, , tocPath, tocTreePath] =
+      (mountTreMountWithTocPaths as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string[], number[], string, string
+      ];
+    expect(tocPath).toBe('/install/sku3.toc');
+    expect(tocTreePath).toBe('/install/data/sku3');
+  });
+
+  // ── (f) MOUNT-06: searchTree-only client → mountTrePaths still used (regression guard) ─
+  // Confirms Infinity/SWGEmu clients (no tocEntries) are NOT affected by the searchTOC change.
+  it('(f) MOUNT-06: searchTree-only client → mountTrePaths called, mountTreMountWithTocPaths not called', async () => {
+    (resolveClientMountOrder as ReturnType<typeof vi.fn>).mockReturnValue(
+      baseOrder({
+        trePaths:               ['/install/sku_0_client_00.tre'],
+        searchTreeRawPriorities: [5],
+        tocEntries:             [],   // no searchTOC → classic searchTree client
+        tocTreePaths:           [],
+      }),
+    );
+
+    await autoMountClient('/install');
+
+    expect(mountTrePaths).toHaveBeenCalledTimes(1);
+    expect(mountTreMountWithTocPaths).not.toHaveBeenCalled();
+    expect(mountComplete).toHaveBeenCalledTimes(1);
   });
 });
