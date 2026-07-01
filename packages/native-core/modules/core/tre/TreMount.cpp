@@ -537,6 +537,36 @@ TreMountColumnar TreMount::vfsEntriesColumnar() const
                 flags[idx] |= 0x01u; // isOverride
             }
         }
+
+        // Also iterate TOC-sourced external entries for this archive (plan 04.3-10, H1 fix).
+        // For numberOfFiles=0 v6000 containers, nodeEntries is empty; external entries
+        // from the master .toc are the ONLY source of virtual paths for these archives.
+        if (ai < static_cast<int>(m_externalEntries.size())) {
+            for (const TocExternalEntry& ext : m_externalEntries[static_cast<size_t>(ai)]) {
+                if (ext.virtualPath.empty()) continue;
+
+                // Key is a string_view into ext.virtualPath — stable for TreMount lifetime.
+                const std::string_view sv(ext.virtualPath);
+                const bool isTombstone = (ext.length == 0);
+
+                auto it = indexByPath.find(sv);
+                if (it == indexByPath.end()) {
+                    const size_t idx = namePointers.size();
+                    indexByPath.emplace(sv, idx);
+                    // namePointers[idx] points into ext.virtualPath.c_str() — stable
+                    // because m_externalEntries owns the string for TreMount's lifetime.
+                    namePointers.push_back(ext.virtualPath.c_str());
+                    archPaths.push_back(node.path.c_str());
+                    winnerIndices.push_back(static_cast<int32_t>(ai));
+                    shadowCounts.push_back(0);
+                    flags.push_back(isTombstone ? 0x02u : 0x00u);
+                } else {
+                    const size_t widx = it->second;
+                    shadowCounts[widx] += 1;
+                    flags[widx] |= 0x01u; // isOverride
+                }
+            }
+        }
     }
 
     const uint32_t n = static_cast<uint32_t>(namePointers.size());
@@ -634,6 +664,22 @@ TreMountColumnar TreMount::vfsEntriesColumnar() const
     }
 
     return col;
+}
+
+// ─── addExternalEntries ──────────────────────────────────────────────────────
+
+void TreMount::addExternalEntries(int archiveIndex, std::vector<TocExternalEntry> entries) {
+    /**
+     * Inject TOC-sourced external entries for an archive (plan 04.3-10 Task 2, H1 fix).
+     *
+     * Grows m_externalEntries to cover archiveIndex, then stores the entries.
+     * vfsEntriesColumnar() and vfsEntries() iterate these alongside the archive's own
+     * m_entries, so empty-internal-TOC containers contribute to the columnar VFS.
+     */
+    if (static_cast<int>(m_externalEntries.size()) <= archiveIndex) {
+        m_externalEntries.resize(static_cast<size_t>(archiveIndex) + 1);
+    }
+    m_externalEntries[static_cast<size_t>(archiveIndex)] = std::move(entries);
 }
 
 } // namespace swg

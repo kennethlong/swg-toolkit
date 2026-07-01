@@ -26,6 +26,33 @@
 
 namespace swg {
 
+/**
+ * Externally-supplied entry descriptor for TreArchive::extractAt() (plan 04.3-10 Task 2).
+ *
+ * Used when a master .toc provides the offset/lengths for a payload that lives inside a
+ * container whose internal TOC is empty (numberOfFiles=0, e.g. swg-source v6000 patch_sku3_*).
+ *
+ * Source: index.d.ts ExtractAtResult descriptor shape (frozen by plan 04.3-03).
+ */
+struct TreExtractDescriptor {
+    int32_t offset;           ///< Byte offset of payload in the archive file
+    int32_t length;           ///< Declared uncompressed size
+    int32_t compressedLength; ///< Compressed byte count to read (used when compressor != 0)
+    int32_t compressor;       ///< 0=none, 2=zlib RFC1950
+};
+
+/**
+ * Per-payload extraction result for extractAt() (plan 04.3-10 Task 2, MOUNT-03/04).
+ *
+ * Mirrors the JS-facing ExtractAtResult in index.d.ts:
+ *   { bytes?: ArrayBuffer } on success
+ *   { encrypted?: true }   when inflate fails (Restoration v6000 encrypted payload)
+ */
+struct TreExtractResult {
+    std::vector<uint8_t> bytes;              ///< Decompressed payload (empty when encrypted=true)
+    bool                 encrypted = false;  ///< True when inflate failed (classify as encrypted)
+};
+
 /** One parsed TOC record (normalized to a canonical 6-field layout regardless of on-disk order). */
 struct TreEntry {
     uint32_t crc;                ///< CRC of the normalized file name
@@ -89,6 +116,33 @@ public:
      * @throws        std::runtime_error if out-of-range or inflate fails (incl. encrypted).
      */
     std::vector<uint8_t> extractEntry(int idx, IInputStream& stream) const;
+
+    /**
+     * Extract a payload using an EXTERNALLY-SUPPLIED descriptor (plan 04.3-10 Task 2).
+     *
+     * Static: does NOT need a parsed TreArchive — the caller supplies all field values.
+     * Designed for master-.toc-sourced payloads in empty-internal-TOC (numberOfFiles=0)
+     * v6000 containers where the internal m_entries vector is empty.
+     *
+     * Per-payload classify (MOUNT-04):
+     *   - Attempt inflate with desc.compressor
+     *   - On success → result.bytes populated, result.encrypted=false
+     *   - On inflate failure → result.encrypted=true (Restoration-encrypted or unknown)
+     *   Never crashes or fatals — encrypted payloads degrade gracefully.
+     *
+     * Security:
+     *   T-01-02: bounds-check offset+compressedLength against stream length (subtraction form)
+     *   T-01-03: zlib bomb cap (ZLIB_MAX_BLOCK = 256 MB) preserved via treInflate()
+     *
+     * @param desc    Externally-supplied descriptor (offset, length, compressedLength, compressor).
+     * @param stream  Positional input stream open on the container archive file.
+     * @returns       TreExtractResult: { bytes } on success, { encrypted=true } on inflate failure.
+     * @throws        std::runtime_error on bounds violation or stream read error (not on inflate fail).
+     *
+     * Source: TreArchive::extractEntry (same bounds + bomb cap pattern, adapted for external desc);
+     *         tre_decrypt.py::try_read_tre_payload (try-inflate-classify oracle).
+     */
+    static TreExtractResult extractAt(const TreExtractDescriptor& desc, IInputStream& stream);
 
     /**
      * Resolve a path including tombstone entries — returns the TOC entry index even

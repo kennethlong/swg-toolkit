@@ -37,6 +37,7 @@
 #include "../modules/core/tre/TreBuilder.h"
 #include "../modules/core/io/FileInputStream.h"
 #include "../modules/core/io/MemoryInputStream.h"
+#include "../modules/core/compress/Zlib.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -44,6 +45,9 @@
 #include <atomic>
 #include <stdexcept>
 #include <cstring>
+#include <fstream>
+#include <algorithm>
+#include <cctype>
 
 // ─── Plan 01-01 globals (backward-compat synchronous mount) ──────────────────
 static std::vector<std::unique_ptr<swg::TreArchive>> g_archives;
@@ -962,4 +966,402 @@ Napi::Value RepackTre(const Napi::CallbackInfo& info) {
         Napi::Error::New(env, std::string("repackTre: ") + ex.what()).ThrowAsJavaScriptException();
         return env.Undefined();
     }
+}
+
+// ─── Plan 04.3-10 exports: extractMountAt + mountTreMountWithToc ─────────────
+
+/**
+ * LE uint32 read helper (unaligned-safe) — local to this translation unit.
+ * Same as the one in TreArchive.cpp; duplicated to avoid cross-TU header change.
+ */
+static inline uint32_t readLE32_binding(const uint8_t* p) {
+    return static_cast<uint32_t>(p[0])
+        | (static_cast<uint32_t>(p[1]) << 8)
+        | (static_cast<uint32_t>(p[2]) << 16)
+        | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+/**
+ * Parse the master SearchTOC file and inject external entries into the TreMount.
+ *
+ * Replicates tocReader.ts (TS port) + TreeFile_SearchNode.h:270-299 (ground truth).
+ *
+ * SearchTOC header (36 bytes LE):
+ *   [0..3]  uint32 magic    = 0x544F4320 (" COT")
+ *   [4..7]  uint32 version  = 0x30303031 ("1000")
+ *   [8]     uint8  tocCompressor
+ *   [9]     uint8  fileNameBlockCompressor
+ *   [10,11] uint8  unused
+ *   [12..15] uint32 numberOfFiles
+ *   [16..19] uint32 sizeOfTOC
+ *   [20..23] uint32 sizeOfNameBlock
+ *   [24..27] uint32 uncompSizeOfNameBlock
+ *   [28..31] uint32 numberOfTreeFiles
+ *   [32..35] uint32 sizeOfTreeFileNameBlock
+ *
+ * TOC entry (24 bytes, compressor-first per tocReader.ts SEARCH_TOC_ENTRY_FMT):
+ *   [0]    uint8  compressor
+ *   [1]    uint8  unused
+ *   [2..3] uint16 treeFileIndex
+ *   [4..7] uint32 crc
+ *   [8..11] uint32 fileNameLength  (DISK: LENGTH of name string, NOT an offset)
+ *   [12..15] uint32 offset
+ *   [16..19] uint32 length
+ *   [20..23] uint32 compressedLength
+ *
+ * Source: tocReader.ts readTocIndex(); TreeFile_SearchNode.h:289-299; tre_reader.py:381.
+ */
+static void parseTocIntoMount(const std::string& tocPath,
+                               const std::string& tocTreePath,
+                               swg::TreMount&     mount)
+{
+    // Read the entire .toc file into memory.
+    std::ifstream tocFile(tocPath, std::ios::binary | std::ios::ate);
+    if (!tocFile.is_open())
+        throw std::runtime_error("parseTocIntoMount: cannot open .toc: " + tocPath);
+
+    const std::streampos fileSize = tocFile.tellg();
+    if (fileSize < 0 || fileSize > static_cast<std::streampos>(swg::ZLIB_MAX_BLOCK))
+        throw std::runtime_error("parseTocIntoMount: .toc file size out of bounds");
+
+    const size_t fsz = static_cast<size_t>(fileSize);
+    tocFile.seekg(0);
+    std::vector<uint8_t> buf(fsz);
+    tocFile.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(fsz));
+    if (!tocFile)
+        throw std::runtime_error("parseTocIntoMount: failed to read .toc file");
+    tocFile.close();
+
+    if (fsz < 36)
+        throw std::runtime_error("parseTocIntoMount: .toc file too short for header");
+
+    // Parse header.
+    const uint32_t magic   = readLE32_binding(buf.data());
+    const uint32_t version = readLE32_binding(buf.data() + 4);
+    if (magic != 0x544F4320u || version != 0x30303031u)
+        throw std::runtime_error("parseTocIntoMount: invalid .toc magic/version");
+
+    const uint8_t  tocCompressor          = buf[8];
+    const uint8_t  fileNameBlockComp      = buf[9];
+    const uint32_t numberOfFiles          = readLE32_binding(buf.data() + 12);
+    const uint32_t sizeOfTOC             = readLE32_binding(buf.data() + 16);
+    // const uint32_t sizeOfNameBlock     = readLE32_binding(buf.data() + 20); // unused
+    const uint32_t uncompSizeOfNameBlock  = readLE32_binding(buf.data() + 24);
+    const uint32_t numberOfTreeFiles      = readLE32_binding(buf.data() + 28);
+    const uint32_t sizeOfTreeNames        = readLE32_binding(buf.data() + 32);
+
+    // Security: numberOfFiles sanity (avoid giant alloc)
+    if (numberOfFiles > static_cast<uint32_t>(swg::ZLIB_MAX_BLOCK) / 24u)
+        throw std::runtime_error("parseTocIntoMount: numberOfFiles exceeds security cap");
+
+    // Validate sizeOfTOC == numberOfFiles * 24.
+    if (sizeOfTOC != numberOfFiles * 24u)
+        throw std::runtime_error("parseTocIntoMount: sizeOfTOC mismatch (expected n*24)");
+
+    // Tree-name block starts at offset 36.
+    const size_t treeNameOff = 36;
+    if (treeNameOff + sizeOfTreeNames > fsz)
+        throw std::runtime_error("parseTocIntoMount: tree-name block out of bounds");
+
+    // Parse tree-file names (null-terminated strings).
+    std::vector<std::string> treeNames;
+    treeNames.reserve(numberOfTreeFiles);
+    {
+        const uint8_t* nb  = buf.data() + treeNameOff;
+        size_t         pos = 0;
+        while (treeNames.size() < numberOfTreeFiles && pos < sizeOfTreeNames) {
+            size_t end = pos;
+            while (end < sizeOfTreeNames && nb[end] != 0) ++end;
+            treeNames.emplace_back(reinterpret_cast<const char*>(nb + pos), end - pos);
+            pos = end + 1;
+        }
+    }
+
+    // TOC blob starts after header + tree-name block.
+    const size_t tocBlobStart = treeNameOff + sizeOfTreeNames;
+    if (tocBlobStart + sizeOfTOC > fsz)
+        throw std::runtime_error("parseTocIntoMount: TOC blob out of bounds");
+
+    // Decompress TOC blob if needed.
+    std::vector<uint8_t> tocBlob;
+    {
+        const uint8_t* rawToc = buf.data() + tocBlobStart;
+        if (tocCompressor != 0) {
+            tocBlob = swg::treInflate(static_cast<int>(tocCompressor),
+                                      rawToc, sizeOfTOC, numberOfFiles * 24u);
+        } else {
+            tocBlob.assign(rawToc, rawToc + sizeOfTOC);
+        }
+    }
+
+    // Name block starts after TOC blob.
+    const size_t nameBlockStart = tocBlobStart + sizeOfTOC;
+    std::vector<uint8_t> nameBlock;
+    {
+        if (nameBlockStart <= fsz) {
+            const uint8_t* rawName   = buf.data() + nameBlockStart;
+            const size_t   rawNameSz = fsz - nameBlockStart;
+            if (fileNameBlockComp != 0 && uncompSizeOfNameBlock > 0) {
+                nameBlock = swg::treInflate(static_cast<int>(fileNameBlockComp),
+                                            rawName, rawNameSz, uncompSizeOfNameBlock);
+            } else {
+                nameBlock.assign(rawName, rawName + rawNameSz);
+            }
+        }
+    }
+
+    // Build normalized-path → archiveIndex map from the mount's current nodes.
+    // Normalization: lowercase + backslash → forward-slash.
+    auto normalizePath = [](const std::string& p) -> std::string {
+        std::string r;
+        r.reserve(p.size());
+        for (char c : p) {
+            r += (c == '\\') ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        return r;
+    };
+
+    std::unordered_map<std::string, int> pathToArchiveIdx;
+    pathToArchiveIdx.reserve(static_cast<size_t>(mount.archiveCount()));
+    for (int ai = 0; ai < mount.archiveCount(); ++ai) {
+        pathToArchiveIdx[normalizePath(mount.nodeAt(ai).path)] = ai;
+    }
+
+    // Normalize tocTreePath once (used to build container paths).
+    const std::string normTocTree = normalizePath(tocTreePath);
+
+    // Parse TOC entries and group by archiveIndex.
+    std::unordered_map<int, std::vector<swg::TocExternalEntry>> byArchive;
+    size_t fnOffset = 0; // cumulative name-block position (rebuilt from fileNameLength)
+
+    for (uint32_t i = 0; i < numberOfFiles; ++i) {
+        const uint8_t* e = tocBlob.data() + i * 24u;
+
+        const uint8_t  compressor       = e[0];
+        // e[1] unused
+        const uint16_t treeFileIndex    = static_cast<uint16_t>(e[2]) |
+                                          (static_cast<uint16_t>(e[3]) << 8);
+        const uint32_t crc              = readLE32_binding(e + 4);
+        const uint32_t fileNameLength   = readLE32_binding(e + 8); // LENGTH not offset
+        const uint32_t offset           = readLE32_binding(e + 12);
+        const uint32_t length           = readLE32_binding(e + 16);
+        const uint32_t compressedLength = readLE32_binding(e + 20);
+
+        // Read virtual path from name block.
+        std::string virtualPath;
+        if (fnOffset + fileNameLength <= nameBlock.size() && fileNameLength > 0) {
+            virtualPath.assign(reinterpret_cast<const char*>(nameBlock.data() + fnOffset),
+                               fileNameLength);
+            // Normalize: lowercase + backslash → slash.
+            for (char& c : virtualPath) {
+                if (c == '\\') c = '/';
+                else c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+        }
+        fnOffset += fileNameLength + 1; // +1 for NUL separator
+
+        if (virtualPath.empty()) continue;
+
+        // Resolve treeFileIndex → container archive name.
+        if (treeFileIndex >= static_cast<uint16_t>(treeNames.size())) continue;
+        const std::string& treName = treeNames[static_cast<size_t>(treeFileIndex)];
+
+        // Build normalized container path: normTocTree + "/" + treName.
+        std::string normContainer = normTocTree;
+        if (!normContainer.empty() && normContainer.back() != '/')
+            normContainer += '/';
+        normContainer += normalizePath(treName);
+
+        // Look up the matching archive in the mount.
+        auto it = pathToArchiveIdx.find(normContainer);
+        if (it == pathToArchiveIdx.end()) continue; // archive not in mount
+
+        const int archiveIndex = it->second;
+
+        swg::TocExternalEntry entry;
+        entry.virtualPath      = std::move(virtualPath);
+        entry.offset           = static_cast<int32_t>(offset);
+        entry.length           = static_cast<int32_t>(length);
+        entry.compressedLength = static_cast<int32_t>(compressedLength);
+        entry.compressor       = static_cast<int32_t>(compressor);
+        entry.crc              = crc;
+
+        byArchive[archiveIndex].push_back(std::move(entry));
+    }
+
+    // Inject external entries into the mount.
+    for (auto& [ai, entries] : byArchive) {
+        mount.addExternalEntries(ai, std::move(entries));
+    }
+}
+
+/**
+ * extractMountAt(handle: string, archiveIndex: number, descriptor: object) -> ExtractAtResult
+ *
+ * Extract a payload from a mounted container using an EXTERNALLY-SUPPLIED entry descriptor.
+ * The container is identified by (handle, archiveIndex) → mount.nodeAt(archiveIndex).path,
+ * the same lookup readMountEntry uses (tre_binding.cpp:543-547). The descriptor carries
+ * offset/length/compressedLength/compressor from the master .toc.
+ *
+ * Per-payload classify (MOUNT-04): on inflate success → { bytes: ArrayBuffer };
+ * on inflate failure (encrypted) → { encrypted: true }.
+ *
+ * Binary stays binary: bytes cross the bridge as ArrayBuffer (AGENTS.md).
+ * Security (T-01-02): bounds-check delegated to TreArchive::extractAt().
+ *
+ * Source: TreArchive::extractAt (plan 04.3-10 Task 2, H1 redesign);
+ *         index.d.ts ExtractAtResult (frozen by plan 04.3-03).
+ */
+Napi::Value ExtractMountAt(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 3 ||
+        !info[0].IsString() || !info[1].IsNumber() || !info[2].IsObject()) {
+        Napi::TypeError::New(env,
+            "extractMountAt: expected (handle: string, archiveIndex: number, descriptor: object)")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::string handle     = info[0].As<Napi::String>().Utf8Value();
+    const int         archiveIdx = info[1].As<Napi::Number>().Int32Value();
+    Napi::Object      descObj    = info[2].As<Napi::Object>();
+
+    if (!descObj.Has("offset") || !descObj.Has("length") ||
+        !descObj.Has("compressedLength") || !descObj.Has("compressor")) {
+        Napi::TypeError::New(env,
+            "extractMountAt: descriptor must have {offset, length, compressedLength, compressor}")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    swg::TreExtractDescriptor desc;
+    desc.offset           = descObj.Get("offset").As<Napi::Number>().Int32Value();
+    desc.length           = descObj.Get("length").As<Napi::Number>().Int32Value();
+    desc.compressedLength = descObj.Get("compressedLength").As<Napi::Number>().Int32Value();
+    desc.compressor       = descObj.Get("compressor").As<Napi::Number>().Int32Value();
+
+    auto it = g_mounts.find(handle);
+    if (it == g_mounts.end()) {
+        Napi::RangeError::New(env, "extractMountAt: unknown mount handle")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const swg::TreMount& mount = *it->second;
+    if (archiveIdx < 0 || archiveIdx >= mount.archiveCount()) {
+        Napi::RangeError::New(env, "extractMountAt: archiveIndex out of range")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const swg::TreMountNode& node = mount.nodeAt(archiveIdx);
+
+    Napi::Object result = Napi::Object::New(env);
+    try {
+        swg::FileInputStream    stream(node.path);
+        swg::TreExtractResult   extracted = swg::TreArchive::extractAt(desc, stream);
+
+        if (extracted.encrypted) {
+            // Restoration v6000 or unknown encrypted payload — graceful degradation (MOUNT-04).
+            result.Set("encrypted", Napi::Boolean::New(env, true));
+        } else {
+            // Plain-zlib payload (swg-source v6000) — zero-copy ArrayBuffer (AGENTS.md).
+            const size_t byteLen = extracted.bytes.size();
+            Napi::ArrayBuffer buf = Napi::ArrayBuffer::New(env, byteLen);
+            if (byteLen > 0) {
+                std::memcpy(buf.Data(), extracted.bytes.data(), byteLen);
+            }
+            result.Set("bytes", buf);
+        }
+    } catch (const std::exception& ex) {
+        // Bounds check failure or stream read error — throw to JS (not graceful degrade).
+        Napi::Error::New(env, std::string("extractMountAt: ") + ex.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    return result;
+}
+
+/**
+ * mountTreMountWithToc(paths, priorities, tocPath, tocTreePath) -> string handle
+ *
+ * Create a priority-ordered virtual filesystem mount from the given archives, then
+ * parse the master .toc and inject TOC-sourced external entries into the mount so that
+ * empty-internal-TOC (numberOfFiles=0) v6000 containers contribute entries through
+ * getMountEntriesColumnar (the H1 columnar-bridge gap fix).
+ *
+ * Extends mountTreMount() with two additional parameters (tocPath, tocTreePath).
+ * Returns the same opaque handle type — all mount APIs (resolve, search, etc.) work.
+ *
+ * Source: index.d.ts mountTreMountWithToc declaration (frozen by plan 04.3-03);
+ *         parseTocIntoMount() helper (SearchTOC format from tocReader.ts / h:270-299).
+ */
+Napi::Value MountTreMountWithToc(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 4 ||
+        !info[0].IsArray() || !info[1].IsArray() ||
+        !info[2].IsString() || !info[3].IsString()) {
+        Napi::TypeError::New(env,
+            "mountTreMountWithToc: expected (paths: string[], priorities: number[], tocPath: string, tocTreePath: string)")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array pathsArr      = info[0].As<Napi::Array>();
+    Napi::Array prioritiesArr = info[1].As<Napi::Array>();
+    const std::string tocPath     = info[2].As<Napi::String>().Utf8Value();
+    const std::string tocTreePath = info[3].As<Napi::String>().Utf8Value();
+
+    if (pathsArr.Length() != prioritiesArr.Length()) {
+        Napi::TypeError::New(env,
+            "mountTreMountWithToc: paths and priorities must have equal length")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Step 1: create the TreMount from the archive paths (same as mountTreMount).
+    auto mount = std::make_unique<swg::TreMount>();
+
+    for (uint32_t i = 0; i < pathsArr.Length(); ++i) {
+        Napi::Value pathVal = pathsArr.Get(i);
+        Napi::Value prioVal = prioritiesArr.Get(i);
+
+        if (!pathVal.IsString() || !prioVal.IsNumber()) {
+            Napi::TypeError::New(env,
+                "mountTreMountWithToc: paths must be strings, priorities must be numbers")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        const std::string path     = pathVal.As<Napi::String>().Utf8Value();
+        const int         priority = prioVal.As<Napi::Number>().Int32Value();
+
+        try {
+            swg::FileInputStream stream(path);
+            auto arc = std::make_unique<swg::TreArchive>(swg::TreArchive::parse(stream));
+            mount->addArchive(std::move(arc), path, priority);
+        } catch (const std::exception& ex) {
+            Napi::Error::New(env,
+                std::string("mountTreMountWithToc: failed to parse '") + path + "': " + ex.what())
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    }
+
+    // Step 2: parse the master .toc and inject external entries.
+    try {
+        parseTocIntoMount(tocPath, tocTreePath, *mount);
+    } catch (const std::exception& ex) {
+        Napi::Error::New(env,
+            std::string("mountTreMountWithToc: failed to parse .toc '") + tocPath + "': " + ex.what())
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::string handle = allocHandle();
+    g_mounts[handle] = std::move(mount);
+    return Napi::String::New(env, handle);
 }

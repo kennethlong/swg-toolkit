@@ -83,6 +83,13 @@ Napi::Value GetChunkBytes(const Napi::CallbackInfo& info);
 Napi::Value BuildTre(const Napi::CallbackInfo& info);
 Napi::Value RepackTre(const Napi::CallbackInfo& info);
 
+// Phase 4 Plan 04.3-10 Pillar B: v6000 per-payload extract + SearchTOC mount (tre_binding.cpp):
+// Source: index.d.ts ExtractAtResult / extractMountAt / mountTreMountWithToc (frozen plan 04.3-03)
+//         TreArchive::extractAt (plan 04.3-10 Task 2, MOUNT-03/04)
+//         parseTocIntoMount (SearchTOC format from tocReader.ts / TreeFile_SearchNode.h:270-299)
+Napi::Value ExtractMountAt(const Napi::CallbackInfo& info);
+Napi::Value MountTreMountWithToc(const Napi::CallbackInfo& info);
+
 // Phase 2 Plan 02-01 mesh + format parsers (implemented in mesh_binding.cpp):
 // Source: modules/core/formats/Mesh.h, MeshLod.h, LodDistanceTable.h, Shader.h, Palette.h, Dds.h
 //   Mesh:     swg-client-v2 MeshAppearanceTemplate.cpp + ShaderPrimitiveSetTemplate.cpp + VertexBuffer.cpp
@@ -187,6 +194,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
     // Phase 2 Plan 02-04 animation parser (.ans CKAT-0001 + KFAT-0003):
     exports.Set("parseAnimation",           Napi::Function::New(env, ParseAnimation));
+
+    // Phase 4 Plan 04.3-10 Pillar B: v6000 per-payload extract + SearchTOC mount:
+    exports.Set("extractMountAt",         Napi::Function::New(env, ExtractMountAt));
+    exports.Set("mountTreMountWithToc",   Napi::Function::New(env, MountTreMountWithToc));
 
     return exports;
 }

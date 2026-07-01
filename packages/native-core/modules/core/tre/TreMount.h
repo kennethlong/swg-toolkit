@@ -41,6 +41,24 @@
 
 namespace swg {
 
+/**
+ * One entry sourced from a master .toc (not the archive's internal TOC).
+ *
+ * Injected by mountTreMountWithToc() for empty-internal-TOC (numberOfFiles=0) v6000
+ * containers. Each external entry carries the full descriptor needed for extractMountAt().
+ *
+ * Plan 04.3-10 Task 2 (H1 columnar-bridge gap fix).
+ * Source: tocReader.ts SEARCH_TOC_ENTRY_FMT (TS port); TreeFile_SearchNode.h:289-299.
+ */
+struct TocExternalEntry {
+    std::string virtualPath;       ///< Normalized virtual path (lowercase, forward-slash)
+    int32_t     offset;            ///< Byte offset into the container .tre
+    int32_t     length;            ///< Uncompressed size (0 = tombstone)
+    int32_t     compressedLength;  ///< Compressed size on disk
+    int32_t     compressor;        ///< 0=none, 2=zlib RFC1950
+    uint32_t    crc;               ///< Forward CRC-32 of virtualPath
+};
+
 /** One archive + its priority in the mount list. */
 struct TreMountNode {
     std::unique_ptr<TreArchive> archive;
@@ -292,6 +310,21 @@ public:
     const TreMountNode& nodeAt(int idx) const { return m_nodes[idx]; }
 
     /**
+     * Inject TOC-sourced external entries for a specific archive (plan 04.3-10 Task 2).
+     *
+     * Called by mountTreMountWithToc() after parsing the master .toc. For
+     * empty-internal-TOC (numberOfFiles=0) v6000 containers, these entries are the
+     * ONLY source for vfsEntriesColumnar() to include the archive's virtual paths.
+     *
+     * @param archiveIndex  Priority-list index of the target archive (m_nodes position).
+     * @param entries       TOC-sourced entries to inject (ownership moved in).
+     */
+    void addExternalEntries(int archiveIndex, std::vector<TocExternalEntry> entries);
+
+    /** True if any external (TOC-sourced) entries have been injected. */
+    bool hasExternalEntries() const { return !m_externalEntries.empty(); }
+
+    /**
      * Store a pre-built columnar payload (built off-thread inside AsyncWorker::Execute).
      * Thread-safety: written once by the worker before OnOK() runs; after that it is
      * read-only on the main thread. No mutex needed.
@@ -330,6 +363,15 @@ private:
      * Empty until setCachedColumnar() is called (i.e., after mountSearchableAsync).
      */
     TreMountColumnar m_cachedColumnar;
+
+    /**
+     * TOC-sourced external entries per archive (indexed by m_nodes position).
+     * Empty for standard mountTreMount() mounts; populated by mountTreMountWithToc().
+     * vfsEntriesColumnar() also iterates these to include master-.toc-sourced paths.
+     *
+     * Plan 04.3-10 Task 2 (H1 columnar-bridge gap fix).
+     */
+    std::vector<std::vector<TocExternalEntry>> m_externalEntries;
 };
 
 } // namespace swg

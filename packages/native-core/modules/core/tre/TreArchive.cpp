@@ -343,6 +343,58 @@ std::vector<uint8_t> TreArchive::extractEntry(int idx, IInputStream& stream) con
                       static_cast<size_t>(e.length));
 }
 
+// ─── extractAt ───────────────────────────────────────────────────────────────
+
+TreExtractResult TreArchive::extractAt(const TreExtractDescriptor& desc, IInputStream& stream) {
+    // Plan 04.3-10 Task 2: externally-supplied descriptor extraction (H1 redesign).
+    //
+    // Does NOT consult m_entries — the caller supplies all field values from the master .toc.
+    // Used for numberOfFiles=0 v6000 containers where the internal TOC is empty.
+    //
+    // Source:
+    //   tre_decrypt.py::try_read_tre_payload — try-inflate-classify oracle
+    //   TreArchive::extractEntry — same bounds + bomb cap pattern
+
+    TreExtractResult result;
+
+    if (desc.length == 0) {
+        return result; // tombstone/empty: bytes empty, encrypted=false
+    }
+
+    // Security T-01-02: bounds check before read (subtraction form).
+    // Source: Utinni TreFile.cs:328.
+    const int streamLen = stream.length();
+    const int32_t readLen = (desc.compressor != 0) ? desc.compressedLength : desc.length;
+    if (readLen < 0 ||
+        static_cast<int64_t>(desc.offset) > static_cast<int64_t>(streamLen) - readLen) {
+        throw std::runtime_error(
+            "TreArchive::extractAt: descriptor out of stream bounds (T-01-02)");
+    }
+
+    std::vector<uint8_t> rawBytes(static_cast<size_t>(readLen));
+    if (stream.read(desc.offset, rawBytes.data(), readLen) != readLen) {
+        throw std::runtime_error("TreArchive::extractAt: failed to read payload from stream");
+    }
+
+    // Per-payload classify (MOUNT-04): try inflate; on failure → classify as encrypted.
+    // Security T-01-03: bomb cap (ZLIB_MAX_BLOCK = 256 MB) enforced inside treInflate().
+    // Source: tre_decrypt.py::try_read_tre_payload (inflate, catch zlib.error → encrypted).
+    try {
+        result.bytes = treInflate(desc.compressor,
+                                  rawBytes.data(),
+                                  static_cast<size_t>(readLen),
+                                  static_cast<size_t>(desc.length));
+        result.encrypted = false;
+    } catch (const std::exception&) {
+        // Inflate failed → classify as encrypted/unreadable (Restoration v6000 or unknown).
+        // Degrade gracefully: no crash, no fatal — MOUNT-04.
+        result.bytes.clear();
+        result.encrypted = true;
+    }
+
+    return result;
+}
+
 // ─── resolveTombstoneIndex ────────────────────────────────────────────────────
 
 int TreArchive::resolveTombstoneIndex(const std::string& normalizedName) const {
