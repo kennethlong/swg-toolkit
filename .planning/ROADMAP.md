@@ -180,7 +180,7 @@ Out of scope (separate future item): `delete-project-with-restore`.
 
 **Requirements**: Completes parent reqs **TRE-05** (Pillar B searchTOC/v6000 mount), **DEPLOY-03** (rollback/version-navigation), **DEPLOY-08** (loose-override substrate). Phase-internal candidate IDs (carried in plan frontmatter): VER-01..09, GRAPH-01..08, DEPLOYUI-01..15, PROJUI-01..09, SHELL-01..06, MOUNT-01..07.
 **Depends on:** Phase 4.2 (searchTOC/loose-override mount + deploy engine it completes), Phase 4.1 (version graph + deploy UX it reworks). Both phases' in-client UATs (04.1-11, 04.2-06) remain open; this phase's combined UAT supersedes re-running them piecemeal.
-**Plans:** 9/12 plans executed
+**Plans:** 11/12 plans executed
 
 Plans:
 **Wave 0 — test scaffolds & fixtures**
@@ -196,7 +196,7 @@ Plans:
 - [x] 04.3-10-PLAN.md — Native per-payload v6000 extraction + extractAt(descriptor)
 - [x] 04.3-11-PLAN.md — Renderer master-.toc mount sourcing + lazy searchPath
 **Wave 2 — verification gate**
-- [ ] 04.3-12-PLAN.md — D-16 de-anchoring crew + byte-exact v6000 gate (GO/NO-GO)
+- [x] 04.3-12-PLAN.md — D-16 de-anchoring crew + byte-exact v6000 gate (GO/NO-GO)
 **Wave 3 — combined in-client UAT**
 - [ ] 04.3-13-PLAN.md — Combined UAT on searchTree + searchTOC clients [autonomous: false] (supersedes 04.1-11 + 04.2-06)
 
