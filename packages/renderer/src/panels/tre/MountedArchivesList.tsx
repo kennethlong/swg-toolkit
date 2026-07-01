@@ -131,9 +131,11 @@ function ArchiveRow({
         {archive.version}
       </span>
 
-      {/* v6000-only enumerate-only warn chip.
-           Source: 01-02-PLAN.md must_haves — ONLY v6000, NOT v0006.
-           v0006 is readable; v6000 is encrypted/enumerate-only.
+      {/* Enumerate-only warn chip — MOUNT-05 (plan 11).
+           Driven by PER-ENTRY extractMountAt failure (encrypted:true), NOT the version tag.
+           isEnumerateOnly is set false at mount time; markArchiveEncrypted() sets it true
+           only when inflate fails for a payload in that archive — so swg-source v6000
+           plain-zlib archives are NOT mislabeled as encrypted.
            Accessibility Rule 1: glyph (≈) + warn color + caption. */}
       {archive.isEnumerateOnly && (
         <span

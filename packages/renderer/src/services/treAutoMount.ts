@@ -29,7 +29,7 @@ import * as path from 'path';
 import * as fs   from 'fs';
 import { resolveClientMountOrder } from './clientSearchOrder';
 import { readTocTreeNames }        from './tocReader';
-import { mountTrePaths, mountComplete, injectLooseDirOverlay, beginMountStatus, endMountStatusIfPending } from './treMount';
+import { mountTrePaths, mountTreMountWithTocPaths, mountComplete, injectLooseDirOverlay, beginMountStatus, endMountStatusIfPending } from './treMount';
 import type { ClientMountOrder }   from './clientSearchOrder';
 
 // ─── MountNode (internal) ─────────────────────────────────────────────────────
@@ -164,7 +164,21 @@ export async function autoMountClient(installPath: string, cfgPath?: string, tre
     const compactPriorities = treNodes.map((_, i) => treNodes.length - i);
 
     // Mount all TRE archives in a single call (B1 fix — no second call).
-    await mountTrePaths(treNodes.map(n => n.path), compactPriorities);
+    // MOUNT-01/06: searchTOC clients route through mountTreMountWithTocPaths so the
+    // native layer sources entries from the master .toc (empty-internal-TOC v6000
+    // containers contribute their entries). searchTree-only clients use mountTrePaths
+    // (unchanged — Infinity/SWGEmu regression guard MOUNT-06).
+    if (order.tocEntries.length > 0) {
+      const tocEntry = order.tocEntries[0]!;
+      await mountTreMountWithTocPaths(
+        treNodes.map(n => n.path),
+        compactPriorities,
+        tocEntry.tocFilePath,
+        order.tocTreePaths[0] ?? '',
+      );
+    } else {
+      await mountTrePaths(treNodes.map(n => n.path), compactPriorities);
+    }
 
     // maxTreRawPriority: the highest raw priority among searchTree TREs.
     // Used to gate isOverride for loose dirs (B4 fix).

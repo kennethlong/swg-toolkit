@@ -6,16 +6,18 @@
  * the manual path AND projectBinding.ts auto-mount can share ONE implementation.
  *
  * Exports:
- *   mountTrePaths(filePaths, priorities)      — mount archives + populate treStore
- *   decodeMountEntriesColumnar(blob)           — decode native columnar blob → VfsEntry[]
- *   mountComplete()                           — pipeline-done signal (B1 structural gate)
- *   injectLooseDirOverlay(dir, opts)          — inject loose-dir VfsEntries (B4 isOverride)
+ *   mountTrePaths(filePaths, priorities)                    — mount archives (searchTree/standalone)
+ *   mountTreMountWithTocPaths(paths, priorities, toc, tocTreePath) — mount archives for searchTOC clients (MOUNT-01)
+ *   decodeMountEntriesColumnar(blob)                        — decode native columnar blob → VfsEntry[]
+ *   mountComplete()                                         — pipeline-done signal (B1 structural gate)
+ *   injectLooseDirOverlay(dir, opts)                        — inject loose-dir VfsEntries (B4 isOverride)
  *
  * Path B addon access: via the ./nativeTre require() seam (nodeIntegration:true).
  * A top-level ESM import of @swg/native-core crashes the real renderer at startup
  * (Vite bundles the addon loader → `os.platform is not a function`); see nativeTre.ts.
  *
  * Source: 04.1-02-PLAN.md Task 2 (H3 fix — columnar decoder must be shared, not duplicated).
+ *         04.3-11-PLAN.md Task 2 (MOUNT-01: mountTreMountWithTocPaths; MOUNT-05: isEnumerateOnly=false).
  */
 
 import { useTreStore, basename } from '../state/treStore';
@@ -158,19 +160,77 @@ export async function mountTrePaths(filePaths: string[], priorities: number[]): 
 
   // Build the MountedArchive list from native truth, in the mount's priority-sorted
   // index space (getMountArchives returns highest-priority first — same space as
-  // resolveChain hits). version + enumerateOnly come straight from the native layer.
+  // resolveChain hits). version comes from the native layer; isEnumerateOnly starts
+  // false (MOUNT-05: driven by per-entry extractMountAt failure, not version tag —
+  // treStore.markArchiveEncrypted() sets it when extractMountAt returns encrypted:true).
   const archives: MountedArchive[] = nativeCore.getMountArchives(handle).map((a) => ({
     path:            a.path,
     filename:        basename(a.path),
     version:         parseVersion(a.version),
     entryCount:      a.entryCount,
     priority:        a.priority,
-    isEnumerateOnly: a.enumerateOnly,
+    isEnumerateOnly: false,   // MOUNT-05: NOT version-tag-based; updated on extract failure
     archiveIndex:    a.archiveIndex,
   }));
 
   // Build the VFS entry list from the native columnar blob (perf fix).
   // ONE ArrayBuffer crosses the N-API bridge instead of ~250k Napi::Object instances.
+  const columnarBlob = nativeCore.getMountEntriesColumnar(handle);
+  const vfsEntries: VfsEntry[] = decodeMountEntriesColumnar(columnarBlob);
+
+  useTreStore.getState().mountComplete(handle, archives, vfsEntries);
+  return handle;
+}
+
+// ─── mountTreMountWithTocPaths ────────────────────────────────────────────────
+
+/**
+ * Mount .tre archives for a searchTOC client, sourcing the VFS entry set from the
+ * master .toc index via the synchronous native `mountTreMountWithToc` (plan 10).
+ *
+ * WHY a separate function (MOUNT-01/02):
+ *   searchTOC clients have containers (incl. empty-internal-TOC v6000 archives like
+ *   patch_sku3_*) whose entries are catalogued only in the master .toc, NOT in the
+ *   containers' own internal TOCs. `mountSearchableAsync` (used by mountTrePaths) reads
+ *   internal TOCs and would see zero entries for these containers. The native
+ *   `mountTreMountWithToc` instead sources the VFS from the master .toc, so every
+ *   TOC-indexed container contributes its entries through getMountEntriesColumnar.
+ *
+ *   The columnar bridge is RETAINED — ONE ArrayBuffer crosses the N-API boundary
+ *   (CLAUDE.md binary-stays-binary; ~193k entries must NOT cross as JSON).
+ *
+ *   isEnumerateOnly starts false (MOUNT-05): the chip is driven by per-entry
+ *   extractMountAt failure (encrypted:true), not the version tag.
+ *
+ * @param filePaths    Container .tre paths, sorted by compact priority (highest first).
+ * @param priorities   Compact priorities (same order as filePaths).
+ * @param tocPath      Absolute path to the master .toc file.
+ * @param tocTreePath  TOCTreePath prefix from the client cfg searchTOC_00_* entry.
+ * @returns            Opaque mount handle.
+ */
+export async function mountTreMountWithTocPaths(
+  filePaths:   string[],
+  priorities:  number[],
+  tocPath:     string,
+  tocTreePath: string,
+): Promise<string> {
+  // Sync call — native mountTreMountWithToc builds the columnar entry set from the
+  // master .toc (not from each container's internal TOC).
+  const handle = nativeCore.mountTreMountWithToc(filePaths, priorities, tocPath, tocTreePath);
+
+  // Build the MountedArchive list; isEnumerateOnly=false by default (MOUNT-05: NOT
+  // version-tag-based — markArchiveEncrypted updates it on per-entry extract failure).
+  const archives: MountedArchive[] = nativeCore.getMountArchives(handle).map((a) => ({
+    path:            a.path,
+    filename:        basename(a.path),
+    version:         parseVersion(a.version),
+    entryCount:      a.entryCount,
+    priority:        a.priority,
+    isEnumerateOnly: false,   // MOUNT-05: updated when extractMountAt returns encrypted:true
+    archiveIndex:    a.archiveIndex,
+  }));
+
+  // Columnar bridge retained: ONE ArrayBuffer instead of ~250k Napi::Object instances.
   const columnarBlob = nativeCore.getMountEntriesColumnar(handle);
   const vfsEntries: VfsEntry[] = decodeMountEntriesColumnar(columnarBlob);
 

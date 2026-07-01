@@ -86,8 +86,10 @@ describe('autoMountClient', () => {
     );
   });
 
-  // ── (a) B1: single mountTrePaths call + single mountComplete call ───────
-  it('(a) B1: mountTrePaths called exactly once; mountComplete called exactly once', async () => {
+  // ── (a) B1: single mount call + single mountComplete call ───────────────
+  // After MOUNT-01 (plan 11 GREEN): searchTOC clients route through
+  // mountTreMountWithTocPaths (not mountTrePaths) — still called exactly once.
+  it('(a) B1: single mount call; mountComplete called exactly once', async () => {
     (resolveClientMountOrder as ReturnType<typeof vi.fn>).mockReturnValue(
       baseOrder({
         trePaths:               ['/install/searchTree.tre'],
@@ -101,11 +103,15 @@ describe('autoMountClient', () => {
 
     await autoMountClient('/install');
 
-    expect(mountTrePaths).toHaveBeenCalledTimes(1);
+    // searchTOC client → mountTreMountWithTocPaths (MOUNT-01), not mountTrePaths
+    expect(mountTreMountWithTocPaths).toHaveBeenCalledTimes(1);
+    expect(mountTrePaths).not.toHaveBeenCalled();
     expect(mountComplete).toHaveBeenCalledTimes(1);
   });
 
   // ── (b) B2: searchTree@8 strictly outranks tocEntry@3 in compact sequence ─
+  // After MOUNT-01 (plan 11 GREEN): searchTOC clients route through
+  // mountTreMountWithTocPaths — priority ordering still verified on the call args.
   it('(b) B2: searchTree@rawPriority=8 gets higher compact priority than tocEntry@rawPriority=3 TREs', async () => {
     (resolveClientMountOrder as ReturnType<typeof vi.fn>).mockReturnValue(
       baseOrder({
@@ -121,8 +127,9 @@ describe('autoMountClient', () => {
 
     await autoMountClient('/install');
 
-    expect(mountTrePaths).toHaveBeenCalledTimes(1);
-    const [paths, priorities] = (mountTrePaths as ReturnType<typeof vi.fn>).mock.calls[0] as [string[], number[]];
+    // searchTOC client → mountTreMountWithTocPaths (MOUNT-01)
+    expect(mountTreMountWithTocPaths).toHaveBeenCalledTimes(1);
+    const [paths, priorities] = (mountTreMountWithTocPaths as ReturnType<typeof vi.fn>).mock.calls[0] as [string[], number[], string, string];
 
     // searchTree path must be first in the call (highest rawPriority).
     expect(paths[0]).toBe('/install/searchTree.tre');

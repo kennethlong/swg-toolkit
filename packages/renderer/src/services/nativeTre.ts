@@ -23,7 +23,19 @@
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 export const nativeCore = require('@swg/native-core') as {
+  /** Async multi-archive mount (off-thread). Used by searchTree / plain TRE clients. */
   mountSearchableAsync: (paths: string[], priorities: number[]) => Promise<string>;
+  /**
+   * Sync mount sourcing entries from the master .toc (MOUNT-01/02 fix — plan 10).
+   * Extends mountTreMount with TOC path + TOCTreePath prefix for searchTOC clients.
+   * Empty-internal-TOC v6000 containers contribute entries through the columnar bridge.
+   */
+  mountTreMountWithToc: (
+    paths:       string[],
+    priorities:  number[],
+    tocPath:     string,
+    tocTreePath: string,
+  ) => string;
   getMountArchives: (handle: string) => Array<{
     path: string;
     version: string;
@@ -33,4 +45,24 @@ export const nativeCore = require('@swg/native-core') as {
     archiveIndex: number;
   }>;
   getMountEntriesColumnar: (handle: string) => ArrayBuffer;
+  /**
+   * Extract a payload via an externally-supplied descriptor (MOUNT-03/04 — plan 10).
+   * Used for master-.toc-sourced entries whose containers have empty internal TOCs.
+   * Returns { bytes } on success or { encrypted: true } when inflate fails.
+   */
+  extractMountAt: (
+    handle:       string,
+    archiveIndex: number,
+    descriptor:   { offset: number; length: number; compressedLength: number; compressor: number },
+  ) => { bytes?: ArrayBuffer; encrypted?: boolean };
+  /** Resolve a path to its winning archive + entry indices in the priority-sorted mount. */
+  resolveChain: (handle: string, name: string) => {
+    winner: string;
+    shadows: string[];
+    tombstone: boolean;
+    winnerArchiveIndex: number;
+    winnerEntryIndex: number;
+  };
+  /** Read and decompress an entry by archive + entry index (internal-TOC entries only). */
+  readMountEntry: (handle: string, archiveIndex: number, entryIndex: number) => ArrayBuffer;
 };

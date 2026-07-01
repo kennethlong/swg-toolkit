@@ -142,6 +142,19 @@ export interface TreStore {
    */
   appendLooseEntries: (entries: VfsEntry[]) => void;
 
+  /**
+   * Mark a specific archive as enumerate-only (encrypted) — MOUNT-05.
+   *
+   * Called when `extractMountAt(handle, archiveIndex, descriptor)` returns
+   * `{ encrypted: true }` — i.e., when inflate fails for a payload in this archive.
+   * This drives the "enumerate-only (encrypted)" chip in MountedArchivesList.tsx
+   * WITHOUT relying on the version tag (so swg-source v6000 plain-zlib archives
+   * are NOT mislabeled as encrypted — plan 11 / todo v6000-swg-source-plain-zlib).
+   *
+   * No-op when the archive is not found (safe to call speculatively).
+   */
+  markArchiveEncrypted: (archiveIndex: number) => void;
+
   /** Clear all mounts and reset to idle. */
   reset: () => void;
 }
@@ -204,6 +217,18 @@ export const useTreStore = create<TreStore>((set) => ({
       const kept = state.vfsEntries.filter(e => !newPathSet.has(e.path.toLowerCase()));
       const result = [...entries, ...kept];
       return { vfsEntries: result, searchResults: result };
+    });
+  },
+
+  markArchiveEncrypted: (archiveIndex: number) => {
+    set((state) => {
+      // Find the archive by archiveIndex and set isEnumerateOnly:true (MOUNT-05).
+      // Returns unchanged state when the archive is not found (safe to call speculatively).
+      const idx = state.archives.findIndex(a => a.archiveIndex === archiveIndex);
+      if (idx === -1) return {};
+      const updated = [...state.archives];
+      updated[idx] = { ...updated[idx]!, isEnumerateOnly: true };
+      return { archives: updated };
     });
   },
 
