@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import { THEMES, ThemeName } from '../workspace/workspace-config';
+import type { ThemeName } from '../workspace/workspace-config';
 
 interface TitlebarProps {
   activeTheme: ThemeName;
@@ -25,6 +25,12 @@ const THEME_LABELS: Record<ThemeName, string> = {
   blue:           'IDE blue',
   'high-contrast':'High contrast',
 };
+
+/** Themes grouped for the Accent optgroup (sketch 008 S5). */
+const ACCENT_THEMES: ThemeName[] = ['cyan', 'swg-green', 'amber', 'blue'];
+
+/** Themes grouped for the Accessibility optgroup (sketch 008 S5). */
+const ACCESSIBILITY_THEMES: ThemeName[] = ['high-contrast'];
 
 export default function Titlebar({ activeTheme, onThemeChange }: TitlebarProps): React.ReactElement {
   return (
@@ -76,7 +82,7 @@ export default function Titlebar({ activeTheme, onThemeChange }: TitlebarProps):
           flexShrink: 0,
         }}
       >
-        {['File', 'Edit', 'View', 'Asset', 'Window', 'Help'].map(item => (
+        {['File', 'Edit', 'View', 'Asset', 'Deploy', 'Window', 'Help'].map(item => (
           <button
             key={item}
             style={{
@@ -135,11 +141,17 @@ export default function Titlebar({ activeTheme, onThemeChange }: TitlebarProps):
             WebkitAppRegion: 'no-drag' as unknown as undefined,
           } as React.CSSProperties}
         >
-          {THEMES.map(t => (
-            <option key={t} value={t}>
-              {THEME_LABELS[t]}
-            </option>
-          ))}
+          {/* S5: Accent / Accessibility optgroups per sketch 008 */}
+          <optgroup label="Accent">
+            {ACCENT_THEMES.map(t => (
+              <option key={t} value={t}>{THEME_LABELS[t]}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Accessibility">
+            {ACCESSIBILITY_THEMES.map(t => (
+              <option key={t} value={t}>{THEME_LABELS[t]}</option>
+            ))}
+          </optgroup>
         </select>
       </div>
 
