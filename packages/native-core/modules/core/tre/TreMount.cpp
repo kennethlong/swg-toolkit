@@ -562,8 +562,15 @@ TreMountColumnar TreMount::vfsEntriesColumnar() const
                     flags.push_back(isTombstone ? 0x02u : 0x00u);
                 } else {
                     const size_t widx = it->second;
-                    shadowCounts[widx] += 1;
-                    flags[widx] |= 0x01u; // isOverride
+                    // F-3 (gate D-16): only count as shadow/override when the winning entry
+                    // is from a DIFFERENT archive. An archive with non-empty internal TOC can
+                    // also appear in m_externalEntries[ai] (same ai) — dedup must not inflate
+                    // shadowCount for these intra-archive duplicates, or isOverride is set
+                    // falsely across the entire searchTOC mount.
+                    if (winnerIndices[widx] != static_cast<int32_t>(ai)) {
+                        shadowCounts[widx] += 1;
+                        flags[widx] |= 0x01u; // isOverride
+                    }
                 }
             }
         }

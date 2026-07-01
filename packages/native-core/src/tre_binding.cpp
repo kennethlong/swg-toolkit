@@ -1180,11 +1180,11 @@ static void parseTocIntoMount(const std::string& tocPath,
 
         swg::TocExternalEntry entry;
         entry.virtualPath      = std::move(virtualPath);
-        entry.offset           = static_cast<int32_t>(offset);
-        entry.length           = static_cast<int32_t>(length);
-        entry.compressedLength = static_cast<int32_t>(compressedLength);
-        entry.compressor       = static_cast<int32_t>(compressor);
-        entry.crc              = crc;
+        entry.offset           = offset;           // uint32_t — F-5 (no cast needed)
+        entry.length           = length;           // uint32_t — F-5
+        entry.compressedLength = compressedLength; // uint32_t — F-5
+        entry.compressor       = compressor;       // uint32_t — already was
+        entry.crc              = crc;              // uint32_t — already was
 
         byArchive[archiveIndex].push_back(std::move(entry));
     }
@@ -1236,10 +1236,18 @@ Napi::Value ExtractMountAt(const Napi::CallbackInfo& info) {
     }
 
     swg::TreExtractDescriptor desc;
-    desc.offset           = descObj.Get("offset").As<Napi::Number>().Int32Value();
-    desc.length           = descObj.Get("length").As<Napi::Number>().Int32Value();
-    desc.compressedLength = descObj.Get("compressedLength").As<Napi::Number>().Int32Value();
-    desc.compressor       = descObj.Get("compressor").As<Napi::Number>().Int32Value();
+    // F-5 (gate D-16): use Uint32Value() — engine fields are uint32_t; Int32Value() mishandles
+    // high-bit values (>2^31-1) that are valid unsigned offsets/lengths in large TRE files.
+    desc.offset           = descObj.Get("offset").As<Napi::Number>().Uint32Value();
+    desc.length           = descObj.Get("length").As<Napi::Number>().Uint32Value();
+    desc.compressedLength = descObj.Get("compressedLength").As<Napi::Number>().Uint32Value();
+    desc.compressor       = descObj.Get("compressor").As<Napi::Number>().Uint32Value();
+    // F-4 (gate D-16): thread crc from the master-.toc entry through the descriptor so
+    // extractAt() can use the (already-parsed, already-present) path-CRC for integrity gating.
+    // Optional field: callers that don't have the crc (e.g. synthetic tests) may omit it.
+    desc.crc = descObj.Has("crc")
+                   ? descObj.Get("crc").As<Napi::Number>().Uint32Value()
+                   : 0u;
 
     auto it = g_mounts.find(handle);
     if (it == g_mounts.end()) {

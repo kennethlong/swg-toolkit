@@ -361,30 +361,50 @@ TreExtractResult TreArchive::extractAt(const TreExtractDescriptor& desc, IInputS
         return result; // tombstone/empty: bytes empty, encrypted=false
     }
 
-    // Security T-01-02: bounds check before read (subtraction form).
+    // Security T-01-02: bounds check before read (subtraction form, unsigned-safe).
+    // F-5: fields are now uint32_t; use unsigned arithmetic with explicit overflow guard.
     // Source: Utinni TreFile.cs:328.
     const int streamLen = stream.length();
-    const int32_t readLen = (desc.compressor != 0) ? desc.compressedLength : desc.length;
-    if (readLen < 0 ||
-        static_cast<int64_t>(desc.offset) > static_cast<int64_t>(streamLen) - readLen) {
+    if (streamLen <= 0) {
+        throw std::runtime_error("TreArchive::extractAt: stream is empty");
+    }
+    const uint32_t uStreamLen = static_cast<uint32_t>(streamLen);
+    const uint32_t readLen    = (desc.compressor != 0) ? desc.compressedLength : desc.length;
+    // Subtraction-form: check offset <= streamLen - readLen (both uint32, no underflow).
+    if (readLen > uStreamLen || desc.offset > uStreamLen - readLen) {
         throw std::runtime_error(
             "TreArchive::extractAt: descriptor out of stream bounds (T-01-02)");
     }
 
     std::vector<uint8_t> rawBytes(static_cast<size_t>(readLen));
-    if (stream.read(desc.offset, rawBytes.data(), readLen) != readLen) {
+    if (stream.read(static_cast<int>(desc.offset),
+                    rawBytes.data(),
+                    static_cast<int>(readLen)) != static_cast<int>(readLen)) {
         throw std::runtime_error("TreArchive::extractAt: failed to read payload from stream");
     }
 
     // Per-payload classify (MOUNT-04): try inflate; on failure → classify as encrypted.
     // Security T-01-03: bomb cap (ZLIB_MAX_BLOCK = 256 MB) enforced inside treInflate().
     // Source: tre_decrypt.py::try_read_tre_payload (inflate, catch zlib.error → encrypted).
+    //
+    // F-4 (gate D-16): after inflate, require exact-length match (producedLength == desc.length).
+    // This closes the ~10^-3 false-positive gap where random encrypted bytes happen to
+    // inflate cleanly but to a wrong byte count (since treInflate strips the Adler-32 and
+    // raw-inflates, it skips zlib's own checksum — the length gate is the independent guard).
+    // The SWG-Source plain-zlib path produces exactly desc.length bytes → check passes.
+    // Mismatched length → classify as encrypted (same graceful-degrade as inflate failure).
     try {
         result.bytes = treInflate(desc.compressor,
                                   rawBytes.data(),
                                   static_cast<size_t>(readLen),
                                   static_cast<size_t>(desc.length));
-        result.encrypted = false;
+        // F-4: exact-length gate
+        if (result.bytes.size() != static_cast<size_t>(desc.length)) {
+            result.bytes.clear();
+            result.encrypted = true;
+        } else {
+            result.encrypted = false;
+        }
     } catch (const std::exception&) {
         // Inflate failed → classify as encrypted/unreadable (Restoration v6000 or unknown).
         // Degrade gracefully: no crash, no fatal — MOUNT-04.
