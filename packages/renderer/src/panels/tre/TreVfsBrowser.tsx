@@ -182,7 +182,7 @@ export default function TreVfsBrowser(): React.ReactElement {
 
   const handleSelectEntry = useCallback(
     (entry: VfsEntry, _chain: ShadowChainDisplay | null) => {
-      const { mountHandle, archives } = store;
+      const { mountHandle, archives, tocIndex } = store;
       if (!mountHandle) return;
 
       // Build shadow chain from native resolveChain
@@ -219,7 +219,16 @@ export default function TreVfsBrowser(): React.ReactElement {
       // ── IFF parse — works for archived AND loose-overlay entries ───────────
       // readVfsEntryBytes reads loose searchPath-override files from disk and archived files via the
       // mount, so the IFF Structure panel works for loose entries (winnerArchiveIndex < 0) too.
-      const iffBytes = readVfsEntryBytes(entry, mountHandle);
+      //
+      // F-2 (gate D-16): for TOC-sourced entries (winner archive has numberOfFiles=0 empty internal
+      // TOC), supply the extraction descriptor from tocIndex.resolveFull so readVfsEntryBytes takes
+      // Case 3 (extractMountAt) instead of Case 2 (readMountEntry → winnerEntryIndex=-1 → null).
+      const winnerArcForDesc = archives.find(a => a.archiveIndex === entry.winnerArchiveIndex);
+      const isTocSourced = winnerArcForDesc ? winnerArcForDesc.entryCount === 0 : false;
+      const iffDescriptor = (tocIndex && isTocSourced)
+        ? (tocIndex.resolveFull(entry.path) ?? null)
+        : null;
+      const iffBytes = readVfsEntryBytes(entry, mountHandle, iffDescriptor);
       if (iffBytes) {
         iffStore.beginParse(filename);
         try {
@@ -362,8 +371,14 @@ export default function TreVfsBrowser(): React.ReactElement {
     // a temp file here. Without it the entry flattens back with replacementFilePath:undefined
     // and packPatch throws "path argument must be of type string … Received undefined".
     try {
+      // F-2 (gate D-16): supply descriptor for TOC-sourced entries (same logic as IFF open path).
+      const winnerArcForExtract = store.archives.find(a => a.archiveIndex === entry.winnerArchiveIndex);
+      const isTocSourcedExtract = winnerArcForExtract ? winnerArcForExtract.entryCount === 0 : false;
+      const extractDescriptor = (store.tocIndex && isTocSourcedExtract)
+        ? (store.tocIndex.resolveFull(entry.path) ?? null)
+        : null;
       // Reads archived entries via the mount AND loose-overlay entries (searchPath dirs) from disk.
-      const bytes = readVfsEntryBytes(entry, store.mountHandle);
+      const bytes = readVfsEntryBytes(entry, store.mountHandle, extractDescriptor);
       if (!bytes) {
         console.warn('[TreVfsBrowser] Extract→Add: entry not readable (no mount winner / loose file missing):', vpath);
         return;
