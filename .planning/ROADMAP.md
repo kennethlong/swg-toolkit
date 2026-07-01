@@ -180,7 +180,7 @@ Out of scope (separate future item): `delete-project-with-restore`.
 
 **Requirements**: Completes parent reqs **TRE-05** (Pillar B searchTOC/v6000 mount), **DEPLOY-03** (rollback/version-navigation), **DEPLOY-08** (loose-override substrate). Phase-internal candidate IDs (carried in plan frontmatter): VER-01..09, GRAPH-01..08, DEPLOYUI-01..15, PROJUI-01..09, SHELL-01..06, MOUNT-01..07.
 **Depends on:** Phase 4.2 (searchTOC/loose-override mount + deploy engine it completes), Phase 4.1 (version graph + deploy UX it reworks). Both phases' in-client UATs (04.1-11, 04.2-06) remain open; this phase's combined UAT supersedes re-running them piecemeal.
-**Plans:** 8/12 plans executed
+**Plans:** 9/12 plans executed
 
 Plans:
 **Wave 0 — test scaffolds & fixtures**
@@ -193,7 +193,7 @@ Plans:
 - [x] 04.3-07-PLAN.md — Deploy panel + staging chrome + forward-deploy-only modal (005/006)
 - [x] 04.3-08-PLAN.md — Project-entry front-door polish (007)
 - [x] 04.3-09-PLAN.md — Shell-composition polish (008); VCS-tab S3 left AMBIGUOUS
-- [ ] 04.3-10-PLAN.md — Native per-payload v6000 extraction + extractAt(descriptor)
+- [x] 04.3-10-PLAN.md — Native per-payload v6000 extraction + extractAt(descriptor)
 - [ ] 04.3-11-PLAN.md — Renderer master-.toc mount sourcing + lazy searchPath
 **Wave 2 — verification gate**
 - [ ] 04.3-12-PLAN.md — D-16 de-anchoring crew + byte-exact v6000 gate (GO/NO-GO)
@@ -332,7 +332,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 1. Core Engine — IFF + TRE + Verification Harness | 4/4 | Complete   | 2026-06-23 |
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
-| 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-06-30 |
+| 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-07-01 |
 | 4.1 Deploy & Project UX *(INSERTED)* | 10/11 | In Progress|  |
 | 4.2 Dev-Client Support & Loose-Override Deploy *(INSERTED)* | 0/6 | Not started | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
