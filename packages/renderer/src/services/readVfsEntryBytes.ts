@@ -42,6 +42,9 @@ export interface ExtractionDescriptor {
   length:           number;
   compressedLength: number;
   compressor:       number;
+  /** F-4 (gate D-16): Forward CRC-32 of the virtual path (0x04C11DB7). Optional — callers
+   *  that lack the crc (e.g. synthetic tests) may omit it; native defaults to 0. */
+  crc?:             number;
 }
 
 // ─── readVfsEntryBytes ────────────────────────────────────────────────────────
