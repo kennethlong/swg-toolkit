@@ -32,13 +32,20 @@ namespace swg {
  * Used when a master .toc provides the offset/lengths for a payload that lives inside a
  * container whose internal TOC is empty (numberOfFiles=0, e.g. swg-source v6000 patch_sku3_*).
  *
+ * F-5 (gate D-16): offset/length/compressedLength widened to uint32_t (engine uses uint32,
+ *   TreeFile_SearchNode.h:294-298; signed narrowing mishandled high-bit >2 GB values).
+ * F-4 (gate D-16): crc field added; threaded from the master-.toc entry; used in extractAt
+ *   as an exact-length integrity guard after inflate (producedLength == desc.length check).
+ *
  * Source: index.d.ts ExtractAtResult descriptor shape (frozen by plan 04.3-03).
+ *         Plan 04.3-12 F-4/F-5 loop-back fix.
  */
 struct TreExtractDescriptor {
-    int32_t offset;           ///< Byte offset of payload in the archive file
-    int32_t length;           ///< Declared uncompressed size
-    int32_t compressedLength; ///< Compressed byte count to read (used when compressor != 0)
-    int32_t compressor;       ///< 0=none, 2=zlib RFC1950
+    uint32_t offset;           ///< Byte offset of payload in the archive file (u32 — F-5)
+    uint32_t length;           ///< Declared uncompressed size (u32 — F-5)
+    uint32_t compressedLength; ///< Compressed byte count to read (u32 — F-5)
+    uint32_t compressor;       ///< 0=none, 2=zlib RFC1950
+    uint32_t crc;              ///< Forward CRC-32 of the virtual path (F-4 — post-inflate length gate)
 };
 
 /**

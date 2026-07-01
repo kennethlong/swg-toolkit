@@ -50,12 +50,17 @@ namespace swg {
  * Plan 04.3-10 Task 2 (H1 columnar-bridge gap fix).
  * Source: tocReader.ts SEARCH_TOC_ENTRY_FMT (TS port); TreeFile_SearchNode.h:289-299.
  */
+/**
+ * F-5 (gate D-16): offset/length/compressedLength widened to uint32_t matching the engine
+ * fields (TreeFile_SearchNode.h:294-298). The signed int32_t narrowing from readLE32_binding
+ * mishandled values > 2 GB.
+ */
 struct TocExternalEntry {
     std::string virtualPath;       ///< Normalized virtual path (lowercase, forward-slash)
-    int32_t     offset;            ///< Byte offset into the container .tre
-    int32_t     length;            ///< Uncompressed size (0 = tombstone)
-    int32_t     compressedLength;  ///< Compressed size on disk
-    int32_t     compressor;        ///< 0=none, 2=zlib RFC1950
+    uint32_t    offset;            ///< Byte offset into the container .tre (u32 — F-5)
+    uint32_t    length;            ///< Uncompressed size (0 = tombstone) (u32 — F-5)
+    uint32_t    compressedLength;  ///< Compressed size on disk (u32 — F-5)
+    uint32_t    compressor;        ///< 0=none, 2=zlib RFC1950
     uint32_t    crc;               ///< Forward CRC-32 of virtualPath
 };
 
