@@ -302,13 +302,19 @@ int TreArchive::resolve(const std::string& normalizedName, bool& deleted) const 
 // ─── Extract ─────────────────────────────────────────────────────────────────
 
 std::vector<uint8_t> TreArchive::extractEntry(int idx, IInputStream& stream) const {
-    // T-01-05: refuse payload extraction for enumerate-only archives (v6000)
-    // Source: Utinni TreVersion.cs:79-86 (IsEnumerateOnly => V6000 only).
-    if (isEnumerateOnly(m_version)) {
-        throw std::runtime_error(
-            "TreArchive::extractEntry: archive is enumerate-only (v6000 encrypted payload)"
-        );
-    }
+    // T-01-05 REVISED (plan 04.3-10 Task 1): v6000 is no longer blanket-refused here.
+    //
+    // Per-payload classify: attempt inflate; if inflate fails the payload is encrypted
+    // (Restoration v6000). The blanket isEnumerateOnly(V6000) throw is REMOVED so that
+    // swg-source v6000 plain-zlib payloads can be extracted when the caller has an
+    // internal TOC entry (non-zero numberOfFiles). Empty-internal-TOC (numberOfFiles=0)
+    // containers must use TreArchive::extractAt(descriptor, stream) — plan 04.3-10 Task 2.
+    //
+    // The UI "enumerate-only" chip is driven by isEnumerateOnly() at the mount-info level,
+    // NOT by a throw here. Encrypted payloads surface as zlib errors from treInflate.
+    //
+    // Source: tre_decrypt.py::try_read_tre_payload (try-inflate-then-classify oracle).
+    // Ground truth: MOUNT-04 graceful degradation — no crash/fatal on encrypted payload.
 
     if (idx < 0 || idx >= static_cast<int>(m_entries.size())) {
         throw std::runtime_error("TreArchive::extractEntry: index out of range");

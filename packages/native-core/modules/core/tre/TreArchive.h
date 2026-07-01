@@ -79,12 +79,14 @@ public:
     /**
      * Extract the payload of an entry at the given index.
      *
-     * Refuses to extract from isEnumerateOnly() archives (v6000).
+     * T-01-05 REVISED (plan 04.3-10): v6000 is no longer blanket-refused.
+     * Callers receive a real zlib error if the payload is encrypted (Restoration v6000).
+     * For empty-internal-TOC (numberOfFiles=0) containers, use extractAt() instead.
      *
      * @param idx     Entry index from resolve().
      * @param stream  The same stream used during parse() (for positional payload reads).
      * @returns       Decompressed payload bytes.
-     * @throws        std::runtime_error if enumerate-only, out-of-range, or inflate fails.
+     * @throws        std::runtime_error if out-of-range or inflate fails (incl. encrypted).
      */
     std::vector<uint8_t> extractEntry(int idx, IInputStream& stream) const;
 
