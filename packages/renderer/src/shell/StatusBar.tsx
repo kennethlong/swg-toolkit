@@ -98,7 +98,7 @@ export default function StatusBar(): React.ReactElement {
     if (deployedVersionId === BASELINE_ID) {
       return 'baseline';
     }
-    const layout = laneLayout(changesets, null);
+    const layout = laneLayout(changesets, null, false);
     const ordinalMap = new Map<string, number>();
     layout.rows.forEach((r) => ordinalMap.set(r.id, r.rowIndex + 1));
     const vN = ordinalMap.get(deployedVersionId) ?? null;
