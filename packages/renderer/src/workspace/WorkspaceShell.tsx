@@ -34,6 +34,7 @@ import {
   LAYOUT_VERSION_KEY,
   buildInitialLayout,
 } from './workspace-config';
+import { setActiveDockPanel } from '../state/dockStateStore';
 
 // ─── Panel imports ────────────────────────────────────────────────────────────
 
@@ -131,11 +132,15 @@ export default function WorkspaceShell(): React.ReactElement {
     api.onDidActivePanelChange(() => {
       const panel = api.activePanel;
       if (!panel?.group?.api) return;
+      let width = INSPECTOR_WIDTH;
       if (panel.id === 'deploy') {
-        panel.group.api.setSize({ width: DEPLOY_WIDTH });
+        width = DEPLOY_WIDTH;
+        panel.group.api.setSize({ width });
       } else if (panel.id === 'inspector') {
-        panel.group.api.setSize({ width: INSPECTOR_WIDTH });
+        panel.group.api.setSize({ width });
       }
+      // S6: update dock state so StatusBar sb-state chip reflects active panel (plan 09)
+      setActiveDockPanel(panel.id, width);
     });
 
     // 3. Version-guard restore (D-03 / Pattern 6).

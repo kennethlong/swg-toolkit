@@ -28,12 +28,15 @@
  *   __crossWriteOk=false but the triage path differs.
  */
 
-import React, { useEffect, useState } from 'react';
-import { SAB_LAYOUT } from '@swg/contracts';
-import { useTreStore }       from '../state/treStore.ts';
-import { useLiveStore }      from '../state/liveStore.ts';
-import { useWorkspaceStore } from '../state/workspaceStore.ts';
-import { useChangesetStore } from '../state/changesetStore.ts';
+import React, { useEffect, useMemo, useState } from 'react';
+import { SAB_LAYOUT, BASELINE_ID } from '@swg/contracts';
+import { useTreStore }         from '../state/treStore.ts';
+import { useLiveStore }        from '../state/liveStore.ts';
+import { useWorkspaceStore }   from '../state/workspaceStore.ts';
+import { useChangesetStore }   from '../state/changesetStore.ts';
+import { useDockStateStore }   from '../state/dockStateStore.ts';
+import { useClientScanStatus } from '../state/clientScanStore.ts';
+import { laneLayout }          from '../panels/deploy/laneLayout.ts';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -80,6 +83,30 @@ export default function StatusBar(): React.ReactElement {
   const staleDeployment   = useWorkspaceStore((s) => s.hasStaleDeployment);
   const clientDetected    = useWorkspaceStore((s) => s.clientPath !== null);
   const deployedVersionId = useChangesetStore((s) => s.manifest.deployedVersionId);
+  const changesets        = useChangesetStore((s) => s.manifest.changesets);
+
+  // S6: dock state for sb-state chip (plan 09)
+  const activePanelId = useDockStateStore((s) => s.activePanelId);
+  const dockWidth     = useDockStateStore((s) => s.dockWidth);
+
+  // First-run scan message (P9 plan 08 writer → plan 09 reader)
+  const { message: scanMessage } = useClientScanStatus();
+
+  // S7: live: vN — derive 1-based oldest-first ordinal (same as footer in VersionHistoryBody)
+  const liveVersionLabel = useMemo(() => {
+    if (!deployedVersionId) return null;
+    if (deployedVersionId === BASELINE_ID) {
+      return 'baseline';
+    }
+    const layout = laneLayout(changesets, null);
+    const ordinalMap = new Map<string, number>();
+    layout.rows.forEach((r) => ordinalMap.set(r.id, r.rowIndex + 1));
+    const vN = ordinalMap.get(deployedVersionId) ?? null;
+    const cs  = changesets.find((c) => c.id === deployedVersionId);
+    const lbl = cs?.label ?? null;
+    if (vN === null) return null;
+    return lbl ? `v${vN} — ${lbl}` : `v${vN}`;
+  }, [deployedVersionId, changesets]);
 
   useEffect(() => {
     // ── Read crossOriginIsolated immediately ───────────────────────────────
@@ -216,6 +243,31 @@ export default function StatusBar(): React.ReactElement {
       <span>4,812 verts</span>
       <Dot />
 
+      {/* S6: sb-state chip — active dock panel + width (sketch 008) */}
+      {activePanelId && (
+        <>
+          <span
+            className="sb-state"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {activePanelId === 'deploy'
+              ? `Deploy active · dock ${dockWidth}px`
+              : activePanelId === 'inspector'
+                ? `Inspect active · dock ${dockWidth}px`
+                : `${activePanelId} active · dock ${dockWidth}px`}
+          </span>
+          <Dot />
+        </>
+      )}
+
+      {/* First-run scan message (plan 08 writer → plan 09 reader via clientScanStore) */}
+      {scanMessage && (
+        <>
+          <span style={{ color: 'var(--color-text-muted)' }}>{scanMessage}</span>
+          <Dot />
+        </>
+      )}
+
       {/* Addon status */}
       <span>
         addon:{' '}
@@ -318,18 +370,18 @@ export default function StatusBar(): React.ReactElement {
         </>
       )}
 
-      {/* Deployed version indicator (hidden when nothing deployed) */}
-      {deployedVersionId !== null && (
+      {/* S7: live: vN — label (replaces hashed deployed: <id.slice(0,8)>) */}
+      {liveVersionLabel !== null && (
         <>
           <Dot />
           <span
             style={{
-              color:      'var(--color-text-faint)',
+              color:      'var(--color-info)',
               fontFamily: 'var(--font-mono)',
               fontSize:   'var(--text-xs)',
             }}
           >
-            deployed: {deployedVersionId.slice(0, 8)}
+            live: <span style={{ color: 'var(--color-accent)' }}>{liveVersionLabel}</span>
           </span>
         </>
       )}
