@@ -164,14 +164,15 @@ describe('tocReader', () => {
     //   offset 12: dataOffset      (uint32 LE)
     //   offset 16: uncompLength    (uint32 LE)
     //   offset 20: compLength      (uint32 LE)
-    const makeEntry = (treeFileIndex: number, crc: number, pathLength: number) => {
+    const makeEntry = (treeFileIndex: number, crc: number, pathLength: number, uncompLength = 1) => {
       const e = Buffer.alloc(24, 0);
       e.writeUInt8(0, 0);                  // compressor = 0 (stored)
       e.writeUInt8(0, 1);                  // unused
       e.writeUInt16LE(treeFileIndex, 2);   // treeFileIndex
       e.writeUInt32LE(crc, 4);             // crc
       e.writeUInt32LE(pathLength, 8);      // fileNameOffset = length of path
-      // dataOffset, uncompLength, compLength = 0 (fixture — not used by readTocIndex lookup)
+      e.writeUInt32LE(uncompLength, 16);   // uncompLength: non-zero = NOT a tombstone (plan 11)
+      // dataOffset, compLength = 0 (fixture — not used by readTocIndex lookup)
       return e;
     };
 

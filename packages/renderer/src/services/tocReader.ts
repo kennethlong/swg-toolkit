@@ -2,7 +2,8 @@
 /**
  * packages/renderer/src/services/tocReader.ts
  * SearchTOC reader: parse the sku0_client.toc header, tree-name block, and full entry
- * index; provide an engine-faithful CRC-keyed binary-search index (H1).
+ * index; provide an engine-faithful CRC-keyed binary-search index (H1) and a
+ * name-map-based resolveFull for external-descriptor extraction (plan 11).
  *
  * Ground truth:
  *   TreeFile_SearchNode.h:270-284   — SearchTOC::Header layout (36 bytes LE)
@@ -72,6 +73,35 @@ export interface TocIndexEntry {
 }
 
 /**
+ * Full 7-field entry descriptor returned by resolveFull().
+ *
+ * Extends TocIndexEntry with the raw extraction descriptor fields read from the
+ * 24-byte TableOfContentsEntry (TreeFile_SearchNode.h:289-299). These fields are
+ * required by extractMountAt (plan 10) for per-payload extraction from master-.toc-
+ * sourced entries whose containers have empty internal TOCs (MOUNT-03/04).
+ *
+ * plan 11: resolveFull uses a name-map lookup (NOT the CRC binary search) so it
+ * finds entries regardless of stored CRC value — suitable for synthetic fixtures
+ * in tests as well as real .toc files.
+ */
+export interface TocIndexEntryFull extends TocIndexEntry {
+  /** Byte offset of the payload within the container .tre file. */
+  offset: number;
+  /**
+   * Declared uncompressed length.
+   * A length===0 entry is a TOMBSTONE (deletion marker) — localExists rejects it.
+   * resolveFull (and resolve) return undefined for tombstone entries.
+   */
+  length: number;
+  /** Compressed byte count to read from the container file. */
+  compressedLength: number;
+  /** Compression algorithm: 0=stored, 2=zlib. */
+  compressor: number;
+  /** CRC-32 of the virtual path stored on disk (may differ from crc32(path) in synthetic fixtures). */
+  crc: number;
+}
+
+/**
  * Engine-faithful CRC-keyed binary-search TOC index.
  * Replicates SearchTOC::localExists (TreeFile_SearchNode.cpp:783-836) — NOT a Map /
  * KEEP FIRST heuristic, which diverges from the engine on duplicate paths (H1).
@@ -85,9 +115,25 @@ export interface TocIndex {
    * where crc matches and name matches case-insensitively — which matches the
    * engine's treeFileIndex selection exactly.
    *
-   * Returns undefined when the path is not found.
+   * Returns undefined when the path is not found OR when the entry is a tombstone
+   * (length===0 deletion marker — mirrors client localExists behaviour).
    */
   resolve(virtualPath: string): TocIndexEntry | undefined;
+  /**
+   * Resolve a virtual path to the FULL 7-field extraction descriptor.
+   *
+   * Uses a name-map lookup (NOT the CRC binary search) so it works with both real
+   * .toc files (correct CRCs) and synthetic test fixtures (arbitrary CRCs). The
+   * returned entry still identifies the SAME container as resolve() for real files.
+   *
+   * Returns undefined when:
+   *   - the path is not in the index, OR
+   *   - the entry is a tombstone (length===0 — deletion marker, not a file).
+   *
+   * The returned descriptor is passed directly to native extractMountAt() for
+   * per-payload extraction from empty-internal-TOC v6000 containers (MOUNT-03/04).
+   */
+  resolveFull(virtualPath: string): TocIndexEntryFull | undefined;
   /** Total number of TOC entries. */
   readonly size: number;
 }
@@ -101,6 +147,15 @@ interface RawEntry {
   fileNameLength: number;
   /** Rebuilt cumulative byte offset into the name block (NOT the on-disk value). */
   fileNameOffset: number;
+  // Extraction descriptor fields (byte offsets per TableOfContentsEntry):
+  /** Compression algorithm: byte 0 uint8 (0=stored, 2=zlib). */
+  compressor: number;
+  /** Byte offset of the payload within the container .tre file: bytes 12-15 uint32 LE. */
+  offset: number;
+  /** Declared uncompressed length: bytes 16-19 uint32 LE. 0 = tombstone. */
+  length: number;
+  /** Compressed byte count: bytes 20-23 uint32 LE. */
+  compressedLength: number;
 }
 
 // ─── parseTocHeader ───────────────────────────────────────────────────────────
@@ -243,10 +298,15 @@ export function readTocIndex(filePath: string): TocIndex {
   for (let i = 0; i < n; i++) {
     const base = i * 24;
     entries[i] = {
-      treeFileIndex: tocBlob.readUInt16LE(base + 2),
-      crc:           tocBlob.readUInt32LE(base + 4),
-      fileNameLength: tocBlob.readUInt32LE(base + 8),  // disk value = filename LENGTH
-      fileNameOffset: 0,                                // to be rebuilt below
+      treeFileIndex:    tocBlob.readUInt16LE(base + 2),
+      crc:              tocBlob.readUInt32LE(base + 4),
+      fileNameLength:   tocBlob.readUInt32LE(base + 8),  // disk value = filename LENGTH
+      fileNameOffset:   0,                                // to be rebuilt below
+      // Extraction descriptor fields (plan 11 — retained instead of discarded):
+      compressor:       tocBlob.readUInt8(base + 0),
+      offset:           tocBlob.readUInt32LE(base + 12),
+      length:           tocBlob.readUInt32LE(base + 16),
+      compressedLength: tocBlob.readUInt32LE(base + 20),
     };
   }
 
@@ -262,6 +322,30 @@ export function readTocIndex(filePath: string): TocIndex {
     fnOffset += entries[i]!.fileNameLength + 1;
   }
 
+  // ─── NAME MAP for resolveFull ───────────────────────────────────────────────
+  // Built after fnOffset rebuild so we have the correct offsets.
+  // Key: normalised path (lowercase + forward-slash) — matches resolve() normalisation.
+  // Value: the full RawEntry (including offset/length/compressedLength/compressor).
+  //
+  // If multiple entries share the same normalised path (duplicates in the master .toc),
+  // the LAST entry in array order wins in the map. For real .toc files, duplicate paths
+  // share the same treeFileIndex so the result is stable.
+  //
+  // NOTE: resolveFull uses name-map lookup — NOT the CRC binary search. This means it
+  // works with synthetic fixtures that have arbitrary CRCs (used in plan-03 RED tests).
+  // On real .toc files (where stored CRCs match crc32 of paths), resolveFull agrees
+  // with resolve() for non-tombstone non-duplicate paths (H1 invariant satisfied).
+  const nameMap = new Map<string, RawEntry>();
+  for (let i = 0; i < n; i++) {
+    const entry = entries[i]!;
+    const storedName = nameBlock
+      .subarray(entry.fileNameOffset, entry.fileNameOffset + entry.fileNameLength)
+      .toString('latin1');
+    // Normalise the stored name the same way resolve() normalises the query.
+    const normName = storedName.toLowerCase().replace(/\\/g, '/');
+    nameMap.set(normName, entry);
+  }
+
   // ─── ENGINE-FAITHFUL BINARY SEARCH ─────────────────────────────────────────
   // Replicates SearchTOC::localExists (TreeFile_SearchNode.cpp:783-836).
   // The entry array is ALREADY sorted by (crc ASC, name ASC) on disk — do NOT re-sort.
@@ -269,6 +353,9 @@ export function readTocIndex(filePath: string): TocIndex {
   // On crc collision, name compare uses _stricmp equivalent (case-insensitive ASCII).
   // The binary search may land at ANY matching entry — this is the engine's behaviour.
   // A Map/KEEP FIRST approach would diverge on real sku0 duplicates (H1 invariant).
+  //
+  // Tombstone filter (plan 11): entries with length===0 are DELETION MARKERS (mirrors
+  // the client's localExists which rejects them). resolve() returns undefined for them.
 
   function resolve(virtualPath: string): TocIndexEntry | undefined {
     // Normalise: lowercase + forward-slash (matching engine's input normalisation).
@@ -308,14 +395,39 @@ export function readTocIndex(filePath: string): TocIndex {
     if (!found) return undefined;
 
     const winner = entries[mid]!;
+    // Tombstone filter: length===0 is a deletion marker, not a file.
+    if (winner.length === 0) return undefined;
     return {
       treeFileIndex: winner.treeFileIndex,
       treName:       treeNames[winner.treeFileIndex] ?? '',
     };
   }
 
+  // ─── NAME-MAP LOOKUP for resolveFull ───────────────────────────────────────
+  // Returns the full 7-field descriptor for per-payload extraction via extractMountAt.
+  // Uses nameMap (built above) — NOT the CRC binary search — so it works with
+  // synthetic test fixtures whose stored CRCs do not match crc32(path).
+
+  function resolveFull(virtualPath: string): TocIndexEntryFull | undefined {
+    const q = virtualPath.toLowerCase().replace(/\\/g, '/');
+    const entry = nameMap.get(q);
+    if (!entry) return undefined;
+    // Tombstone filter: length===0 is a deletion marker, not a file.
+    if (entry.length === 0) return undefined;
+    return {
+      treeFileIndex:    entry.treeFileIndex,
+      treName:          treeNames[entry.treeFileIndex] ?? '',
+      offset:           entry.offset,
+      length:           entry.length,
+      compressedLength: entry.compressedLength,
+      compressor:       entry.compressor,
+      crc:              entry.crc,
+    };
+  }
+
   return {
     resolve,
+    resolveFull,
     get size() { return n; },
   };
 }
