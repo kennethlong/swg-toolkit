@@ -95,6 +95,16 @@ export interface TreStore {
   /** Resolved VFS entries from the mount. Populated after mount completes. */
   vfsEntries: VfsEntry[];
 
+  /**
+   * Loose-override directories for lazy searchPath resolution (D-15 / MOUNT-07).
+   *
+   * Populated by addLooseDir (called by injectLooseDirOverlay). The list is ordered
+   * highest-priority-first: resolveLooseOverride checks dirs in this order and returns
+   * the first matching file. Loose files are NOT listed as flat VFS rows; they win
+   * at resolve-time via resolveLooseOverride (replaces upfront readdirSync walk).
+   */
+  looseDirs: string[];
+
   /** Current mount operation status. */
   mountStatus: MountStatus;
 
@@ -143,6 +153,16 @@ export interface TreStore {
   appendLooseEntries: (entries: VfsEntry[]) => void;
 
   /**
+   * Record a loose-override directory for lazy searchPath resolution (D-15 / MOUNT-07).
+   *
+   * Called by treMount.ts injectLooseDirOverlay INSTEAD of enumerating the directory —
+   * loose files are NOT listed as flat VFS rows; they win at resolve-time via
+   * resolveLooseOverride. Prepend=true places the dir at the head of the list
+   * (highest-priority-first order mirrors the client's searchPath priority descent).
+   */
+  addLooseDir: (dir: string, prepend?: boolean) => void;
+
+  /**
    * Mark a specific archive as enumerate-only (encrypted) — MOUNT-05.
    *
    * Called when `extractMountAt(handle, archiveIndex, descriptor)` returns
@@ -165,6 +185,7 @@ export const useTreStore = create<TreStore>((set) => ({
   mountHandle:      null,
   archives:         [],
   vfsEntries:       [],
+  looseDirs:        [],
   mountStatus:      { kind: 'idle' },
   search:           { text: '', mode: 'substring' },
   searchResults:    [],
@@ -220,6 +241,15 @@ export const useTreStore = create<TreStore>((set) => ({
     });
   },
 
+  addLooseDir: (dir: string, prepend = false) => {
+    set((state) => {
+      // Deduplicate: skip if already recorded.
+      if (state.looseDirs.includes(dir)) return {};
+      const updated = prepend ? [dir, ...state.looseDirs] : [...state.looseDirs, dir];
+      return { looseDirs: updated };
+    });
+  },
+
   markArchiveEncrypted: (archiveIndex: number) => {
     set((state) => {
       // Find the archive by archiveIndex and set isEnumerateOnly:true (MOUNT-05).
@@ -237,6 +267,7 @@ export const useTreStore = create<TreStore>((set) => ({
       mountHandle:       null,
       archives:          [],
       vfsEntries:        [],
+      looseDirs:         [],
       mountStatus:       { kind: 'idle' },
       search:            { text: '', mode: 'substring' },
       searchResults:     [],

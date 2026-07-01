@@ -106,9 +106,10 @@ describe('readVfsEntryBytes shared service (plan 11 Task 3)', () => {
   });
 
   // ── (1a) Loose winner: read bytes from disk ───────────────────────────────
-  it('(1a) loose winner (winnerArchiveIndex<0) → reads bytes from disk via readFileSync', () => {
+  it('(1a) loose winner (winnerArchiveIndex<0) → reads bytes from disk via readFileSync', async () => {
     const fakeBuffer = Buffer.from([0x49, 0x46, 0x46, 0x20]); // "IFF "
-    const { readFileSync } = require('fs') as typeof import('fs');
+    // Use dynamic import (not require) to get the vi.mock-intercepted module.
+    const { readFileSync } = await import('fs');
     (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(fakeBuffer);
 
     const result = readVfsEntryBytes(makeLooseEntry(), null);
@@ -119,8 +120,8 @@ describe('readVfsEntryBytes shared service (plan 11 Task 3)', () => {
   });
 
   // ── (1b) Loose winner: readFileSync throws → null ─────────────────────────
-  it('(1b) loose winner, readFileSync throws → returns null', () => {
-    const { readFileSync } = require('fs') as typeof import('fs');
+  it('(1b) loose winner, readFileSync throws → returns null', async () => {
+    const { readFileSync } = await import('fs');
     (readFileSync as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error('ENOENT'); });
 
     const result = readVfsEntryBytes(makeLooseEntry(), null);

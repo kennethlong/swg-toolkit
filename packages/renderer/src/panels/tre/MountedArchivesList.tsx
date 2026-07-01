@@ -3,12 +3,13 @@
  *
  * Displays mounted archives in priority order, highest first:
  *   Priority index badge (#1, mono) · filename · version chip · entry count
- *   ONLY v6000 rows carry the "≈ enumerate-only (encrypted)" warn chip.
- *   v0006 rows are readable and carry NO warn chip.
+ *   The "≈ enumerate-only (encrypted)" warn chip shows when archive.isEnumerateOnly is true.
+ *   isEnumerateOnly is set by per-entry extractMountAt failure (MOUNT-05, plan 11) — NOT the
+ *   version tag. This means swg-source plain-zlib archives are NOT mislabeled as encrypted.
  *   Drag handle ⠿ for future reorder (deferred — priority index shown for now).
  *
  * Source: 01-UI-SPEC.md § "Surface 1 — Mounted Archives list";
- *         01-02-PLAN.md § "must_haves" (v6000 NOT v0006 gets warn chip).
+ *         04.3-11-PLAN.md MOUNT-05 (chip driven by per-entry extract failure, not version tag).
  *
  * Accessibility Rule 5: aria-label + title on all icon-only and chip controls.
  */

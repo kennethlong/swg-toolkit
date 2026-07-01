@@ -30,11 +30,12 @@ import type { TreVersion } from '@swg/contracts';
 // vitest via vi.mock('./nativeTre', …) without loading the .node binary.
 import { nativeCore } from './nativeTre';
 
-// Path B fs/path — never bundled by Vite (same require seam pattern as clientSearchOrder.ts).
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const nodeFs   = require('fs')   as typeof import('fs');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const nodePath = require('path') as typeof import('path');
+// Node built-ins — Vite externalizes Node built-ins (fs/path/os/…) in all renderer builds;
+// ESM import is safe here and enables vi.mock('fs') / vi.mock('path') to intercept in vitest.
+// (Unlike @swg/native-core, which MUST use the nativeTre require() seam to avoid Vite bundling
+// the addon loader into the browser module graph — see nativeTre.ts for the rationale.)
+import * as nodeFs   from 'fs';
+import * as nodePath from 'path';
 
 // ─── Version helper (moved from TreVfsBrowser) ───────────────────────────────
 
@@ -286,60 +287,52 @@ export function endMountStatusIfPending(): void {
 // ─── injectLooseDirOverlay ────────────────────────────────────────────────────
 
 /**
- * Inject loose-directory VFS entries into the store without replacing the existing mount.
+ * Record a loose-override directory for lazy on-demand resolution (D-15 / MOUNT-07).
  *
- * Recursively scans `dir`; builds a VfsEntry for each file; calls appendLooseEntries.
- * virtualPath is relative to the dir root with forward-slash normalisation and lowercase.
+ * LAZY REFACTOR (plan 11 Task 3 GREEN):
+ *   The old implementation recursively enumerated the dir with readdirSync and injected
+ *   every file as a flat VfsEntry row — which surfaced thousands of junk rows when a
+ *   searchPath pointed at a large data root (over-enumeration bug, Pitfall 5 / T-04.3-11-02).
  *
- * Non-fatal: errors are logged and swallowed, consistent with autoMountClient handling.
+ *   The new implementation mirrors the real client's searchPath semantics:
+ *     "search the directories sequentially; if the file exists in a searchPath dir, use it"
+ *   i.e. lazy per-request lookup, NOT upfront enumeration.
  *
- * @param dir  Absolute path to the loose directory to scan.
- * @param opts isOverride: true when the dir's raw priority exceeds maxTreRawPriority (B4).
+ *   The dir is pushed into treStore.looseDirs; resolveLooseOverride() checks these dirs
+ *   at read-time (highest-priority-first). Loose files are NOT listed as flat VFS rows
+ *   (D-15 constraint honored) but still WIN over the native mount at resolve-time.
+ *
+ * @param dir  Absolute path to the loose directory.
+ * @param opts isOverride: true when dir priority exceeds maxTreRawPriority (B4); used
+ *             by autoMountClient to build the ordered priority list — stored for future
+ *             multi-dir resolveLooseOverride ordering. Currently all isOverride dirs
+ *             are prepended (highest priority) and non-override dirs are appended.
  */
 export function injectLooseDirOverlay(dir: string, opts: { isOverride: boolean }): void {
-  try {
-    const entries = collectLooseEntries(dir, dir, opts.isOverride);
-    useTreStore.getState().appendLooseEntries(entries);
-  } catch (err) {
-    console.error('[injectLooseDirOverlay] error scanning', dir, ':', err);
-  }
+  // Push the dir into the store (prepend=true for override dirs so they check first).
+  // No readdirSync — files are resolved lazily by resolveLooseOverride.
+  useTreStore.getState().addLooseDir(dir, opts.isOverride);
 }
 
-/** Internal recursive helper for injectLooseDirOverlay. */
-function collectLooseEntries(rootDir: string, scanDir: string, isOverride: boolean): VfsEntry[] {
-  const entries: VfsEntry[] = [];
+// ─── resolveLooseOverride ─────────────────────────────────────────────────────
 
-  let items: import('fs').Dirent[];
-  try {
-    items = nodeFs.readdirSync(scanDir, { withFileTypes: true });
-  } catch {
-    return entries; // dir not readable — skip silently
-  }
-
-  for (const item of items) {
-    const fullPath = nodePath.join(scanDir, item.name);
-
-    if (item.isDirectory()) {
-      entries.push(...collectLooseEntries(rootDir, fullPath, isOverride));
-    } else if (item.isFile()) {
-      // Virtual path: relative to rootDir, forward-slash, lowercase.
-      const rel = nodePath.relative(rootDir, fullPath)
-        .replace(/\\/g, '/')
-        .toLowerCase();
-
-      entries.push({
-        path:                  rel,
-        name:                  item.name.toLowerCase(),
-        segments:              rel.split('/'),
-        winnerArchivePath:     fullPath,
-        winnerArchiveFilename: item.name,
-        isOverride,
-        isTombstone:           false,
-        shadowCount:           0,
-        winnerArchiveIndex:    -1,
-      });
+/**
+ * Lazily resolve a virtual path against an ordered list of loose-override directories.
+ *
+ * Checks each dir in order (highest-priority first) for a file matching `virtualPath`.
+ * Returns the absolute disk path of the first match, or null if the path is not found
+ * in any loose dir. Used by readVfsEntryBytes and openInViewer for loose-winner reads.
+ *
+ * @param looseDirs   Ordered list of loose dir paths (highest-priority first).
+ *                    Use treStore.getState().looseDirs as the live list.
+ * @param virtualPath Normalized virtual path (e.g. "appearance/player.msh").
+ */
+export function resolveLooseOverride(looseDirs: string[], virtualPath: string): string | null {
+  for (const dir of looseDirs) {
+    const candidate = nodePath.join(dir, virtualPath);
+    if (nodeFs.existsSync(candidate)) {
+      return candidate;
     }
   }
-
-  return entries;
+  return null;
 }

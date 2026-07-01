@@ -46,6 +46,7 @@ import WorkspaceEntry from '../deploy/WorkspaceEntry.tsx';
 import { useStagingStore } from '../../state/stagingStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { isVirtualPathSafe } from '../../services/pathSafety';
+import { readVfsEntryBytes } from '../../services/readVfsEntryBytes';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
 // Source: packages/renderer/src/shell/StatusBar.tsx:34-41.
@@ -98,40 +99,6 @@ const nodeFs   = require('fs')   as typeof import('fs');
 const nodeOs   = require('os')   as typeof import('os');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const nodePath = require('path') as typeof import('path');
-
-/**
- * Read the winner bytes for a VFS entry as a standalone ArrayBuffer, transparently handling BOTH
- * TRE-archived entries (resolved via the native mount) and loose-overlay entries — files injected
- * from a client searchPath override dir by injectLooseDirOverlay, which are NOT in the native mount
- * index (winnerArchiveIndex < 0) and must be read directly from disk. Returns null if unreadable.
- *
- * Shared by Extract→Add and the IFF Structure viewer so loose-override files behave like archived
- * ones for read-only operations. (The 3D mesh viewport still needs the native mount index, so loose
- * mesh-like files fall back to IFF Structure only until the searchTOC/loose-overlay mount lands.)
- */
-function readVfsEntryBytes(entry: VfsEntry, mountHandle: string | null): ArrayBuffer | null {
-  if (entry.winnerArchiveIndex < 0) {
-    if (!entry.winnerArchivePath) return null;
-    try {
-      const buf = nodeFs.readFileSync(entry.winnerArchivePath);
-      // Standalone copy — a Buffer's .buffer may be a shared pool slice (byteOffset/byteLength).
-      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-    } catch {
-      return null;
-    }
-  }
-  if (!mountHandle) return null;
-  try {
-    const chain = nativeCore.resolveChain(mountHandle, entry.path);
-    if (!chain.winner || chain.tombstone ||
-        chain.winnerArchiveIndex < 0 || chain.winnerEntryIndex < 0) {
-      return null;
-    }
-    return nativeCore.readMountEntry(mountHandle, chain.winnerArchiveIndex, chain.winnerEntryIndex);
-  } catch {
-    return null;
-  }
-}
 
 /** File extensions that trigger the appearance resolver + viewport. */
 const MESH_EXTENSIONS = new Set(['msh', 'mgn', 'sat', 'apt']);
