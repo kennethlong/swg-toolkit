@@ -2,7 +2,15 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-06-29-phase04.2-uat-iteration-and-04.3-created.md](2026-06-29-phase04.2-uat-iteration-and-04.3-created.md)** — ACTIVE. ← start here.
+- **[2026-07-01-phase-04.3-uat-and-sonnet5-config.md](2026-07-01-phase-04.3-uat-and-sonnet5-config.md)** — ACTIVE. ← start here.
+  Phase **04.3 is 11/12 done, D-16 crew gate = GO** (F-2 searchTOC-extraction blocker + F-3/F-4/F-5 found and
+  fixed; v6000 tests reconciled to per-payload truth; full suite green). Paused at **plan 13 — the combined
+  in-client UAT** (manual `human-verify` checkpoint on both a searchTree and a searchTOC client; UAT-RESULTS
+  skeleton staged). Execution ran **sequential-on-main** (`use_worktrees=false` — native monorepo, no worktree
+  node_modules). Also carries **Task 1: point the crew "fresh Sonnet" + GSD `sonnet` tier at the new
+  `claude-sonnet-5`** (verified real via live docs; Sonnet 4.6 now legacy). Not pushed.
+
+- **[2026-06-29-phase04.2-uat-iteration-and-04.3-created.md](2026-06-29-phase04.2-uat-iteration-and-04.3-created.md)** — superseded by the 04.3 handoff above (04.3 was planned + executed to the UAT since).
   Phase **04.2 plans 01–05 executed + merged** (worktree, all GREEN); **04.2-06 UAT OPEN** and walked
   interactively — surfaced a string of bugs/gaps. Small ones fixed inline on `main` (mount wiring, loose-entry
   Extract/viewer, version-selection messaging + Baseline loose-revert stopgap, Hardlink-shadow→Advanced, mount

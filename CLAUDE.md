@@ -23,7 +23,7 @@ Fire-and-continue (background), read each result as it lands.
 - **Cursor** (most detailed code reader; give it byte-map / file:line trace tasks):
   - `C:\Users\kenne\AppData\Local\cursor-agent\cursor-agent.cmd -p --mode ask --trust --output-format text`
   - `--mode ask` = read-only. Binary is `cursor-agent`, not `cursor agent`. Output is clean prose.
-- **fresh Sonnet** — lateral / out-of-the-box. Spawn via Agent tool, `model: sonnet`.
+- **fresh Sonnet** — lateral / out-of-the-box. Spawn via Agent tool, `model: sonnet` (the `sonnet` tier alias resolves to **Sonnet 5 / `claude-sonnet-5`**; the Agent `model` param is a tier enum, so this always tracks the harness's current Sonnet — no raw-ID pin available or needed).
 - **fresh Opus** — math/spec reasoning. Spawn via Agent tool, `model: opus`.
 
 Notes:
