@@ -17,6 +17,7 @@
 
 import { create } from 'zustand';
 import type { TreVersion } from '@swg/contracts';
+import type { TocIndex } from '../services/tocReader';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,20 @@ export interface TreStore {
 
   /** Resolved VFS entries from the mount. Populated after mount completes. */
   vfsEntries: VfsEntry[];
+
+  /**
+   * Master-.toc index for the current mount (F-2, gate D-16).
+   *
+   * Built by readTocIndex() after mountTreMountWithTocPaths() completes. Used by
+   * TreVfsBrowser to supply descriptors to readVfsEntryBytes for TOC-sourced entries
+   * (those in archives with numberOfFiles=0, i.e. empty internal TOC).
+   *
+   * null when no .toc mount is active (searchTree-only or loose-only mounts).
+   */
+  tocIndex: TocIndex | null;
+
+  /** Setter for tocIndex — called by treMount.ts after parseTocIntoMount. */
+  setTocIndex: (tocIndex: TocIndex | null) => void;
 
   /**
    * Loose-override directories for lazy searchPath resolution (D-15 / MOUNT-07).
@@ -185,6 +200,7 @@ export const useTreStore = create<TreStore>((set) => ({
   mountHandle:      null,
   archives:         [],
   vfsEntries:       [],
+  tocIndex:         null,
   looseDirs:        [],
   mountStatus:      { kind: 'idle' },
   search:           { text: '', mode: 'substring' },
@@ -250,6 +266,8 @@ export const useTreStore = create<TreStore>((set) => ({
     });
   },
 
+  setTocIndex: (tocIndex) => set({ tocIndex }),
+
   markArchiveEncrypted: (archiveIndex: number) => {
     set((state) => {
       // Find the archive by archiveIndex and set isEnumerateOnly:true (MOUNT-05).
@@ -267,6 +285,7 @@ export const useTreStore = create<TreStore>((set) => ({
       mountHandle:       null,
       archives:          [],
       vfsEntries:        [],
+      tocIndex:          null,
       looseDirs:         [],
       mountStatus:       { kind: 'idle' },
       search:            { text: '', mode: 'substring' },

@@ -22,6 +22,7 @@
 
 import { useTreStore, basename } from '../state/treStore';
 import type { MountedArchive, VfsEntry } from '../state/treStore';
+import { readTocIndex } from './tocReader';
 import type { TreVersion } from '@swg/contracts';
 // Native addon access via the Path B require() seam (see nativeTre.ts for why a bare
 // require — not a top-level ESM import — is required: a static import makes Vite bundle
@@ -236,6 +237,20 @@ export async function mountTreMountWithTocPaths(
   const vfsEntries: VfsEntry[] = decodeMountEntriesColumnar(columnarBlob);
 
   useTreStore.getState().mountComplete(handle, archives, vfsEntries);
+
+  // F-2 (gate D-16): Store the TocIndex so TreVfsBrowser can supply descriptors to
+  // readVfsEntryBytes for TOC-sourced entries (archives with numberOfFiles=0).
+  // Called AFTER mountComplete so the store already has the archives list when
+  // TreVfsBrowser reads tocIndex on the next render.
+  try {
+    const tocIndex = readTocIndex(tocPath);
+    useTreStore.getState().setTocIndex(tocIndex);
+  } catch (err) {
+    // Non-fatal: if the .toc file is unreadable, TOC-sourced entries will silently
+    // return null bytes (same behavior as before plan 04.3-12). Log for debugging.
+    console.warn('[treMount] mountTreMountWithTocPaths: failed to build TocIndex:', err);
+  }
+
   return handle;
 }
 
