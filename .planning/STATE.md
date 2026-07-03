@@ -260,17 +260,15 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-03
-Stopped at: Live UAT-iteration session COMPLETE — maintainer confirmed "pretty solid". Major model
-  change (crew-consulted): version SELECTION decoupled from DEPLOY (supersedes 04.3 D-04/D-08 —
-  navigate=selectVersion, deploy=explicit CTA; pointers diverge until deploy). Also: content-based
-  client detection (find .tre dirs, not hardcoded paths — all 4 distros + bonuses detected), window
-  bounds/monitor persistence (backend/windowState.ts), false-dirty fix (flatEqual), branch-parent
-  fix, "Branch from here" removed (branching = select + Save), selected-node ring + variable-height
-  lane layout, Reset-deployment rework (record-shape dispatch, surfaced errors, persisted-record
-  clear, cross-session Reset), live badge falls back to Baseline/stock, Deploy CTA no-op state.
-  269 renderer tests green; typecheck clean. ALL UNCOMMITTED (maintainer to review/commit).
-  NOTE: plan-13 UAT criteria A1/VER-03/VER-06 (navigate=silent-reconcile), VER-08 (Branch from
-  here), A13 (live-row highlight) are SUPERSEDED by the decoupled model — update REQUIREMENTS +
-  UAT-RESULTS before sign-off. New todo: deploy-dialog-synclive-undo-wiring.
-Resume file: None (plan-13 checkpoint resolved — HANDOFF.json + .continue-here.md deleted at close-out)
+Last session: 2026-07-03 — ended at a CLEAN boundary (everything committed + pushed to origin/main @ 87b4dbb)
+Stopped at: Phase 04.3 CLOSED (UAT 04.3-13 approved; supersedes 04.1-11 + 04.2-06; requirements +
+  UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
+  (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
+  272 renderer tests green, typecheck clean).
+Next session: pick up at ROADMAP Phase 5 (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet →
+  /gsd:discuss-phase 5 first), optionally after a backlog triage (/gsd:review-backlog — 22 pending
+  todos, several likely stale post-04.3). Remaining Phase-4 remnant: DEPLOY-04 (Git/LFS) only.
+  Worth a runtime sanity check: the 260703-bpu deploy/Undo rewiring is test-verified but has not
+  yet been exercised in the live app — a quick deploy → Undo → redeploy in-client check on next
+  run would confirm it end-to-end.
+Resume file: None (no mid-flight work; STATE.md is current)
