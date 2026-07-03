@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: "Combined in-client UAT approved via LIVE UAT-ITERATION (2026-07-01..03): maintainer exercised"
-stopped_at: Phase 04.3 CLOSED (UAT 04.3-13 approved; supersedes 04.1-11 + 04.2-06; requirements +
-last_updated: "2026-07-03T17:24:17.835Z"
+stopped_at: Phase 04.4 context gathered
+last_updated: "2026-07-03T19:52:57.307Z"
 last_activity: "2026-07-03 — Completed quick task 260703-bpu: DeployDialog deploys routed through"
 progress:
   total_phases: 13
@@ -261,8 +261,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-03 — ended at a CLEAN boundary (everything committed + pushed to origin/main @ 87b4dbb)
-Stopped at: Phase 04.3 CLOSED (UAT 04.3-13 approved; supersedes 04.1-11 + 04.2-06; requirements +
+Last session: 2026-07-03T19:52:57.269Z
+Stopped at: Phase 04.4 context gathered
   UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
   (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
   272 renderer tests green, typecheck clean).
@@ -272,4 +272,4 @@ Next session: pick up at ROADMAP Phase 5 (WYSIWYG Live-Sync & Typed Editors — 
   Worth a runtime sanity check: the 260703-bpu deploy/Undo rewiring is test-verified but has not
   yet been exercised in the live app — a quick deploy → Undo → redeploy in-client check on next
   run would confirm it end-to-end.
-Resume file: None (no mid-flight work; STATE.md is current)
+Resume file: .planning/phases/04.4-ux-polish-deploy-hardening/04.4-CONTEXT.md
