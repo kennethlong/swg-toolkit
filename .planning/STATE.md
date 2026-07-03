@@ -37,7 +37,9 @@ Next: Per ROADMAP — next open phase (Phase 5 Live Sync deepening / Phase 04 fo
       audit or advance to the next phase when maintainer says go.
       Follow-up todos: deploy-dialog-synclive-undo-wiring (Undo re-wiring), v6000-swg-source-plain-zlib
       (done via plans 10-11? verify against todo), server TRE search-path (deferred to Phase 8).
-Last activity: 2026-07-03
+Last activity: 2026-07-03 — Completed quick task 260703-bpu: DeployDialog deploys routed through
+  syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
+  deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
 Progress: [█████████▌] 95%
 
@@ -241,6 +243,12 @@ Roadmap-shaping decisions affecting current work:
 - [Standing risk]: Every binary format layout in `docs/` is an AI-proposed hypothesis (rated LOW—VERIFY). No parser merges without a cited `swg-client-v2` source + byte-exact round-trip on a real asset.
 - [Phase 3/5]: Live-injection pointer/offset discovery is per-client-build and effort-unbounded — mine Utinni, use runtime AOB resolution; treat magnitude as a planning unknown.
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260703-bpu | Route DeployDialog deploys through syncLiveToVersion + re-wire Undo (todo deploy-dialog-synclive-undo-wiring) | 2026-07-03 | faf2acd | [260703-bpu-route-deploydialog-deploys-through-syncl](./quick/260703-bpu-route-deploydialog-deploys-through-syncl/) |
 
 ## Deferred Items
 
