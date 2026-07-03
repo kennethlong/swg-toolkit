@@ -196,32 +196,34 @@ Core3/swg-main server-push target) — see `04.4-CONTEXT.md` D-19..D-23.
   5. The VfsTree non-override archive label is legible across the 5 themes; a mesh's authored front faces the default camera like SIE (rotation only — geometry/winding untouched).
 **Plans:** 14 plans
 
-Plans:
+Plans (revised via `/gsd:plan-phase --reviews` on 2026-07-03 — folds in cross-AI review findings from
+04.4-REVIEWS.md; see each PLAN.md's REVISION NOTE for details. 04.4-04 moved from Wave 1 to Wave 3 so its
+blocking human-verify checkpoint no longer risks stalling the Wave 1→2 barrier for unrelated work):
 **Wave 1** *(independent — no cross-file dependencies)*
-- [ ] 04.4-01-PLAN.md — Delete service core (TDD): `deleteProject.ts` restore-first + `.trash` session-scoped undo, `deleteUndoStore`, stale-trash startup purge
-- [ ] 04.4-02-PLAN.md — `logService`/`logStore` core (TDD) + Console/Log panel wiring (D-12/D-15)
-- [ ] 04.4-03-PLAN.md — StatusBar mesh name/vert-count wire-up + VfsTree non-override label legibility polish
-- [ ] 04.4-04-PLAN.md — Viewport orientation shared module + facing-axis fix [autonomous: false — D-17 human-verify checkpoint]
-- [ ] 04.4-05-PLAN.md — `.eft` parser: FORM STAG fixed-function sampler path + CORE-05 fixture activation (native-core)
-- [ ] 04.4-06-PLAN.md — Native TRE codec interface (pluggable inflate/deflate seam, D-21)
-- [ ] 04.4-07-PLAN.md — Server push: Core3 (Lua-array `config-local.lua` injection) + product-thesis close-out audit (D-20/D-22)
-- [ ] 04.4-08-PLAN.md — Server push: swg-main (loose-file `[SharedFile]` override, D-22)
-- [ ] 04.4-09-PLAN.md — E2E infra: CI build-before-E2E fix + `SWG_TEST_MODE` hook surface + fixture client trees (D-06/D-08/D-11)
+- [ ] 04.4-01-PLAN.md — Delete service core (TDD): `deleteProject.ts` restore-first + shared `deploymentReset.ts` (also used by DeployDialog.handleReset) + `.trash` session-scoped undo, `deleteUndoStore`, stale-trash startup purge
+- [ ] 04.4-02-PLAN.md — `logService`/`logStore` core (TDD) + Console/Log panel wiring, capture installed at module-scope/boot-time (D-12/D-15)
+- [ ] 04.4-03-PLAN.md — StatusBar mesh name/vert-count wire-up (extends existing StatusBar.test.tsx) + VfsTree non-override label legibility polish
+- [ ] 04.4-05-PLAN.md — `.eft` parser: FORM STAG fixed-function sampler path + CI-enforced synthetic fixture + local-only real-fixture activation (native-core)
+- [ ] 04.4-06-PLAN.md — Native TRE codec interface (pluggable inflate/deflate seam via codecForCompressor/codecForTreVersion, D-21)
+- [ ] 04.4-07-PLAN.md — Server push: Core3 (Lua-array `config-local.lua` injection, cross-restart persistence) + product-thesis close-out audit (D-20/D-22)
+- [ ] 04.4-08-PLAN.md — Server push: swg-main (loose-file `[SharedFile]` override, verified servercommon.cfg path, cross-restart persistence, D-22)
+- [ ] 04.4-09-PLAN.md — E2E infra: CI build-before-E2E fix + `SWG_TEST_MODE` hook surface (module-scope install) + fixture client trees (D-06/D-08/D-11)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 04.4-10-PLAN.md — Delete UI: sketch-017 kebab menu, descriptive confirm modal, undo toast, inline dimmed rows
-- [ ] 04.4-11-PLAN.md — Console/Log: main-process `main-log` IPC forward + deploy/reconcile/mount instrumentation (D-13/D-14)
-- [ ] 04.4-12-PLAN.md — Server push UI wiring (VcsPanel "Server Push" section, dispatches on `serverConfig.type`)
+- [ ] 04.4-10-PLAN.md — Delete UI: sketch-017 kebab menu, descriptive confirm modal, undo toast, inline dimmed rows (undo = project-bytes-only, no re-deploy)
+- [ ] 04.4-11-PLAN.md — Console/Log: main-process `main-log` IPC forward folded into installConsoleCapture + deploy/reconcile/mount instrumentation (D-13/D-14)
+- [ ] 04.4-12-PLAN.md — Server push UI wiring (VcsPanel "Server Push" section, disk-backed record rehydration, real-server checkpoint) [autonomous: false]
 - [ ] 04.4-13-PLAN.md — E2E deploy-flow spec (D-07 re-based scenario: stage → save → select/reconcile → deploy → revert)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 04.4-14-PLAN.md — E2E delete-flow spec (D-09: delete → confirm → client-pristine assert → undo → restored)
+- [ ] 04.4-04-PLAN.md — Viewport orientation shared module + facing-axis fix [autonomous: false — D-17 human-verify checkpoint; moved here so it doesn't block Wave 2]
+- [ ] 04.4-14-PLAN.md — E2E delete-flow spec (D-09: delete → confirm → client-pristine assert → undo → restored; undo asserts client stays in its delete-restored state, no re-deploy)
 
 ### Phase 04.3: Versioning Model & SearchTOC Mount Completion (INSERTED)
 
 **Goal:** Land the two big reworks the 04.1/04.2 in-client UAT surfaced as blocking, gated by a sketch-fidelity review, then re-run a single combined UAT.
 - **(0) FIRST — Crew UI-vs-sketch gap review.** Before any rework, run the cross-AI consult crew (CLAUDE.md "phone a friend") to diff the **as-built UI against the sketches** (`.planning/sketches/`, esp. 002-version-graph-timeline / 005-deploy-inspect-tab / 006-combined-deploy-tab / 007 / 008) and enumerate every gap (element-by-element, observed/missing). Operationalizes the new AGENTS.md "Sketches are the UI contract" rule; its findings feed the plan list (the flat-vs-branch-tree version history is one known gap — surface the rest).
-- **(1) Versioning rework** — couple the live client to the SELECTED version so navigating the version tree IS deploying/reverting: per-version deploy model (first-class, not the live radio), a reconcile-to-version engine (forward apply / backward revert in one op) wired to selection behind a confirm, B3 stock snapshot/restore across versions, deploy-model picker shown only for a new forward deploy, first-class revert from any state (subsumes the reopen-Reset gap), and the **visual branch-tree** version history per sketches 002/005. Spec: `todos/pending/version-navigation-live-sync-deploy-model.md`.
+- **(1) Versioning rework** — couple the live client to the SELECTED version so navigating the version tree IS deploying/reverting: per-version deploy model (first-class, not the live radio), a reconcile-to-version engine (forward apply/backward revert in one op) wired to selection behind a confirm, B3 stock snapshot/restore across versions, deploy-model picker shown only for a new forward deploy, first-class revert from any state (subsumes the reopen-Reset gap), and the **visual branch-tree** version history per sketches 002/005. Spec: `todos/pending/version-navigation-live-sync-deploy-model.md`.
 - **(2) SearchTOC / v6000 mount completion** — mount SearchTOC clients from the master `.toc` index (so swg-client-v2's empty-internal-TOC v6000 container `.tre` files contribute entries; payloads read by offset), make v6000 enumerate-only a per-payload runtime check (plain zlib for SWG-Source, encrypted only for Restoration), fix loose-overlay over-enumeration, and the loose-entry mesh viewport. Spec: `todos/pending/v6000-swg-source-plain-zlib-read-support.md`.
 
 Out of scope (separate future item): `delete-project-with-restore` — now scheduled as Phase 4.4.
