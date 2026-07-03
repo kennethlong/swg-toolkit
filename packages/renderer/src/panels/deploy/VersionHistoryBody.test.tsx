@@ -54,6 +54,14 @@ vi.mock('../../services/changesetService', async (importOriginal) => {
   };
 });
 
+// 260703-bpu Task 3: handleUndo now routes through syncLiveToVersion when a client is
+// bound. Mocked so undo tests exercise VersionHistoryBody's own dispatch logic (bound vs.
+// unbound), not the real engine's fs-touching internals.
+const mockSyncLiveToVersion = vi.fn().mockResolvedValue({ noop: false, liveVersionId: null, model: 'cfg', record: undefined });
+vi.mock('../../services/syncLiveToVersion', () => ({
+  syncLiveToVersion: (...args: unknown[]) => mockSyncLiveToVersion(...args),
+}));
+
 vi.mock('./ActionBadge', () => ({
   default: ({ action }: { action: string }) => <span data-testid="action-badge">{action}</span>,
 }));
@@ -133,12 +141,14 @@ function setupDefaultMocks(overrides: {
   stagingEntries?: unknown[];
   canUndo?: boolean;
   undoFn?: () => unknown;
+  clientPath?: string | null;
 } = {}) {
   const {
     deployedVersionId = 'v2',
     stagingEntries = [],
     canUndo = false,
     undoFn = () => undefined,
+    clientPath = '/fake/client',
   } = overrides;
 
   _mockLayoutRows = MOCK_LAYOUT_ROWS;
@@ -149,9 +159,14 @@ function setupDefaultMocks(overrides: {
   );
 
   (useWorkspaceStore as ReturnType<typeof vi.fn>).mockImplementation(
-    (sel: (s: { studioDir: string; clientPath: string }) => unknown) =>
-      sel({ studioDir: '/fake/studio', clientPath: '/fake/client' }),
+    (sel: (s: { studioDir: string; clientPath: string | null }) => unknown) =>
+      sel({ studioDir: '/fake/studio', clientPath }),
   );
+  // 260703-bpu Task 3: handleUndo reads clientPath via useWorkspaceStore.getState() directly
+  // (not the reactive selector, matching DeployDialog's own boundClientPath pattern) —
+  // expose the same value there so the mocked hook supports both call shapes.
+  (useWorkspaceStore as unknown as { getState: () => { clientPath: string | null } }).getState =
+    () => ({ clientPath });
 
   (useStagingStore as ReturnType<typeof vi.fn>).mockImplementation(
     (sel: (s: { entries: unknown[] }) => unknown) =>
@@ -497,10 +512,11 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     expect(mockSelectVersion).toHaveBeenCalledTimes(2);
   });
 
-  it('Undo button calls useUndoStore.undo() and re-selects the prior version (VER-04)', async () => {
+  it('Undo button calls useUndoStore.undo() and restores the prior deployed state via syncLiveToVersion when a client is bound (260703-bpu)', async () => {
     const priorVersionId = 'v1';
     setupDefaultMocks({
       canUndo: true,
+      clientPath: '/fake/client',
       undoFn: () => ({
         priorLiveVersionId: priorVersionId,
         priorDeployRecord: undefined,
@@ -515,13 +531,16 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     await act(async () => { fireEvent.click(undoBtn); });
 
     expect(mockUndoFn).toHaveBeenCalledTimes(1);
-    expect(mockSelectVersion).toHaveBeenCalledWith(priorVersionId);
+    // A bound client routes Undo through the REAL reconcile engine — not a selection-only doSelect.
+    expect(mockSyncLiveToVersion).toHaveBeenCalledWith(priorVersionId, expect.any(Object));
+    expect(mockSelectVersion).not.toHaveBeenCalled();
   });
 
-  it('Ctrl+Z triggers undo when canUndo is true', async () => {
+  it('Ctrl+Z triggers undo when canUndo is true (260703-bpu: routes through syncLiveToVersion when bound)', async () => {
     const priorVersionId = 'v1';
     setupDefaultMocks({
       canUndo: true,
+      clientPath: '/fake/client',
       undoFn: () => ({
         priorLiveVersionId: priorVersionId,
         priorDeployRecord: undefined,
@@ -537,7 +556,31 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     });
 
     expect(mockUndoFn).toHaveBeenCalledTimes(1);
+    expect(mockSyncLiveToVersion).toHaveBeenCalledWith(priorVersionId, expect.any(Object));
+  });
+
+  it('Undo falls back to doSelect (selection-only) when NO client is bound (260703-bpu)', async () => {
+    const priorVersionId = 'v1';
+    setupDefaultMocks({
+      canUndo: true,
+      clientPath: null,
+      undoFn: () => ({
+        priorLiveVersionId: priorVersionId,
+        priorDeployRecord: undefined,
+        takenAt: '2026-01-01T00:00:00Z',
+      }),
+    });
+
+    const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
+    render(<VersionHistoryBody />);
+
+    const undoBtn = screen.getByTestId('undo-btn');
+    await act(async () => { fireEvent.click(undoBtn); });
+
+    expect(mockUndoFn).toHaveBeenCalledTimes(1);
+    // No bound client — no live state to reconcile against; honest degraded selection-only path.
     expect(mockSelectVersion).toHaveBeenCalledWith(priorVersionId);
+    expect(mockSyncLiveToVersion).not.toHaveBeenCalled();
   });
 
   it('nothing deployed (deployedVersionId=null) → Baseline row carries the "live" pip (stock is live)', async () => {

@@ -38,6 +38,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import path from 'path';
 
 import { useChangesetStore } from '../../state/changesetStore';
 import { useStagingStore }   from '../../state/stagingStore';
@@ -45,12 +46,14 @@ import { useWorkspaceStore } from '../../state/workspaceStore';
 import { useUndoStore }      from '../../state/undoStore';
 
 import { flatten, flatEqual, selectVersion } from '../../services/changesetService';
+import { resolveLayout } from '../../services/clientLayout';
+import { syncLiveToVersion, type ReconcileCtx } from '../../services/syncLiveToVersion';
 import { LaneGutter }        from './LaneGutter';
 import { laneLayout, DELTA_ROW_H } from './laneLayout';
 import ActionBadge           from './ActionBadge';
 
 import { BASELINE_ID } from '@swg/contracts';
-import type { SwgChangeset } from '@swg/contracts';
+import type { SwgChangeset, LooseDeployRecord } from '@swg/contracts';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -232,13 +235,47 @@ export default function VersionHistoryBody(): React.JSX.Element {
   // Note: undo snapshots are pushed by syncLiveToVersion (real deploys). With
   // navigation decoupled, row clicks no longer push snapshots — the bar appears
   // only after an actual deploy/revert mutation.
+  //
+  // 260703-bpu Task 3: when a client is bound, Undo performs a REAL reconcile —
+  // restore the PRIOR deployed state on the client via syncLiveToVersion — not
+  // merely re-select the prior version (the old doSelect-only behavior left the
+  // client's actual files/cfg untouched, so "Undo" didn't undo anything real).
+  // When no client is bound, there is no live state to reconcile against — fall
+  // back to the honest degraded path (selection only).
 
   const handleUndo = useCallback(async () => {
     if (isReconciling) return;
     const snapshot = undo();
     if (!snapshot) return;
-    doSelect(snapshot.priorLiveVersionId);
-  }, [isReconciling, undo, doSelect]);
+
+    const clientPath = useWorkspaceStore.getState().clientPath;
+    if (!clientPath) {
+      doSelect(snapshot.priorLiveVersionId);
+      return;
+    }
+
+    const cfgFile = resolveLayout(clientPath)?.cfgFile ?? 'swgemu.cfg';
+    const cfgRootPath = path.join(clientPath, cfgFile);
+    const priorLoose: LooseDeployRecord | undefined =
+      snapshot.priorDeployRecord && 'overrideDir' in snapshot.priorDeployRecord
+        ? (snapshot.priorDeployRecord as LooseDeployRecord)
+        : undefined;
+
+    const ctx: ReconcileCtx = {
+      manifest,
+      studioDir: studioDir ?? '',
+      cfgPath: cfgRootPath,
+      installRoot: clientPath,
+      priorLiveLooseRecord: priorLoose,
+    };
+
+    try {
+      await syncLiveToVersion(snapshot.priorLiveVersionId, ctx);
+    } catch (err) {
+      // Undo must never crash the panel — log-and-continue matches the doSelect catch style.
+      console.error('[VersionHistoryBody] Undo reconcile failed:', err);
+    }
+  }, [isReconciling, undo, doSelect, manifest, studioDir]);
 
   // Ctrl+Z keyboard shortcut for undo
   useEffect(() => {

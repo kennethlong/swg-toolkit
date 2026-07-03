@@ -10,12 +10,13 @@
  *   5 — VER-07: deploy model section hidden when isForwardDeploy=false
  *   6 — VER-07: deploy model section visible when isForwardDeploy=true (default)
  *   7 — DEPLOYUI-12/D14: "not found" row shown when bound client not in detected list
+ *   8 — 260703-bpu: Deploy routes through syncLiveToVersion, not activatePatch/deployLoose directly
  *
- * Source: 04.3-07-PLAN.md Task 3.
+ * Source: 04.3-07-PLAN.md Task 3; 260703-bpu-PLAN.md Task 3.
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 if (typeof global.ResizeObserver === 'undefined') {
@@ -115,11 +116,20 @@ vi.mock('electron', () => ({
   ipcRenderer: { invoke: vi.fn().mockResolvedValue([]) },
 }));
 
+// 260703-bpu Task 3: syncLiveToVersion is the engine DeployDialog.handleDeploy must call —
+// mock it so Test 8 can assert it was invoked (and that activatePatch/deployLoose weren't).
+vi.mock('../../services/syncLiveToVersion', () => ({
+  syncLiveToVersion: vi.fn().mockResolvedValue({ noop: false, liveVersionId: null, model: 'cfg', record: undefined }),
+}));
+
 import { DeployDialog } from './DeployDialog';
 import { useChangesetStore } from '../../state/changesetStore';
 import { useWorkspaceStore }  from '../../state/workspaceStore';
 import { readManifest }       from '../../services/changesetService';
 import { detectClients }      from '../../services/clientLocator';
+import { activatePatch }      from '../../services/cfgActivator';
+import { deployLoose }        from '../../services/looseOverrideDeploy';
+import { syncLiveToVersion }  from '../../services/syncLiveToVersion';
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
 
@@ -215,6 +225,39 @@ describe('DeployDialog — 04.3-07 Task 3', () => {
     const notFoundRow = screen.getByTestId('client-row-not-found');
     expect(notFoundRow).toBeDefined();
     expect(notFoundRow.textContent).toMatch(/not found/i);
+  });
+
+  it('Test 8: Deploy routes through syncLiveToVersion, not activatePatch/deployLoose directly', async () => {
+    useWorkspaceStore.setState({ studioDir: '/fake/studio', clientPath: null, workspaceName: 'proj' });
+
+    (detectClients as ReturnType<typeof vi.fn>).mockReturnValue([
+      { name: 'Test Client', installPath: '/swg/client', cfgRootPath: '/swg/client/swgemu.cfg', treVersion: '0005' },
+    ]);
+
+    (readManifest as ReturnType<typeof vi.fn>).mockReturnValue({
+      activeVersionId:   'cs-1',
+      deployedVersionId: null,
+      changesets: [{ id: 'cs-1', label: 'v1', parentId: null, timestamp: 0, deltas: [] }],
+    });
+
+    render(<DeployDialog open={true} onClose={() => {}} />);
+
+    // Client is not bound (clientPath: null) — select it via the radio row.
+    const clientRow = screen.getByTestId('client-row');
+    const radio = clientRow.querySelector('input[type="radio"]')!;
+    fireEvent.click(radio);
+
+    const deployBtn = screen.getByRole('button', { name: 'Deploy patch' });
+    fireEvent.click(deployBtn);
+
+    await waitFor(() => expect(syncLiveToVersion).toHaveBeenCalled());
+
+    expect(syncLiveToVersion).toHaveBeenCalledWith(
+      'cs-1',
+      expect.objectContaining({ cfgPath: '/swg/client/swgemu.cfg', installRoot: '/swg/client' }),
+    );
+    expect(activatePatch).not.toHaveBeenCalled();
+    expect(deployLoose).not.toHaveBeenCalled();
   });
 
 });
