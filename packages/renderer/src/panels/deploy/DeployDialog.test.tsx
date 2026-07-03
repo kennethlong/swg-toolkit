@@ -40,6 +40,7 @@ vi.mock('../../services/changesetService', () => ({
   }),
   flatEqual:                  vi.fn().mockReturnValue(true),
   updateChangesetDeployRecord: vi.fn(),
+  clearChangesetDeployRecord:  vi.fn(),
 }));
 
 vi.mock('../../services/packPatch', () => ({

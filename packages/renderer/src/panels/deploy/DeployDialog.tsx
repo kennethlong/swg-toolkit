@@ -37,6 +37,7 @@ import {
   readManifest,
   flatEqual,
   updateChangesetDeployRecord,
+  clearChangesetDeployRecord,
 } from '../../services/changesetService.js';
 import { packPatch, buildPatchName } from '../../services/packPatch.js';
 import { detectClients, scanSharedFile, chooseSlot } from '../../services/clientLocator.js';
@@ -59,7 +60,7 @@ type DeployPhase =
   | { kind: 'building' }
   | { kind: 'activating' }
   | { kind: 'done'; slot: string; cfgPath: string }
-  | { kind: 'error'; step: 'build' | 'activate'; message: string; cfgRestored: boolean };
+  | { kind: 'error'; step: 'build' | 'activate' | 'reset'; message: string; cfgRestored: boolean };
 
 // ─── DeployDialog ─────────────────────────────────────────────────────────────
 
@@ -88,6 +89,10 @@ export function DeployDialog({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fullChainScan, setFullChainScan] = useState<SharedFileScan | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  // True when a PRIOR deployment is active (M8 rehydrated record + deployedVersionId set) —
+  // makes "Reset deployment" reachable at phase 'idle' (cross-session), not only right
+  // after an in-session deploy (phase 'done').
+  const [hasPriorDeployment, setHasPriorDeployment] = useState(false);
   // Unsaved-changes prompt (UAT): when deploying with staging != the active version, ask
   // the user to name a version instead of silently auto-snapshotting.
   const [unsavedPromptOpen, setUnsavedPromptOpen] = useState(false);
@@ -126,14 +131,20 @@ export function DeployDialog({
     // M8: cross-session deploy record restore — if no in-memory record, load the
     // persisted CfgDeployRecord (incl. snapshotPath) from the manifest so that
     // Reset works after a close/reopen without a fresh deploy in this session.
+    // The record is carried by the DEPLOYED version's changeset (falling back to the
+    // active one for legacy manifests written before selection was decoupled from deploy).
+    setHasPriorDeployment(false);
     const studioDir0 = useWorkspaceStore.getState().studioDir;
     if (studioDir0) {
       try {
         const m0 = readManifest(studioDir0);
-        if (m0.activeVersionId && m0.activeVersionId !== BASELINE_ID) {
-          const cs0 = m0.changesets.find((c) => c.id === m0.activeVersionId);
+        const carrierId0 = m0.deployedVersionId ?? m0.activeVersionId;
+        if (carrierId0 && carrierId0 !== BASELINE_ID) {
+          const cs0 = m0.changesets.find((c) => c.id === carrierId0);
           if (cs0?.deployRecord) {
             deployRecordRef.current = cs0.deployRecord;
+            // A live deployment exists → surface the idle-phase Reset affordance.
+            if (m0.deployedVersionId) setHasPriorDeployment(true);
           }
         }
       } catch {
@@ -378,8 +389,14 @@ export function DeployDialog({
         // to absolute-path on a fresh dialog open and can't be trusted to know the live model here.
         if (existingRec && 'overrideDir' in existingRec) {
           resetLoose(existingRec as LooseDeployRecord);
+          // Clear the PERSISTED record too — else M8 rehydration resurrects it next open.
+          try {
+            const carrier = manifest.deployedVersionId ?? manifest.activeVersionId;
+            if (carrier && carrier !== BASELINE_ID) clearChangesetDeployRecord(carrier);
+          } catch { /* best-effort */ }
           setDeployedVersion(null);
           deployRecordRef.current = null;
+          setHasPriorDeployment(false);
           setPhase({ kind: 'done', slot: 'Baseline (reset to stock)', cfgPath: rootCfgPath });
           return;
         }
@@ -402,8 +419,15 @@ export function DeployDialog({
           try { fs.unlinkSync(existingRec.patchPath); } catch { /* already gone is fine */ }
         }
 
+        // Clear the PERSISTED record too — else M8 rehydration resurrects it next open.
+        try {
+          const carrier = manifest.deployedVersionId ?? manifest.activeVersionId;
+          if (carrier && carrier !== BASELINE_ID) clearChangesetDeployRecord(carrier);
+        } catch { /* best-effort */ }
+
         setDeployedVersion(null);
         deployRecordRef.current = null;
+        setHasPriorDeployment(false);
         setPhase({ kind: 'done', slot: 'Baseline (reset to stock)', cfgPath: rootCfgPath });
         return;
       }
@@ -628,70 +652,99 @@ export function DeployDialog({
   // Falls back to line-surgery (deactivatePatch / resetShadow) when no snapshot.
 
   const handleReset = useCallback(() => {
+    setShowResetConfirm(false);
+
     if (!deployRecordRef.current) {
-      setShowResetConfirm(false);
+      // Surface the miss — the old silent early-return looked like "Reset did nothing".
+      setPhase({
+        kind: 'error',
+        step: 'reset',
+        message: 'no deployment record found for the active version (close and reopen the dialog to reload it)',
+        cfgRestored: false,
+      });
       return;
     }
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rec = deployRecordRef.current as any;
 
-      // ── Loose-override reset ─────────────────────────────────────────────
-      // No cfg surgery, no .tre deletion — resetLoose restores (B3) or removes
-      // only the files written by the prior deployLoose call.
-      if (deployModel === 'loose-override') {
+      // Dispatch on the RECORD SHAPE — NOT the deployModel radio. The radio resets to
+      // 'absolute-path' on every dialog open and can't be trusted to know which model the
+      // LIVE deployment used (same rule as the Baseline deploy path above). Dispatching on
+      // the radio made Reset call the wrong revert path and throw — silently (old catch).
+      const isLooseRec  = 'overrideDir' in rec;
+      const isShadowRec = 'shadowDir' in rec || rec.patchEntry !== undefined;
+
+      if (isLooseRec) {
+        // ── Loose-override reset ───────────────────────────────────────────
+        // No cfg surgery, no .tre deletion — resetLoose restores (B3) or removes
+        // only the files written by the prior deployLoose call.
         resetLoose(rec as LooseDeployRecord);
-        setDeployedVersion(null);
-        deployRecordRef.current = null;
-        setPhase({ kind: 'idle' });
-        setShowResetConfirm(false);
-        return;
-      }
-
-      const rootCfgPath = selectedClient?.cfgRootPath ?? (rec.includeTargetPath as string | undefined);
-      const snapPath: string | undefined = rec.snapshotPath;
-
-      if (snapPath && rootCfgPath && fs.existsSync(snapPath)) {
-        // H5 PRIMARY: whole-file restore from snapshot — byte-pristine (D-07).
-        // Removes .include + any maxSearchPriority bumps; client returns to stock cfg.
-        restoreCfg(rootCfgPath, snapPath);
-      } else if (deployModel === 'hardlink-shadow') {
-        // Fallback for shadow model without snapshot: line-surgery via resetShadow
-        resetShadow(rec as ShadowDeployRecord, true);
       } else {
-        // Fallback for absolute-path model without snapshot: line-surgery via deactivatePatch
-        deactivatePatch(rec as CfgInsertionRecord);
+        const rootCfgPath = selectedClient?.cfgRootPath ?? (rec.includeTargetPath as string | undefined);
+        const snapPath: string | undefined = rec.snapshotPath;
+
+        if (snapPath && rootCfgPath && fs.existsSync(snapPath)) {
+          // H5 PRIMARY: whole-file restore from snapshot — byte-pristine (D-07).
+          // Removes .include + any maxSearchPriority bumps; client returns to stock cfg.
+          restoreCfg(rootCfgPath, snapPath);
+        } else if (isShadowRec) {
+          // Fallback for shadow model without snapshot: line-surgery via resetShadow
+          resetShadow(rec as ShadowDeployRecord, true);
+        } else {
+          // Fallback for absolute-path model without snapshot: line-surgery via deactivatePatch
+          deactivatePatch(rec as CfgInsertionRecord);
+        }
+
+        // Model-specific artifact cleanup — record shape again, not the radio.
+        if (isShadowRec) {
+          // Remove toolkit cfg (client no longer reads it after root cfg restore)
+          const toolkitCfgPath = rec.cfgPath as string | undefined;
+          if (toolkitCfgPath) {
+            try { fs.unlinkSync(toolkitCfgPath); } catch { /* ignore — may already be gone */ }
+          }
+          // Clean up shadow dir (hardlinks; ~0 bytes for same-volume)
+          const shadowRec = rec as ShadowDeployRecord;
+          if (shadowRec.shadowDir && fs.existsSync(shadowRec.shadowDir)) {
+            try { fs.rmSync(shadowRec.shadowDir, { recursive: true, force: true }); } catch { /* ignore */ }
+          }
+        } else {
+          // Absolute-path: delete the deployed .tre from .studio/build/ if still there
+          // (the studio copy stays as history; patchPath IS the studioDir path for absolute-path)
+          if (rec.patchPath) {
+            try { fs.unlinkSync(rec.patchPath); } catch { /* file may already be gone */ }
+          }
+        }
       }
 
-      // Model-specific artifact cleanup
-      if (deployModel === 'hardlink-shadow') {
-        // Remove toolkit cfg (client no longer reads it after root cfg restore)
-        const toolkitCfgPath = rec.cfgPath as string | undefined;
-        if (toolkitCfgPath) {
-          try { fs.unlinkSync(toolkitCfgPath); } catch { /* ignore — may already be gone */ }
+      // Clear the PERSISTED deploy record too — otherwise the M8 rehydration on the next
+      // dialog open resurrects the "deployed" record that was just reset. Read the pointer
+      // BEFORE clearing it so we know which changeset carries the record.
+      try {
+        const studioDirNow = useWorkspaceStore.getState().studioDir;
+        if (studioDirNow) {
+          const mNow = readManifest(studioDirNow);
+          const carrierId = mNow.deployedVersionId ?? mNow.activeVersionId;
+          if (carrierId) clearChangesetDeployRecord(carrierId);
         }
-        // Clean up shadow dir (hardlinks; ~0 bytes for same-volume)
-        const shadowRec = rec as ShadowDeployRecord;
-        if (shadowRec.shadowDir && fs.existsSync(shadowRec.shadowDir)) {
-          try { fs.rmSync(shadowRec.shadowDir, { recursive: true, force: true }); } catch { /* ignore */ }
-        }
-      } else {
-        // Absolute-path: delete the deployed .tre from .studio/build/ if still there
-        // (the studio copy stays as history; patchPath IS the studioDir path for absolute-path)
-        if (rec.patchPath) {
-          try { fs.unlinkSync(rec.patchPath); } catch { /* file may already be gone */ }
-        }
-      }
+      } catch { /* best-effort — a failed record clear must not block the reset */ }
 
       setDeployedVersion(null);  // W2: clear deployedVersionId from manifest
       deployRecordRef.current = null;
+      setHasPriorDeployment(false);
       setPhase({ kind: 'idle' });
-      setShowResetConfirm(false);
     } catch (e) {
       console.error('[DeployDialog] Reset failed:', e);
-      setShowResetConfirm(false);
+      // Surface the failure — the old silent catch left the dialog showing the deployed
+      // state with no explanation ("Reset does nothing").
+      setPhase({
+        kind: 'error',
+        step: 'reset',
+        message: String((e as Error)?.message ?? e),
+        cfgRestored: false,
+      });
     }
-  }, [deployModel, selectedClient]);
+  }, [selectedClient]);
 
   // ── Return null when closed ───────────────────────────────────────────────
 
@@ -1073,6 +1126,53 @@ export function DeployDialog({
           </>
         )}
 
+        {/* Cross-session Reset: a prior deployment is active but this session hasn't
+            deployed (phase idle) — still offer Reset (record rehydrated via M8). Lives
+            OUTSIDE the phase-state section below, which only renders when non-idle. */}
+        {phase.kind === 'idle' && hasPriorDeployment && (
+          <div style={sectionStyle}>
+            {!showResetConfirm ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <VerificationStatus
+                  variant="pass"
+                  caption="a deployment from a previous session is active on this client"
+                />
+                <button
+                  style={secondaryBtnStyleLocal}
+                  aria-label="Reset deployment"
+                  title="Reset deployment"
+                  onClick={() => setShowResetConfirm(true)}
+                >
+                  Reset deployment
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <p style={{ fontSize: 'var(--text-base)', color: 'var(--color-text)', margin: 0 }}>
+                  Reset deployment? This removes the patch from the client config and deletes the
+                  deployed patch .tre. Your changesets are kept.
+                </p>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <button
+                    style={secondaryBtnStyleLocal}
+                    onClick={() => setShowResetConfirm(false)}
+                    aria-label="Cancel reset"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    style={dangerBtnStyleLocal}
+                    aria-label="Reset deployment"
+                    onClick={handleReset}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Phase state — progress / success / failure */}
         {phase.kind !== 'idle' && (
           <div style={sectionStyle}>
@@ -1152,7 +1252,9 @@ export function DeployDialog({
                 <VerificationStatus
                   variant="fail"
                   caption={
-                    phase.step === 'activate'
+                    phase.step === 'reset'
+                      ? `Reset failed — ${phase.message}. The deployment is still active; nothing was changed.`
+                      : phase.step === 'activate'
                       ? phase.cfgRestored
                         ? `Could not write client config — ${phase.message}. Client cfg restored from snapshot (byte-pristine).`
                         : `Could not write client config — ${phase.message}. Manual cfg check recommended.`
