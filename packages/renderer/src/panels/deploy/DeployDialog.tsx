@@ -41,8 +41,9 @@ import {
 } from '../../services/changesetService.js';
 import { packPatch, buildPatchName } from '../../services/packPatch.js';
 import { detectClients, scanSharedFile, chooseSlot } from '../../services/clientLocator.js';
-import { activatePatch, deactivatePatch, ensureInclude, snapshotCfg, restoreCfg, getToolkitCfgPath } from '../../services/cfgActivator.js';
+import { deactivatePatch, ensureInclude, snapshotCfg, restoreCfg, getToolkitCfgPath } from '../../services/cfgActivator.js';
 import { deployShadowBase, resetShadow, estimateTreSize } from '../../services/shadowBaseService.js';
+import { syncLiveToVersion, type ReconcileCtx } from '../../services/syncLiveToVersion.js';
 import { BASELINE_ID, type TypedIpcRenderer } from '@swg/contracts';
 
 import type { DetectedClient, CfgInsertionRecord, CfgDeployRecord, LooseDeployRecord } from '@swg/contracts';
@@ -50,7 +51,7 @@ import type { SharedFileScan } from '../../services/clientLocator.js';
 import type { ShadowDeployRecord } from '../../services/shadowBaseService.js';
 
 import { resolveLayout } from '../../services/clientLayout.js';
-import { resolveOverrideDir, deployLoose, resetLoose } from '../../services/looseOverrideDeploy.js';
+import { resolveOverrideDir, resetLoose } from '../../services/looseOverrideDeploy.js';
 import { resolveClientMountOrder } from '../../services/clientSearchOrder.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -374,61 +375,47 @@ export function DeployDialog({
       // Deploy from the sealed version (W2: flatten from the version graph, not stagingStore)
       const flattenedEntries = flatten(manifest.activeVersionId, manifest, studioDir);
 
-      // H1: Baseline deploy (or empty version) → reset-to-stock.
+      // H1: Baseline deploy (or empty version) → reset-to-stock, routed through the
+      // syncLiveToVersion engine (isBaseline := desired.length === 0 internally).
       // When the user selects the Baseline version and clicks Deploy, the intent is
-      // "restore the client to stock". Route to restoreCfg + cleanup rather than
-      // throwing the length=0 error (which was confusing and blocked the workflow).
+      // "restore the client to stock" — syncLiveToVersion's H4 dispatch already knows
+      // whether the LIVE deployment was loose (resetLoose) or cfg (restoreCfg).
       if (manifest.activeVersionId === BASELINE_ID || flattenedEntries.length === 0) {
         const rootCfgPath = selectedClient!.cfgRootPath;
-        const swgtoolkitCfgPath = getToolkitCfgPath(studioDir);  // studio, not client
         const existingRec = deployRecordRef.current as (CfgDeployRecord | LooseDeployRecord | null);
+        const priorLoose: LooseDeployRecord | undefined =
+          existingRec && 'overrideDir' in existingRec ? (existingRec as LooseDeployRecord) : undefined;
 
-        // Loose-override reset-to-stock: the live deploy wrote loose files into the override
-        // dir (no cfg surgery), so revert via resetLoose (B3: restore pre-existing originals /
-        // remove toolkit-added). Discriminate on the record shape — the deployModel radio resets
-        // to absolute-path on a fresh dialog open and can't be trusted to know the live model here.
-        if (existingRec && 'overrideDir' in existingRec) {
-          resetLoose(existingRec as LooseDeployRecord);
-          // Clear the PERSISTED record too — else M8 rehydration resurrects it next open.
+        const ctx: ReconcileCtx = {
+          manifest,
+          studioDir,
+          cfgPath: selectedClient!.cfgRootPath,
+          installRoot: selectedClient!.installPath,
+          priorLiveLooseRecord: priorLoose,
+        };
+
+        try {
+          await syncLiveToVersion(manifest.activeVersionId, ctx);
+          // Best-effort bookkeeping — still safe/idempotent. NOTE: do NOT call
+          // setDeployedVersion(null) here: syncLiveToVersion already moved BOTH
+          // activeVersionId and deployedVersionId to the target via setLiveVersion
+          // (D-08 single-pointer invariant) — calling it again would desync the pointers.
           try {
             const carrier = manifest.deployedVersionId ?? manifest.activeVersionId;
             if (carrier && carrier !== BASELINE_ID) clearChangesetDeployRecord(carrier);
           } catch { /* best-effort */ }
-          setDeployedVersion(null);
           deployRecordRef.current = null;
           setHasPriorDeployment(false);
           setPhase({ kind: 'done', slot: 'Baseline (reset to stock)', cfgPath: rootCfgPath });
-          return;
+        } catch (e) {
+          // Baseline revert has no separate "build" step to fail.
+          setPhase({
+            kind: 'error',
+            step: 'activate',
+            message: (e as Error).message ?? String(e),
+            cfgRestored: false,
+          });
         }
-
-        // Attempt root cfg restore from snapshot (if we have one)
-        const snap = existingRec?.snapshotPath;
-        if (snap) {
-          try {
-            if (fs.existsSync(snap)) restoreCfg(rootCfgPath, snap);
-          } catch { /* best-effort — cfg may already be clean */ }
-        }
-
-        // Remove toolkit cfg (client won't need it after root cfg restore)
-        if (fs.existsSync(swgtoolkitCfgPath)) {
-          try { fs.unlinkSync(swgtoolkitCfgPath); } catch { /* ignore */ }
-        }
-
-        // Remove deployed patch .tre from Live/ if recorded
-        if (existingRec?.patchPath) {
-          try { fs.unlinkSync(existingRec.patchPath); } catch { /* already gone is fine */ }
-        }
-
-        // Clear the PERSISTED record too — else M8 rehydration resurrects it next open.
-        try {
-          const carrier = manifest.deployedVersionId ?? manifest.activeVersionId;
-          if (carrier && carrier !== BASELINE_ID) clearChangesetDeployRecord(carrier);
-        } catch { /* best-effort */ }
-
-        setDeployedVersion(null);
-        deployRecordRef.current = null;
-        setHasPriorDeployment(false);
-        setPhase({ kind: 'done', slot: 'Baseline (reset to stock)', cfgPath: rootCfgPath });
         return;
       }
 
@@ -483,14 +470,18 @@ export function DeployDialog({
               ? (prior as LooseDeployRecord)
               : undefined;
 
-          const record = deployLoose(flattenedEntries, resolvedOverrideDir, {
+          const ctx: ReconcileCtx = {
+            manifest,
             studioDir,
-            priorRecord: priorLoose,
-          });
+            cfgPath: selectedClient!.cfgRootPath,
+            installRoot: selectedClient!.installPath,
+            priorLiveLooseRecord: priorLoose,
+          };
 
-          deployRecordRef.current = record;
-          setLiveVersion(manifest.activeVersionId!);   // D-08: moves both activeVersionId + deployedVersionId
-          updateChangesetDeployRecord(manifest.activeVersionId!, record);
+          // syncLiveToVersion already calls updateChangesetDeployRecord + setLiveVersion
+          // internally — do NOT call them again from the dialog.
+          const result = await syncLiveToVersion(manifest.activeVersionId, ctx);
+          deployRecordRef.current = result.record ?? null;
           setPhase({ kind: 'done', slot: 'override-dir', cfgPath: resolvedOverrideDir });
         } catch (e) {
           setPhase({
@@ -593,38 +584,40 @@ export function DeployDialog({
         absSnapshotPath = snapshotCfg(selectedClient!.cfgRootPath, studioDir);
       } catch { /* non-fatal — restoreCfg fallback will skip if snap missing */ }
 
-      // Step 3: activatePatch (writes absolute outputPath as searchTree value) + ensureInclude + persist
-      let record: CfgInsertionRecord | undefined;
+      // Step 3: activate the target cfg entry via the engine (writes the absolute outputPath
+      // as the searchTree value verbatim — freshPatchPath/freshSnapshotPath, plan 260703-bpu
+      // Task 1), then ensureInclude + persist. syncLiveToVersion already calls
+      // updateChangesetDeployRecord + setLiveVersion internally — do NOT call them again.
+      const ctx: ReconcileCtx = {
+        manifest,
+        studioDir,
+        cfgPath: selectedClient!.cfgRootPath,
+        installRoot: selectedClient!.installPath,
+        priorLiveLooseRecord:
+          deployRecordRef.current && 'overrideDir' in (deployRecordRef.current as object)
+            ? (deployRecordRef.current as LooseDeployRecord)
+            : undefined,
+      };
+
       try {
-        // B1: FULL chain scan from client root cfg — NEVER swgtoolkitCfgPath alone.
-        // Scanning only swgtoolkitCfgPath yields occupiedSlots=[] → slot 1 (below retail).
-        const insertScan = scanSharedFile(selectedClient!.cfgRootPath);
-        // D-05: pass outputPath (absolute path to .studio/build/<name>.tre) as patchName
-        // so TreeFile.cpp can find the TRE without a copy-to-Live/. Pass studioDir so
-        // activatePatch relocates the .swgtoolkit.bak into .studio/snapshots (D-06/D-07).
-        record = activatePatch(swgtoolkitCfgPath, outputPath, insertScan, studioDir);
-        deployRecordRef.current = record;
+        // D-05: outputPath (absolute path to .studio/build/<name>.tre) is passed as
+        // freshPatchPath so TreeFile.cpp can find the TRE without a copy-to-Live/.
+        const result = await syncLiveToVersion(manifest.activeVersionId, {
+          ...ctx,
+          freshPatchPath: outputPath,
+          freshSnapshotPath: absSnapshotPath,
+        });
         // M9: ensureInclude on absolute-path path — the root cfg gains a single absolute,
         // quoted .include pointing at the studio cfg (ConfigFile.cpp opens absolute paths).
+        // This remains a dialog-owned step — the engine does not call ensureInclude.
         ensureInclude(selectedClient!.cfgRootPath, swgtoolkitCfgPath);
-        setLiveVersion(manifest.activeVersionId!);  // D-08: moves both activeVersionId + deployedVersionId
-
-        // R2-B8: persist deploy record (incl. snapshotPath for M8 cross-session Reset)
-        const deployRecord: CfgDeployRecord = {
-          cfgPath: record.cfgPath,
-          includeTargetPath: selectedClient!.cfgRootPath,
-          keyName: record.keyName,
-          slot: record.slot,
-          backupPath: record.backupPath,
-          patchPath: outputPath,  // absolute path — no separate patchPathInLive
-          patchVersion: '5000',
-          snapshotPath: absSnapshotPath,
-        };
-        deployRecordRef.current = { ...record, snapshotPath: absSnapshotPath, patchPath: outputPath };
-        updateChangesetDeployRecord(manifest.activeVersionId!, deployRecord);
-        setPhase({ kind: 'done', slot: record.keyName, cfgPath: swgtoolkitCfgPath });
+        deployRecordRef.current = result.record ?? null;
+        setPhase({
+          kind: 'done',
+          slot: (result.record as CfgDeployRecord | undefined)?.keyName ?? 'deployed',
+          cfgPath: swgtoolkitCfgPath,
+        });
       } catch (e) {
-        if (record) deactivatePatch(record);  // W9 line-surgery rollback (04-03)
         // H5/M9 auto-rollback: restore ROOT cfg from snapshot if we took one
         let cfgRestored = false;
         if (absSnapshotPath && selectedClient) {
