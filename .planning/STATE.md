@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 04.3 context gathered (discuss-phase complete)
-last_updated: "2026-07-01T01:33:21.028Z"
-last_activity: 2026-07-01
+status: phase-complete
+stopped_at: Phase 04.3 COMPLETE — combined UAT (04.3-13) APPROVED 2026-07-03; supersedes 04.1-11 + 04.2-06
+last_updated: "2026-07-03"
+last_activity: 2026-07-03
 progress:
   total_phases: 12
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 58
-  completed_plans: 54
-  percent: 93
+  completed_plans: 55
+  percent: 95
 ---
 
 # Project State
@@ -25,27 +25,21 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 04.3 (versioning-and-searchtoc-mount) — EXECUTING
-Plan: 11 of 12
-      (Codex/Cursor/Opus/Sonnet) review applied — 6 HIGH + 9 MED fixed (BASELINE reset-to-stock
-      reachability, mandatory baseline seed, private-decoder extract, whole-file cfg restore +
-      Reset rewire + failed-deploy rollback, backend IPC typing, unified path-safety, .studio
-      migration, dynamic auto-widen). Crew briefs: .planning/research/CONSULT-P4.1-*.md.
-Status: Ready to execute
-        New Project→Add→Save version→Changeset→Deploy patch-prepend→mod loaded in-game, disk-verified).
-        The remaining work is the UI/UX redesign + project-binding/shadow scope surfaced by UAT, now
-        framed as INSERTED Phase 04.1 (maintainer chose inserted-phase over new-plans-under-4). Builds
-        APPROVED sketches 005-B/006-D/007/008 — NOT a fresh design. New reqs: PROJ-01, DEPLOY-05/06/07.
-        Phase 04 deploy ENGINE (packPatch/changesetService/cfgActivator/DeployDialog) reused as-is.
-Next: EXECUTE 04.1 when maintainer says go — `/gsd:execute-phase 04.1` (`/clear` first for fresh context).
-      Wave order 1→9; plan 11 is a real-Electron in-client UAT (autonomous:false) that gates the phase.
-      Ground-truth note: 2 of 3 queued verifications already RESOLVED (absolute searchTree accepted;
-      v6000 encrypted/out-of-scope) — server TRE search-path remains open, deferred to Phase 8 w/ server-push.
-      Separately still pending: Phase 04 formal close-out (mark 04-06/06b complete, verifier,
-      REQUIREMENTS DEPLOY-01..04 → Complete).
-Last activity: 2026-07-01
+Phase: 04.3 (versioning-and-searchtoc-mount) — **COMPLETE** (12/12; UAT 04.3-13 APPROVED 2026-07-03)
+Status: Combined in-client UAT approved via LIVE UAT-ITERATION (2026-07-01..03): maintainer exercised
+        the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
+        Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
+        GRAPH-04/05/08 revised with dated markers in 04.3-RESEARCH.md). Supersedes 04.1-11 + 04.2-06
+        (SUMMARY stubs written) → Phases 04.1 and 04.2 are now fully closed too.
+        REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02 → Complete. DEPLOY-04 (Git/LFS) still Pending.
+Next: Per ROADMAP — next open phase (Phase 5 Live Sync deepening / Phase 04 formal close-out remnant:
+      only DEPLOY-04 + the 04-06/06b bookkeeping remain from Phase 4). Consider /gsd:complete-milestone
+      audit or advance to the next phase when maintainer says go.
+      Follow-up todos: deploy-dialog-synclive-undo-wiring (Undo re-wiring), v6000-swg-source-plain-zlib
+      (done via plans 10-11? verify against todo), server TRE search-path (deferred to Phase 8).
+Last activity: 2026-07-03
 
-Progress: [█████████░] 93%
+Progress: [█████████▌] 95%
 
 ### 02-03 key facts (crew-verified)
 
@@ -271,4 +265,4 @@ Stopped at: Live UAT-iteration session COMPLETE — maintainer confirmed "pretty
   NOTE: plan-13 UAT criteria A1/VER-03/VER-06 (navigate=silent-reconcile), VER-08 (Branch from
   here), A13 (live-row highlight) are SUPERSEDED by the decoupled model — update REQUIREMENTS +
   UAT-RESULTS before sign-off. New todo: deploy-dialog-synclive-undo-wiring.
-Resume file: .planning/phases/04.3-versioning-and-searchtoc-mount/.continue-here.md (+ HANDOFF.json — both PRE-DATE this session's model change; read this note first)
+Resume file: None (plan-13 checkpoint resolved — HANDOFF.json + .continue-here.md deleted at close-out)

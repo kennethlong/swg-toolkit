@@ -26,7 +26,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 - [ ] **CORE-06**: Binary payloads (geometry, textures, audio, terrain) cross the N-API bridge zero-copy and parse on async worker threads (UI never blocks).
 
 ### TRE Mount (TRE)
-- [ ] **TRE-05**: User can mount a decoupled client's FULL base via `searchTOC` (.toc master index, with `TOCTreePath` applied) + `searchPath` loose dirs + `searchTree` overlays in correct precedence — not just `searchTree`. *(Phase 4.2)*
+- [x] **TRE-05**: User can mount a decoupled client's FULL base via `searchTOC` (.toc master index, with `TOCTreePath` applied) + `searchPath` loose dirs + `searchTree` overlays in correct precedence — not just `searchTree`. *(Phase 4.2)*
 
 ### 3D Viewer (VIEW)
 - [x] **VIEW-01**: User can open a static or skinned mesh (`.msh`/`.mgn`) and see it rendered in a Three.js viewport with an orbit camera.
@@ -35,14 +35,14 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 - [ ] **VIEW-04**: User can extract raw assets and export a viewed mesh to glTF/COLLADA.
 
 ### Edit & Deploy Loop (DEPLOY)
-- [ ] **DEPLOY-01**: User can repack edits into a deployable `.tre` patch archive.
-- [ ] **DEPLOY-02**: System updates the client `.cfg` search order to activate a patch (with safe, BOM-free writes).
-- [ ] **DEPLOY-03**: User can roll back changes via a changeset/snapshot history.
+- [x] **DEPLOY-01**: User can repack edits into a deployable `.tre` patch archive.
+- [x] **DEPLOY-02**: System updates the client `.cfg` search order to activate a patch (with safe, BOM-free writes).
+- [x] **DEPLOY-03**: User can roll back changes via a changeset/snapshot history.
 - [ ] **DEPLOY-04**: User can version **mod-produced** assets via Git/LFS (never retail `.tre` dumps).
 - [x] **DEPLOY-05**: User drives the deploy loop from ONE combined Deploy surface — staging (working changes) over the version graph (per-node expandable changed-file lists) with a `Deploy…` modal CTA — composed into the shell as a single `Inspect | Deploy` dock group (approved sketches 005-B/006-D/008). *(Phase 4.1)*
 - [x] **DEPLOY-06**: The shadow-sandbox deploy model is **lazy/virtual and reversible** — only modified files materialize into the override archive, the original client config is snapshot+restorable, and the multi-GB base copy is retired. *(Phase 4.1; gated on ground-truth cfg/TRE verification)*
 - [x] **DEPLOY-07**: User can stage assets directly from the TRE browser (Extract→Add, no manual virtual-path entry) and can reopen a closed panel / reset the workspace layout (no soft-brick). *(Phase 4.1)*
-- [ ] **DEPLOY-08**: User can deploy staged edits by writing loose files into the client's highest-priority `searchPath` override dir (no TRE pack, no `.cfg` surgery); the original install + generated `client.cfg` stay byte-untouched, and a reset removes only toolkit-written files. *(Phase 4.2)*
+- [x] **DEPLOY-08**: User can deploy staged edits by writing loose files into the client's highest-priority `searchPath` override dir (no TRE pack, no `.cfg` surgery); the original install + generated `client.cfg` stay byte-untouched, and a reset removes only toolkit-written files. *(Phase 4.2)*
 
 ### Project & Client Binding (PROJ)
 - [x] **PROJ-01**: User binds a project to a client install (the workflow front door), which auto-mounts that client's base TRE set into the VFS; non-client projects are first-class (no bound client, deploy-to-client disabled). *(Phase 4.1)*
@@ -51,7 +51,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 
 > **Note:** CLIENT-01 is intentionally unused/reserved to maintain ID continuity within the CLIENT category. The first shipped requirement is CLIENT-02 to match the ROADMAP's proposed identifier for this phase.
 
-- [ ] **CLIENT-02**: Toolkit detects `client.cfg`-style decoupled installs (binary dir with zero co-located `.tre`, external TRE data by absolute path) — or completes via a manual cfg-path + TRE-dir override — and persists the layout with the project binding. *(Phase 4.2)*
+- [x] **CLIENT-02**: Toolkit detects `client.cfg`-style decoupled installs (binary dir with zero co-located `.tre`, external TRE data by absolute path) — or completes via a manual cfg-path + TRE-dir override — and persists the layout with the project binding. *(Phase 4.2)*
 
 ### Live In-Game Sync (LIVE) — *Windows-only differentiator*
 - [x] **LIVE-01**: User can attach the toolkit to a running SWG client process on Windows.
@@ -121,7 +121,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | CORE-04 | Phase 1 | Complete |
 | CORE-05 | Phase 1 | Complete |
 | CORE-06 | Phase 1 | Pending |
-| TRE-05 | Phase 4.2 | Pending |
+| TRE-05 | Phase 4.2 | Complete (04.3-13 UAT 2026-07-03) |
 | VIEW-01 | Phase 2 | Complete |
 | VIEW-02 | Phase 2 | Complete |
 | VIEW-03 | Phase 2 | Pending |
@@ -130,16 +130,16 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | LIVE-02 | Phase 3 | Complete |
 | LIVE-04 | Phase 3 | Complete |
 | LIVE-05 | Phase 3 | Complete |
-| DEPLOY-01 | Phase 4 | Pending |
-| DEPLOY-02 | Phase 4 | Pending |
-| DEPLOY-03 | Phase 4 | Pending |
+| DEPLOY-01 | Phase 4 | Complete (04.3-13 UAT 2026-07-03) |
+| DEPLOY-02 | Phase 4 | Complete (04.3-13 UAT 2026-07-03) |
+| DEPLOY-03 | Phase 4 | Complete (04.3-13 UAT 2026-07-03; decoupled select/deploy model) |
 | DEPLOY-04 | Phase 4 | Pending |
 | DEPLOY-05 | Phase 4.1 | Complete |
 | DEPLOY-06 | Phase 4.1 | Complete |
 | DEPLOY-07 | Phase 4.1 | Complete |
-| DEPLOY-08 | Phase 4.2 | Pending |
+| DEPLOY-08 | Phase 4.2 | Complete (04.3-13 UAT 2026-07-03) |
 | PROJ-01 | Phase 4.1 | Complete |
-| CLIENT-02 | Phase 4.2 | Pending |
+| CLIENT-02 | Phase 4.2 | Complete (04.3-13 UAT; detection now content-based, 2026-07-02) |
 | LIVE-03 | Phase 5 | Pending |
 | DATA-01 | Phase 5 | Pending |
 | DATA-02 | Phase 5 | Pending |

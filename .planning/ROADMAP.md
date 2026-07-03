@@ -180,7 +180,7 @@ Out of scope (separate future item): `delete-project-with-restore`.
 
 **Requirements**: Completes parent reqs **TRE-05** (Pillar B searchTOC/v6000 mount), **DEPLOY-03** (rollback/version-navigation), **DEPLOY-08** (loose-override substrate). Phase-internal candidate IDs (carried in plan frontmatter): VER-01..09, GRAPH-01..08, DEPLOYUI-01..15, PROJUI-01..09, SHELL-01..06, MOUNT-01..07.
 **Depends on:** Phase 4.2 (searchTOC/loose-override mount + deploy engine it completes), Phase 4.1 (version graph + deploy UX it reworks). Both phases' in-client UATs (04.1-11, 04.2-06) remain open; this phase's combined UAT supersedes re-running them piecemeal.
-**Plans:** 11/12 plans executed
+**Plans:** 12/12 plans executed — **PHASE COMPLETE** (UAT approved 2026-07-03)
 
 Plans:
 **Wave 0 — test scaffolds & fixtures**
@@ -198,7 +198,7 @@ Plans:
 **Wave 2 — verification gate**
 - [x] 04.3-12-PLAN.md — D-16 de-anchoring crew + byte-exact v6000 gate (GO/NO-GO)
 **Wave 3 — combined in-client UAT**
-- [ ] 04.3-13-PLAN.md — Combined UAT on searchTree + searchTOC clients [autonomous: false] (supersedes 04.1-11 + 04.2-06)
+- [x] 04.3-13-PLAN.md — Combined UAT on searchTree + searchTOC clients — APPROVED 2026-07-03 via live UAT-iteration (supersedes 04.1-11 + 04.2-06; selection/deploy model decoupled mid-UAT per crew consult — see 04.3-13-SUMMARY.md)
 
 ### Phase 04.1: Deploy & Project UX (INSERTED)
 **Goal**: Make the now-working deploy loop **discoverable and zero-risk** by building the **approved sketch designs** (005-B / 006-D / 007 / 008) — not a fresh redesign. Bind a project to a client install as the workflow front door (auto-mount its base TRE set); compose the deploy surface into ONE combined Deploy tab (staging over the version graph with per-node expandable changed-file lists + a `Deploy…` modal CTA) inside a single `Inspect | Deploy` dock group; enable staging assets directly from the TRE browser; and re-architect the shadow-sandbox model to **lazy/virtual** (only modified files materialize; original client config snapshot+restorable) so the original client can never be permanently broken. The Phase 4 deploy **engine** (`packPatch`, `changesetService` flatten/seal/select, `cfgActivator`, `DeployDialog`) is reused as-is — this phase is UI/UX composition + the project-binding workflow + the shadow re-architecture, NOT new byte-level format work.
@@ -235,7 +235,7 @@ Plans:
 **Wave 8**
 - [x] 04.1-10-PLAN.md — Centralize IPC channel return types (Pattern 8): contracts ipc.ts IpcChannels/TypedIpcRenderer + swap all call sites
 **Wave 9**
-- [ ] 04.1-11-PLAN.md — Phase UAT checkpoint: in-client real-Electron onboarding→deploy→reset on SWG Infinity + SWGEmu [autonomous: false]
+- [x] 04.1-11-PLAN.md — Phase UAT checkpoint — SUPERSEDED by 04.3-13 (approved 2026-07-03); see 04.1-11-SUMMARY.md
 
 ### Phase 04.2: Dev-Client Support & Loose-Override Deploy (INSERTED)
 **Goal**: Make the toolkit a first-class citizen of the standard **dev/modder workflow**, where the runnable client is **decoupled** from its TRE data — the client binary dir (`stage/`: exe + dlls + `client.cfg`, **zero `.tre`**) references an **external** game-data install by absolute path (verified ground truth: swg-client-v2 / SWG Source). Three capabilities, built as one vertical slice: (1) **detect `client.cfg` layouts** (add the release row to `clientLayout.ts`/`clientLocator.ts`) plus a **manual cfg-path + TRE-dir override** when auto-detect can't classify an install; (2) **extend the mount** (`clientSearchOrder.ts`/`treAutoMount.ts`) to read the FULL base via **`searchTOC`** (a `.toc` master index — token "TOC"/TAG_0001, listing 131+ TREs + a path→archive index, with `TOCTreePath` prepended to each archive name) and **`searchPath`** loose dirs, not just `searchTree`, so the dev client's full asset set is browsable/extractable; (3) add a **"deploy into the top-priority loose `searchPath` override dir"** deploy mode — write edited loose files straight into the override dir (no TRE pack, no `.cfg` surgery, survives cmake/setup regen), which **realizes the lazy/virtual shadow thesis** Phase 04.1 introduced. Reuses the 04.1 project-binding + deploy surface; this is mount-breadth + a new deploy target + detection, NOT new byte-level format work.
@@ -267,7 +267,7 @@ Plans:
 - [x] 04.2-05-PLAN.md — DeployDialog: third radio 'Loose override dir' + resolvedOverrideDir preview; generalize handleBrowse via resolveLayout; handleDeploy + handleReset loose-override branches (deployLoose/resetLoose only, no packPatch/cfgActivator)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 04.2-06-PLAN.md — In-client UAT: full test suite gate + E2E space-terminal retexture proof (bind swg-client-v2 → mount 131-archive base → stage edit → deploy → in-game verification → reset → sha256 invariant; Infinity regression) [autonomous: false]
+- [x] 04.2-06-PLAN.md — In-client UAT — SUPERSEDED by 04.3-13 (approved 2026-07-03); see 04.2-06-SUMMARY.md
 
 ### Phase 5: WYSIWYG Live-Sync & Typed Editors
 **Goal**: Join the two independently-built halves — viewport gizmo and injection module — into the zero-restart WYSIWYG loop over the SharedArrayBuffer data channel, and ship the first typed edit surfaces (DTII grid, `.stf` strings) as the highest-frequency editing entry points.
