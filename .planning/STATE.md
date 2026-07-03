@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: phase-complete
-stopped_at: Phase 04.3 COMPLETE — combined UAT (04.3-13) APPROVED 2026-07-03; supersedes 04.1-11 + 04.2-06
-last_updated: "2026-07-03"
-last_activity: 2026-07-03
+status: "Combined in-client UAT approved via LIVE UAT-ITERATION (2026-07-01..03): maintainer exercised"
+stopped_at: Phase 04.3 CLOSED (UAT 04.3-13 approved; supersedes 04.1-11 + 04.2-06; requirements +
+last_updated: "2026-07-03T17:24:17.835Z"
+last_activity: "2026-07-03 — Completed quick task 260703-bpu: DeployDialog deploys routed through"
 progress:
-  total_phases: 12
-  completed_phases: 6
+  total_phases: 13
+  completed_phases: 8
   total_plans: 58
-  completed_plans: 55
-  percent: 95
+  completed_plans: 58
+  percent: 100
 ---
 
 # Project State
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 04.3 — versioning-and-searchtoc-mount
+**Current focus:** Phase 04.4 — ux-polish-deploy-hardening
 
 ## Current Position
 
-Phase: 04.3 (versioning-and-searchtoc-mount) — **COMPLETE** (12/12; UAT 04.3-13 APPROVED 2026-07-03)
+Phase: 04.4 (ux-polish-deploy-hardening) — NOT PLANNED (inserted 2026-07-03; 6 UI/hardening todos)
 Status: Combined in-client UAT approved via LIVE UAT-ITERATION (2026-07-01..03): maintainer exercised
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
         GRAPH-04/05/08 revised with dated markers in 04.3-RESEARCH.md). Supersedes 04.1-11 + 04.2-06
         (SUMMARY stubs written) → Phases 04.1 and 04.2 are now fully closed too.
         REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02 → Complete. DEPLOY-04 (Git/LFS) still Pending.
-Next: Per ROADMAP — next open phase (Phase 5 Live Sync deepening / Phase 04 formal close-out remnant:
+Next: /gsd:discuss-phase 04.4 or /gsd:plan-phase 04.4 — knock out the 6 UI-related todos (delete-project-with-restore, e2e deploy-flow coverage, console/log tabs, statusbar mesh name, VFS dim, viewport facing); Phase 5 follows.
       only DEPLOY-04 + the 04-06/06b bookkeeping remain from Phase 4). Consider /gsd:complete-milestone
       audit or advance to the next phase when maintainer says go.
       Follow-up todos: deploy-dialog-synclive-undo-wiring (Undo re-wiring), v6000-swg-source-plain-zlib
@@ -117,6 +117,7 @@ Progress: [█████████▌] 95%
 - Phase 04.1 inserted after Phase 4: Deploy & Project UX — redesign building approved sketches 005-B/006-D/007/008 (combined Deploy tab, project↔client binding front door, lazy/virtual shadow); emerged from Phase 4 in-client UAT (URGENT)
 - Phase 04.2 inserted after Phase 4: Dev-Client Support & Loose-Override Deploy: detect client.cfg + mount searchTOC/searchPath + loose-override deploy mode for the dev/modder decoupled-client class (swg-client-v2) (URGENT)
 - Phase 04.3 inserted after Phase 4.2: Versioning Model & SearchTOC Mount Completion — crew UI-vs-sketch gap review first, then version-navigation rework + searchTOC/v6000 master-index mount (bundles the two big queued UAT-blocking reworks) (URGENT)
+- Phase 04.4 inserted after Phase 4.3: UX Polish & Deploy Hardening — 6 UI-related todos (delete-project-with-restore, e2e deploy-flow coverage, console/log tabs, statusbar mesh name, VFS override dim, viewport facing axis) (URGENT)
 
 ### Decisions
 

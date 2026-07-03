@@ -6,6 +6,7 @@ origin: Maintainer UI feedback while inspecting the resolved-dependency archive 
 severity: low
 area: renderer / TRE VFS browser (VfsTree winning-archive pip)
 status: pending
+resolves_phase: "04.4"
 ---
 
 ## Symptom

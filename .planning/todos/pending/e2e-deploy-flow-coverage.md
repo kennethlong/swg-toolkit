@@ -6,6 +6,7 @@ origin: Maintainer, during Phase-4 in-client UAT — "Can we not test some of th
 severity: high (process/quality gap)
 area: e2e (Playwright + real Electron) / Phase-4 deploy panels
 status: pending
+resolves_phase: "04.4"
 disposition: note now; turn into a real plan (likely its own small phase or a close-out hardening task)
 related: staging-workflow-redesign, project-binds-and-automounts-client-tres
 ---

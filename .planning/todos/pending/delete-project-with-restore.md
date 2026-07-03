@@ -6,6 +6,7 @@ origin: Maintainer UAT note during 04.2-06 — "How do I delete a project? Delet
 severity: high (no in-app delete exists today; manual folder-delete orphans a modified client cfg and/or deployed override files)
 area: renderer / project lifecycle (ProjectListDialog + new deleteProject service + restore reuse)
 status: pending
+resolves_phase: "04.4"
 related: client-detection-and-layout-model, project-entry-point-and-shadow-redesign, project-binds-and-automounts-client-tres, client-deploy-design-tenets
 ---
 

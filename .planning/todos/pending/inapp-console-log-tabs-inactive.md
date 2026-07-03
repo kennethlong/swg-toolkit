@@ -6,6 +6,7 @@ origin: Phase 02 04 — debugging skinned .sat lockup; user couldn't open Consol
 severity: low
 area: renderer / Data panel
 status: pending
+resolves_phase: "04.4"
 ---
 
 ## Symptom

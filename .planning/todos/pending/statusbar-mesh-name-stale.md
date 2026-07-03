@@ -6,6 +6,7 @@ origin: Phase 02 checkpoint testing (02-02 human-verify)
 severity: low
 area: renderer / status bar
 status: pending
+resolves_phase: "04.4"
 ---
 
 ## Symptom
