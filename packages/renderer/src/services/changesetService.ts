@@ -479,6 +479,15 @@ export function setLiveVersion(id: string | null): void {
   manifest.deployedVersionId = id;
   writeManifest(studioDir, manifest);
 
+  // Re-materialize the staging working set from the now-selected version (mirrors
+  // selectVersion's B2 fix). This was DROPPED when the version-graph row-click migrated from
+  // selectVersion → syncLiveToVersion/setLiveVersion, leaving stale entries in staging after
+  // navigation. Consequences without it: (a) the dirty check (staging vs flatten(active)) saw
+  // stale files → false "Discard unsaved changes?" prompts; (b) the Working-changes panel kept
+  // showing the PRIOR version's files after switching. Restoring here keeps staging ≡ the
+  // selected version so a freshly-selected version reads as clean (0 uncommitted).
+  useStagingStore.getState().restoreEntries(flatten(id, manifest, studioDir));
+
   // Update Zustand stores so UI re-renders reflect the new live pointer.
   useChangesetStore.getState().setActiveVersion(id);
   useChangesetStore.getState().setDeployedVersion(id);
@@ -508,6 +517,28 @@ export function updateChangesetDeployRecord(
   }
 
   cs.deployRecord = record;
+  writeManifest(studioDir, manifest);
+  useChangesetStore.getState().setManifest(manifest);
+}
+
+/**
+ * Remove the persisted deploy record from the named changeset (Reset deployment).
+ *
+ * Without this, Reset only clears the in-memory deployRecordRef — the record persisted
+ * by updateChangesetDeployRecord survives in manifest.json, and the M8 cross-session
+ * rehydration on the next dialog open resurrects the "deployed" state that was just reset.
+ *
+ * Tolerant: a missing changeset is a no-op (Reset must never fail on a stale id).
+ */
+export function clearChangesetDeployRecord(csId: string): void {
+  const studioDir = useWorkspaceStore.getState().studioDir;
+  if (!studioDir) throw new Error('No workspace open');
+
+  const manifest = readManifest(studioDir);
+  const cs = manifest.changesets.find(c => c.id === csId);
+  if (!cs || cs.deployRecord === undefined) return;
+
+  delete cs.deployRecord;
   writeManifest(studioDir, manifest);
   useChangesetStore.getState().setManifest(manifest);
 }

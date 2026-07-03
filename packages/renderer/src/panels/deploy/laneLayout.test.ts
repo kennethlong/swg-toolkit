@@ -74,7 +74,7 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
       cs('v3', 'v2', 3),
     ];
 
-    const layout = laneLayout(changesets, null, false);
+    const layout = laneLayout(changesets, null, null, false);
 
     // RED: stub returns [] → FAIL at first assertion
     expect(layout.rows).toHaveLength(3);
@@ -112,7 +112,7 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
       cs('v3', 'v1', 3),
     ];
 
-    const layout = laneLayout(changesets, null, false);
+    const layout = laneLayout(changesets, null, null, false);
 
     // RED: stub returns [] → FAIL here
     expect(layout.rows).toHaveLength(3);
@@ -150,7 +150,7 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
       cs('v4', 'v2', 4),   // second child of v2 → branch lane 1
     ];
 
-    const layout = laneLayout(changesets, null, false);
+    const layout = laneLayout(changesets, null, null, false);
 
     // RED: stub returns [] → FAIL here
     expect(layout.rows).toHaveLength(4);
@@ -201,7 +201,7 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
       cs('v5', 'v4',  5),   // first child of v4 → inherits lane 1
     ];
 
-    const layout = laneLayout(changesets, null, false);
+    const layout = laneLayout(changesets, null, null, false);
 
     // RED: stub returns [] → FAIL here
     expect(layout.rows).not.toHaveLength(0);
@@ -264,7 +264,7 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
       cs('v4', 'v1', 4),  // lane 2
     ];
 
-    const layout = laneLayout(changesets, null, false);
+    const layout = laneLayout(changesets, null, null, false);
 
     // RED: stub returns [] → FAIL here
     expect(layout.rows).not.toHaveLength(0);
@@ -302,24 +302,25 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
   // Case 6: hasUncommittedWork=true → 'wip' connector above live node
   // ---------------------------------------------------------------------------
 
-  it('(6) hasUncommittedWork=true → a "wip" connector exists in the live node\'s lane', () => {
+  it('(6) hasUncommittedWork=true → a "wip" connector exists in the selected node\'s lane', () => {
     const changesets = [
       cs('v1', null, 1),
       cs('v2', 'v1', 2),
     ];
 
-    const layout = laneLayout(changesets, 'v2', /* hasUncommittedWork = */ true);
+    // WIP anchors on the SELECTED version (staging materializes from it); v2 is also deployed.
+    const layout = laneLayout(changesets, 'v2', 'v2', /* hasUncommittedWork = */ true);
 
-    // RED: stub returns [] connectors → FAIL here
     const wipConn = layout.connectors.find((c) => c.kind === 'wip');
     expect(wipConn).toBeDefined();
 
-    // WIP connector must be in the live node's lane (v2 is trunk → lane 0, x=22)
-    const liveNode = layout.nodes.find((n) => n.id === 'v2');
-    expect(liveNode?.kind).toBe('live');
+    // The v2 node carries BOTH state booleans (deployed disc + selection ring).
+    const v2Node = layout.nodes.find((n) => n.id === 'v2');
+    expect(v2Node?.deployed).toBe(true);
+    expect(v2Node?.selected).toBe(true);
 
-    // 'live' node must be rendered as accent-filled (kind:'live')
-    expect(layout.nodes.find((n) => n.kind === 'live')).toBeDefined();
+    // Exactly one deployed node.
+    expect(layout.nodes.filter((n) => n.deployed)).toHaveLength(1);
   });
 
   // ---------------------------------------------------------------------------
@@ -334,7 +335,7 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
       cs('v1', null,  1),
     ];
 
-    const layout = laneLayout(changesets, null, false);
+    const layout = laneLayout(changesets, null, null, false);
 
     // RED: stub returns [] → FAIL here
     expect(layout.rows).toHaveLength(3);
@@ -347,20 +348,62 @@ describe('laneLayout — Wave-0 RED (stub returns empty layout)', () => {
   // Node kind: root and live markers
   // ---------------------------------------------------------------------------
 
-  it('root node (no parentId) has kind:"root"; live node (id===liveVersionId) has kind:"live"', () => {
+  it('root node has kind:"root"; deployed/selected are ORTHOGONAL state booleans (not kinds)', () => {
     const changesets = [
       cs('v1', null, 1),
       cs('v2', 'v1', 2),
     ];
 
-    const layout = laneLayout(changesets, 'v2', false);
+    // v2 deployed, v1 selected — the two states live on DIFFERENT nodes simultaneously.
+    const layout = laneLayout(changesets, 'v2', 'v1', false);
 
-    // RED: stub returns [] → FAIL here
     const rootNode = layout.nodes.find((n) => n.id === 'v1');
-    const liveNode = layout.nodes.find((n) => n.id === 'v2');
+    const v2Node   = layout.nodes.find((n) => n.id === 'v2');
 
     expect(rootNode?.kind).toBe('root');
-    expect(liveNode?.kind).toBe('live');
+    expect(rootNode?.selected).toBe(true);
+    expect(rootNode?.deployed).toBe(false);
+
+    expect(v2Node?.kind).toBe('older');   // topology-only — no 'live' kind anymore
+    expect(v2Node?.deployed).toBe(true);
+    expect(v2Node?.selected).toBe(false);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Case 7: variable-height rows — expanded row shifts subsequent node Y (S3 fix)
+  // ---------------------------------------------------------------------------
+
+  it('(7) expanding a row shifts every subsequent node/connector down by its extra height', () => {
+    const changesets = [
+      cs('v1', null, 1),
+      cs('v2', 'v1', 2),
+      cs('v3', 'v2', 3),
+      cs('v4', 'v3', 4),
+    ];
+
+    const collapsed = laneLayout(changesets, null, null, false);
+    // v3 (rowIndex 2) expanded with 4 delta rows → +120px below its header band.
+    const extra = new Map<string, number>([['v3', 4 * 30]]);
+    const expanded = laneLayout(changesets, null, null, false, extra);
+
+    const cyOf = (l: typeof collapsed, id: string) => l.nodes.find((n) => n.id === id)!.cy;
+
+    // Rows at or above the expanded row are unmoved (expansion grows BELOW the header).
+    expect(cyOf(expanded, 'v1')).toBe(cyOf(collapsed, 'v1'));
+    expect(cyOf(expanded, 'v2')).toBe(cyOf(collapsed, 'v2'));
+    expect(cyOf(expanded, 'v3')).toBe(cyOf(collapsed, 'v3'));
+
+    // Rows BELOW shift by exactly the extra height.
+    expect(cyOf(expanded, 'v4')).toBe(cyOf(collapsed, 'v4') + 120);
+
+    // The v3→v4 trunk connector's endpoint follows the shifted node.
+    const trunkToV4 = expanded.connectors.find(
+      (c) => c.kind === 'trunk' && c.y2 === cyOf(expanded, 'v4'),
+    );
+    expect(trunkToV4).toBeDefined();
+
+    // Total SVG height grows by the same amount (scroll extents stay in sync).
+    expect(expanded.height).toBe(collapsed.height + 120);
   });
 
 });

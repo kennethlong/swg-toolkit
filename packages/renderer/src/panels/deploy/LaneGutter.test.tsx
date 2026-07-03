@@ -43,15 +43,15 @@ const branchedLayout: GraphLayout = {
     { kind: 'branch', d: 'M 22 26 C 56 26 68 78 68 130' },
   ],
   nodes: [
-    { id: 'v1', cx: 22, cy: 26, kind: 'root' },
-    { id: 'v2', cx: 22, cy: 78, kind: 'branch-point' },
-    { id: 'v3', cx: 68, cy: 130, kind: 'older' },
+    { id: 'v1', cx: 22, cy: 26, kind: 'root', deployed: false, selected: false },
+    { id: 'v2', cx: 22, cy: 78, kind: 'branch-point', deployed: false, selected: false },
+    { id: 'v3', cx: 68, cy: 130, kind: 'older', deployed: false, selected: false },
   ],
   width: 90,
   height: 156,
 };
 
-/** A 2-node layout with v2 as the live node (no WIP). */
+/** A 2-node layout with v2 as the deployed/live node (no WIP, nothing selected). */
 const liveLayout: GraphLayout = {
   rows: [
     { id: 'v1', rowIndex: 0, lane: 0, y: 26 },
@@ -59,8 +59,20 @@ const liveLayout: GraphLayout = {
   ],
   connectors: [{ kind: 'trunk', x1: 22, y1: 26, x2: 22, y2: 78 }],
   nodes: [
-    { id: 'v1', cx: 22, cy: 26, kind: 'root' },
-    { id: 'v2', cx: 22, cy: 78, kind: 'live' },
+    { id: 'v1', cx: 22, cy: 26, kind: 'root', deployed: false, selected: false },
+    { id: 'v2', cx: 22, cy: 78, kind: 'older', deployed: true, selected: false },
+  ],
+  width: 90,
+  height: 104,
+};
+
+/** v1 selected (ring) while v2 is deployed (disc) — the decoupled steady state. */
+const selectedLayout: GraphLayout = {
+  rows: liveLayout.rows,
+  connectors: liveLayout.connectors,
+  nodes: [
+    { id: 'v1', cx: 22, cy: 26, kind: 'root', deployed: false, selected: true },
+    { id: 'v2', cx: 22, cy: 78, kind: 'older', deployed: true, selected: false },
   ],
   width: 90,
   height: 104,
@@ -100,14 +112,37 @@ describe('LaneGutter', () => {
     expect(bezierPath).toBeTruthy();
   });
 
-  // (C) Live node — sketch element GRAPH-05 / A6+D-13
-  it('(C) live node renders r=9 outer circle AND r=4 inner dot', () => {
+  // (C) Deployed/live node — sketch element GRAPH-05 / A6+D-13
+  it('(C) deployed node renders r=9 outer circle AND r=4 inner dot', () => {
     const { container } = render(<LaneGutter layout={liveLayout} />);
     const circles = Array.from(container.querySelectorAll('circle'));
     const outer = circles.find((c) => c.getAttribute('r') === '9');
     const inner = circles.find((c) => c.getAttribute('r') === '4');
     expect(outer).toBeTruthy();
     expect(inner).toBeTruthy();
+  });
+
+  // (C2) Selection ring — SELECTED node gets an r=12 accent ring, independent of deployed.
+  it('(C2) selected node renders an r=12 accent ring; deployed node keeps its disc', () => {
+    const { container } = render(<LaneGutter layout={selectedLayout} />);
+    const circles = Array.from(container.querySelectorAll('circle'));
+
+    // v1 selected → r=12 ring (fill none, accent stroke) around its r=6 hollow body
+    const ring = circles.find((c) => c.getAttribute('r') === '12');
+    expect(ring).toBeTruthy();
+    expect(ring?.getAttribute('fill')).toBe('none');
+    expect(ring?.getAttribute('stroke')).toBe('var(--color-accent)');
+
+    // v2 deployed → still has the r=9 disc + r=4 inner dot (states are orthogonal)
+    expect(circles.find((c) => c.getAttribute('r') === '9')).toBeTruthy();
+    expect(circles.find((c) => c.getAttribute('r') === '4')).toBeTruthy();
+
+    // liveLayout (nothing selected) renders NO ring
+    const { container: noSel } = render(<LaneGutter layout={liveLayout} />);
+    const noSelRing = Array.from(noSel.querySelectorAll('circle')).find(
+      (c) => c.getAttribute('r') === '12',
+    );
+    expect(noSelRing).toBeFalsy();
   });
 
   // (D) WIP dashed line — sketch element GRAPH-04 / A5

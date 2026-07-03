@@ -20,7 +20,7 @@
  * Source: 04.1-03-PLAN.md Task 3; 04.3-07-PLAN.md Task 1.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 
 import StagingPanelBody  from './StagingPanelBody';
@@ -30,6 +30,7 @@ import { DeployDialog }  from './DeployDialog';
 import { useStagingStore }   from '../../state/stagingStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { useChangesetStore } from '../../state/changesetStore';
+import { flatten } from '../../services/changesetService';
 
 import { BASELINE_ID } from '@swg/contracts';
 
@@ -137,8 +138,30 @@ function DeployPanelReady({ status, clientPath }: DeployPanelReadyProps): React.
   const entries     = useStagingStore((s) => s.entries);
   const buildStatus = useStagingStore((s) => s.buildStatus);
   const workspaceName = useWorkspaceStore((s) => s.workspaceName);
+  const studioDir   = useWorkspaceStore((s) => s.studioDir);
   const manifest    = useChangesetStore((s) => s.manifest);
   const activeVersionId = manifest?.activeVersionId ?? null;
+
+  // # of UNCOMMITTED changes = staging entries that differ from the active version's committed
+  // set (new path, changed action, or changed sha). NOT entries.length — after a Save the
+  // staging working set equals flatten(active), so this correctly reads 0 and the "uncommitted"
+  // dot clears. Falls back to entries.length only if the active flat can't be computed.
+  const uncommittedCount = useMemo(() => {
+    if (!activeVersionId || !manifest || !studioDir) return entries.length;
+    let base;
+    try {
+      base = new Map(flatten(activeVersionId, manifest, studioDir).map((e) => [e.virtualPath, e]));
+    } catch {
+      return entries.length;
+    }
+    return entries.filter((e) => {
+      const b = base.get(e.virtualPath);
+      if (!b) return true;                    // new path → uncommitted
+      if (b.action !== e.action) return true; // action changed → uncommitted
+      if (b.sha256 !== undefined && e.sha256 !== undefined) return b.sha256 !== e.sha256;
+      return false;                           // same path, no sha to compare → treat as committed
+    }).length;
+  }, [entries, activeVersionId, manifest, studioDir]);
 
   const [deployOpen, setDeployOpen] = useState(false);
 
@@ -164,7 +187,19 @@ function DeployPanelReady({ status, clientPath }: DeployPanelReadyProps): React.
   // ── Deploy CTA logic ───────────────────────────────────────────────────────
   const projectKind       = status.info.kind;
   const isNonClientProject = projectKind === 'mod-project' || clientPath == null;
-  const deployDisabled    = isNonClientProject;
+
+  // The selected version is ALREADY live and there is nothing uncommitted to seal →
+  // deploying it is a no-op, so the CTA disables. deployedVersionId === null means
+  // nothing is deployed (client at stock), i.e. Baseline is live — selecting Baseline
+  // then is also a no-op. Uncommitted changes re-enable the CTA (Deploy seals + ships
+  // a NEW version, which is never a no-op).
+  const deployedVersionId = manifest?.deployedVersionId ?? null;
+  const selectedIsLive =
+    activeVersionId !== null &&
+    uncommittedCount === 0 &&
+    activeVersionId === (deployedVersionId ?? BASELINE_ID);
+
+  const deployDisabled = isNonClientProject || selectedIsLive;
 
   // ── Active version label for CTA ──────────────────────────────────────────
   const versionLabel = (() => {
@@ -234,7 +269,8 @@ function DeployPanelReady({ status, clientPath }: DeployPanelReadyProps): React.
           collapsed={stagingCollapsed}
           onToggle={() => setStagingCollapsed((c) => !c)}
         >
-          <span aria-hidden="true" style={{ color: 'var(--color-accent)' }}>●</span>
+          {/* Dot is "active" (accent) ONLY when there are real uncommitted changes; grey otherwise. */}
+          <span aria-hidden="true" style={{ color: uncommittedCount > 0 ? 'var(--color-accent)' : 'var(--color-text-faint)' }}>●</span>
           <span>Working changes (uncommitted)</span>
           <span
             style={{
@@ -243,7 +279,9 @@ function DeployPanelReady({ status, clientPath }: DeployPanelReadyProps): React.
               color:      'var(--color-text-faint)',
             }}
           >
-            {entries.length} {entries.length === 1 ? 'file' : 'files'}
+            {uncommittedCount === 0
+              ? 'no changes'
+              : `${uncommittedCount} ${uncommittedCount === 1 ? 'file' : 'files'}`}
           </span>
         </SectionHead>
 
@@ -355,14 +393,24 @@ function DeployPanelReady({ status, clientPath }: DeployPanelReadyProps): React.
           disabled={deployDisabled}
           aria-disabled={deployDisabled}
           onClick={deployDisabled ? undefined : () => setDeployOpen(true)}
-          aria-label={deployDisabled ? 'Deploy disabled — no bound client' : `Deploy ${versionLabel}`}
+          aria-label={
+            isNonClientProject
+              ? 'Deploy disabled — no bound client'
+              : selectedIsLive
+              ? `${versionLabel} is already live`
+              : `Deploy ${versionLabel}`
+          }
           title={
-            deployDisabled
+            isNonClientProject
               ? 'Non-client project — deploy-to-client is not available'
+              : selectedIsLive
+              ? `${versionLabel} is already live — stage a change or select another version`
               : `Deploy ${versionLabel} to the bound client`
           }
         >
-          Deploy {versionLabel}…
+          {selectedIsLive && !isNonClientProject
+            ? `${versionLabel} is live ✓`
+            : <>Deploy {versionLabel}…</>}
         </button>
 
         {/* DEPLOYUI-11/D13: footer instructional hint */}

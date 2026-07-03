@@ -36,6 +36,7 @@ if (typeof global.ResizeObserver === 'undefined') {
 vi.mock('../../services/changesetService', () => ({
   sealVersion:    vi.fn().mockResolvedValue(undefined),
   selectVersion:  vi.fn(),
+  setLiveVersion: vi.fn(),
   flatten:        vi.fn().mockReturnValue([]),
   flatEqual:      vi.fn().mockReturnValue(true),
 }));
@@ -47,6 +48,7 @@ vi.mock('../../services/pathSafety', () => ({
 import DeployPanel from './DeployPanel';
 import { useChangesetStore } from '../../state/changesetStore';
 import { useWorkspaceStore }  from '../../state/workspaceStore';
+import { useStagingStore }    from '../../state/stagingStore';
 import { selectVersion, sealVersion } from '../../services/changesetService';
 import { BASELINE_ID } from '@swg/contracts';
 import type { SwgChangeset, WorkspaceChangesetManifest, WorkspaceInfo } from '@swg/contracts';
@@ -120,11 +122,51 @@ describe('DeployPanel', () => {
     expect(screen.getByText('Add armor')).toBeDefined();
     // Must render Baseline node
     expect(screen.getByText(/Baseline \(pristine\)/i)).toBeDefined();
-    // Must render Deploy CTA
-    expect(screen.getByText(/Deploy/i)).toBeDefined();
+    // Must render the Deploy CTA. In THIS fixture the selected version (Baseline) is
+    // already live (nothing deployed = stock), so the CTA renders its disabled
+    // "Baseline is live ✓" no-op state rather than "Deploy Baseline…".
+    expect(screen.getByText(/Baseline is live/i)).toBeDefined();
   });
 
-  it('Test 2: clicking a version row ▸-expands to its deltas[] (D-04: reconcile replaces selectVersion)', () => {
+  it('Test 1b: Deploy CTA disables when the SELECTED version is already live (no-op)', () => {
+    // v1 is both selected AND deployed, staging clean → deploying it would be a no-op.
+    const manifest = buildManifest([
+      { id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] },
+      { id: 'v1', parentId: BASELINE_ID, label: 'Add armor', deltas: [] },
+    ], 'v1');
+    manifest.deployedVersionId = 'v1';
+    useChangesetStore.setState({ manifest });
+
+    render(<DeployPanel />);
+
+    const cta = screen.getByRole('button', { name: /already live/i });
+    expect((cta as HTMLButtonElement).disabled).toBe(true);
+    expect(cta.textContent).toMatch(/is live ✓/);
+  });
+
+  it('Test 1c: Deploy CTA stays ENABLED on the live version when uncommitted changes exist', () => {
+    // Same selected===deployed, but staging holds an entry not in the version →
+    // Deploy seals + ships a NEW version, never a no-op.
+    const manifest = buildManifest([
+      { id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] },
+      { id: 'v1', parentId: BASELINE_ID, label: 'Add armor', deltas: [] },
+    ], 'v1');
+    manifest.deployedVersionId = 'v1';
+    useChangesetStore.setState({ manifest });
+    // flatten is mocked to [] → any staged entry counts as uncommitted.
+    useStagingStore.setState({ entries: [{ virtualPath: 'foo.iff', action: 'add' }] as never });
+
+    render(<DeployPanel />);
+
+    const cta = screen.getByRole('button', { name: /^Deploy Add armor$/i });
+    expect((cta as HTMLButtonElement).disabled).toBe(false);
+    expect(cta.textContent).toMatch(/Deploy Add armor…/);
+
+    // Cleanup — the staging store is the REAL zustand store, shared across tests.
+    useStagingStore.setState({ entries: [] });
+  });
+
+  it('Test 2: clicking a version row ▸-expands its deltas[] AND selects it (decoupled — no deploy)', () => {
     const manifest = buildManifest([
       { id: BASELINE_ID, parentId: null, label: 'Baseline (pristine)', deltas: [] },
       {
@@ -145,8 +187,9 @@ describe('DeployPanel', () => {
     expect(v1LabelEl).not.toBeNull();
     fireEvent.click(v1LabelEl);
 
-    // D-04 NOTE: selectVersion is no longer called (replaced by syncLiveToVersion).
-    expect(selectVersion).not.toHaveBeenCalled();
+    // Decoupled model (supersedes D-04): row click SELECTS via selectVersion — pointer +
+    // staging materialization only, NO client mutation. Deploy is the explicit CTA.
+    expect(selectVersion).toHaveBeenCalledWith('v1');
 
     // Delta virtualPath should still appear (▸ expansion KEEP item preserved)
     expect(screen.getByText('appearance/armor.mgn')).toBeDefined();

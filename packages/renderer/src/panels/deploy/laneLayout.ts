@@ -6,7 +6,8 @@
  *
  *   ROW LAYOUT (layout.rows is the SINGLE row-order source):
  *     - Rows are OLDEST-FIRST by timestamp.
- *     - rowY(r) = 52 * r + 26.
+ *     - rowY(r) = rowTop(r) + 26 (variable-height: rowTop is the prefix sum of
+ *       52px header bands + any expanded extraHeights; all-collapsed ≡ 52*r + 26).
  *     - Consumers MUST render from layout.rows in order — do NOT re-sort.
  *
  *   LANE ASSIGNMENT (by topology/parentId, NOT branchSet()):
@@ -28,11 +29,11 @@
  *     - Cross lane: cubic-bezier (kind:'branch', d = 'M px py C px+34 py bx midY bx by').
  *     - WIP stub: kind:'wip' (x1/y1/x2/y2) above live node when hasUncommittedWork.
  *
- *   NODE KINDS (D-13):
- *     - 'root'         — no parentId, gray hollow circle (r=6).
- *     - 'live'         — id === liveVersionId, accent-filled (r=9) + inner dot (r=4).
- *     - 'branch-point' — node with >1 child placed so far.
- *     - 'older'        — all others, gray hollow (r=6).
+ *   NODE KINDS (topology-only) + STATE BOOLEANS (D-13, revised):
+ *     - kind: 'root' (no parentId) | 'branch-point' (>1 child) | 'older' — gray hollow (r=6).
+ *     - deployed: id === deployedVersionId → accent-filled disc (r=9) + inner dot (r=4).
+ *     - selected: id === selectedVersionId → accent ring (r=12) drawn around the body.
+ *       deployed/selected are ORTHOGONAL — a node can be either, both, or neither.
  *
  * Source: 04.3-02-PLAN.md Task 3; 04.3-05-PLAN.md Task 1;
  *         04.3-RESEARCH.md § PRIMARY lane-assignment algorithm steps 1–12;
@@ -63,16 +64,19 @@ export interface LaidNode {
   id: string;
   /** SVG x-coordinate: 22 + 46 * lane. */
   cx: number;
-  /** SVG y-coordinate: 52 * rowIndex + 26. */
+  /** SVG y-coordinate: rowTop(rowIndex) + 26 (center of the row's fixed 52px header band). */
   cy: number;
   /**
-   * Visual kind for theming (D-13):
+   * TOPOLOGY-only kind (deploy/selection state are the orthogonal booleans below):
    *   'root'         — oldest node, no parent; gray hollow.
-   *   'live'         — currently-live version; accent-filled + inner dot.
    *   'branch-point' — parent of more than one placed child; gray hollow.
    *   'older'        — all other nodes; gray hollow.
    */
-  kind: 'root' | 'older' | 'live' | 'branch-point';
+  kind: 'root' | 'older' | 'branch-point';
+  /** id === deployedVersionId — this version is actually live in the game client (accent disc). */
+  deployed: boolean;
+  /** id === selectedVersionId (activeVersionId) — the open/Deploy-target version (accent ring). */
+  selected: boolean;
 }
 
 /** One SVG connector (line or bezier) between a node and its parent. */
@@ -122,8 +126,24 @@ export interface GraphLayout {
 /** SVG x-coordinate for a lane: 22 + 46 * lane. */
 export const laneXOf = (lane: number): number => 22 + 46 * lane;
 
-/** SVG y-coordinate for a row: 52 * rowIndex + 26. */
-export const rowYOf = (rowIndex: number): number => 52 * rowIndex + 26;
+/**
+ * Fixed header band height of every row block (px). An expanded row grows BELOW this band
+ * (delta sub-rows), so the node circle always sits inside the header band.
+ * MUST match rowBase.height in VersionHistoryBody.tsx.
+ */
+export const ROW_HEADER_H = 52;
+
+/**
+ * Height of one delta sub-row / the baseline "No deltas" note (px).
+ * MUST match the expansion row height in VersionHistoryBody.tsx.
+ */
+export const DELTA_ROW_H = 30;
+
+/**
+ * SVG y-coordinate for a row in the DEGENERATE all-collapsed case: 52 * rowIndex + 26.
+ * The general (variable-height) form is rowTop(i) + 26 — see laneLayout's nodeY.
+ */
+export const rowYOf = (rowIndex: number): number => ROW_HEADER_H * rowIndex + 26;
 
 // ---------------------------------------------------------------------------
 // laneLayout
@@ -142,15 +162,22 @@ export const rowYOf = (rowIndex: number): number => 52 * rowIndex + 26;
  *        - additional child → lowest FREE lane > 0 (recycled when parentRow > lastEndRow).
  *   5. Emit rows, nodes (with kind), connectors (trunk/branch/wip).
  *
- * @param changesets      All changesets in the workspace manifest (any order).
- * @param liveVersionId   ID of the currently-live version (drives 'live' node kind + WIP).
- * @param hasUncommittedWork  When true, a 'wip' connector is emitted above the live node.
- * @returns               GraphLayout with rows (oldest-first), nodes, connectors, width, height.
+ * @param changesets         All changesets in the workspace manifest (any order).
+ * @param deployedVersionId  ID of the version actually live in the game client (accent-disc node).
+ * @param selectedVersionId  ID of the SELECTED version (activeVersionId — accent-ring node + WIP anchor).
+ * @param hasUncommittedWork When true, a 'wip' connector is emitted above the selected node.
+ * @param extraHeights       Per-changeset EXTRA px rendered below the row's 52px header (expanded
+ *                           delta lists). Keyed by changeset id; absent/empty = all collapsed.
+ *                           Feeding this in keeps SVG node Y aligned with the row headers when
+ *                           rows expand (variable-height rows).
+ * @returns                  GraphLayout with rows (oldest-first), nodes, connectors, width, height.
  */
 export function laneLayout(
   changesets: SwgChangeset[],
-  liveVersionId: string | null,
+  deployedVersionId: string | null,
+  selectedVersionId: string | null,
   hasUncommittedWork: boolean,
+  extraHeights?: Map<string, number>,
 ): GraphLayout {
   if (changesets.length === 0) {
     return { rows: [], connectors: [], nodes: [], width: 90, height: 0 };
@@ -260,37 +287,58 @@ export function laneLayout(
   }
 
   // -----------------------------------------------------------------------
+  // Step 5-pre: Variable-height row geometry (prefix sums).
+  // rowHeight[i] = 52 header band + any expanded extra below it.
+  // nodeY(i) = rowTop(i) + 26 — the node sits in the FIXED header band of its
+  // block, so it stays aligned with the row header regardless of expansion.
+  // Degenerate case (no extraHeights) reproduces the old 52*i + 26 exactly.
+  // -----------------------------------------------------------------------
+  const rowTopArr: number[] = new Array<number>(sorted.length);
+  let heightAcc = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    rowTopArr[i] = heightAcc;
+    heightAcc += ROW_HEADER_H + (extraHeights?.get(sorted[i].id) ?? 0);
+  }
+  const nodeY = (i: number): number => rowTopArr[i] + 26;
+
+  // -----------------------------------------------------------------------
   // Step 5a: Build rows[] (oldest-first, definitive row order).
   // -----------------------------------------------------------------------
   const rows: LaidRow[] = sorted.map((cs, i) => ({
     id: cs.id,
     rowIndex: i,
     lane: laneOf.get(cs.id)!,
-    y: rowYOf(i),
+    y: nodeY(i),
   }));
 
   // -----------------------------------------------------------------------
-  // Step 5b: Build nodes[] (kind assignment priority: root > live > branch-point > older).
+  // Step 5b: Build nodes[] — kind is TOPOLOGY-only; deployed/selected are
+  // orthogonal state booleans (a deployed root renders root shape + disc).
   // -----------------------------------------------------------------------
   const nodes: LaidNode[] = sorted.map((cs, i) => {
     const lane = laneOf.get(cs.id)!;
     const cx = laneXOf(lane);
-    const cy = rowYOf(i);
+    const cy = nodeY(i);
     const hasParent = cs.parentId !== null && idSet.has(cs.parentId!);
     const placed = childrenPlaced.get(cs.id) ?? 0;
 
     let kind: LaidNode['kind'];
     if (!hasParent) {
       kind = 'root';
-    } else if (cs.id === liveVersionId) {
-      kind = 'live';
     } else if (placed > 1) {
       kind = 'branch-point';
     } else {
       kind = 'older';
     }
 
-    return { id: cs.id, cx, cy, kind };
+    return {
+      id: cs.id,
+      cx,
+      cy,
+      kind,
+      deployed: cs.id === deployedVersionId,
+      selected: cs.id === selectedVersionId,
+    };
   });
 
   // -----------------------------------------------------------------------
@@ -309,9 +357,9 @@ export function laneLayout(
     const parentRowIdx = rowIndexOf.get(parentId)!;
 
     const px = laneXOf(parentLane);
-    const py = rowYOf(parentRowIdx);
+    const py = nodeY(parentRowIdx);
     const bx = laneXOf(nodeLane);
-    const by = rowYOf(i);
+    const by = nodeY(i);
 
     if (nodeLane === parentLane) {
       // Same lane: vertical trunk line.
@@ -325,29 +373,33 @@ export function laneLayout(
   }
 
   // -----------------------------------------------------------------------
-  // Step 5d: WIP connector (dashed stub above the live node).
+  // Step 5d: WIP connector (dashed stub above the SELECTED node).
+  // Uncommitted work is measured against the SELECTED (active) version — the
+  // staging working set materializes from it and the next Save parents to it —
+  // so the stub anchors there, not on the deployed version.
   // -----------------------------------------------------------------------
-  if (hasUncommittedWork && liveVersionId) {
-    const liveRow = rows.find((r) => r.id === liveVersionId);
-    if (liveRow) {
-      const wipX = laneXOf(liveRow.lane);
+  if (hasUncommittedWork && selectedVersionId) {
+    const selRow = rows.find((r) => r.id === selectedVersionId);
+    if (selRow) {
+      const wipX = laneXOf(selRow.lane);
       connectors.push({
         kind: 'wip',
         x1: wipX,
         y1: 0,
         x2: wipX,
-        y2: liveRow.y - 9, // stop above live node outer circle (r=9)
+        y2: selRow.y - 13, // stop above the selection ring (r=12)
       });
     }
   }
 
   // -----------------------------------------------------------------------
   // Step 6: Compute overall dimensions.
-  // width = max(90, laneX(maxLane) + 8) — widens past 2 concurrent lanes.
-  // height = numRows * 52.
+  // width = max(90, laneX(maxLane) + 13) — widens past 2 concurrent lanes;
+  //         +13 clears the r=12 selection ring on the rightmost lane.
+  // height = Σ rowHeight (== numRows * 52 when nothing is expanded).
   // -----------------------------------------------------------------------
-  const width = Math.max(90, laneXOf(maxLane) + 8);
-  const height = sorted.length * 52;
+  const width = Math.max(90, laneXOf(maxLane) + 13);
+  const height = heightAcc;
 
   return { rows, connectors, nodes, width, height };
 }

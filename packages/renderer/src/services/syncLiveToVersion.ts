@@ -162,8 +162,18 @@ export async function syncLiveToVersion(
   const desired = flatten(targetId, manifest, studioDir);
 
   // ─── Noop fast path (flatEqual) ──────────────────────────────────────────
+  // No FILE changes are needed (the live client already matches the target bytes), but the
+  // SELECTION must still move the live/active pointer to the target — otherwise selecting a
+  // version whose flattened bytes already equal the live set (e.g. Baseline when nothing is
+  // deployed, or a sibling version with identical files) leaves activeVersionId on the
+  // previously-saved version. Since sealVersion parents the next Save to activeVersionId,
+  // that produced the "new version attaches to the wrong parent / doesn't branch" bug.
+  // D-08 invariant: selected ≡ live — so move BOTH pointers via setLiveVersion.
   if (flatEqual(desired, liveEntries)) {
-    return { noop: true, liveVersionId: liveId, model: liveModel };
+    if (manifest.activeVersionId !== targetId || manifest.deployedVersionId !== targetId) {
+      setLiveVersion(targetId);
+    }
+    return { noop: true, liveVersionId: targetId, model: liveModel };
   }
 
   // ─── Undo snapshot — BEFORE any mutation (D-06/VER-04) ───────────────────

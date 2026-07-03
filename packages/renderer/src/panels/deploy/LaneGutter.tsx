@@ -69,21 +69,35 @@ function WipLine({ c }: { c: Connector }): React.JSX.Element {
   );
 }
 
-/** Gray hollow circle for root / older / branch-point nodes. */
+/** Gray hollow circle for root / older / branch-point nodes (selected → surface-2 fill). */
 function GrayNode({ node }: { node: LaidNode }): React.JSX.Element {
   return (
     <circle
       cx={node.cx}
       cy={node.cy}
       r={6}
-      fill="var(--color-surface)"
+      fill={node.selected ? 'var(--color-surface-2)' : 'var(--color-surface)'}
       stroke="var(--color-text-faint)"
       strokeWidth={1.5}
     />
   );
 }
 
-/** Accent-filled live node: outer r=9 circle + inner r=4 dot. */
+/** Accent ring drawn around the SELECTED node's body (r=12 clears both body shapes). */
+function SelectionRing({ node }: { node: LaidNode }): React.JSX.Element {
+  return (
+    <circle
+      cx={node.cx}
+      cy={node.cy}
+      r={12}
+      fill="none"
+      stroke="var(--color-accent)"
+      strokeWidth={2}
+    />
+  );
+}
+
+/** Accent-filled deployed/live node: outer r=9 circle + inner r=4 dot. */
 function LiveNode({ node }: { node: LaidNode }): React.JSX.Element {
   return (
     <>
@@ -141,14 +155,17 @@ export function LaneGutter({ layout }: { layout: GraphLayout }): React.JSX.Eleme
         return null;
       })}
 
-      {/* Nodes — drawn on top of connectors */}
-      {layout.nodes.map((node) => {
-        if (node.kind === 'live') {
-          return <LiveNode key={node.id} node={node} />;
-        }
-        // root, older, branch-point all use the gray hollow circle
-        return <GrayNode key={node.id} node={node} />;
-      })}
+      {/* Nodes — drawn on top of connectors.
+          Body encodes DEPLOYED state (accent disc vs gray hollow); an accent ring on top
+          encodes SELECTED state. Orthogonal: either, both, or neither can apply. */}
+      {layout.nodes.map((node) => (
+        <g key={node.id}>
+          {node.deployed
+            ? <LiveNode node={node} />
+            : <GrayNode node={node} />}
+          {node.selected && <SelectionRing node={node} />}
+        </g>
+      ))}
     </svg>
   );
 }

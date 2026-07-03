@@ -94,11 +94,15 @@ export default function StatusBar(): React.ReactElement {
 
   // S7: live: vN — derive 1-based oldest-first ordinal (same as footer in VersionHistoryBody)
   const liveVersionLabel = useMemo(() => {
-    if (!deployedVersionId) return null;
+    // No project open / no versions at all → hide the chip entirely.
+    if (changesets.length === 0) return null;
+    // Nothing deployed → the client is at STOCK. Show it rather than hiding the chip —
+    // the live state must always be readable from the UI.
+    if (!deployedVersionId) return 'stock (nothing deployed)';
     if (deployedVersionId === BASELINE_ID) {
       return 'baseline';
     }
-    const layout = laneLayout(changesets, null, false);
+    const layout = laneLayout(changesets, null, null, false);
     const ordinalMap = new Map<string, number>();
     layout.rows.forEach((r) => ordinalMap.set(r.id, r.rowIndex + 1));
     const vN = ordinalMap.get(deployedVersionId) ?? null;

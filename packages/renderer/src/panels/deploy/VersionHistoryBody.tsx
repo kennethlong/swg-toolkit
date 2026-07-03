@@ -11,17 +11,25 @@
  *   GRAPH-08 (A13): 52px graph-row, row hover background, is-active accent LEFT-border on
  *                   the LIVE row only (not branch rows — fixes old A13 gap).
  *   VER-08 (A8):    State pip collapses to ONE "live" marker (D-13) + "root" label.
- *                   Per-row Deploy/Revert DROPPED (D-09); "Branch from here" KEPT.
+ *                   Per-row Deploy/Revert DROPPED (D-09). "Branch from here" also DROPPED —
+ *                   branching is implicit: select the changeset to branch from, then Save
+ *                   (sealVersion parents the new version to the selected/active version).
  *
- *   D-04:  Click row = instant silent reconcile (syncLiveToVersion) — version tree IS the deploy control.
+ *   D-04 (SUPERSEDED 2026-07, crew consult): Click row = SELECT (selectVersion — pointer +
+ *         staging materialization, NO client mutation). Deploying to the live client is the
+ *         explicit "Deploy vN…" action. Rationale: navigate=deploy mutated a real game client
+ *         on every click (even expand-to-browse) and threw on unbuilt versions (EISDIR) before
+ *         the pointer moved, leaving selection stuck.
  *   D-07:  Confirm fires ONLY when staged (uncommitted) changes would be discarded.
- *   D-08:  Single live pointer; no preview-limbo / no active≠deployed stale concept.
- *   D-09:  Branch-from-here sets parentId intent for NEXT sealVersion — no reconcile.
- *   VER-04/H5: Undo button + Ctrl+Z re-runs syncLiveToVersion to prior version.
+ *   D-08 (REVISED): activeVersionId (selected) and deployedVersionId (live on client) may
+ *         legitimately DIVERGE until an explicit Deploy — the lag is meaningful state.
+ *         The "live" pip/disc tracks deployedVersionId; the highlight/ring tracks selection.
+ *   D-09:  Branching is implicit — select the changeset to branch from, then Save.
+ *   VER-04/H5: Undo button + Ctrl+Z re-selects the prior version (snapshots are pushed by
+ *         real deploys via syncLiveToVersion, not by navigation).
  *
  *   KEEP: Baseline node (dashed-square, H2b dedup), ▸ per-row delta expansion (M7).
- *   REMOVE: stale banner (D-08: stale concept gone), selectVersion import (replaced by syncLiveToVersion).
- *   REMOVE: inline node ● color hex (nodes now rendered by LaneGutter SVG).
+ *   REMOVE: stale banner, inline node ● color hex (nodes now rendered by LaneGutter SVG).
  *
  * vN ordinal: 1-based OLDEST-FIRST (rowIndex+1 from laneLayout.rows). Same derivation
  * feeds the footer "live: vN" and plan 09 statusbar so numbers agree.
@@ -36,10 +44,9 @@ import { useStagingStore }   from '../../state/stagingStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { useUndoStore }      from '../../state/undoStore';
 
-import { syncLiveToVersion } from '../../services/syncLiveToVersion';
-import type { ReconcileCtx } from '../../services/syncLiveToVersion';
+import { flatten, flatEqual, selectVersion } from '../../services/changesetService';
 import { LaneGutter }        from './LaneGutter';
-import { laneLayout }        from './laneLayout';
+import { laneLayout, DELTA_ROW_H } from './laneLayout';
 import ActionBadge           from './ActionBadge';
 
 import { BASELINE_ID } from '@swg/contracts';
@@ -77,12 +84,21 @@ function fmtTimestamp(ts: string): string {
 export default function VersionHistoryBody(): React.JSX.Element {
   const manifest    = useChangesetStore((s) => s.manifest);
   const studioDir   = useWorkspaceStore((s) => s.studioDir);
-  const clientPath  = useWorkspaceStore((s) => s.clientPath);
   const stagingEntries = useStagingStore((s) => s.entries);
   const canUndo     = useUndoStore((s) => s.canUndo);
   const undo        = useUndoStore((s) => s.undo);
 
-  const liveVersionId = manifest?.deployedVersionId ?? null;
+  // The LIVE version — what is actually deployed to the game client. When NOTHING is
+  // deployed (deployedVersionId === null), the client is at STOCK, i.e. Baseline is live —
+  // show the live badge/disc on the Baseline row so the live state is ALWAYS visible
+  // (a graph with no live marker read as "impossible to tell what's live").
+  const liveVersionId = manifest
+    ? (manifest.deployedVersionId ?? BASELINE_ID)
+    : null;
+  // The SELECTED version — the one whose files are open and that the Deploy button targets
+  // (Deploy CTA reads activeVersionId). The row highlight tracks THIS so "which version am I
+  // on" is always visible, including when nothing is deployed (deployedVersionId === null).
+  const selectedVersionId = manifest?.activeVersionId ?? null;
   const changesets    = useMemo(() => manifest?.changesets ?? [], [manifest]);
 
   // ▸ Per-row expand state for delta lists (M7)
@@ -91,21 +107,50 @@ export default function VersionHistoryBody(): React.JSX.Element {
   // D-07 confirm dialog state (targetId = what we're about to navigate to)
   const [confirmPending, setConfirmPending] = useState<{ targetId: string | null } | null>(null);
 
-  // Branch-from intent state (for the next sealVersion call — D-09)
-  const [branchFromId, setBranchFromId] = useState<string | null>(null);
-
   // In-flight reconcile guard (D-06: rapid clicks must not queue concurrent reconciles)
   const [isReconciling, setIsReconciling] = useState(false);
 
-  // hasUncommittedWork: true when staging area has staged (unsaved) changes.
+  // hasUncommittedWork: TRUE only when the staging working set DIFFERS from the active
+  // version's committed (flattened) deltas — NOT merely "staging is non-empty".
+  //
+  // After Save/Deploy, sealVersion sets activeVersionId to the new version and LEAVES the
+  // staging store holding that version's working set, so stagingEntries.length > 0 is still
+  // true even though nothing is uncommitted. The old length check made the D-07 confirm
+  // ("Discard unsaved changes?") fire — and the LaneGutter WIP stub show — right after a
+  // clean save. Fix: compare staging against flatten(activeVersion) with flatEqual, the same
+  // dirty check DeployDialog uses (changesetService.flatten / flatEqual).
   // Used for: (1) WIP dashed stub above live node in LaneGutter, (2) D-07 confirm trigger.
-  // Computed ONCE per render — same value used by both laneLayout and the D-07 guard.
-  const hasUncommittedWork = stagingEntries.length > 0;
+  const hasUncommittedWork = useMemo(() => {
+    if (stagingEntries.length === 0) return false;
+    if (!manifest || !studioDir) return true; // can't compare → assume dirty (prompt is safer)
+    try {
+      const currentFlat = flatten(manifest.activeVersionId, manifest, studioDir);
+      const stagingSorted = [...stagingEntries].sort((a, b) =>
+        a.virtualPath < b.virtualPath ? -1 : a.virtualPath > b.virtualPath ? 1 : 0,
+      );
+      return !flatEqual(stagingSorted, currentFlat);
+    } catch {
+      return true; // comparison failed (e.g. a stored file went missing) → assume dirty, don't crash
+    }
+  }, [stagingEntries, manifest, studioDir]);
 
-  // Graph layout (topology-based lane assignment via laneLayout from plan 05)
+  // Per-row EXTRA height below the 52px header (expanded delta lists) — feeds laneLayout so
+  // SVG node Y stays aligned with row headers when rows expand (variable-height rows).
+  // MUST mirror the actual expansion render: N deltas × 30px, or a single 30px baseline note.
+  const extraHeights = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const cs of changesets) {
+      if (!expanded.has(cs.id)) continue;
+      m.set(cs.id, cs.id === BASELINE_ID ? DELTA_ROW_H : cs.deltas.length * DELTA_ROW_H);
+    }
+    return m;
+  }, [changesets, expanded]);
+
+  // Graph layout (topology-based lane assignment via laneLayout from plan 05).
+  // deployed (liveVersionId) drives the accent disc; selected drives the ring + WIP anchor.
   const layout = useMemo(
-    () => laneLayout(changesets, liveVersionId, hasUncommittedWork),
-    [changesets, liveVersionId, hasUncommittedWork],
+    () => laneLayout(changesets, liveVersionId, selectedVersionId, hasUncommittedWork, extraHeights),
+    [changesets, liveVersionId, selectedVersionId, hasUncommittedWork, extraHeights],
   );
 
   // Changeset lookup map (O(1) by id)
@@ -132,65 +177,68 @@ export default function VersionHistoryBody(): React.JSX.Element {
     liveVersionId && liveVersionId !== BASELINE_ID
       ? (csById.get(liveVersionId)?.label ?? null)
       : liveVersionId === BASELINE_ID
-      ? 'Baseline (pristine)'
+      // Distinguish "explicitly deployed Baseline" from "nothing deployed → stock":
+      // the latter is the liveVersionId fallback (deployedVersionId === null).
+      ? (manifest?.deployedVersionId === BASELINE_ID ? 'Baseline (pristine)' : 'stock — client untouched')
       : null;
 
-  // ─── Reconcile context builder ────────────────────────────────────────────
+  // ─── Core selection (DECOUPLED from deploy — crew consult 2026-07) ────────
+  //
+  // Clicking a version row SELECTS it: move activeVersionId + materialize the staging
+  // working set from flatten(id). NO game-client mutation — selectVersion writes only
+  // the manifest + stores. Deploying to the live client is the EXPLICIT "Deploy vN…"
+  // action (DeployDialog), which is where syncLiveToVersion belongs.
+  //
+  // This replaces the former navigate=deploy model (D-04/D-08 "selected ≡ live"):
+  // every click deployed to the REAL client (even expand-to-browse), and a version
+  // with no built patch made the reconcile throw (EISDIR via scanSharedFile on a
+  // directory) BEFORE the pointer moved — selection appeared stuck on baseline.
+  // New invariant: activeVersionId (selected/viewing) and deployedVersionId (live on
+  // client) legitimately diverge until an explicit Deploy; the lag is meaningful state.
 
-  const buildCtx = useCallback((): ReconcileCtx | null => {
-    if (!manifest || !studioDir) return null;
-    return {
-      manifest,
-      studioDir,
-      // Best-effort: clientPath works for both loose-override (searchPath dir detection)
-      // and cfg-model (auto-detect layout from dir). Falls back to studioDir when absent.
-      cfgPath:     clientPath ?? studioDir,
-      installRoot: clientPath ?? studioDir,
-    };
-  }, [manifest, studioDir, clientPath]);
-
-  // ─── Core reconcile ──────────────────────────────────────────────────────
-
-  const doReconcile = useCallback(
-    async (targetId: string | null) => {
+  const doSelect = useCallback(
+    (targetId: string | null) => {
       if (isReconciling) return;
-      const ctx = buildCtx();
-      if (!ctx) return;
       setIsReconciling(true);
       try {
-        await syncLiveToVersion(targetId, ctx);
-        // setLiveVersion is called inside syncLiveToVersion (D-08 single pointer).
+        selectVersion(targetId);
+      } catch (err) {
+        console.error('[VersionHistoryBody] selectVersion failed:', err);
       } finally {
         setIsReconciling(false);
       }
     },
-    [isReconciling, buildCtx],
+    [isReconciling],
   );
 
-  // ─── Row click → reconcile (D-04 / D-07) ─────────────────────────────────
+  // ─── Row click → select (D-07 confirm still guards uncommitted work) ──────
 
   const handleRowClick = useCallback(
     (targetId: string | null) => {
-      if (isReconciling) return; // guard concurrent reconciles
+      if (isReconciling) return; // guard re-entrancy
       if (hasUncommittedWork) {
-        // D-07: confirm before discarding uncommitted staged changes
+        // D-07: selecting materializes staging from the target — confirm before
+        // discarding genuinely-uncommitted staged changes.
         setConfirmPending({ targetId });
       } else {
-        // Clean working set: silent reconcile (no confirm)
-        void doReconcile(targetId);
+        // Clean working set: silent selection (no confirm)
+        doSelect(targetId);
       }
     },
-    [isReconciling, hasUncommittedWork, doReconcile],
+    [isReconciling, hasUncommittedWork, doSelect],
   );
 
   // ─── Undo (VER-04 / H5) ──────────────────────────────────────────────────
+  // Note: undo snapshots are pushed by syncLiveToVersion (real deploys). With
+  // navigation decoupled, row clicks no longer push snapshots — the bar appears
+  // only after an actual deploy/revert mutation.
 
   const handleUndo = useCallback(async () => {
     if (isReconciling) return;
     const snapshot = undo();
     if (!snapshot) return;
-    await doReconcile(snapshot.priorLiveVersionId);
-  }, [isReconciling, undo, doReconcile]);
+    doSelect(snapshot.priorLiveVersionId);
+  }, [isReconciling, undo, doSelect]);
 
   // Ctrl+Z keyboard shortcut for undo
   useEffect(() => {
@@ -212,9 +260,6 @@ export default function VersionHistoryBody(): React.JSX.Element {
       return next;
     });
   };
-
-  // ─── Void the branchFromId from lint (it is tracked for plan 09 parentId wiring) ──
-  void branchFromId;
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -267,15 +312,38 @@ export default function VersionHistoryBody(): React.JSX.Element {
             </p>
             <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
               <button
+                onClick={() => setConfirmPending(null)}
+                style={{
+                  background:   'transparent',
+                  color:        'var(--color-text-muted)',
+                  border:       '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding:      '6px 14px',
+                  fontSize:     'var(--text-sm)',
+                  cursor:       'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
                 onClick={() => {
                   const t = confirmPending.targetId;
                   setConfirmPending(null);
-                  void doReconcile(t);
+                  doSelect(t);
+                }}
+                style={{
+                  background:   'var(--color-accent)',
+                  color:        'var(--color-accent-text)',
+                  border:       'none',
+                  borderRadius: 'var(--radius-sm)',
+                  padding:      '6px 14px',
+                  fontSize:     'var(--text-sm)',
+                  fontWeight:   600,
+                  cursor:       'pointer',
                 }}
               >
                 Discard and switch
               </button>
-              <button onClick={() => setConfirmPending(null)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -343,6 +411,7 @@ export default function VersionHistoryBody(): React.JSX.Element {
             if (!cs) return null;
 
             const isLiveRow      = cs.id === liveVersionId;
+            const isSelectedRow  = cs.id === selectedVersionId;
             const isRootRow      = !cs.parentId || !csById.has(cs.parentId!);
             const isBaselineRow  = cs.id === BASELINE_ID;
             const isBranchRow    = branches.has(cs.id);
@@ -351,8 +420,11 @@ export default function VersionHistoryBody(): React.JSX.Element {
             const parentOrdinal  = cs.parentId ? (ordinalById.get(cs.parentId) ?? null) : null;
             const dateStr        = fmtTimestamp(cs.timestamp);
 
-            // A13: is-active accent LEFT-border on LIVE row only (not branch rows)
-            const rowBorderLeft = isLiveRow
+            // A13 (updated): the SELECTED (active) version gets the accent highlight — a 2px
+            // accent left-border, a full accent outline, and a lighter surface fill — so it is
+            // unmistakably the current version (matches the Deploy button target). This tracks
+            // activeVersionId, NOT deployedVersionId, so selection is visible even with nothing deployed.
+            const rowBorderLeft = isSelectedRow
               ? '2px solid var(--color-accent)'
               : '2px solid transparent';
 
@@ -363,7 +435,11 @@ export default function VersionHistoryBody(): React.JSX.Element {
               gap: 'var(--space-2)',
               paddingLeft: 'var(--space-2)',
               paddingRight: 'var(--space-2)',
+              // `border` first so the 2px accent `borderLeft` below wins the left edge (A13).
+              border: isSelectedRow ? '1px solid var(--color-accent)' : '1px solid transparent',
               borderLeft: rowBorderLeft,
+              borderRadius: 'var(--radius-sm)',
+              background: isSelectedRow ? 'var(--color-surface-2)' : 'transparent',
               cursor: 'pointer',
               boxSizing: 'border-box',
               transition: 'background 0.1s ease',
@@ -374,7 +450,7 @@ export default function VersionHistoryBody(): React.JSX.Element {
               return (
                 <div key={cs.id}>
                   <div
-                    className={['changeset-node', 'baseline-node', isLiveRow ? 'is-active' : ''].filter(Boolean).join(' ')}
+                    className={['changeset-node', 'baseline-node', isSelectedRow ? 'is-active' : ''].filter(Boolean).join(' ')}
                     data-changeset-id={BASELINE_ID}
                     role="button"
                     tabIndex={0}
@@ -385,7 +461,8 @@ export default function VersionHistoryBody(): React.JSX.Element {
                     }}
                     style={{
                       ...rowBase,
-                      border: '1px dashed var(--color-border)',
+                      // Selected → solid accent outline; otherwise the pristine dashed border.
+                      border: isSelectedRow ? '1px solid var(--color-accent)' : '1px dashed var(--color-border)',
                       borderLeft: rowBorderLeft,
                       borderRadius: 'var(--radius-sm)',
                       flexDirection: 'column',
@@ -432,19 +509,6 @@ export default function VersionHistoryBody(): React.JSX.Element {
                           0 deltas · shadow ≡ source
                         </div>
                       </div>
-                      {/* D-09: Branch from here (no reconcile — sets parentId intent for next sealVersion) */}
-                      <div className="row-actions" aria-hidden="true">
-                        <button
-                          className="act-branch"
-                          title="Branch from here"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setBranchFromId(cs.id);
-                          }}
-                        >
-                          Branch from here
-                        </button>
-                      </div>
                     </div>
                   </div>
                   {/* M7: delta expansion — Baseline always has 0 deltas, so none rendered */}
@@ -472,7 +536,7 @@ export default function VersionHistoryBody(): React.JSX.Element {
               <div key={cs.id}>
                 {/* GRAPH-08 / A13: 52px row, hover background, is-active accent LEFT-border */}
                 <div
-                  className={['changeset-node', isLiveRow ? 'is-active' : ''].filter(Boolean).join(' ')}
+                  className={['changeset-node', isSelectedRow ? 'is-active' : ''].filter(Boolean).join(' ')}
                   data-changeset-id={cs.id}
                   role="button"
                   tabIndex={0}
@@ -535,20 +599,6 @@ export default function VersionHistoryBody(): React.JSX.Element {
                       {dateStr} · {cs.deltas.length} file{cs.deltas.length !== 1 ? 's' : ''}
                       {isBranchRow && parentOrdinal !== null ? ` · branch from v${parentOrdinal}` : ''}
                     </div>
-                  </div>
-
-                  {/* D-09: "Branch from here" action only — NO per-row Deploy vN / Revert here */}
-                  <div className="row-actions" aria-hidden="true">
-                    <button
-                      className="act-branch"
-                      title="Branch from here"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setBranchFromId(cs.id);
-                      }}
-                    >
-                      Branch from here
-                    </button>
                   </div>
                 </div>
 

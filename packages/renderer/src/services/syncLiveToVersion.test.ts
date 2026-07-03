@@ -163,6 +163,25 @@ describe('syncLiveToVersion — Wave-0 RED (stub throws "not implemented (W1-04)
     expect(cfgActivator.activatePatch).not.toHaveBeenCalled();
   });
 
+  it('(a2) file-noop but activeVersionId differs → selection still moves the live pointer', async () => {
+    // Regression (branch-parent bug): the live client already matches the target bytes
+    // (e.g. Baseline when nothing meaningful is deployed), so the reconcile writes no files —
+    // BUT activeVersionId is on a previously-saved version. Selecting the target MUST move the
+    // pointer, otherwise the next Save (sealVersion → parentId = activeVersionId) branches from
+    // the wrong parent. Ground-truth repro: select Baseline, extract+save → wrongly parented to v2.
+    const cs = makeLooseChangeset('v2');
+    const manifest = makeManifest([cs], 'v2'); // activeVersionId = deployedVersionId = 'v2'
+    const ctx = makeCtx(manifest);
+    vi.mocked(changesetService.flatten).mockReturnValue([]);
+    vi.mocked(changesetService.flatEqual).mockReturnValue(true); // file-noop
+
+    const result = await syncLiveToVersion(BASELINE_ID, ctx);
+
+    expect(result.noop).toBe(true);
+    expect(changesetService.setLiveVersion).toHaveBeenCalledWith(BASELINE_ID);
+    expect(result.liveVersionId).toBe(BASELINE_ID);
+  });
+
   it('(b) Baseline target + cfg-live model → restoreCfg called (full restore-to-stock)', async () => {
     const cs = makeCfgChangeset('v1');
     const manifest = makeManifest([cs], 'v1');

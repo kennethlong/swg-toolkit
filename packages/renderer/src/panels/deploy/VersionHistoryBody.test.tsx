@@ -9,7 +9,9 @@
  *
  * Mocking strategy:
  *   - vi.mock for all Zustand stores (return controlled test values)
- *   - vi.mock for syncLiveToVersion (assert call/no-call without real client FS)
+ *   - PARTIAL vi.mock for changesetService: selectVersion mocked (assert call/no-call —
+ *     navigation is decoupled from deploy), flatten/flatEqual REAL (dirty-check tests
+ *     exercise the true staging-vs-version comparison)
  *   - vi.mock for LaneGutter / laneLayout (provide stable controlled graph layout)
  *   - vi.mock for ActionBadge (trivial render helper)
  */
@@ -21,7 +23,6 @@ import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { BASELINE_ID } from '@swg/contracts';
 import type { SwgChangeset } from '@swg/contracts';
 import type { GraphLayout } from './laneLayout';
-import type { LiveReconcileResult } from '../../services/syncLiveToVersion';
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -42,10 +43,16 @@ vi.mock('../../state/undoStore', () => ({
   useUndoStore: vi.fn(),
 }));
 
-const mockSyncLiveToVersion = vi.fn<[string | null, unknown], Promise<LiveReconcileResult>>();
-vi.mock('../../services/syncLiveToVersion', () => ({
-  syncLiveToVersion: mockSyncLiveToVersion,
-}));
+// Navigation is DECOUPLED from deploy: row clicks call selectVersion (pointer + staging
+// materialization only). Partial mock — flatten/flatEqual stay REAL for the dirty-check tests.
+const mockSelectVersion = vi.fn<[string | null], void>();
+vi.mock('../../services/changesetService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/changesetService')>();
+  return {
+    ...actual,
+    selectVersion: (id: string | null) => mockSelectVersion(id),
+  };
+});
 
 vi.mock('./ActionBadge', () => ({
   default: ({ action }: { action: string }) => <span data-testid="action-badge">{action}</span>,
@@ -61,7 +68,9 @@ vi.mock('./LaneGutter', () => ({
 // Test can mutate this value before render.
 let _mockLayoutRows: GraphLayout['rows'] = [];
 vi.mock('./laneLayout', () => ({
-  laneLayout: vi.fn((_cs: SwgChangeset[], _live: string | null) => {
+  DELTA_ROW_H: 30,
+  ROW_HEADER_H: 52,
+  laneLayout: vi.fn((_cs: SwgChangeset[], _deployed: string | null) => {
     const rows = _mockLayoutRows;
     return {
       rows,
@@ -155,11 +164,7 @@ function setupDefaultMocks(overrides: {
       sel({ canUndo, undo: mockUndoFn }),
   );
 
-  mockSyncLiveToVersion.mockResolvedValue({
-    noop: false,
-    liveVersionId: deployedVersionId,
-    model: 'cfg',
-  });
+  mockSelectVersion.mockImplementation(() => undefined);
 }
 
 // ─── Task 1 — layout tests ────────────────────────────────────────────────────
@@ -229,17 +234,31 @@ describe('VersionHistoryBody — Task 1: Two-column layout', () => {
     expect(footerText).toMatch(/Second mod/);
   });
 
-  it('applies is-active class and accent left-border to the LIVE row only (A13)', async () => {
+  it('applies is-active class + accent border to the SELECTED (active) row only (A13)', async () => {
     const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
     const { container } = render(<VersionHistoryBody />);
 
     const activeNodes = container.querySelectorAll('.is-active');
-    // Only the live row (v2 = rowIndex 2, ordinal v3) should have is-active
+    // Exactly one row is selected (mock activeVersionId = 'v2').
     expect(activeNodes.length).toBe(1);
 
-    // It should have a left-border accent (inline style)
+    // It should have the accent left-border AND a lighter surface fill (inline style).
     const activeRow = activeNodes[0] as HTMLElement;
     expect(activeRow.style.borderLeft).toMatch(/var\(--color-accent\)/);
+    expect(activeRow.style.background).toMatch(/var\(--color-surface-2\)/);
+  });
+
+  it('highlight follows the SELECTED version, not the deployed one (activeVersionId ≠ deployedVersionId)', async () => {
+    // The Deploy button targets activeVersionId, so the row highlight must too — otherwise
+    // selecting a version while nothing (or something else) is deployed leaves no visible selection.
+    setupDefaultMocks({ deployedVersionId: 'v1' }); // live = v1, but selected (active) = 'v2'
+    const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
+    const { container } = render(<VersionHistoryBody />);
+
+    const activeNodes = container.querySelectorAll('.is-active');
+    expect(activeNodes.length).toBe(1);
+    // The selected row is 'v2' (activeVersionId), NOT the deployed 'v1'.
+    expect((activeNodes[0] as HTMLElement).getAttribute('data-changeset-id')).toBe('v2');
   });
 
   it('does NOT apply is-active or accent border to branch rows', async () => {
@@ -337,13 +356,15 @@ describe('VersionHistoryBody — Task 1: Two-column layout', () => {
     expect(screen.queryAllByTitle(/Deploy v/i)).toHaveLength(0);
   });
 
-  it('renders "Branch from here" button on every row (D-09 KEPT)', async () => {
+  it('does NOT render a "Branch from here" affordance (removed — branching is implicit on save)', async () => {
+    // Branching happens by SELECTING the changeset you want to branch from, then saving —
+    // sealVersion parents the new version to the selected/active version. There is no explicit
+    // "Branch from here" button (the old one set state nothing consumed; it was dead + confusing).
     const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
     render(<VersionHistoryBody />);
 
-    const branchBtns = screen.getAllByTitle('Branch from here');
-    // One per row (4 changesets = 4 rows)
-    expect(branchBtns.length).toBe(4);
+    expect(screen.queryAllByTitle('Branch from here')).toHaveLength(0);
+    expect(screen.queryByText(/Branch from here/i)).toBeNull();
   });
 });
 
@@ -357,7 +378,7 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     vi.clearAllMocks();
   });
 
-  it('clean-state row click calls syncLiveToVersion with NO confirm dialog', async () => {
+  it('clean-state row click calls selectVersion with NO confirm dialog (decoupled — no deploy)', async () => {
     setupDefaultMocks({ stagingEntries: [] }); // clean — no staged changes
     const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
     render(<VersionHistoryBody />);
@@ -366,8 +387,8 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     const v1Row = document.querySelector('[data-changeset-id="v1"]') as HTMLElement;
     await act(async () => { fireEvent.click(v1Row); });
 
-    // syncLiveToVersion called with 'v1', no confirm dialog shown
-    expect(mockSyncLiveToVersion).toHaveBeenCalledWith('v1', expect.any(Object));
+    // selectVersion called with 'v1' — pointer + staging only, no client mutation
+    expect(mockSelectVersion).toHaveBeenCalledWith('v1');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -382,14 +403,37 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     const v1Row = document.querySelector('[data-changeset-id="v1"]') as HTMLElement;
     await act(async () => { fireEvent.click(v1Row); });
 
-    // syncLiveToVersion NOT called yet (confirm pending)
-    expect(mockSyncLiveToVersion).not.toHaveBeenCalled();
+    // selectVersion NOT called yet (confirm pending)
+    expect(mockSelectVersion).not.toHaveBeenCalled();
 
     // Confirm dialog appears
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 
-  it('accepting the D-07 confirm calls syncLiveToVersion', async () => {
+  it('staging that EQUALS the active version (post-save) is NOT dirty — no confirm', async () => {
+    // Regression: after Save/Deploy, sealVersion leaves the staging store holding the new
+    // version's working set, so stagingEntries.length > 0 even though nothing is uncommitted.
+    // hasUncommittedWork must compare staging vs flatten(activeVersion), not just length.
+    // These entries are exactly flatten('v2') = v1+v2 deltas (armor, blaster, helmet).
+    setupDefaultMocks({
+      stagingEntries: [
+        { virtualPath: 'appearance/armor.sat',   action: 'modify', sha256: 'def456' },
+        { virtualPath: 'appearance/blaster.sat', action: 'add',    sha256: 'abc123' },
+        { virtualPath: 'appearance/helmet.sat',  action: 'modify', sha256: 'ghi789' },
+      ],
+    });
+    const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
+    render(<VersionHistoryBody />);
+
+    // Switching to Baseline must reconcile silently — no "Discard unsaved changes?" dialog.
+    const baselineRow = document.querySelector(`[data-changeset-id="${BASELINE_ID}"]`) as HTMLElement;
+    await act(async () => { fireEvent.click(baselineRow); });
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockSelectVersion).toHaveBeenCalledWith(BASELINE_ID);
+  });
+
+  it('accepting the D-07 confirm calls selectVersion', async () => {
     setupDefaultMocks({
       stagingEntries: [{ virtualPath: 'foo.sat', action: 'add' }], // dirty
     });
@@ -403,11 +447,11 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     const confirmBtn = screen.getByText(/Discard and switch/i);
     await act(async () => { fireEvent.click(confirmBtn); });
 
-    expect(mockSyncLiveToVersion).toHaveBeenCalledWith('v1', expect.any(Object));
+    expect(mockSelectVersion).toHaveBeenCalledWith('v1');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('cancelling the D-07 confirm does NOT call syncLiveToVersion', async () => {
+  it('cancelling the D-07 confirm does NOT call selectVersion', async () => {
     setupDefaultMocks({
       stagingEntries: [{ virtualPath: 'foo.sat', action: 'add' }], // dirty
     });
@@ -421,11 +465,11 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     const cancelBtn = screen.getByText(/^Cancel$/i);
     await act(async () => { fireEvent.click(cancelBtn); });
 
-    expect(mockSyncLiveToVersion).not.toHaveBeenCalled();
+    expect(mockSelectVersion).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('Baseline node onClick calls syncLiveToVersion(BASELINE_ID) — NOT selectVersion', async () => {
+  it('Baseline node onClick calls selectVersion(BASELINE_ID)', async () => {
     setupDefaultMocks({ stagingEntries: [] });
     const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
     render(<VersionHistoryBody />);
@@ -433,40 +477,27 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     const baselineRow = document.querySelector(`[data-changeset-id="${BASELINE_ID}"]`) as HTMLElement;
     await act(async () => { fireEvent.click(baselineRow); });
 
-    expect(mockSyncLiveToVersion).toHaveBeenCalledWith(BASELINE_ID, expect.any(Object));
+    expect(mockSelectVersion).toHaveBeenCalledWith(BASELINE_ID);
   });
 
-  it('a second click during an in-flight reconcile is ignored (isReconciling guard)', async () => {
+  it('sequential clicks each select (selection is synchronous — no client mutation to serialize)', async () => {
     setupDefaultMocks({ stagingEntries: [] });
-
-    // Make syncLiveToVersion hang (never resolve) to simulate in-flight
-    let resolvePending!: () => void;
-    mockSyncLiveToVersion.mockReturnValue(
-      new Promise<LiveReconcileResult>((r) => {
-        resolvePending = () =>
-          r({ noop: false, liveVersionId: 'v1', model: 'cfg' });
-      }),
-    );
-
     const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
     render(<VersionHistoryBody />);
 
     const v1Row = document.querySelector('[data-changeset-id="v1"]') as HTMLElement;
     const v2Row = document.querySelector('[data-changeset-id="v2"]') as HTMLElement;
 
-    // First click — reconcile starts, hangs
     await act(async () => { fireEvent.click(v1Row); });
-    expect(mockSyncLiveToVersion).toHaveBeenCalledTimes(1);
+    expect(mockSelectVersion).toHaveBeenCalledWith('v1');
 
-    // Second click while first is still in-flight — should be ignored
+    // Selection completes synchronously; a subsequent click selects the next version.
     await act(async () => { fireEvent.click(v2Row); });
-    expect(mockSyncLiveToVersion).toHaveBeenCalledTimes(1); // still 1
-
-    // Resolve the first reconcile
-    await act(async () => { resolvePending(); });
+    expect(mockSelectVersion).toHaveBeenCalledWith('v2');
+    expect(mockSelectVersion).toHaveBeenCalledTimes(2);
   });
 
-  it('Undo button calls useUndoStore.undo() and re-runs syncLiveToVersion (VER-04)', async () => {
+  it('Undo button calls useUndoStore.undo() and re-selects the prior version (VER-04)', async () => {
     const priorVersionId = 'v1';
     setupDefaultMocks({
       canUndo: true,
@@ -484,7 +515,7 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     await act(async () => { fireEvent.click(undoBtn); });
 
     expect(mockUndoFn).toHaveBeenCalledTimes(1);
-    expect(mockSyncLiveToVersion).toHaveBeenCalledWith(priorVersionId, expect.any(Object));
+    expect(mockSelectVersion).toHaveBeenCalledWith(priorVersionId);
   });
 
   it('Ctrl+Z triggers undo when canUndo is true', async () => {
@@ -506,21 +537,19 @@ describe('VersionHistoryBody — Task 2: Row-click reconcile behavior', () => {
     });
 
     expect(mockUndoFn).toHaveBeenCalledTimes(1);
-    expect(mockSyncLiveToVersion).toHaveBeenCalledWith(priorVersionId, expect.any(Object));
+    expect(mockSelectVersion).toHaveBeenCalledWith(priorVersionId);
   });
 
-  it('"Branch from here" does NOT call syncLiveToVersion (D-09)', async () => {
-    setupDefaultMocks({ stagingEntries: [] });
+  it('nothing deployed (deployedVersionId=null) → Baseline row carries the "live" pip (stock is live)', async () => {
+    // The live state must ALWAYS be readable: when the toolkit has nothing deployed, the
+    // client is at stock, so Baseline is the live version — badge shows there, not nowhere.
+    setupDefaultMocks({ deployedVersionId: null, stagingEntries: [] });
     const { default: VersionHistoryBody } = await import('./VersionHistoryBody');
     render(<VersionHistoryBody />);
 
-    // Click the "Branch from here" button on v2
-    const branchBtns = screen.getAllByTitle('Branch from here');
-    // Click the one for v2 (index depends on row order; all should behave the same)
-    await act(async () => { fireEvent.click(branchBtns[2]!); });
-
-    // syncLiveToVersion MUST NOT be called when only branching intent is set
-    expect(mockSyncLiveToVersion).not.toHaveBeenCalled();
+    const baselineRow = document.querySelector(`[data-changeset-id="${BASELINE_ID}"]`) as HTMLElement;
+    expect(baselineRow).not.toBeNull();
+    expect(within(baselineRow).getByText('live')).toBeTruthy();
   });
 
   it('stale-deployment banner is absent from the DOM (D-08 removed stale concept)', async () => {
