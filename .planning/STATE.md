@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: "Combined in-client UAT approved via LIVE UAT-ITERATION (2026-07-01..03): maintainer exercised"
+status: executing
 stopped_at: Phase 04.4 context gathered
-last_updated: "2026-07-03T19:52:57.307Z"
-last_activity: "2026-07-03 — Completed quick task 260703-bpu: DeployDialog deploys routed through"
+last_updated: "2026-07-03T21:38:46.279Z"
+last_activity: 2026-07-03 -- Phase 04.4 planning complete
 progress:
   total_phases: 13
   completed_phases: 8
-  total_plans: 58
+  total_plans: 72
   completed_plans: 58
-  percent: 100
+  percent: 81
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.4 (ux-polish-deploy-hardening) — NOT PLANNED (inserted 2026-07-03; 6 UI/hardening todos)
-Status: Combined in-client UAT approved via LIVE UAT-ITERATION (2026-07-01..03): maintainer exercised
+Status: Ready to execute
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
         GRAPH-04/05/08 revised with dated markers in 04.3-RESEARCH.md). Supersedes 04.1-11 + 04.2-06
@@ -37,7 +37,7 @@ Next: /gsd:discuss-phase 04.4 or /gsd:plan-phase 04.4 — knock out the 6 UI-rel
       audit or advance to the next phase when maintainer says go.
       Follow-up todos: deploy-dialog-synclive-undo-wiring (Undo re-wiring), v6000-swg-source-plain-zlib
       (done via plans 10-11? verify against todo), server TRE search-path (deferred to Phase 8).
-Last activity: 2026-07-03 — Completed quick task 260703-bpu: DeployDialog deploys routed through
+Last activity: 2026-07-03 -- Phase 04.4 planning complete
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 

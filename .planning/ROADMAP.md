@@ -180,8 +180,13 @@ Plans:
 - **`vfs-override-archive-dim-too-dark`** — bump the non-override winning-archive label from `--color-text-faint` to a legible mid token (check all 5 themes).
 - **`viewport-default-facing-axis`** — apply the SWG forward-axis convention as a pure rotation (det +1, no mirror) so default facing matches SIE/in-game.
 
+During `/gsd:discuss-phase 04.4`, two more pending todos were folded in as ride-alongs: `eft-parser-completion`
+(native-core `.eft` STAG fixed-function sampler path + CORE-05 fixture activation) and
+`product-thesis-shadow-sandbox-and-server-push` (close-out audit + pluggable TRE codec interface + a working
+Core3/swg-main server-push target) — see `04.4-CONTEXT.md` D-19..D-23.
+
 **Mode:** mvp
-**Requirements**: todo-driven (the 6 items above; no new parent reqs)
+**Requirements**: todo-driven (the 8 items above; no new parent reqs)
 **Depends on:** Phase 4.3 (deploy/version surfaces + restore machinery it hardens), Phase 2 (viewport/status bar)
 **Success Criteria** (what must be TRUE):
   1. A user can delete a project from the UI behind an explicit confirm; the bound client is byte-pristine afterward (cfg restored / loose overrides reverted per that project's deploy records) and the studio + umbrella folders are gone.
@@ -189,10 +194,28 @@ Plans:
   3. The Data panel Console/Log tabs are selectable and show live app logs (no DevTools needed for basic diagnosis).
   4. The status bar mesh name/vert count updates on every viewport load.
   5. The VfsTree non-override archive label is legible across the 5 themes; a mesh's authored front faces the default camera like SIE (rotation only — geometry/winding untouched).
-**Plans:** 0 plans
+**Plans:** 14 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 04.4 to break down)
+**Wave 1** *(independent — no cross-file dependencies)*
+- [ ] 04.4-01-PLAN.md — Delete service core (TDD): `deleteProject.ts` restore-first + `.trash` session-scoped undo, `deleteUndoStore`, stale-trash startup purge
+- [ ] 04.4-02-PLAN.md — `logService`/`logStore` core (TDD) + Console/Log panel wiring (D-12/D-15)
+- [ ] 04.4-03-PLAN.md — StatusBar mesh name/vert-count wire-up + VfsTree non-override label legibility polish
+- [ ] 04.4-04-PLAN.md — Viewport orientation shared module + facing-axis fix [autonomous: false — D-17 human-verify checkpoint]
+- [ ] 04.4-05-PLAN.md — `.eft` parser: FORM STAG fixed-function sampler path + CORE-05 fixture activation (native-core)
+- [ ] 04.4-06-PLAN.md — Native TRE codec interface (pluggable inflate/deflate seam, D-21)
+- [ ] 04.4-07-PLAN.md — Server push: Core3 (Lua-array `config-local.lua` injection) + product-thesis close-out audit (D-20/D-22)
+- [ ] 04.4-08-PLAN.md — Server push: swg-main (loose-file `[SharedFile]` override, D-22)
+- [ ] 04.4-09-PLAN.md — E2E infra: CI build-before-E2E fix + `SWG_TEST_MODE` hook surface + fixture client trees (D-06/D-08/D-11)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 04.4-10-PLAN.md — Delete UI: sketch-017 kebab menu, descriptive confirm modal, undo toast, inline dimmed rows
+- [ ] 04.4-11-PLAN.md — Console/Log: main-process `main-log` IPC forward + deploy/reconcile/mount instrumentation (D-13/D-14)
+- [ ] 04.4-12-PLAN.md — Server push UI wiring (VcsPanel "Server Push" section, dispatches on `serverConfig.type`)
+- [ ] 04.4-13-PLAN.md — E2E deploy-flow spec (D-07 re-based scenario: stage → save → select/reconcile → deploy → revert)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 04.4-14-PLAN.md — E2E delete-flow spec (D-09: delete → confirm → client-pristine assert → undo → restored)
 
 ### Phase 04.3: Versioning Model & SearchTOC Mount Completion (INSERTED)
 
@@ -262,8 +285,8 @@ Plans:
 **Wave 9**
 - [x] 04.1-11-PLAN.md — Phase UAT checkpoint — SUPERSEDED by 04.3-13 (approved 2026-07-03); see 04.1-11-SUMMARY.md
 
-### Phase 04.2: Dev-Client Support & Loose-Override Deploy (INSERTED)
-**Goal**: Make the toolkit a first-class citizen of the standard **dev/modder workflow**, where the runnable client is **decoupled** from its TRE data — the client binary dir (`stage/`: exe + dlls + `client.cfg`, **zero `.tre`**) references an **external** game-data install by absolute path (verified ground truth: swg-client-v2 / SWG Source). Three capabilities, built as one vertical slice: (1) **detect `client.cfg` layouts** (add the release row to `clientLayout.ts`/`clientLocator.ts`) plus a **manual cfg-path + TRE-dir override** when auto-detect can't classify an install; (2) **extend the mount** (`clientSearchOrder.ts`/`treAutoMount.ts`) to read the FULL base via **`searchTOC`** (a `.toc` master index — token "TOC"/TAG_0001, listing 131+ TREs + a path→archive index, with `TOCTreePath` prepended to each archive name) and **`searchPath`** loose dirs, not just `searchTree`, so the dev client's full asset set is browsable/extractable; (3) add a **"deploy into the top-priority loose `searchPath` override dir"** deploy mode — write edited loose files straight into the override dir (no TRE pack, no `.cfg` surgery, survives cmake/setup regen), which **realizes the lazy/virtual shadow thesis** Phase 04.1 introduced. Reuses the 04.1 project-binding + deploy surface; this is mount-breadth + a new deploy target + detection, NOT new byte-level format work.
+### Phase 4.2: Dev-Client Support & Loose-Override Deploy (INSERTED)
+**Goal**: Make the toolkit a first-class citizen of the standard **dev/modder workflow**, where the runnable client is **decoupled** from its TRE data — the client binary dir (`stage/`: exe + dlls + `client.cfg`, **zero `.tre`**) references an **external** game-data install by absolute path (verified ground truth: swg-client-v2 / SWG Source). Three capabilities, built as one vertical slice: (1) **detect `client.cfg` layouts** (add the release row to `clientLayout.ts`/`clientLocator.ts`) plus a **manual cfg-path + TRE-dir override** when auto-detect can't classify an install; (2) **extend the mount** (`clientSearchOrder.ts`/`treAutoMount.ts`) to read the FULL base via **`searchTOC`** (a `.toc` master index, token "TOC"/TAG_0001, listing 131+ TREs + a path→archive index, with `TOCTreePath` prepended to each archive name) and **`searchPath`** loose dirs, not just `searchTree`, so the dev client's full asset set is browsable/extractable; (3) add a **"deploy into the top-priority loose `searchPath` override dir"** deploy mode — write edited loose files straight into the override dir (no TRE pack, no `.cfg` surgery, survives cmake/setup regen), which **realizes the lazy/virtual shadow thesis** Phase 04.1 introduced. Reuses the 04.1 project-binding + deploy surface; this is mount-breadth + a new deploy target + detection, NOT new byte-level format work.
 **Mode:** mvp
 **Depends on**: Phase 04.1 (project-binding/auto-mount/deploy surface it extends), Phase 1 (TRE mount/VFS + `.toc`/IFF readers)
 **Requirements**: CLIENT-02, TRE-05, DEPLOY-08
@@ -361,7 +384,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 4.2 -> 4.3 -> 4
 | 4.1 Deploy & Project UX *(INSERTED)* | 11/11 | Complete | 2026-07-03 |
 | 4.2 Dev-Client Support & Loose-Override Deploy *(INSERTED)* | 6/6 | Complete | 2026-07-03 |
 | 4.3 Versioning Model & SearchTOC Mount Completion *(INSERTED)* | 12/12 | Complete | 2026-07-03 |
-| 4.4 UX Polish & Deploy Hardening *(INSERTED)* | 0/TBD | Not started | - |
+| 4.4 UX Polish & Deploy Hardening *(INSERTED)* | 0/14 | Planned, not executed | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
