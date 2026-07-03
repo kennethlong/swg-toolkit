@@ -66,6 +66,21 @@ export interface ReconcileCtx {
    * For a loose-live → Baseline revert, this is the record to call resetLoose on.
    */
   priorLiveLooseRecord?: LooseDeployRecord;
+  /**
+   * 260703-bpu Task 1: absolute path to a patch the CALLER just built for THIS deploy
+   * (e.g. DeployDialog's freshly-packed .studio/build/<patch>.tre). Takes priority over
+   * any stored deployRecord.patchPath — covers the "no prior deployRecord yet" scenario
+   * for a version that has never been deployed before (targetChangeset.deployRecord is
+   * absent, so patchName would otherwise fall back to the 'patch.tre' placeholder).
+   */
+  freshPatchPath?: string;
+  /**
+   * 260703-bpu Task 1: absolute path to a root-cfg snapshot the CALLER just took for THIS
+   * deploy (e.g. DeployDialog's snapshotCfg() call taken before ensureInclude mutates the
+   * root cfg). Takes priority over any stored deployRecord.snapshotPath — same "no prior
+   * deployRecord yet" scenario as freshPatchPath.
+   */
+  freshSnapshotPath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +154,7 @@ export async function syncLiveToVersion(
   targetId: string | null,
   ctx: ReconcileCtx,
 ): Promise<LiveReconcileResult> {
-  const { manifest, studioDir, cfgPath, installRoot, priorLiveLooseRecord } = ctx;
+  const { manifest, studioDir, cfgPath, installRoot, priorLiveLooseRecord, freshPatchPath, freshSnapshotPath } = ctx;
 
   // ─── Live version info ────────────────────────────────────────────────────
   const liveId = manifest.deployedVersionId;
@@ -260,24 +275,28 @@ export async function syncLiveToVersion(
       }
 
       // Step 4: Activate the target cfg entry.
+      // 260703-bpu Task 1: patchName precedence — ctx.freshPatchPath (caller just built this
+      // patch for a version with no prior deployRecord) > targetCfgRecord.patchPath used
+      // VERBATIM (NEVER path.basename() — the searchTree value must be the FULL absolute
+      // path per the D-05 absolute-path model) > 'patch.tre' fallback only when neither exists.
       const toolkitCfgPath =
         targetCfgRecord?.cfgPath ?? path.join(studioDir, 'swgtoolkit.cfg');
       const scan = scanSharedFile(cfgPath);
-      const patchName = targetCfgRecord?.patchPath
-        ? path.basename(targetCfgRecord.patchPath)
-        : 'patch.tre';
+      const patchName = freshPatchPath ?? targetCfgRecord?.patchPath ?? 'patch.tre';
       const insertionRecord = activatePatch(toolkitCfgPath, patchName, scan, studioDir);
 
       if (insertionRecord) {
         newRecord = {
           cfgPath: insertionRecord.cfgPath,
-          includeTargetPath: insertionRecord.includeTargetPath,
+          // insertionRecord.includeTargetPath is always '' from activatePatch — the real
+          // value the record needs is the client root cfg path, already on ctx (260703-bpu).
+          includeTargetPath: cfgPath,
           keyName: insertionRecord.keyName,
           slot: insertionRecord.slot,
           backupPath: insertionRecord.backupPath,
-          patchPath: targetCfgRecord?.patchPath ?? '',
+          patchPath: freshPatchPath ?? targetCfgRecord?.patchPath ?? '',
           patchVersion: targetCfgRecord?.patchVersion ?? '5000',
-          snapshotPath: targetCfgRecord?.snapshotPath,
+          snapshotPath: freshSnapshotPath ?? targetCfgRecord?.snapshotPath,
         } as CfgDeployRecord;
       }
     }

@@ -287,6 +287,54 @@ describe('syncLiveToVersion — Wave-0 RED (stub throws "not implemented (W1-04)
     // H4: must NOT call restoreCfg (live model was loose, not cfg)
     expect(cfgActivator.restoreCfg).not.toHaveBeenCalled();
   });
+
+  it('(g) fresh cfg deploy with no prior deployRecord uses ctx.freshPatchPath verbatim, not the "patch.tre" placeholder or a truncated basename', async () => {
+    // Target changeset has NO deployRecord at all — a version never deployed before.
+    const targetCs: SwgChangeset = {
+      id: 'v-fresh',
+      parentId: null,
+      label: 'v-fresh',
+      timestamp: new Date().toISOString(),
+      sealedBy: 'manual',
+      deltas: [],
+      // deliberately no deployRecord
+    };
+    const manifest = makeManifest([targetCs], null); // nothing live yet
+    const ctx: ReconcileCtx = {
+      ...makeCtx(manifest),
+      freshPatchPath: '/studio/build/fresh.tre',
+      freshSnapshotPath: '/studio/snapshots/root.bak',
+    };
+    vi.mocked(changesetService.flatten)
+      .mockReturnValueOnce([]) // live set = null → []
+      .mockReturnValueOnce([mockEntry]); // target = v-fresh
+    vi.mocked(changesetService.flatEqual).mockReturnValue(false);
+    vi.mocked(cfgActivator.scanSharedFile).mockReturnValue({
+      occupiedSlots: [],
+      maxSearchPriority: 500,
+      skuSuffix: '_00_',
+    });
+    vi.mocked(cfgActivator.activatePatch).mockReturnValueOnce({
+      cfgPath: '/studio/swgtoolkit.cfg',
+      includeTargetPath: '',
+      keyName: 'searchTree_00_55',
+      slot: 55,
+      backupPath: '/studio/snapshots/swgclient.cfg.swgtoolkit.bak',
+    });
+
+    const result = await syncLiveToVersion('v-fresh', ctx);
+
+    // activatePatch's SECOND argument must be the full ctx.freshPatchPath — no basename
+    // stripping, and never the literal 'patch.tre' placeholder.
+    expect(cfgActivator.activatePatch).toHaveBeenCalledWith(
+      expect.any(String),
+      '/studio/build/fresh.tre',
+      expect.any(Object),
+      expect.any(String),
+    );
+    expect(result.record?.patchPath).toBe('/studio/build/fresh.tre');
+    expect(result.record?.includeTargetPath).toBe(ctx.cfgPath);
+  });
 });
 
 // ---------------------------------------------------------------------------
