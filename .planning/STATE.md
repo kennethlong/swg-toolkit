@@ -258,6 +258,17 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T01:33:21.007Z
-Stopped at: Phase 04.3 context gathered (discuss-phase complete)
-Resume file: None
+Last session: 2026-07-03
+Stopped at: Live UAT-iteration session COMPLETE — maintainer confirmed "pretty solid". Major model
+  change (crew-consulted): version SELECTION decoupled from DEPLOY (supersedes 04.3 D-04/D-08 —
+  navigate=selectVersion, deploy=explicit CTA; pointers diverge until deploy). Also: content-based
+  client detection (find .tre dirs, not hardcoded paths — all 4 distros + bonuses detected), window
+  bounds/monitor persistence (backend/windowState.ts), false-dirty fix (flatEqual), branch-parent
+  fix, "Branch from here" removed (branching = select + Save), selected-node ring + variable-height
+  lane layout, Reset-deployment rework (record-shape dispatch, surfaced errors, persisted-record
+  clear, cross-session Reset), live badge falls back to Baseline/stock, Deploy CTA no-op state.
+  269 renderer tests green; typecheck clean. ALL UNCOMMITTED (maintainer to review/commit).
+  NOTE: plan-13 UAT criteria A1/VER-03/VER-06 (navigate=silent-reconcile), VER-08 (Branch from
+  here), A13 (live-row highlight) are SUPERSEDED by the decoupled model — update REQUIREMENTS +
+  UAT-RESULTS before sign-off. New todo: deploy-dialog-synclive-undo-wiring.
+Resume file: .planning/phases/04.3-versioning-and-searchtoc-mount/.continue-here.md (+ HANDOFF.json — both PRE-DATE this session's model change; read this note first)
