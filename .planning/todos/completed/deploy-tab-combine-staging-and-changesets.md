@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer UAT — the split Staging/Changesets tabs are the core usability gap; sketch 005-B designed ONE combined tab
 severity: high (core surface diverges from approved design; this is the maintainer's #1 friction)
 area: renderer / deploy panels + workspace-config tab registration
-status: pending
+status: done
 disposition: centerpiece of the rework task; framed as a divergence from the approved sketch, not a new redesign
 related: staging-workflow-redesign, project-entry-point-and-shadow-redesign, no-reopen-closed-panel-or-reset-layout
 ---
@@ -87,3 +87,7 @@ axis from deploy. The sketch combined only staging + version-graph; VCS remains 
 
 High — the core deploy surface does not match the approved sketch, and the split is the maintainer's
 primary usability blocker. Top of the rework task.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.1-03 (single combined DeployPanel per sketch 005-B in the Inspect|Deploy dock group) + 04.3-07 (deploy panel + staging chrome rework); combined UAT approved 04.3-13.

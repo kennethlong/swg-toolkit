@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer UAT feedback (Phase-4 deploy-loop in-client UAT) — "if I open/create a project shouldn't the TRE browser change to that project's TRE files?"
 severity: medium
 area: renderer / workspace ↔ TRE VFS browser wiring (cross-phase: Phase-1 TreVfsBrowser + Phase-4 workspace)
-status: pending
+status: done
 disposition: deferred to milestone replan (maintainer chose "log for replan" over wiring it mid-UAT)
 ---
 
@@ -99,3 +99,7 @@ rejected" worry is **FALSIFIED**.
 Medium — not a correctness bug; the deploy loop works without it. But it's the missing connective
 tissue that makes "open a project" feel coherent, and it's the maintainer's first-impression
 expectation. Worth doing early in the next milestone.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.1-02 — projectBinding service persists the client binding and auto-mounts the client base TREs on project open (PROJ-01).

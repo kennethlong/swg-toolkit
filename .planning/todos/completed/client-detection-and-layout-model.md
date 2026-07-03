@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer UAT note — "swgemu.cfg is not the definitive way to detect a client; some releases have client.cfg, etc. … look at all the installed versions, figure out the patterns, and allow override by entering the actual config file path/name."
 severity: high (blocks reliable deploy across clients; hardcoded assumptions already broke a UAT deploy)
 area: renderer / clientLocator + DeployDialog (client detection + layout)
-status: pending
+status: done
 related: project-binds-and-automounts-client-tres, project-entry-point-and-shadow-redesign, product-thesis-shadow-sandbox-and-server-push
 ---
 
@@ -99,3 +99,7 @@ hardcoded assumptions have already broken one UAT deploy. Real pattern-detection
 should land with the deploy/shadow rework. The dev/modder decoupled-client class (above) is now a
 first-class target, not an edge case — it's the standard dev workflow and the natural home for the
 loose-override deploy mode.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.1-09 (clientLayout detection table + manual cfg/TRE-dir override, D-13) and 04.2-02 (client.cfg / treDirFromCfg swg-client-v2 layout row).

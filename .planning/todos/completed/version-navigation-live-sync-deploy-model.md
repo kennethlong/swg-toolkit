@@ -5,7 +5,7 @@ created: 2026-06-29
 origin: Maintainer UAT 04.x — "The version needs to keep track of what type of deployment it was deployed with (absolute path or loose files). Then when you walk from the current version backwards through the version tree you know how to revert each version properly. Each version needs a directory with its files so when you remove them from the live folder by reverting, you can repopulate when the user clicks a later version — copy the files from the version folder to the live folder via the loose-files or absolute path."
 severity: high (core deploy/revert value loop; current model is confusing — selecting a version only updates a preview, the live client is a separate sticky deploy; reverting/Baseline does not make the client mirror the selected version)
 area: renderer (changesetService + new deploy-navigation service + DeployDialog/VersionHistoryBody) + deploy primitives (looseOverrideDeploy / cfgActivator)
-status: pending
+status: done
 resolves_phase: "04.3"
 related: deploy-tab-combine-staging-and-changesets, product-thesis-shadow-sandbox-and-server-push, client-deploy-design-tenets, project-binds-and-automounts-client-tres
 ---
@@ -100,3 +100,7 @@ footer summary ("N versions · M branches · active: … · deployed: …"). Ske
   not an inline patch. Candidate: a dedicated 04.x phase after the current dev-client UAT, or fold into
   the deploy-tab redesign todo.
 - Honors `client-deploy-design-tenets` (non-destructive, snapshot+restore, never clobber a working cfg).
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.3-04 (syncLiveToVersion reconcile engine, per-version deploy record, session undo, single live pointer) + 04.3-06 (VersionHistoryBody silent-reconcile wiring); selection/deploy decoupled per crew consult mid-UAT; approved 04.3-13.

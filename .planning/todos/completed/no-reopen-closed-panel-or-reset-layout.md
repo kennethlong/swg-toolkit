@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer UAT — accidentally closed the Staging tab; restart didn't bring it back (layout persisted)
 severity: medium (UX / discoverability)
 area: renderer / WorkspaceShell (Dockview layout persistence)
-status: pending
+status: done
 ---
 
 ## Symptom
@@ -35,3 +35,7 @@ registry (`panelComponents`) are all present — this is wiring an entry point, 
 
 Medium — not data loss (workspace state is in `.studio/` + stores, not the layout), but a user can
 trivially soft-brick their own UI with no in-app escape hatch. Pairs with the broader layout/UX polish.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.1-08 — reset-layout / reopen-panel affordance (DEPLOY-07).

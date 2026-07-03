@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer UAT — "I added a file to staging and nothing is showing up in Changesets"
 severity: high (breaks the documented Stage → Save version → Deploy loop; blocks testing the version graph)
 area: renderer / StagingPanel + ChangesetTimelinePanel (changeset sealing UI)
-status: pending
+status: done
 related: deploy-tab-combine-staging-and-changesets, staging-workflow-redesign
 ---
 
@@ -56,3 +56,7 @@ Add a **Save version** control that calls `sealVersion({ sealedBy: 'user', entri
 
 High — it's a missing step in the core loop and a prerequisite for testing the changeset graph and the
 headline revert/deploy test. Interim button is small (reuses `sealVersion`).
+
+## Resolution (2026-07-03 triage)
+
+Resolved — Save version action wired in the staging header (interim 2026-06-27), carried through the 04.3-07 StagingPanelBody rework; version graph testable independently of deploy.

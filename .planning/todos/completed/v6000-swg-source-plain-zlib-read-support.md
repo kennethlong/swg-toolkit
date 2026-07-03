@@ -5,7 +5,7 @@ created: 2026-06-29
 origin: Maintainer UAT note during 04.2-06 — swg-client-v2 mounts patch_sku3_*.tre as v6000 "enumerate-only (encrypted)" with 0 entries, but they are plain zlib. Investigation (2026-06-29, real bytes) found the deeper cause: those .tre files have EMPTY internal TOCs; their entries live only in the master .toc.
 severity: medium-high (the v6000/empty-TOC content set is silently missing from the mount; NOT blocking the 04.2-06 UAT — the space-terminal texture is in a v5000 self-indexed patch and resolves fine)
 area: renderer (treAutoMount + tocReader) + native-core (tre extraction for toc-indexed entries; v6000 enumerate-only)
-status: pending
+status: done
 resolves_phase: "04.3"
 related: tre-version-oracles-and-v6000-encryption, feedback-crew-catches-what-plancheck-cannot, project-binds-and-automounts-client-tres
 ---
@@ -79,3 +79,7 @@ fixed in a3b825f by reading winnerArchivePath directly when winnerArchiveIndex <
   the working extractor + the SWG Source client mounting these files is ground truth.
 - This is effectively COMPLETING the searchTOC mount that 04.2-03 started (it built readTocIndex but the
   mount only used readTocTreeNames). Candidate for a dedicated 04.x plan, not a one-line patch.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.3-10 (native per-payload v6000 extraction + extractAt(descriptor)) + 04.3-11 (master-.toc mount sourcing, lazy searchPath); byte-exact v6000 gate GO in 04.3-12; UAT approved 04.3-13.

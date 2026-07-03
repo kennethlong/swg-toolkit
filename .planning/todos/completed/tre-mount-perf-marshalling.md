@@ -120,3 +120,7 @@ existing `HexInspector` pattern:
 
 **Status**: DONE — both the bridge marshalling bottleneck (#1/#2) and the renderer
 bottleneck (unvirtualized VfsTree) are now resolved.
+
+## Resolution (2026-07-03 triage)
+
+Was already status: done — sat in pending/ by mistake; moved to completed/.

@@ -17,9 +17,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: 3D Mesh Viewport (MVP Proof)** - Render a real SWG mesh with textures, skeletons, and animation; extract and export ✓ 2026-06-25 (VIEW-01..04; glTF export + Extract human-verified)
 - [x] **Phase 3: Live-Injection Foundation** - Attach to a running client on Win32, read-verify live memory, file-patch fallback (parallel track) (completed 2026-06-26)
 - [x] **Phase 4: Edit & Deploy Loop** - Repack edits to a `.tre` patch, activate via `.cfg`, changeset rollback, Git/LFS for mod outputs (completed 2026-06-27)
-- [ ] **Phase 4.1: Deploy & Project UX** *(INSERTED)* - Project↔client binding front door, one combined Deploy tab, stage-from-TRE, lazy/virtual shadow sandbox (build approved sketches 005-B/006-D/007/008)
-- [ ] **Phase 4.2: Dev-Client Support & Loose-Override Deploy** *(INSERTED)* - Detect `client.cfg` clients whose binary is decoupled from an external TRE set; mount the full base via `searchTOC`/`searchPath` (not just `searchTree`); deploy by dropping loose files into the top-priority override dir (the lazy/virtual-shadow thesis, proven on swg-client-v2)
-- [ ] **Phase 4.3: Versioning Model & SearchTOC Mount Completion** *(INSERTED)* - Crew UI-vs-sketch gap review first; then rework the deploy/version model (live client mirrors the SELECTED version; per-version deploy flag; reconcile-to-version forward-apply/backward-revert; visual branch-tree history per sketches 002/005) and complete the searchTOC/v6000 master-index mount (read swg-client-v2's full base; v6000 per-payload zlib)
+- [x] **Phase 4.1: Deploy & Project UX** *(INSERTED)* - Project↔client binding front door, one combined Deploy tab, stage-from-TRE, lazy/virtual shadow sandbox (build approved sketches 005-B/006-D/007/008) ✓ 2026-07-03 (UAT superseded by 04.3-13)
+- [x] **Phase 4.2: Dev-Client Support & Loose-Override Deploy** *(INSERTED)* - Detect `client.cfg` clients whose binary is decoupled from an external TRE set; mount the full base via `searchTOC`/`searchPath` (not just `searchTree`); deploy by dropping loose files into the top-priority override dir (the lazy/virtual-shadow thesis, proven on swg-client-v2) ✓ 2026-07-03 (UAT superseded by 04.3-13)
+- [x] **Phase 4.3: Versioning Model & SearchTOC Mount Completion** *(INSERTED)* - Crew UI-vs-sketch gap review first; then rework the deploy/version model (live client mirrors the SELECTED version; per-version deploy flag; reconcile-to-version forward-apply/backward-revert; visual branch-tree history per sketches 002/005) and complete the searchTOC/v6000 master-index mount (read swg-client-v2's full base; v6000 per-payload zlib) ✓ 2026-07-03 (combined UAT approved)
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
 - [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
 - [ ] **Phase 7: Format Editors** - Terrain, world snapshots, flora, collision/portals, UI, audio/FX — parallelizable leaves on the IFF root
@@ -214,7 +214,7 @@ Plans:
 
 **Ground-truth gate:** DEPLOY-06 (shadow + cfg path handling) is gated on the queued ground-truth verifications — absolute `searchTree` cfg paths accepted by the client (`TreeFile.cpp:115-149`); server TRE search-path config (Core3/swg-main); v6000 = zlib-vs-encrypted (challenges memory `tre-version-oracles-and-v6000-encryption`) — run under the de-anchoring protocol during plan-phase research, NOT from consensus.
 
-**Plans:** 9/11 plans executed
+**Plans:** 11/11 plans executed — **PHASE COMPLETE** (UAT superseded by 04.3-13, approved 2026-07-03)
 Plans:
 **Wave 1**
 - [x] 04.1-01-PLAN.md — Foundation: extend WorkspaceInfo contract (kind + binding fields) + shared fake-client-dir test fixture + vitest version alignment
@@ -251,7 +251,7 @@ Plans:
 
 **Ground-truth gate** (de-anchoring protocol — verify against `../swg-client-v2` source + real bytes, NOT consensus): mount semantics are LOCKED from the 2026-06-28 source trace — `TreeFile::install` reads `searchPath`/`searchTree`/`searchTOC` per priority 0→maxSearchPriority (`TreeFile.cpp:118-148`); `.toc` = token "TOC"/TAG_0001 (`TreeFile_SearchNode.h:270-299`); `TOCTreePath` prepended to in-toc archive names (`TreeFile_SearchNode.cpp:639-671`); precedence priority-DESC, same-priority ties → **LATER-added wins** (do NOT re-derive as first-added). See memory `reference-swg-client-mount-mechanisms` + todo `client-detection-and-layout-model.md`.
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans executed — **PHASE COMPLETE** (UAT superseded by 04.3-13, approved 2026-07-03)
 Plans:
 **Wave 1**
 - [x] 04.2-01-PLAN.md — Contracts + RED test scaffolding: LooseDeployRecord type, 'loose-override' DeployModel, SwgChangeset.deployRecord union; RED stubs for tocReader, looseOverrideDeploy, clientLayout (treDirFromCfg case), clientSearchOrder (quote-stripping, looseDirs)
@@ -322,7 +322,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 8
+Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 4.2 -> 4.3 -> 5 -> 6 -> 7 -> 8
 
 (Phase 3 — live-injection — and Phase 6 — Blender bridge — are deliberately OFF the critical path and may be developed in parallel with the format chain; they are listed in numeric order here.)
 
@@ -333,8 +333,9 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 5 -> 6 -> 7 -> 
 | 2. 3D Mesh Viewport (MVP Proof) | 5/5 | Complete   | 2026-06-25 |
 | 3. Live-Injection Foundation | 7/7 | Complete   | 2026-06-26 |
 | 4. Edit & Deploy Loop | 8/8 | Complete   | 2026-07-01 |
-| 4.1 Deploy & Project UX *(INSERTED)* | 10/11 | In Progress|  |
-| 4.2 Dev-Client Support & Loose-Override Deploy *(INSERTED)* | 0/6 | Not started | - |
+| 4.1 Deploy & Project UX *(INSERTED)* | 11/11 | Complete | 2026-07-03 |
+| 4.2 Dev-Client Support & Loose-Override Deploy *(INSERTED)* | 6/6 | Complete | 2026-07-03 |
+| 4.3 Versioning Model & SearchTOC Mount Completion *(INSERTED)* | 12/12 | Complete | 2026-07-03 |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |

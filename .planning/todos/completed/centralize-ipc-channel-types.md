@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer UAT — Deploy "Browse" silently failed; root cause was a drifted local IPC type cast
 severity: medium (latent-bug class; type-safety)
 area: renderer ↔ main IPC (workspace:pick-dir / pick-file / etc.)
-status: pending
+status: done
 related: e2e-deploy-flow-coverage
 ---
 
@@ -35,3 +35,7 @@ mismatch is a compile error, not a silent runtime failure. Audit existing channe
 Medium — not a crash, but a whole CLASS of silent failures (this is the 3rd silent/typing bug found in
 the deploy flow during UAT). A typed IPC boundary kills the class. Pairs with E2E coverage
 (`e2e-deploy-flow-coverage`) which would have caught the symptom.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.1-10 — contracts ipc.ts (IpcChannels/TypedIpcRenderer), all renderer call sites swapped to the single typed invoke.

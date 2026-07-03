@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer design discussion during Phase-4 UAT
 severity: medium-high (UX + architecture)
 area: renderer / Assets tab (TRE browser) + workspace entry + deploy shadow models
-status: pending
+status: done
 disposition: design note for the rework task; open question on shadow strategy + one ground-truth verification needed
 related: project-binds-and-automounts-client-tres, staging-workflow-redesign, e2e-deploy-flow-coverage
 ---
@@ -66,3 +66,7 @@ committing to work-dir location. Good candidate for a consult-crew ground-truth 
 Medium-high — not blocking the current deploy loop, but it defines the project's core front-door UX and
 the isolation model. Worth designing carefully (and verifying the absolute-path constraint) before the
 rework task.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.1-04 (project front door: ProjectBindingBar + NewProjectWizard), 04.1-07 (shadow re-arch: cfg snapshot/restore, lazy model), 04.3-08 (front-door polish per sketch 007).

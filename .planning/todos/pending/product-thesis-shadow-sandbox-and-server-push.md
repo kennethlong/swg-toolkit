@@ -127,3 +127,7 @@ DECISION:
 High — defines the headline positioning and several architecture decisions (default model, hardlink
 shadow, baseline node, pluggable codec, server push). Most are design/scope, not code-now; verify the
 two ground-truth items before committing the shadow + server layout.
+
+## Triage note (2026-07-03)
+
+The zero-risk shadow-sandbox half of this thesis is now REALIZED (04.1-07 lazy shadow + cfg snapshot/restore; 04.2-04 loose-override with B3 snapshot; 04.3 reconcile-to-version). Remaining open scope: server TRE push + codec scope decisions.

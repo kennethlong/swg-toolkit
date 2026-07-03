@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer UAT — disk check after a successful deploy
 severity: low (cosmetic; client tolerates it, searchTree still resolves)
 area: renderer / DeployDialog + cfgActivator (swgtoolkit.cfg creation)
-status: pending
+status: done
 ---
 
 ## Symptom
@@ -38,3 +38,7 @@ one. Idempotent section handling. One-liner either way; verify a second deploy d
 ## Severity
 
 Low / cosmetic. Bundle with the deploy/cfg rework.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.1-07 — idempotent [SharedFile] header in cfgActivator (needsHeader guard, cfgActivator.ts:205-222); verified in source.

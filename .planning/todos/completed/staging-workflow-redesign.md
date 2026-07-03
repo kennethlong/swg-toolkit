@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer UAT feedback (Phase-4 deploy-loop) — "This is not intuitive at all… the workflow should allow you to stage things from the TRE browser. Let's test what we have and redesign at the rework task."
 severity: medium-high (UX)
 area: renderer / staging (StagingPanel) ↔ TRE VFS browser (TreVfsBrowser/VfsTree)
-status: pending
+status: done
 disposition: redesign deferred to the rework task; UAT proceeds with the current minimal flow
 related: project-binds-and-automounts-client-tres
 ---
@@ -68,3 +68,7 @@ drag-drop work for UAT. This modal is intentionally minimal and will be supersed
 Medium-high UX — not a correctness bug (the deploy loop functions), but the first-run experience is
 confusing and the TRE-browser disconnect is the core ergonomic gap. Schedule with the staging/TRE
 rework.
+
+## Resolution (2026-07-03 triage)
+
+Resolved by 04.1-08 (Extract→Add stages from the TRE browser with derived virtual path; empty-state copy corrected) + 04.3-07 (DEPLOYUI-07/D9 changed-vs-base ●/○ per-row indicator, StagingPanelBody.tsx:924).

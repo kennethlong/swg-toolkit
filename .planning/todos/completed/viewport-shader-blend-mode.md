@@ -5,7 +5,7 @@ created: 2026-06-24
 origin: Phase 02 03 testing — all meshes rendered semi-transparent (diffuse alpha treated as opacity)
 severity: medium
 area: renderer / material + native shader/effect parsing
-status: pending
+status: done
 ---
 
 ## Context
@@ -37,3 +37,7 @@ the common case (characters, objects) but will render genuinely-transparent asse
 
 Medium — opaque default is correct for most assets and unblocked 02-03. Transparent/cutout assets
 look wrong until this lands. Candidate for a later rendering-fidelity pass.
+
+## Resolution (2026-07-03 triage)
+
+Resolved in 02-03 — .eft EFCT blend state (alphaBlend/alphaTest/zWrite) is parsed and drives material transparent/alphaTest/depthWrite per shader. Residual PTXM sampler-map + CI fixture gaps tracked in eft-parser-completion.

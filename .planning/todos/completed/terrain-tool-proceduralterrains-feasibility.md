@@ -5,7 +5,7 @@ created: 2026-06-27
 origin: Maintainer research request — "could we use it to create terrain for SWG, and what would that entail?" repo: https://github.com/ZyFou/ProceduralTerrains
 severity: research / scoping (not active work)
 area: terrain (.trn / PTAT) — potential future tool
-status: researched; verdict captured; not scheduled
+status: done
 ---
 
 ## Verdict
@@ -89,3 +89,7 @@ import a heightmap OR a foreign noise function.** Parity is only solvable at the
 - Corrected `docs/02-formats/terrain.md` to the verified `PTAT` model (the draft was substantially
   fabricated — wrong FORM tag, wrong chunk tags, invented noise + serializer).
 - Cloned repo for reading lives in scratch (not committed): `…/scratchpad/ProceduralTerrains`.
+
+## Resolution (2026-07-03 triage)
+
+Research task complete — verdict captured in this file; docs/02-formats/terrain.md corrected to the real PTAT model. Any terrain-editor work is Phase 7 roadmap scope.
