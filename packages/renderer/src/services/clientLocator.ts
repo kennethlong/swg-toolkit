@@ -167,89 +167,243 @@ export function chooseSlot(scan: SharedFileScan): number {
 // ─── Known client paths ───────────────────────────────────────────────────────
 
 /**
- * A well-known candidate client install — name + expected installPath.
- * Used by the welcome screen to show "not found" rows for clients that are
- * configured in the scan list but weren't found on disk (P4 sketch 007-B).
+ * A well-known SWG distro name shown as a "not found" row when the content scan
+ * did not turn it up on disk (P4 sketch 007-B). Matched to detected clients by
+ * NAME (case-insensitive), not by a hardcoded path — detection is now content-based
+ * (scanForClients finds installs wherever their .tre files live), so a fixed path
+ * list would produce false "not found" rows for installs sitting in renamed dirs.
+ *
+ * `installPath` is optional/informational only (a hint for the tooltip); the
+ * found-vs-missing decision is by name.
  */
 export interface KnownClientPath {
   name: string;
-  installPath: string;
+  installPath?: string;
 }
 
 /**
- * Return the primary well-known SWG client install paths.
- * These are the entries the auto-scan probes; callers compare against
- * detectClients() results to find the "configured-but-missing" installs
- * to show as "✗ not found" in the welcome list.
+ * Return the curated list of popular SWG distros for the welcome screen.
  *
- * Only the primary (most-expected) paths are returned — not drive-letter
- * variants or dev builds, which are lower-signal for the welcome screen.
+ * These are matched by NAME against detectClients()/scanForClients() results:
+ * any curated distro whose name is not among the detected names is shown as a
+ * "✗ not found" informational row (sketch 007-B P4). This intentionally does NOT
+ * gate detection — a distro installed under any folder name is still auto-detected
+ * by its .tre content; this list only decides which well-known names to surface as
+ * "not installed" hints.
  *
- * Source: 04.3-08-PLAN.md P4; sketch 007-B "not found" row.
+ * Source: 04.3-08-PLAN.md P4; client-detection-and-layout-model.md (content-based detection).
  */
 export function getKnownClientPaths(): KnownClientPath[] {
   return [
-    { name: 'SWG Infinity', installPath: 'D:\\SWG Infinity\\SWG Infinity' },
-    { name: 'SWGEmu',       installPath: 'D:\\SWGEmu Client\\SWGEmu' },
+    { name: 'SWG Infinity' },
+    { name: 'SWGEmu' },
+    { name: 'SWG Restoration' },
+    { name: 'SWG Legends' },
   ];
+}
+
+// ─── Content-based scan (find installs by their .tre files, not by folder name) ──
+
+/**
+ * Directory basenames that are never worth descending into during a scan
+ * (system trees, package caches, junk). Skipped even by the deep scan.
+ */
+const ALWAYS_PRUNE = new Set<string>([
+  'windows', '$recycle.bin', 'system volume information', '$winreagent',
+  'recovery', 'perflogs', 'msocache', '$sysreset', 'config.msi', 'node_modules',
+]);
+
+/**
+ * Additional heavy trees pruned by the SHALLOW (default) scan for speed. The deep
+ * "Scan all drives" scan does NOT prune these, so a client installed under e.g.
+ * a user profile or Program Files is still found when the user opts in.
+ */
+const SHALLOW_ONLY_PRUNE = new Set<string>([
+  'program files', 'program files (x86)', 'programdata', 'users', 'appdata',
+  'intel', 'amd', 'nvidia',
+]);
+
+/**
+ * Generic container-dir names that are NOT the distro's identity. When the .tre
+ * dir has one of these basenames, the friendly name is taken from its PARENT
+ * (e.g. …\SWG Infinity\SWG Infinity\Live → "SWG Infinity"; …\SWG Beyond\Win64 → "SWG Beyond").
+ */
+const GENERIC_DIR_NAMES = new Set<string>([
+  'live', 'win64', 'win32', 'bin', 'client', 'clientside', 'game', 'gamedata', 'data',
+]);
+
+/** Enumerate existing fixed-drive roots (C:\ … Z:\). */
+function getScanRoots(): string[] {
+  const roots: string[] = [];
+  for (let code = 'C'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code++) {
+    const root = `${String.fromCharCode(code)}:\\`;
+    try { if (fs.existsSync(root)) roots.push(root); } catch { /* skip */ }
+  }
+  return roots;
+}
+
+/** Derive a human-readable distro name from the directory that holds the .tre files. */
+function deriveClientName(treDir: string): string {
+  const base = path.basename(treDir);
+  if (GENERIC_DIR_NAMES.has(base.toLowerCase())) {
+    const parent = path.basename(path.dirname(treDir));
+    if (parent) return parent;
+  }
+  return base;
+}
+
+/**
+ * Classify a directory KNOWN to contain .tre files into a DetectedClient.
+ * Requires a recognized cfg beside the archives (resolveLayout) — a bare .tre
+ * folder with no cfg (e.g. an extraction dump) is skipped so it can't be bound/deployed.
+ */
+function classifyClientDir(treDir: string): DetectedClient | null {
+  const layout = resolveLayout(treDir);
+  if (!layout) return null;
+  const cfgRootPath = path.join(treDir, layout.cfgFile);
+  if (!fs.existsSync(cfgRootPath)) return null;
+  return {
+    name:        deriveClientName(treDir),
+    installPath: treDir,
+    cfgRootPath,
+    treVersion:  _detectTreVersion(treDir),
+  };
+}
+
+/**
+ * Options controlling how the content scan searches for client installs.
+ */
+export interface ScanOptions {
+  /** Roots to scan. Default: all existing fixed drives (C:\ … Z:\). */
+  roots?: string[];
+  /** Max recursion depth from each root. Default: 3 (shallow) / 8 (deep). */
+  maxDepth?: number;
+  /** Exhaustive mode — higher depth + no shallow-only pruning (the "Scan all drives" button). */
+  deep?: boolean;
+}
+
+/**
+ * Find SWG client installs by locating directories that CONTAIN .tre files, rather
+ * than matching hardcoded folder names. This handles the real-world variety of layouts:
+ *   • …\SWG Infinity\SWG Infinity\Live  (cfg + tre in a Live/ subdir)
+ *   • …\SWGEmu-Client\SWGEmu            (cfg + tre at root; folder name varies)
+ *   • C:\EmpireInFlames                 (SWGEmu-based, tre at root)
+ *   • …\SWG Beyond\Win64                (client.cfg + tre in a Win64/ subdir)
+ *
+ * A directory containing ≥1 .tre is treated as a client (classified via resolveLayout;
+ * a cfg beside the archives is required). The walk does NOT descend into a client's own
+ * subtree once found. Errors per-directory are swallowed (unreadable/permission dirs skipped).
+ *
+ * Every fs call is read-only. Never reuses the injection addon (Pitfall 3).
+ *
+ * Source: client-detection-and-layout-model.md (maintainer: "look for the TRE files").
+ */
+export function scanForClients(opts: ScanOptions = {}): DetectedClient[] {
+  if (process.platform !== 'win32') return [];
+
+  const deep     = opts.deep === true;
+  const maxDepth = opts.maxDepth ?? (deep ? 8 : 3);
+  const roots    = opts.roots ?? getScanRoots();
+  const found: DetectedClient[] = [];
+  const seen = new Set<string>();
+
+  function walk(dir: string, depth: number): void {
+    if (depth > maxDepth) return;
+    let entries: import('fs').Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // unreadable / permission denied — skip this branch
+    }
+
+    // If THIS dir holds archives, it's a client: classify and stop descending here.
+    const hasTre = entries.some((e) => e.isFile() && e.name.toLowerCase().endsWith('.tre'));
+    if (hasTre) {
+      const client = classifyClientDir(dir);
+      if (client) {
+        const key = client.installPath.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); found.push(client); }
+      }
+      return;
+    }
+
+    // Otherwise descend into subdirectories (bounded by maxDepth + prune sets).
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const name = e.name.toLowerCase();
+      if (name.startsWith('.') || name.startsWith('$')) continue;
+      if (ALWAYS_PRUNE.has(name)) continue;
+      if (!deep && SHALLOW_ONLY_PRUNE.has(name)) continue;
+      walk(path.join(dir, e.name), depth + 1);
+    }
+  }
+
+  for (const root of roots) walk(root, 0);
+  return found;
 }
 
 // ─── detectClients ────────────────────────────────────────────────────────────
 
 /**
+ * Decoupled dev/modder clients (swg-client-v2 stage builds): a binary dir with
+ * client.cfg but ZERO local .tre files (data dir is external, resolved from cfg).
+ * These have no .tre signature, so the content scan can't find them — they're probed
+ * by explicit path. resolveLayout matches them via the treDirFromCfg row.
+ * Source: 04.2-PATTERNS.md §clientLocator.ts; 04.2-RESEARCH.md §Capability 1.
+ */
+const DECOUPLED_DEV_CANDIDATES: Array<{ name: string; installPath: string }> = [
+  { name: 'swg-client-v2 (stage-x64)',    installPath: 'D:\\Code\\swg-client-v2\\stage-x64' },
+  { name: 'swg-client-v2 (stage, 32-bit)', installPath: 'D:\\Code\\swg-client-v2\\stage' },
+];
+
+/**
  * Auto-detect SWG client installations on this machine.
  *
- * Probes:
- *   1. Windows registry (HKCU\Software\SWG Infinity, HKCU\Software\SWGEmu)
- *   2. Known install paths on common drives
+ * Probes, in order (deduped by installPath):
+ *   1. Content scan — directories containing .tre files (shallow, all fixed drives).
+ *   2. Decoupled dev clients (swg-client-v2 stage builds) — explicit paths (no .tre signature).
+ *   3. Windows registry (HKCU/HKLM SWG Infinity + SWGEmu InstallPath).
+ *
+ * @param opts  Passed through to the content scan. `{ deep: true }` runs the exhaustive
+ *              "Scan all drives" search (used by the Welcome button).
  *
  * Every probe is wrapped in try/catch. Returns [] (not throws) if all probes fail.
- * Never reuses the injection addon (Pitfall 3 — the injection addon has no install discovery).
+ * Never reuses the injection addon for install detection (Pitfall 3).
  *
- * Source: 04-CONTEXT.md §D-04-09; 04-RESEARCH.md §OQ-1.
+ * Source: 04-CONTEXT.md §D-04-09; 04-RESEARCH.md §OQ-1; client-detection-and-layout-model.md.
  */
-export function detectClients(): DetectedClient[] {
+export function detectClients(opts: ScanOptions = {}): DetectedClient[] {
   if (process.platform !== 'win32') return [];
 
   const candidates: DetectedClient[] = [];
+  const seen = new Set<string>();
+  const add = (c: DetectedClient): void => {
+    const key = path.resolve(c.installPath).toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(c);
+  };
 
-  // 1. Known install paths (most reliable — registry varies by installer version)
-  // D-13: cfgFile is no longer hardcoded; resolveLayout() determines it from the
-  // release-pattern table so we correctly handle Live/-subdir vs root layouts.
-  const knownPaths: Array<{ name: string; installPath: string }> = [
-    { name: 'SWG Infinity',              installPath: 'D:\\SWG Infinity\\SWG Infinity'          },
-    { name: 'SWGEmu',                    installPath: 'D:\\SWGEmu Client\\SWGEmu'               },
-    { name: 'SWG Infinity (C:)',         installPath: 'C:\\SWG Infinity\\SWG Infinity'          },
-    { name: 'SWGEmu (C:)',               installPath: 'C:\\SWGEmu\\SWGEmu'                      },
-    // swg-client-v2: decoupled dev client — binary in stage/stage-x64, data dir external
-    // (treDirFromCfg). client.cfg present; zero local .tre files. resolveLayout uses the
-    // treDirFromCfg path. Both the 64-bit (stage-x64) and 32-bit (stage) builds are probed.
-    // Source: 04.2-PATTERNS.md §clientLocator.ts; 04.2-RESEARCH.md §Capability 1.
-    { name: 'swg-client-v2 (stage-x64)', installPath: 'D:\\Code\\swg-client-v2\\stage-x64'     },
-    { name: 'swg-client-v2 (stage, 32-bit)', installPath: 'D:\\Code\\swg-client-v2\\stage'     },
-  ];
+  // 1. Content scan — find installs by their .tre files (folder names vary).
+  try {
+    for (const c of scanForClients(opts)) add(c);
+  } catch { /* scan failure — fall through to explicit probes */ }
 
-  for (const known of knownPaths) {
+  // 2. Decoupled dev clients (no local .tre → invisible to the content scan).
+  for (const cand of DECOUPLED_DEV_CANDIDATES) {
     try {
-      // D-13: resolveLayout() probes both cfgFile and TRE dir — replaces the
-      // hardcoded 'swgemu.cfg' / 'Live/' assumption (RESEARCH.md §Pattern 3).
-      const layout = resolveLayout(known.installPath);
+      const layout = resolveLayout(cand.installPath);
       if (!layout) continue;
-
-      const cfgRootPath = path.join(known.installPath, layout.cfgFile);
-      const treVersion  = _detectTreVersion(known.installPath);
-      candidates.push({
-        name: known.name,
-        installPath: known.installPath,
-        cfgRootPath,
-        treVersion,
+      add({
+        name:        cand.name,
+        installPath: cand.installPath,
+        cfgRootPath: path.join(cand.installPath, layout.cfgFile),
+        treVersion:  _detectTreVersion(cand.installPath),
       });
-    } catch {
-      // Silently skip inaccessible paths (Pitfall 3 + T-04-12)
-    }
+    } catch { /* skip inaccessible path (Pitfall 3 + T-04-12) */ }
   }
 
-  // 2. Windows registry probes
+  // 3. Windows registry probes
   const registryKeys = [
     ['HKCU\\Software\\SWG Infinity', 'InstallPath'],
     ['HKCU\\Software\\SWGEmu', 'InstallPath'],
@@ -282,14 +436,10 @@ export function detectClients(): DetectedClient[] {
       if (!layout) continue;
 
       const cfgRootPath = path.join(installPath, layout.cfgFile);
-
-      // Avoid duplicates from known-path probes
-      const alreadyFound = candidates.some(c => c.installPath === installPath);
-      if (alreadyFound) continue;
-
       const treVersion = _detectTreVersion(installPath);
       const name = key.toLowerCase().includes('infinity') ? 'SWG Infinity (registry)' : 'SWGEmu (registry)';
-      candidates.push({ name, installPath, cfgRootPath, treVersion });
+      // add() dedupes against content-scan + dev-client + prior registry hits.
+      add({ name, installPath, cfgRootPath, treVersion });
     } catch {
       // Registry key absent or reg.exe failed — silently skip (T-04-12)
     }

@@ -134,6 +134,29 @@ describe('resolveLayout D-13 release-pattern table', () => {
   });
 
   /**
+   * (g) client.cfg WITH co-located local .tre files (SWG Beyond's Win64/ shape) →
+   * classified as the 'client.cfg (local TRE)' root layout, NOT the decoupled
+   * swg-client-v2 row (which is for client.cfg dirs with ZERO local .tre).
+   *
+   * Ground truth: D:\SWG Beyond\Win64 — client.cfg + 207 .tre at that dir root.
+   */
+  it('(g) client.cfg + co-located .tre → "client.cfg (local TRE)" root layout (not swg-client-v2)', () => {
+    buildFakeClientDir(tmpDir, {
+      treSubdir:         '',           // .tre at the same dir as the cfg (Win64/ root)
+      cfgFile:           'client.cfg',
+      maxSearchPriority: 20,
+    });
+
+    const layout = resolveLayout(tmpDir);
+
+    expect(layout).not.toBeNull();
+    expect(layout!.cfgFile).toBe('client.cfg');
+    expect(layout!.treSubdir).toBe('');
+    expect(layout!.release).toBe('client.cfg (local TRE)');
+    expect(layout!.treDirFromCfg).toBeUndefined();
+  });
+
+  /**
    * (f) Regression: existing SWG Infinity and SWGEmu layouts still classify identically
    * after the swg-client-v2 row is added to KNOWN_LAYOUTS.
    *

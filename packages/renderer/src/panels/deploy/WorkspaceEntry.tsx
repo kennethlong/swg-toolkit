@@ -56,6 +56,21 @@ function formatAgo(iso: string): string {
   }
 }
 
+/**
+ * Which curated popular distros (getKnownClientPaths) were NOT turned up by detection.
+ * Matched by normalized name (lowercased, non-alphanumerics stripped) with substring
+ * tolerance so a detected "SWGLegends" satisfies the curated "SWG Legends" — detection
+ * is content-based, so names come from folder structure and won't match char-for-char.
+ */
+function computeMissingKnown(detected: DetectedClient[]): KnownClientPath[] {
+  const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const detectedNorm = detected.map((c) => norm(c.name));
+  return getKnownClientPaths().filter((k) => {
+    const kn = norm(k.name);
+    return !detectedNorm.some((dn) => dn === kn || dn.includes(kn));
+  });
+}
+
 // ─── Styles (mirror sketch 007 `.welcome` block) ────────────────────────────────
 
 const secTitleStyle: React.CSSProperties = {
@@ -143,6 +158,7 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
   const [missingClients, setMissingClients] = useState<KnownClientPath[]>([]);
   const [recents, setRecents] = useState<RecentProject[]>([]);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   // Auto-scan detected clients + load recents on mount.
   useEffect(() => {
@@ -161,11 +177,11 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
       setDetectedClients(detected);
     } catch (err) { console.error('[WorkspaceEntry] detectClients error:', err); }
 
-    // P4: compute not-found client rows — known paths that weren't detected on disk.
+    // P4: compute not-found rows — curated popular distros not turned up by the
+    // content scan. Matched by NAME (detection is content-based now, so a fixed path
+    // list would falsely flag installs living in renamed folders).
     try {
-      const known = getKnownClientPaths();
-      const detectedInstalls = new Set(detected.map((c) => c.installPath.toLowerCase()));
-      const missing = known.filter((k) => !detectedInstalls.has(k.installPath.toLowerCase()));
+      const missing = computeMissingKnown(detected);
       setMissingClients(missing);
 
       // P9: write first-run scan message to clientScanStore (plan 09 statusbar reads it).
@@ -222,6 +238,34 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
 
   // New — delegate to the wizard.
   const handleNew = useCallback(() => { onNewProject?.(); }, [onNewProject]);
+
+  // "Scan all drives" — exhaustive content scan (opt-in). Deferred via setTimeout so the
+  // "Scanning…" state paints before the synchronous fs walk blocks the thread.
+  const handleScanAll = useCallback(() => {
+    setScanning(true);
+    setClientError(null);
+    setTimeout(() => {
+      try {
+        const boundPaths = new Set(
+          listProjects()
+            .filter((p) => p.kind === 'client' && p.clientPath)
+            .map((p) => nodePath.resolve(p.clientPath!).toLowerCase()),
+        );
+        const deep = detectClients({ deep: true }).filter(
+          (c) => !boundPaths.has(nodePath.resolve(c.installPath).toLowerCase()),
+        );
+        setDetectedClients(deep);
+        setMissingClients(computeMissingKnown(deep));
+        const parts = [...deep.map((c) => `${c.name} ✓`)];
+        if (parts.length > 0) setClientScanMessage(`scanned all drives: ${parts.join(' · ')}`);
+      } catch (err) {
+        setClientError(String((err as Error)?.message ?? err));
+        console.error('[WorkspaceEntry] scan-all-drives error:', err);
+      } finally {
+        setScanning(false);
+      }
+    }, 0);
+  }, []);
 
   // Show progress while a workspace is opening / being scaffolded.
   if (status.kind === 'opening') {
@@ -310,11 +354,11 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
           {/* P4: Not-found rows — greyed/disabled, Sketch 007-B "✗ not found" pill */}
           {missingClients.map((client) => (
             <Row
-              key={client.installPath}
+              key={client.name}
               ico="⛁"
               name={client.name}
               sub="not found on disk"
-              title={`${client.name} — not found at ${client.installPath}`}
+              title={`${client.name} — not detected on any drive`}
               disabled
               pill={(
                 <span
@@ -340,6 +384,15 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
         </button>
         <button style={btnStyle(false)} onClick={() => void handleOpen()} aria-label="Open Project" title="Open an existing project folder">
           <span aria-hidden="true">⌂ </span>Open Project…
+        </button>
+        <button
+          style={{ ...btnStyle(false), ...(scanning ? { opacity: 0.6, cursor: 'wait' } : {}) }}
+          onClick={handleScanAll}
+          disabled={scanning}
+          aria-label="Scan all drives"
+          title="Exhaustively scan every drive for client installs (finds installs in any folder)"
+        >
+          <span aria-hidden="true">🔍 </span>{scanning ? 'Scanning…' : 'Scan all drives'}
         </button>
         {onMount && (
           <button style={btnStyle(false)} onClick={onMount} aria-label="Mount loose archive" title="Mount a .tre archive without binding a project">

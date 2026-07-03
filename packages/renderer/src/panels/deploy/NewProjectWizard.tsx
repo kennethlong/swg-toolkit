@@ -582,10 +582,16 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
   /** True when manual override has been fully entered (cfgFile required). */
   const hasManualOverride = wizard.manualLayout !== undefined && wizard.manualLayout.cfgFile !== '';
 
-  // P4 wizard: not-found rows — known clients not in the detected list.
+  // P4 wizard: not-found rows — curated distros not turned up by detection. Matched by
+  // normalized name (detection is content-based; a fixed path list would false-flag installs
+  // living in renamed folders). Substring tolerance so detected "SWGLegends" ⇒ "SWG Legends".
   const missingClients = (() => {
-    const detectedSet = new Set(clients.map((c) => c.installPath.toLowerCase()));
-    return getKnownClientPaths().filter((k) => !detectedSet.has(k.installPath.toLowerCase()));
+    const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const detectedNorm = clients.map((c) => norm(c.name));
+    return getKnownClientPaths().filter((k) => {
+      const kn = norm(k.name);
+      return !detectedNorm.some((dn) => dn === kn || dn.includes(kn));
+    });
   })();
 
   return (
@@ -669,7 +675,7 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
           )}
           {missingClients.map((client) => (
             <div
-              key={client.installPath}
+              key={client.name}
               style={{
                 display:      'flex',
                 alignItems:   'center',
@@ -682,7 +688,7 @@ function Step2BindClient({ wizard, setWizard, clients, firstInputRef }: Step2Pro
                 cursor:       'not-allowed',
               }}
               aria-disabled="true"
-              title={`${client.name} — not found at ${client.installPath}`}
+              title={`${client.name} — not detected on any drive`}
             >
               <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>○</span>
               <div style={{ flex: 1, minWidth: 0 }}>

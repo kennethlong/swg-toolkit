@@ -99,6 +99,21 @@ export const KNOWN_LAYOUTS: ClientLayout[] = [
     treSubdir:         '',
     maxSearchPriority: 27,
   },
+  // client.cfg release WITH co-located local .tre files (e.g. SWG Beyond's Win64/ dir:
+  // client.cfg + 200+ .tre + sku*.toc, all in the same dir). Distinct from the decoupled
+  // swg-client-v2 row below, which has client.cfg but ZERO local .tre. This row REQUIRES a
+  // local .tre (treDirFromCfg is absent) so a decoupled binary dir falls through to the row
+  // below, while a self-contained client.cfg install matches here as a root-TRE layout.
+  // Ordered before swg-client-v2 so a client.cfg dir that DOES have local .tre is classified
+  // as a normal root-TRE install (not a decoupled one).
+  //
+  // Ground truth: D:\SWG Beyond\Win64 — client.cfg + 207 .tre + sku0-3_client.toc (2026-07 probe).
+  {
+    release:           'client.cfg (local TRE)',
+    cfgFile:           'client.cfg',
+    treSubdir:         '',
+    maxSearchPriority: 20,
+  },
   // swg-client-v2 style: binary dir has client.cfg but ZERO local .tre files.
   // treSubdir='' here because the TRE data dir is NOT a fixed subdir of the install root;
   // it is resolved at mount time from cfg's TOCTreePath/searchTOC values (treDirFromCfg=true).
