@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 017 · Delete-Project Flow</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--color-bg); color: var(--color-text);
+    font-family: var(--font-sans); font-size: var(--text-base);
+    padding-top: 46px; overflow-x: hidden;
+  }
+
+  /* ── variant nav ─────────────────────────────────────────── */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+    padding: 8px 14px; display: flex; gap: 8px; align-items: center;
+  }
+  #variant-nav .ttl { font-size: var(--text-xs); color: var(--color-text-faint); margin-right: 8px; font-family: var(--font-mono); }
+  .variant-tab {
+    background: var(--color-widget); color: var(--color-text-muted);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    font: 600 var(--text-sm)/1 var(--font-sans); padding: 6px 12px; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .variant-tab:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+
+  .variant { display: none; }
+  .variant.active { display: block; }
+
+  /* ── stage: two surfaces side by side ────────────────────── */
+  .stage {
+    display: flex; gap: 28px; justify-content: center; align-items: flex-start;
+    padding: 28px 20px 90px; flex-wrap: wrap;
+  }
+  .pane { width: 440px; max-width: 94vw; }
+  .pane-label {
+    font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; padding-left: 2px;
+  }
+  .surface {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-panel); overflow: hidden;
+  }
+  .surface-head {
+    height: 36px; display: flex; align-items: center; gap: 8px;
+    padding: 0 var(--space-4); background: var(--color-header);
+    border-bottom: 1px solid var(--color-border);
+    font-size: var(--text-md); font-weight: 600;
+  }
+  .surface-head .x {
+    margin-left: auto; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    background: none; border: none; color: var(--color-text-faint); cursor: pointer;
+    border-radius: var(--radius-sm); font-size: 14px;
+  }
+  .surface-head .x:hover { background: var(--color-widget); color: var(--color-text); }
+  .surface-body { padding: var(--space-4); }
+  .wel-sub { font-size: var(--text-xs); color: var(--color-text-faint); margin: -4px 0 10px; }
+
+  /* ── project rows (mirrors real ProjectListDialog cards) ─── */
+  .proj-row {
+    position: relative;
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    background: var(--color-surface-2); cursor: pointer;
+    transition: border-color 0.12s ease, opacity 0.2s ease;
+  }
+  .proj-row:hover { border-color: var(--color-accent-line); }
+  .proj-row .ico { font-size: 16px; flex: 0 0 auto; color: var(--color-text-muted); }
+  .proj-row .meta { flex: 1; min-width: 0; }
+  .proj-row .nm { font-size: var(--text-sm); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .proj-row .nm .open-tag { font: 500 var(--text-xs)/1 var(--font-mono); color: var(--color-accent); margin-left: 6px; }
+  .proj-row .sub { font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .proj-row .ago { font-size: var(--text-xs); color: var(--color-text-faint); flex: 0 0 auto; }
+  .chip-bound {
+    display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px;
+    font: 400 var(--text-xs)/1.6 var(--font-mono); border-radius: var(--radius-full);
+    white-space: nowrap; flex: 0 0 auto;
+    background: rgba(74,140,255,.12); border: 1px solid rgba(74,140,255,.40); color: var(--color-info);
+  }
+
+  /* A · hover-reveal trash button */
+  .row-del {
+    flex: 0 0 auto; width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+    color: var(--color-text-faint); font-size: 13px; cursor: pointer;
+    opacity: 0; transition: all 0.15s ease;
+  }
+  .proj-row:hover .row-del { opacity: 1; }
+  .row-del:hover { color: var(--color-danger); border-color: var(--color-danger); background: rgba(224,88,79,0.10); }
+  .row-del:focus-visible { opacity: 1; outline: none; box-shadow: var(--focus-ring); }
+
+  /* B · kebab menu */
+  .row-kebab {
+    flex: 0 0 auto; width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+    color: var(--color-text-faint); font-size: 15px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .proj-row:hover .row-kebab, .row-kebab.menu-open { color: var(--color-text); }
+  .row-kebab:hover { background: var(--color-widget); border-color: var(--color-border-soft); }
+  .kebab-menu {
+    position: absolute; right: 6px; top: calc(100% - 4px); z-index: 60;
+    min-width: 170px; padding: 4px;
+    background: var(--color-header); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-pop);
+  }
+  .kebab-menu .mi {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    font-size: var(--text-sm); border-radius: var(--radius-sm); cursor: pointer; color: var(--color-text);
+  }
+  .kebab-menu .mi:hover { background: var(--color-widget-hover); }
+  .kebab-menu .mi.danger { color: var(--color-danger); }
+  .kebab-menu .mi.danger:hover { background: rgba(224,88,79,0.12); }
+  .kebab-menu .sep { height: 1px; margin: 4px 6px; background: var(--color-border-soft); }
+
+  /* B · inline deleted (dimmed) rows */
+  .proj-row.deleted-inline { opacity: 0.85; cursor: default; background: var(--color-surface); border-style: dashed; }
+  .proj-row.deleted-inline:hover { border-color: var(--color-border-soft); }
+  .proj-row.deleted-inline .nm { color: var(--color-text-faint); text-decoration: line-through; }
+  .proj-row.deleted-inline .sub { color: var(--color-text-faint); }
+
+  /* C · manage mode */
+  .manage-btn {
+    margin-left: auto; background: var(--color-widget); color: var(--color-text-muted);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    font: 600 var(--text-xs)/1 var(--font-sans); padding: 4px 9px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .manage-btn:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .manage-btn.on { background: rgba(224,88,79,0.12); border-color: var(--color-danger); color: var(--color-danger); }
+  .row-del-c {
+    flex: 0 0 auto; display: none; align-items: center; gap: 5px;
+    background: none; border: 1px solid var(--color-danger); border-radius: var(--radius-sm);
+    color: var(--color-danger); font: 600 var(--text-xs)/1 var(--font-sans);
+    padding: 4px 8px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .row-del-c:hover { background: var(--color-danger); color: #fff; }
+  .manage-on .row-del-c { display: inline-flex; }
+  .manage-on .proj-row { cursor: default; }
+  .manage-on .proj-row:hover { border-color: var(--color-border-soft); }
+
+  /* ── trash section ────────────────────────────────────────── */
+  .trash-sec { border-top: 1px solid var(--color-border-soft); margin-top: var(--space-3); }
+  .trash-head {
+    display: flex; align-items: center; gap: 7px; padding: var(--space-2) var(--space-1);
+    font-size: var(--text-xs); color: var(--color-text-faint); cursor: pointer; user-select: none;
+  }
+  .trash-head:hover { color: var(--color-text-muted); }
+  .trash-head .tw { display: inline-block; transition: transform 0.15s ease; font-size: 9px; }
+  .trash-head.open .tw { transform: rotate(90deg); }
+  .trash-head .cnt {
+    background: var(--color-widget); border-radius: var(--radius-full);
+    padding: 0 7px; font-family: var(--font-mono);
+  }
+  .trash-body { display: none; padding-bottom: var(--space-2); }
+  .trash-head.open + .trash-body { display: block; }
+  .trash-row {
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-2) var(--space-3); margin-bottom: var(--space-1);
+    border: 1px dashed var(--color-border-soft); border-radius: var(--radius-sm);
+    background: var(--color-surface);
+  }
+  .trash-row .nm { font-size: var(--text-sm); color: var(--color-text-muted); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trash-row .when { font-size: var(--text-xs); color: var(--color-text-faint); font-family: var(--font-mono); }
+  .restore-btn {
+    background: none; border: 1px solid var(--color-accent-line); color: var(--color-accent);
+    border-radius: var(--radius-sm); font: 600 var(--text-xs)/1 var(--font-sans);
+    padding: 4px 9px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .restore-btn:hover { background: var(--color-accent-dim); }
+  .trash-note { font-size: var(--text-xs); color: var(--color-text-faint); padding: 2px var(--space-1) 0; }
+
+  /* ── confirm modal ───────────────────────────────────────── */
+  #confirm-overlay {
+    position: fixed; inset: 0; z-index: 9000; display: none;
+    background: rgba(0,0,0,0.55); align-items: center; justify-content: center;
+  }
+  #confirm-overlay.show { display: flex; }
+  .confirm-box {
+    width: 430px; max-width: 92vw; background: var(--color-surface);
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    box-shadow: var(--shadow-pop); overflow: hidden;
+  }
+  .confirm-head {
+    display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 var(--space-4);
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+    font-size: var(--text-md); font-weight: 600;
+  }
+  .confirm-head .warn-ico { color: var(--color-danger); font-size: 15px; }
+  .confirm-body { padding: var(--space-4); }
+  .confirm-intro { font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-3); }
+  .confirm-intro b { color: var(--color-text); }
+  .plan { border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm); background: var(--color-surface-2); padding: var(--space-2) 0; margin-bottom: var(--space-3); }
+  .plan-line { display: flex; gap: 10px; padding: 5px var(--space-3); font-size: var(--text-sm); color: var(--color-text-muted); align-items: baseline; }
+  .plan-line .n { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint); flex: 0 0 14px; }
+  .plan-line b { color: var(--color-text); font-weight: 600; }
+  .plan-line.ok .n { color: var(--color-accent); }
+  .plan-line.warn-line { color: var(--color-warn); }
+  .undo-note {
+    display: flex; gap: 8px; align-items: baseline; font-size: var(--text-xs); color: var(--color-text-faint);
+    padding: var(--space-2) var(--space-1) 0;
+  }
+  .undo-note .u { color: var(--color-accent); }
+  .confirm-foot {
+    display: flex; justify-content: flex-end; gap: var(--space-2);
+    padding: var(--space-3) var(--space-4); background: var(--color-header);
+    border-top: 1px solid var(--color-border-soft);
+  }
+  .btn {
+    border-radius: var(--radius-sm); font: 600 var(--text-sm)/1 var(--font-sans);
+    padding: 7px 14px; cursor: pointer; transition: all 0.15s ease; border: 1px solid var(--color-border-soft);
+  }
+  .btn-ghost { background: var(--color-widget); color: var(--color-text); }
+  .btn-ghost:hover { background: var(--color-widget-hover); }
+  .btn-danger { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
+  .btn-danger:hover { filter: brightness(1.12); }
+  .btn-danger:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--color-danger), 0 0 0 3px rgba(224,88,79,0.3); }
+
+  /* ── toast ────────────────────────────────────────────────── */
+  #toast {
+    position: fixed; right: 16px; bottom: 40px; z-index: 9500;
+    min-width: 300px; max-width: 380px;
+    background: var(--color-header); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-pop);
+    transform: translateY(12px); opacity: 0; pointer-events: none;
+    transition: all 0.22s ease; overflow: hidden;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+  .toast-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+  .toast-ico { font-size: 14px; }
+  .toast-msg { flex: 1; font-size: var(--text-sm); color: var(--color-text); }
+  .toast-msg .sub { display: block; font-size: var(--text-xs); color: var(--color-text-faint); margin-top: 2px; }
+  .toast-msg .sub.warn { color: var(--color-warn); }
+  .toast-undo {
+    background: none; border: 1px solid var(--color-accent-line); color: var(--color-accent);
+    border-radius: var(--radius-sm); font: 700 var(--text-xs)/1 var(--font-sans);
+    padding: 5px 10px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .toast-undo:hover { background: var(--color-accent-dim); }
+  .toast-x { background: none; border: none; color: var(--color-text-faint); cursor: pointer; font-size: 13px; padding: 2px; }
+  .toast-x:hover { color: var(--color-text); }
+  .toast-bar { height: 2px; background: var(--color-accent); width: 100%; transform-origin: left; }
+  #toast.show .toast-bar { animation: shrink 8s linear forwards; }
+  @keyframes shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+  /* ── statusbar strip (context anchor) ─────────────────────── */
+  .fake-statusbar {
+    position: fixed; left: 0; right: 0; bottom: 0; height: var(--statusbar-h); z-index: 9400;
+    background: var(--color-header); border-top: 1px solid var(--color-border);
+    display: flex; align-items: center; gap: 16px; padding: 0 12px;
+    font: 400 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint);
+  }
+  .fake-statusbar .dot { color: var(--color-accent); }
+
+  /* ── sketch toolbar ──────────────────────────────────────── */
+  #sketch-tools {
+    position: fixed; bottom: 34px; right: 12px; z-index: 9999;
+    font-family: system-ui; font-size: 12px; background: rgba(0,0,0,0.75); color: #fff;
+    padding: 8px 12px; border-radius: 8px; opacity: 0.4; transition: opacity 0.2s;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  #sketch-tools select, #sketch-tools button {
+    background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px;
+    font-size: 11px; padding: 3px 6px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="ttl">017 · delete-project-flow</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Hover trash + trash section</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Kebab menu + inline dimmed rows ★ Selected</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Manage mode</button>
+</div>
+
+<!-- ═══════════ VARIANT A ═══════════ -->
+<div id="variant-a" class="variant active">
+  <div class="stage">
+    <div class="pane">
+      <div class="pane-label">Welcome screen · recent projects</div>
+      <div class="surface">
+        <div class="surface-head">Recent projects</div>
+        <div class="surface-body">
+          <div class="wel-sub">Hover a row — the trash button reveals on the right.</div>
+          <div id="a-welcome"></div>
+        </div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="pane-label">Open Project dialog</div>
+      <div class="surface">
+        <div class="surface-head">Open Project <button class="x" title="Close">✕</button></div>
+        <div class="surface-body">
+          <div id="a-dialog"></div>
+          <div class="trash-sec" id="a-trash-sec" style="display:none">
+            <div class="trash-head" onclick="this.classList.toggle('open')">
+              <span class="tw">▶</span> Recently deleted (this session) <span class="cnt" id="a-trash-cnt">0</span>
+            </div>
+            <div class="trash-body">
+              <div id="a-trash"></div>
+              <div class="trash-note">Recoverable until the app closes — then purged permanently.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ VARIANT B ═══════════ -->
+<div id="variant-b" class="variant">
+  <div class="stage">
+    <div class="pane">
+      <div class="pane-label">Welcome screen · recent projects</div>
+      <div class="surface">
+        <div class="surface-head">Recent projects</div>
+        <div class="surface-body">
+          <div class="wel-sub">Each row carries a ⋯ menu (Open · Reveal folder · Delete…).</div>
+          <div id="b-welcome"></div>
+        </div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="pane-label">Open Project dialog</div>
+      <div class="surface">
+        <div class="surface-head">Open Project <button class="x" title="Close">✕</button></div>
+        <div class="surface-body">
+          <div id="b-dialog"></div>
+          <div class="trash-note" id="b-note" style="display:none; padding-top:6px;">
+            Deleted projects stay in place, dimmed — Restore puts them back. Purged when the app closes.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ VARIANT C ═══════════ -->
+<div id="variant-c" class="variant">
+  <div class="stage">
+    <div class="pane">
+      <div class="pane-label">Welcome screen · recent projects</div>
+      <div class="surface">
+        <div class="surface-head">Recent projects <button class="manage-btn" id="c-manage-w" onclick="toggleManage()">Manage</button></div>
+        <div class="surface-body" id="c-welcome-wrap">
+          <div class="wel-sub">Click <b>Manage</b> — rows switch to management state with visible Delete buttons.</div>
+          <div id="c-welcome"></div>
+        </div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="pane-label">Open Project dialog</div>
+      <div class="surface">
+        <div class="surface-head">Open Project <button class="manage-btn" id="c-manage-d" onclick="toggleManage()">Manage</button> <button class="x" title="Close" style="margin-left:6px">✕</button></div>
+        <div class="surface-body" id="c-dialog-wrap">
+          <div id="c-dialog"></div>
+          <div class="trash-sec" id="c-trash-sec" style="display:none">
+            <div class="trash-head open">
+              <span class="tw">▶</span> Trash — this session <span class="cnt" id="c-trash-cnt">0</span>
+            </div>
+            <div class="trash-body">
+              <div id="c-trash"></div>
+              <div class="trash-note">Emptied automatically when the app closes.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ shared confirm modal ═══════════ -->
+<div id="confirm-overlay">
+  <div class="confirm-box" role="dialog" aria-modal="true">
+    <div class="confirm-head"><span class="warn-ico">⚠</span> Delete project?</div>
+    <div class="confirm-body">
+      <div class="confirm-intro" id="cf-intro"></div>
+      <div class="plan" id="cf-plan"></div>
+      <div class="undo-note"><span class="u">↩</span><span>Undoable until you close the app — the project and all its versions are parked, not destroyed.</span></div>
+    </div>
+    <div class="confirm-foot">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-danger" id="cf-go" onclick="confirmDelete()">Delete project</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ shared toast ═══════════ -->
+<div id="toast">
+  <div class="toast-row">
+    <span class="toast-ico" id="toast-ico">🗑</span>
+    <span class="toast-msg" id="toast-msg"></span>
+    <button class="toast-undo" onclick="undoLast()">Undo</button>
+    <button class="toast-x" onclick="hideToast()">✕</button>
+  </div>
+  <div class="toast-bar" id="toast-bar"></div>
+</div>
+
+<div class="fake-statusbar">
+  <span><span class="dot">●</span> addon: native-core</span>
+  <span>mount: 27 archives</span>
+  <span>vfs: 244,381 files</span>
+  <span style="margin-left:auto">zero-copy · SAB @60fps</span>
+</div>
+
+<!-- ═══════════ sketch toolbar ═══════════ -->
+<div id="sketch-tools">
+  <label>Theme
+    <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'">
+      <option value="cyan" selected>Cyan (default)</option>
+      <option value="default">SWG green</option>
+      <option value="amber">Amber</option>
+      <option value="blue">IDE blue</option>
+      <option value="high-contrast">High contrast</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="sim-fail"> simulate restore failure</label>
+  <button onclick="resetAll()">↺ reset sketch state</button>
+</div>
+
+<script>
+/* ── data: mirrors real ProjectListEntry shapes ─────────────── */
+const PROJECTS = [
+  { id: 'dl44',    name: 'DL-44 Overhaul',      kind: 'client', client: 'SWG Infinity',   model: 'cfg',
+    sub: 'bound · SWG Infinity', ago: 'today',       open: true,  deployed: true, versions: 4,
+    restoreLine: 'Restore <b>SWG Infinity</b>’s <b>swgemu.cfg</b> from the pre-deploy snapshot (byte-pristine).' },
+  { id: 'trooper', name: 'Stormtrooper Recolor', kind: 'client', client: 'swg-client-v2',  model: 'loose',
+    sub: 'bound · swg-client-v2', ago: '3 days ago', open: false, deployed: true, versions: 7,
+    restoreLine: 'Revert loose overrides in <b>swg-client-v2</b> — restore snapshotted originals, remove toolkit-added files.' },
+  { id: 'tat',     name: 'Tatooine Props',       kind: 'tre',    client: null,             model: null,
+    sub: 'standalone TRE set',    ago: '2 weeks ago', open: false, deployed: false, versions: 2,
+    restoreLine: null },
+];
+
+/* per-variant independent state */
+const state = { a: { deleted: [] }, b: { deleted: [] }, c: { deleted: [], manage: false } };
+let pending = null;          // { variant, projectId }
+let lastDeleted = null;      // { variant, projectId }
+let toastTimer = null;
+
+/* ── variant switching ──────────────────────────────────────── */
+function showVariant(id, tab) {
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).classList.add('active');
+  tab.classList.add('active');
+  hideToast();
+}
+
+/* ── row templates ──────────────────────────────────────────── */
+function rowHtml(p, variant) {
+  const chip = p.kind === 'client' ? '<span class="chip-bound"><span aria-hidden="true">⛁</span>bound</span>' : '';
+  const openTag = p.open ? '<span class="open-tag">· open</span>' : '';
+  let action = '';
+  if (variant === 'a') {
+    action = `<button class="row-del" title="Delete project…" aria-label="Delete ${p.name}" onclick="event.stopPropagation(); openConfirm('${variant}','${p.id}')">🗑</button>`;
+  } else if (variant === 'b') {
+    action = `<button class="row-kebab" title="Project actions" onclick="event.stopPropagation(); toggleKebab(this,'${variant}','${p.id}')">⋯</button>`;
+  } else {
+    action = `<button class="row-del-c" onclick="event.stopPropagation(); openConfirm('${variant}','${p.id}')">🗑 Delete…</button>`;
+  }
+  return `<div class="proj-row" onclick="fakeOpen('${p.name}')" title="%LOCALAPPDATA%\\swg-toolkit\\projects\\${p.name.replace(/ /g,'_')}">
+    <span class="ico" aria-hidden="true">◆</span>
+    <div class="meta">
+      <div class="nm">${p.name}${openTag}</div>
+      <div class="sub">${p.sub}</div>
+    </div>
+    ${chip}
+    <span class="ago">${p.ago}</span>
+    ${action}
+  </div>`;
+}
+
+function deletedInlineHtml(p) {
+  return `<div class="proj-row deleted-inline">
+    <span class="ico" aria-hidden="true">◆</span>
+    <div class="meta">
+      <div class="nm">${p.name}</div>
+      <div class="sub">deleted just now · ${p.versions} versions parked</div>
+    </div>
+    <button class="restore-btn" onclick="event.stopPropagation(); restoreProject('b','${p.id}')">Restore</button>
+  </div>`;
+}
+
+function trashRowHtml(p, variant) {
+  return `<div class="trash-row">
+    <span aria-hidden="true" style="color:var(--color-text-faint)">🗑</span>
+    <span class="nm">${p.name} <span class="when">· ${p.versions} versions</span></span>
+    <button class="restore-btn" onclick="restoreProject('${variant}','${p.id}')">Restore</button>
+  </div>`;
+}
+
+/* ── render ─────────────────────────────────────────────────── */
+function render() {
+  for (const v of ['a', 'b', 'c']) {
+    const del = state[v].deleted;
+    const live = PROJECTS.filter(p => !del.includes(p.id));
+    const wel  = document.getElementById(v + '-welcome');
+    const dlg  = document.getElementById(v + '-dialog');
+    if (wel) wel.innerHTML = live.map(p => rowHtml(p, v)).join('') || '<div class="trash-note">No recent projects.</div>';
+    if (dlg) {
+      let rows = live.map(p => rowHtml(p, v)).join('');
+      if (v === 'b') rows += del.map(id => deletedInlineHtml(PROJECTS.find(p => p.id === id))).join('');
+      dlg.innerHTML = rows || '<div class="trash-note">No projects yet.</div>';
+    }
+    if (v === 'a' || v === 'c') {
+      const sec = document.getElementById(v + '-trash-sec');
+      const cnt = document.getElementById(v + '-trash-cnt');
+      const body = document.getElementById(v + '-trash');
+      sec.style.display = del.length ? 'block' : 'none';
+      cnt.textContent = del.length;
+      body.innerHTML = del.map(id => trashRowHtml(PROJECTS.find(p => p.id === id), v)).join('');
+    }
+    if (v === 'b') document.getElementById('b-note').style.display = del.length ? 'block' : 'none';
+  }
+  document.querySelectorAll('#c-welcome-wrap, #c-dialog-wrap').forEach(el =>
+    el.classList.toggle('manage-on', state.c.manage));
+  document.querySelectorAll('#c-manage-w, #c-manage-d').forEach(b => {
+    b.classList.toggle('on', state.c.manage);
+    b.textContent = state.c.manage ? 'Done' : 'Manage';
+  });
+}
+
+/* ── kebab menu (variant B) ─────────────────────────────────── */
+function toggleKebab(btn, variant, id) {
+  closeKebabs();
+  btn.classList.add('menu-open');
+  const m = document.createElement('div');
+  m.className = 'kebab-menu';
+  m.innerHTML = `
+    <div class="mi" onclick="fakeOpen('${PROJECTS.find(p=>p.id===id).name}')">▸ Open</div>
+    <div class="mi" onclick="closeKebabs()">⛁ Reveal studio folder</div>
+    <div class="sep"></div>
+    <div class="mi danger" onclick="event.stopPropagation(); closeKebabs(); openConfirm('${variant}','${id}')">🗑 Delete project…</div>`;
+  btn.closest('.proj-row').appendChild(m);
+}
+function closeKebabs() {
+  document.querySelectorAll('.kebab-menu').forEach(m => m.remove());
+  document.querySelectorAll('.row-kebab.menu-open').forEach(b => b.classList.remove('menu-open'));
+}
+document.addEventListener('click', () => closeKebabs());
+
+/* ── manage mode (variant C) ────────────────────────────────── */
+function toggleManage() { state.c.manage = !state.c.manage; render(); }
+
+/* ── confirm modal ──────────────────────────────────────────── */
+function openConfirm(variant, id) {
+  const p = PROJECTS.find(x => x.id === id);
+  pending = { variant, projectId: id };
+  document.getElementById('cf-intro').innerHTML =
+    `Delete <b>${p.name}</b>? Here’s exactly what will happen:`;
+  const lines = [];
+  let n = 1;
+  if (p.deployed && p.restoreLine) {
+    lines.push(`<div class="plan-line ok"><span class="n">${n++}</span><span>${p.restoreLine}</span></div>`);
+  } else {
+    lines.push(`<div class="plan-line ok"><span class="n">${n++}</span><span>No client changes were ever deployed — <b>nothing to restore</b>.</span></div>`);
+  }
+  lines.push(`<div class="plan-line"><span class="n">${n++}</span><span>Park the project + all <b>${p.versions} saved versions</b> in the session trash (nothing destroyed).</span></div>`);
+  lines.push(`<div class="plan-line"><span class="n">${n++}</span><span>Remove it from this list and from Recent projects.</span></div>`);
+  if (p.open) {
+    lines.push(`<div class="plan-line warn-line"><span class="n">${n++}</span><span>This project is <b>currently open</b> — the workspace will close and return to Welcome.</span></div>`);
+  }
+  document.getElementById('cf-plan').innerHTML = lines.join('');
+  document.getElementById('confirm-overlay').classList.add('show');
+  document.getElementById('cf-go').focus();
+}
+function closeConfirm() { document.getElementById('confirm-overlay').classList.remove('show'); pending = null; }
+document.getElementById('confirm-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeConfirm(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeConfirm(); closeKebabs(); } });
+
+function confirmDelete() {
+  if (!pending) return;
+  const { variant, projectId } = pending;
+  const p = PROJECTS.find(x => x.id === projectId);
+  state[variant].deleted.push(projectId);
+  lastDeleted = { variant, projectId };
+  closeConfirm();
+  render();
+  const failed = document.getElementById('sim-fail').checked && p.deployed;
+  const restoredBit = p.deployed ? (p.model === 'loose' ? 'loose overrides reverted' : 'client cfg restored') : 'no client changes to revert';
+  showToast(
+    `<b>${p.name}</b> deleted — ${failed ? '' : restoredBit}` +
+    (failed
+      ? `<span class="sub warn">⚠ ${p.model === 'loose' ? 'override revert incomplete (snapshot missing)' : 'cfg restore failed (snapshot missing)'} — client may need a manual check. Project still parked for undo.</span>`
+      : `<span class="sub">${p.versions} versions parked · undo until app close</span>`),
+    failed);
+}
+
+/* ── toast + undo ───────────────────────────────────────────── */
+function showToast(html, warn) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').innerHTML = html;
+  document.getElementById('toast-ico').textContent = warn ? '⚠' : '🗑';
+  const bar = document.getElementById('toast-bar');
+  bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = '';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 8000);
+}
+function hideToast() { document.getElementById('toast').classList.remove('show'); clearTimeout(toastTimer); }
+function undoLast() {
+  if (!lastDeleted) return hideToast();
+  restoreProject(lastDeleted.variant, lastDeleted.projectId);
+}
+function restoreProject(variant, id) {
+  const s = state[variant];
+  s.deleted = s.deleted.filter(x => x !== id);
+  if (lastDeleted && lastDeleted.projectId === id) lastDeleted = null;
+  hideToast();
+  render();
+  const p = PROJECTS.find(x => x.id === id);
+  showToast(`<b>${p.name}</b> restored${p.deployed ? ' — deploy re-applied to client' : ''}<span class="sub">all ${p.versions} versions back, byte-for-byte</span>`, false);
+}
+
+/* ── misc ───────────────────────────────────────────────────── */
+function fakeOpen(name) { closeKebabs(); showToast(`(sketch) would open <b>${name}</b>`, false); }
+function resetAll() {
+  state.a.deleted = []; state.b.deleted = []; state.c.deleted = []; state.c.manage = false;
+  lastDeleted = null; hideToast(); render();
+}
+render();
+</script>
+</body>
+</html>

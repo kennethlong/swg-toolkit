@@ -39,6 +39,7 @@ hardcoded brand color.** Exposed via an in-app titlebar picker.
 | 010 | inspector-properties | What do the Blender-style property accordions contain for a real asset (mesh / material / skeleton / anim)? | **C · Hybrid (pinned stat-chip summary + key groups open)** | inspector, properties, accordion, material, skeleton, phase-5 |
 | 011 | viewport-gizmo | How do the viewport HUD + transform gizmo + live-sync state read — the Phase-5 WYSIWYG "drag a gizmo → moves in client" surface? | **B · Full overlay HUD (live-sync card + gizmo-mode bar + transform readout)** | viewport, gizmo, live-sync, hud, wysiwyg, phase-5, phase-3 |
 | 016 | new-object-from-template | How to create a new object — pick item **type** (fixed engine set) → **derive** from a base/existing template (`@base`) → name/path → scaffold client+server (Core3) sides → open in IFF editor? (types are engine-defined; you derive instances, never author types) | **A · Type-grid wizard modal (type → derive → name/path → client+server → open in 009)** | object-templates, creation, derivation, item-types, core3, phase-4, phase-8 |
+| 017 | delete-project-flow | How does destructive project-delete read — row affordance (Welcome recents + Open Project dialog), the descriptive "here's what will happen" confirm, and session-undo (toast + trash section)? | **B · Kebab menu + inline dimmed recoverable rows** | delete, project-lifecycle, destructive-action, undo, confirm, trash, phase-4.4 |
 
 ## Layout decision (from 002–006) — FINAL
 
