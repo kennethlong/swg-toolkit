@@ -48,6 +48,7 @@ import { app, BrowserWindow, session, protocol, ipcMain, dialog } from 'electron
 import path from 'node:path';
 import fs from 'node:fs';
 import type { IpcChannels } from '@swg/contracts';
+import { getInitialWindowState, manageWindowState } from './windowState';
 
 // ---------------------------------------------------------------------------
 // SharedArrayBuffer availability — Chromium 92+ requires crossOriginIsolated
@@ -213,9 +214,15 @@ app.whenReady().then(() => {
     ? path.join(app.getAppPath(), '.vite', 'build', 'preload.js')
     : path.join(__dirname, 'preload.js');
 
+  // Restore the last session's monitor + size + location (window-state.json), falling back
+  // to a centered 1280×800 on first run or when the saved monitor is gone (see windowState.ts).
+  const initialState = getInitialWindowState();
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    x:      initialState.x,       // undefined ⇒ Electron centers on the primary display
+    y:      initialState.y,
+    width:  initialState.width,
+    height: initialState.height,
     webPreferences: {
       // Path B fallback posture — see comment above.
       sandbox: false,
@@ -224,6 +231,11 @@ app.whenReady().then(() => {
       preload: preloadPath,
     },
   });
+
+  // Re-apply the maximized state (bounds above are the restored/floating size) and start
+  // persisting geometry changes for next launch.
+  if (initialState.isMaximized) win.maximize();
+  manageWindowState(win);
 
   // ── IPC: native OS file picker for .tre archives ─────────────────────────
   // The renderer has nodeIntegration (Path B) but `dialog` is a main-process-only
