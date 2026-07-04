@@ -27,4 +27,17 @@ describe('SWG_ORIENTATION', () => {
       Math.abs(SWG_ORIENTATION.z) < 1e-9;
     expect(isFalsified180Y).toBe(false);
   });
+
+  it('pins the committed Task 2 candidate as identity, pending D-17 maintainer confirmation', () => {
+    // 04.4-04 Task 2: up-axis already matches Three.js (no Y/Z remap needed, unlike
+    // the Blender case), and 180deg Y is already falsified — so any remaining SIE
+    // discrepancy is a residual azimuth offset, not a missing mesh rotation. This
+    // executor pass had no visual-compare capability to iterate Y-only candidates
+    // against SIE, so per the plan's explicit allowance the committed value stays
+    // identity; the D-17 checkpoint (Task 3) makes the final visual call. If a
+    // future pass changes this value, update this assertion deliberately alongside it.
+    expect(SWG_ORIENTATION.x).toBe(0);
+    expect(SWG_ORIENTATION.y).toBe(0);
+    expect(SWG_ORIENTATION.z).toBe(0);
+  });
 });
