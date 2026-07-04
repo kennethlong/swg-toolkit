@@ -24,7 +24,7 @@ const NODE_BUILTINS = [...builtinModules, ...builtinModules.map((m) => `node:${m
 // built by vite.preload.config.ts) can require() it at runtime without it being
 // bundled into the preload bundle (which would break the dlopen path).
 
-export default defineConfig({
+export default defineConfig((env) => ({
   // Explicit define (04.4-09 Task 1): electron-forge's VitePlugin normally injects
   // MAIN_WINDOW_VITE_DEV_SERVER_URL / MAIN_WINDOW_VITE_NAME as build-time globals (see
   // packages/backend/src/globals.d.ts + @electron-forge/plugin-vite's getBuildDefine()).
@@ -36,9 +36,23 @@ export default defineConfig({
   // Values here match the production/packaged path (no dev server; app:// protocol
   // handler serves .vite/renderer/main_window/, matching forge.config.ts's renderer name
   // and vite.renderer.config.ts's outDir) — exactly what CI's non-packaged E2E specs need.
+  //
+  // FORGE GUARD (npm-start regression fix, 2026-07-04): these two defines must apply ONLY
+  // to standalone builds. When forge drives the build (`npm start` / package / make), its
+  // ViteConfigGenerator resolves the final config as mergeConfig(forgeConfig, userConfig)
+  // — userConfig WINS — so an unconditional MAIN_WINDOW_VITE_DEV_SERVER_URL:'undefined'
+  // here erased the live dev-server URL forge injects during `serve`. main.ts then fell
+  // back to the packaged app:// path (.vite/renderer/main_window/index.html), which forge
+  // start never builds (preStart also fs.remove()s all of .vite), so `npm start` died with
+  // ERR_FILE_NOT_FOUND on every boot. Forge is detected via the forge-only config-env
+  // extension `forgeConfigSelf` (see plugin-vite's ViteConfig.ts resolveConfig).
   define: {
-    MAIN_WINDOW_VITE_DEV_SERVER_URL: 'undefined',
-    MAIN_WINDOW_VITE_NAME: JSON.stringify('main_window'),
+    ...('forgeConfigSelf' in env
+      ? {}
+      : {
+          MAIN_WINDOW_VITE_DEV_SERVER_URL: 'undefined',
+          MAIN_WINDOW_VITE_NAME: JSON.stringify('main_window'),
+        }),
     // 04.4-13 fix: without this, Vite's default client-build `define` replaces the bare
     // `process.env` token with a build-time-empty object literal (verified locally — the
     // built main.js contained `var D={}` standing in for every `process.env.X` read,
@@ -99,4 +113,4 @@ export default defineConfig({
     conditions: ['node'],
     mainFields: ['module', 'jsnext:main', 'jsnext'],
   },
-});
+}));
