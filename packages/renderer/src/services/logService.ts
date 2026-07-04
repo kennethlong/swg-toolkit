@@ -25,6 +25,7 @@
 
 import { useLogStore } from '../state/logStore';
 import type { LogEntry } from '../state/logStore';
+import type { MainLogEvent } from '@swg/contracts';
 
 type ConsoleMethod = 'log' | 'warn' | 'error';
 
@@ -82,7 +83,27 @@ export function installConsoleCapture(): void {
   window.addEventListener('error', onWindowError);
   window.addEventListener('unhandledrejection', onUnhandledRejection);
 
-  // 04.4-11 extends this function with a main-process log-forward subscription here
+  // 04.4-11: main-process log-forward subscription, folded into this SAME function
+  // (not a new exported function/call site — see module doc comment). Guarded by
+  // process.env['VITEST'] (matches 04.4-02's own idiom exactly, so it protects
+  // logService.test.ts's DIRECT call to installConsoleCapture() — that test bypasses
+  // ConsolePanel.tsx's module-scope VITEST guard entirely). The try/catch +
+  // optional-chaining is defense-in-depth for any OTHER non-Electron caller.
+  if (typeof process === 'undefined' || process.env['VITEST'] !== '1') {
+    try {
+      // Path B (nodeIntegration:true) — never bundled by Vite.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { ipcRenderer } = require('electron') as {
+        ipcRenderer: { on(channel: string, listener: (...args: unknown[]) => void): void };
+      };
+      ipcRenderer?.on?.('main-log', (_event: unknown, entry: unknown) => {
+        const e = entry as MainLogEvent;
+        log(e.level, 'log', e.message);
+      });
+    } catch {
+      /* not running inside Electron (e.g. a Vitest/Node context) — no-op */
+    }
+  }
 }
 
 /**

@@ -44,6 +44,17 @@ export type SabCrossWriteAck = { type: 'sab-cross-write-ack'; id: number; value:
 /** Sent by main process to utility process to hand over the MessagePort. */
 export type PortInitMsg = { type: 'init-port' };
 
+/**
+ * One-way push from the main process to the renderer's Log tab (04.4-11, D-13).
+ * NOT part of IpcChannels (that map is for request/response ipcMain.handle invoke
+ * channels) — this is a fire-and-forget `webContents.send('main-log', entry)` push,
+ * consumed by logService.ts's `installConsoleCapture()` main-log-forward subscription.
+ */
+export interface MainLogEvent {
+  level: 'info' | 'warn' | 'error';
+  message: string;
+}
+
 /** Discriminated union of all IPC message types. Every variant has a required `type` literal. */
 export type IpcMessage =
   | HelloRequest

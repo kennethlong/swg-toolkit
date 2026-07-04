@@ -47,7 +47,7 @@
 import { app, BrowserWindow, session, protocol, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { IpcChannels } from '@swg/contracts';
+import type { IpcChannels, MainLogEvent } from '@swg/contracts';
 import { getInitialWindowState, manageWindowState } from './windowState';
 
 // ---------------------------------------------------------------------------
@@ -249,6 +249,24 @@ app.whenReady().then(() => {
   if (initialState.isMaximized) win.maximize();
   manageWindowState(win);
 
+  // ── main-log: forward main-process events to the renderer's Log tab (04.4-11, D-13) ──
+  // One-way push over 'main-log' — consumed by logService.ts's installConsoleCapture()
+  // main-log-forward subscription. Not gated behind SWG_TEST_MODE (diagnostic, not a
+  // behavior stub) — always active.
+  function sendMainLog(level: 'info' | 'warn' | 'error', message: string): void {
+    win.webContents.send('main-log', { level, message } satisfies MainLogEvent);
+  }
+
+  // ROUND 2: send the one-time "app ready" line from did-finish-load, NOT directly inside
+  // app.whenReady().then(...) — guarantees the renderer's initial synchronous module graph
+  // (including ConsolePanel.tsx's module-scope installConsoleCapture() call, which now
+  // includes the 'main-log' ipcRenderer subscription) has already run, so the listener is
+  // attached before this specific log line is sent (closes the "renderer isn't listening
+  // yet" race — Cursor/Opus round-2 finding).
+  win.webContents.once('did-finish-load', () => {
+    sendMainLog('info', 'app ready — COOP/COEP registered');
+  });
+
   // ── IPC: native OS file picker for .tre archives ─────────────────────────
   // The renderer has nodeIntegration (Path B) but `dialog` is a main-process-only
   // module. We expose it via ipcMain.handle rather than pulling in @electron/remote
@@ -260,11 +278,13 @@ app.whenReady().then(() => {
     if (SWG_TEST_MODE && testStubPaths.has('tre:pick-archives')) {
       return testStubPaths.get('tre:pick-archives')!;
     }
+    sendMainLog('info', 'tre:pick-archives invoked');
     const result = await dialog.showOpenDialog(win, {
       title: 'Mount Archive…',
       filters: [{ name: 'TRE Archives', extensions: ['tre'] }],
       properties: ['openFile', 'multiSelections'],
     });
+    if (result.canceled) sendMainLog('warn', 'tre:pick-archives cancelled');
     return result.canceled ? [] : result.filePaths;
   });
 
@@ -275,6 +295,7 @@ app.whenReady().then(() => {
     if (SWG_TEST_MODE && testStubPaths.has('workspace:pick-dir')) {
       return testStubPaths.get('workspace:pick-dir')!;
     }
+    sendMainLog('info', 'workspace:pick-dir invoked');
     // Open the dialog at the caller's requested directory (e.g. the shared project store
     // for "Open Project"). Create it first if missing so the dialog actually lands there
     // — the project store may not exist until the first project is created.
@@ -286,6 +307,7 @@ app.whenReady().then(() => {
       defaultPath: defaultPath || undefined,
       properties: ['openDirectory', 'createDirectory'],
     });
+    if (result.canceled) sendMainLog('warn', 'workspace:pick-dir cancelled');
     return result.canceled ? [] : result.filePaths;
   });
 
@@ -296,10 +318,12 @@ app.whenReady().then(() => {
     if (SWG_TEST_MODE && testStubPaths.has('workspace:pick-file')) {
       return testStubPaths.get('workspace:pick-file')!;
     }
+    sendMainLog('info', 'workspace:pick-file invoked');
     const result = await dialog.showOpenDialog(win, {
       title: 'Add Replacement File…',
       properties: ['openFile'],
     });
+    if (result.canceled) sendMainLog('warn', 'workspace:pick-file cancelled');
     return result.canceled ? [] : result.filePaths;
   });
 
