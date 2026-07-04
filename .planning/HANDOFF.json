@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-07-04T12:35:54.711Z",
+  "phase": "04.4",
+  "phase_name": "ux-polish-deploy-hardening",
+  "phase_dir": ".planning/phases/04.4-ux-polish-deploy-hardening",
+  "plan": 4,
+  "task": 3,
+  "total_tasks": 3,
+  "status": "paused",
+  "workflow": "execute-phase (wave 3 of 3; 13/15 plans complete)",
+  "completed_tasks": [
+    {"id": "04.4-01", "name": "delete/restore/undo service layer (deleteProject, deploymentReset, deleteUndoStore, startup purge)", "status": "done", "commit": "441f459"},
+    {"id": "04.4-02", "name": "logService + logStore ring buffer; Console/Log panels live-wired", "status": "done", "commit": "57b3a8e"},
+    {"id": "04.4-03", "name": "StatusBar mesh chip live + VfsTree label legibility", "status": "done", "commit": "087c871"},
+    {"id": "04.4-05", "name": "EFT FORM STAG parsing + real/synthetic fixtures", "status": "done", "commit": "cb27887"},
+    {"id": "04.4-06", "name": "TreCodec pluggable compression seam", "status": "done", "commit": "70ad896"},
+    {"id": "04.4-07", "name": "Core3 server-push service + close-out audit + core3-parity.md verified section", "status": "done", "commit": "6c3c4f2"},
+    {"id": "04.4-08", "name": "swg-main loose-override push service (CORRECTED tie-break: last-declared wins)", "status": "done", "commit": "37af2ef"},
+    {"id": "04.4-09", "name": "E2E infra: CI build-before-Playwright, SWG_TEST_MODE hooks, fixture client trees", "status": "done", "commit": "b1d44d3"},
+    {"id": "wave-1-gate-fix", "name": "post-merge gate fix: logService.test.ts @vitest-environment jsdom", "status": "done", "commit": "d80f7be"},
+    {"id": "04.4-10", "name": "delete-project UI (sketch 017 Variant B, all 17+1 elements)", "status": "done", "commit": "303ffcb"},
+    {"id": "04.4-11", "name": "main-process log forwarding + deploy/reconcile/mount instrumentation", "status": "done", "commit": "499503a"},
+    {"id": "04.4-12", "name": "Server Push UI in VcsPanel (Core3/swg-main dispatch)", "status": "done", "commit": "f7e30e2"},
+    {"id": "04.4-13", "name": "deploy-flow e2e spec 07 + fixed 4 real product bugs (testHooks install, vite process.env stubs, Zustand selector boot crash, syncLiveToVersion revert paths)", "status": "done", "commit": "038fc12"},
+    {"id": "04.4-14", "name": "delete-flow e2e spec 06 (14/14 assertions)", "status": "done", "commit": "036e08f"},
+    {"id": "04.4-04", "name": "viewport orientation: tasks 1-2 done (shared orientation.ts, identity pinned; commits 1e92aa8, ca9b419, cab93e4); task 3 = D-17 human-verify checkpoint AWAITING MAINTAINER; SUMMARY.md deliberately NOT yet written", "status": "in_progress", "progress": "2/3 tasks; paused at checkpoint"}
+  ],
+  "remaining_tasks": [
+    {"id": "04.4-04-task3", "name": "D-17 human-verify: compare protocol_droid_red + one asymmetric mesh vs SIE; then continuation agent records outcome, writes 04.4-04-SUMMARY.md, updates STATE/ROADMAP", "status": "blocked_on_human"},
+    {"id": "04.4-15", "name": "D-22 real-server push→reset round-trip checkpoint (pure verification gate, no code); then write 04.4-15-SUMMARY.md + STATE/ROADMAP", "status": "blocked_on_human"},
+    {"id": "phase-close", "name": "after both checkpoints: code_review_gate (Skill gsd-code-review 04.4) -> close_parent_artifacts (decimal phase: resolve parent 04 UAT gaps + debug sessions) -> regression_gate -> schema/codebase drift gates -> verify_phase_goal (gsd-verifier) -> update_roadmap (phase.complete) -> offer_next", "status": "not_started"}
+  ],
+  "blockers": [
+    {"description": "04.4-04 task 3: maintainer visual comparison vs SIE (D-17)", "type": "human_action", "workaround": "none — mandated gate; two valid approve outcomes: meshes match SIE, OR discrepancy is camera-azimuth-only (both = approved)"},
+    {"description": "04.4-15: push→reset confirmed on a REAL running Core3 or swg-main instance", "type": "human_action", "workaround": "none — mandated gate; one flavor suffices"}
+  ],
+  "human_actions_pending": [
+    {"action": "Verify viewport orientation vs SIE (pnpm start; protocol_droid_red + 1 asymmetric mesh); reply approved + which outcome, or describe mismatch", "context": "04.4-04 task 3, checkpoint:human-verify gate=blocking", "blocking": true},
+    {"action": "Real-server round-trip: bind serverConfig to live Core3 (\\\\wsl.localhost\\Debian\\home\\kenny\\workspace\\Core3\\MMOCoreORB\\bin, core3-start, restart to observe) OR swg-main (\\\\<vm-ip>\\SWG\\swg-main, reloadTable for loaded tables); Push in VcsPanel -> confirm live -> Reset -> confirm gone + serverPush.*.json deleted from studioDir; reply approved + flavor", "context": "04.4-15 task 1, checkpoint:human-verify gate=blocking (D-22)", "blocking": true}
+  ],
+  "decisions": [
+    {"decision": "Did NOT auto-approve the two human checkpoints despite workflow.auto_advance=true", "rationale": "D-17/D-22 are maintainer-MANDATED gates that exist because automation cannot see the viewport / a real server; auto-approving defeats their purpose. Chain flag was clear; auto_advance is the persistent pref.", "phase": "04.4"},
+    {"decision": "swg-main searchPathN same-priority tie-break = LAST-declared wins (not earlier-declared)", "rationale": "04.4-08 executor re-derived TreeFile.cpp:285-308 lower_bound+insert semantics; matches client addSearchNode precedent + passing tre-override tests. 04.4-RESEARCH.md ADDENDUM claim was backwards. Auto-memory reference-server-push-mount-ground-truth.md already corrected.", "phase": "04.4"},
+    {"decision": "renderer .test.ts files touching window/DOM need @vitest-environment jsdom docblock", "rationale": "root vitest.config.ts runs packages/*/src/**/*.test.ts under environment:node; renderer-local config (jsdom) hides the failure. Discovered via wave-1 post-merge gate failure (7 logService test failures), fixed in d80f7be.", "phase": "04.4"},
+    {"decision": "04.4-04 SWG_ORIENTATION stays identity; no new rotation candidate forced", "rationale": "rotateY(PI) falsified in 02-03; executor had no visual-compare capability; identity-plus-camera-azimuth is a plan-sanctioned outcome pending D-17 confirmation", "phase": "04.4"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Present the two pending checkpoints (04.4-04 D-17 visual vs SIE; 04.4-15 D-22 real-server round-trip) to the maintainer. On 'approved' for 04.4-04, spawn a CONTINUATION executor (not resume) with the completed-tasks table (commits 1e92aa8/ca9b419/cab93e4) to record the outcome, write 04.4-04-SUMMARY.md and update STATE/ROADMAP. On 'approved' for 04.4-15, write 04.4-15-SUMMARY.md (name the flavor tested) + STATE/ROADMAP. Then run the execute-phase close-out chain (code review gate, parent-04 UAT closure, verifier, phase.complete).",
+  "context_notes": "Execute-phase run with worktrees DISABLED (workflow.use_worktrees=false) — all executors ran sequentially on main working tree and updated STATE/ROADMAP themselves. Post-merge gates ran per wave: wave-1 caught the jsdom env conflict; wave-2 had one unreproducible flake (recorded in deferred-items.md). Executor model sonnet. Plans 04.4-01..14 all have SUMMARY.md; 04 and 15 do NOT (deliberate — checkpoints unresolved). deferred-items.md holds: e2e/04-workspace pre-existing failures (likely root-caused by 04.4-13's Zustand fix — worth re-checking), NewProjectWizard layout-override UX gap (04.4-13, out of scope), flaky root-suite note."
+}
