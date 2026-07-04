@@ -51,6 +51,7 @@
 
 #include "TreArchive.h"
 #include "../compress/Zlib.h"
+#include "../compress/TreCodec.h"  // codecForCompressor / codecForBlockCompressor (D-21, round-3)
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
@@ -185,13 +186,14 @@ TreArchive TreArchive::parse(IInputStream& stream) {
                 static_cast<int>(sizeOfTOC)) {
             throw std::runtime_error("TreArchive::parse: failed to read TOC block");
         }
-        if (tocCompressor == 0) {
-            tocData = std::move(tocRaw);
-        } else {
-            // Inflate the TOC block
-            tocData = treInflate(static_cast<int>(tocCompressor),
-                                 tocRaw.data(), sizeOfTOC, expectedTocSize);
-        }
+        // Plan 04.4-06 (D-21, round-3 widened scope): TOC inflate dispatched via
+        // codecForBlockCompressor(tocCompressor) — replaces BOTH the old zero-compressor
+        // passthrough bypass branch AND the direct treInflate call with one uniform
+        // dispatch (StoredCodec formalizes the old bypass; ZlibCodec wraps the old
+        // treInflate call for any non-zero compressor code, unchanged behavior).
+        tocData = codecForBlockCompressor(static_cast<int>(tocCompressor))
+                      .inflate(static_cast<int>(tocCompressor),
+                               tocRaw.data(), sizeOfTOC, expectedTocSize);
     }
     if (tocData.size() < expectedTocSize) {
         throw std::runtime_error("TreArchive::parse: inflated TOC too small");
@@ -208,13 +210,14 @@ TreArchive TreArchive::parse(IInputStream& stream) {
             static_cast<int>(sizeOfNameBlock)) {
         throw std::runtime_error("TreArchive::parse: failed to read name block");
     }
-    std::vector<uint8_t> nameData;
-    if (blockCompressor == 0) {
-        nameData = std::move(nameRaw);
-    } else {
-        nameData = treInflate(static_cast<int>(blockCompressor),
-                              nameRaw.data(), sizeOfNameBlock, uncompSizeOfNameBlock);
-    }
+    // Plan 04.4-06 (D-21, round-3 widened scope): name-block inflate dispatched via
+    // codecForBlockCompressor(blockCompressor) — same treatment as the TOC inflate above,
+    // replacing the old zero-compressor passthrough bypass branch AND the direct
+    // treInflate call.
+    std::vector<uint8_t> nameData =
+        codecForBlockCompressor(static_cast<int>(blockCompressor))
+            .inflate(static_cast<int>(blockCompressor),
+                     nameRaw.data(), sizeOfNameBlock, uncompSizeOfNameBlock);
     // Store name block as a string (null-terminated entries within)
     arc.m_nameBlock.assign(reinterpret_cast<const char*>(nameData.data()), nameData.size());
 
@@ -339,8 +342,11 @@ std::vector<uint8_t> TreArchive::extractEntry(int idx, IInputStream& stream) con
         throw std::runtime_error("TreArchive::extractEntry: failed to read entry payload");
     }
 
-    return treInflate(e.compressor, rawBytes.data(), static_cast<size_t>(readLen),
-                      static_cast<size_t>(e.length));
+    // Plan 04.4-06 (D-21, round-2 scope): PAYLOAD inflate dispatched via
+    // codecForCompressor(e.compressor) — replaces the direct treInflate call.
+    return codecForCompressor(e.compressor)
+        .inflate(e.compressor, rawBytes.data(), static_cast<size_t>(readLen),
+                 static_cast<size_t>(e.length));
 }
 
 // ─── extractAt ───────────────────────────────────────────────────────────────
@@ -394,10 +400,13 @@ TreExtractResult TreArchive::extractAt(const TreExtractDescriptor& desc, IInputS
     // The SWG-Source plain-zlib path produces exactly desc.length bytes → check passes.
     // Mismatched length → classify as encrypted (same graceful-degrade as inflate failure).
     try {
-        result.bytes = treInflate(desc.compressor,
-                                  rawBytes.data(),
-                                  static_cast<size_t>(readLen),
-                                  static_cast<size_t>(desc.length));
+        // Plan 04.4-06 (D-21, round-2 scope): PAYLOAD inflate dispatched via
+        // codecForCompressor(desc.compressor) — replaces the direct treInflate call.
+        result.bytes = codecForCompressor(static_cast<int>(desc.compressor))
+                           .inflate(static_cast<int>(desc.compressor),
+                                    rawBytes.data(),
+                                    static_cast<size_t>(readLen),
+                                    static_cast<size_t>(desc.length));
         // F-4: exact-length gate
         if (result.bytes.size() != static_cast<size_t>(desc.length)) {
             result.bytes.clear();

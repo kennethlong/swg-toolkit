@@ -38,6 +38,7 @@
 #include "TreBuilder.h"
 #include "Crc.h"
 #include "TreMount.h"  // fixUpFileName is in TreMount; we reproduce it inline below
+#include "../compress/TreCodec.h"  // codecForTreVersion / codecForBlockCompressor (D-21, round-3)
 #include <zlib.h>      // Vendored zlib 1.2.3 — MUST be included BEFORE any cmake-js headers
                        // so the vendored 1.2.3 header wins over Node's bundled 1.3.1 zlib.h.
                        // See modules/core/CMakeLists.txt (BEFORE PRIVATE ${SWG_ZLIB_DIR}).
@@ -127,30 +128,12 @@ static std::string fixUpFileName(const std::string& raw) {
 // Returns: compressed bytes (RFC1950 framing), or EMPTY if:
 //   (a) input.size() <= 1024 (TreeFileBuilder.cpp:682: "if (!disableCompression && uncompressedSize > 1024)")
 //   (b) compressed result is NOT strictly smaller than input
+//
+// Plan 04.4-06 Step 1: this is now a thin wrapper over the shared treDeflate() free
+// function (Zlib.h/.cpp) — the same function TreCodec's ZlibCodec::deflate calls. Moved
+// verbatim to avoid a TreCodec.cpp <-> TreBuilder.cpp circular include in either direction.
 std::vector<uint8_t> TreBuilder::zlibCompress(const std::vector<uint8_t>& src) {
-    // (a) size gate: only compress inputs > 1024 bytes (TreeFileBuilder.cpp:682)
-    if (src.size() <= 1024) return {};
-
-    const uLong srcLen  = static_cast<uLong>(src.size());
-    uLong       dstLen  = compressBound(srcLen);  // upper bound for compressBound
-
-    std::vector<uint8_t> dst(dstLen);
-
-    // Use compress2 (the zlib high-level deflate with level selection).
-    // compress2 uses wbits=MAX_WBITS(15) and memLevel=DEF_MEM_LEVEL(8) internally.
-    // Z_DEFAULT_COMPRESSION == 6.
-    // Source: zlib source compress.c::compress2; ZlibCompressor.cpp:169.
-    int ret = compress2(dst.data(), &dstLen,
-                        src.data(), srcLen,
-                        Z_DEFAULT_COMPRESSION);
-
-    if (ret != Z_OK) return {};  // compression failed — store raw
-
-    // (b) strictly smaller gate (TreeFileBuilder.cpp:705: "if (size < smallestSize)")
-    if (static_cast<size_t>(dstLen) >= src.size()) return {};
-
-    dst.resize(dstLen);
-    return dst;
+    return treDeflate(src.data(), src.size());
 }
 
 // ─── Header write / patch helpers ────────────────────────────────────────────
@@ -266,10 +249,12 @@ std::vector<uint8_t> TreBuilder::build(
 
         // Fresh-build path: attempt zlib compression (zlib ONLY — no miniz).
         // Source: TreeFileBuilder.cpp:682-718 (compressAndWrite).
+        // Plan 04.4-06 (D-21, round-2 scope): PAYLOAD deflate dispatched via
+        // codecForTreVersion() instead of a direct zlibCompress() call.
         const std::vector<uint8_t>& rawData = e.data;
         w.length = static_cast<int32_t>(rawData.size());
 
-        std::vector<uint8_t> compressed = zlibCompress(rawData);
+        std::vector<uint8_t> compressed = codecForTreVersion(static_cast<int>(version)).deflate(rawData);
         if (!compressed.empty()) {
             // Compressed is strictly smaller — store zlib code 2 (CT_zlib)
             // Source: TreeFileBuilder.cpp:704-714 (if (size < smallestSize)).
@@ -329,8 +314,13 @@ std::vector<uint8_t> TreBuilder::build(
         nameOffsetCursor += static_cast<int>(w.normalizedPath.size()) + 1;
     }
 
-    // Attempt to compress the TOC block (TreeFileBuilder.cpp:632)
-    std::vector<uint8_t> tocCompressed = zlibCompress(tocUncomp);
+    // Attempt to compress the TOC block (TreeFileBuilder.cpp:632).
+    // Plan 04.4-06 (D-21, round-3 widened scope): TOC deflate dispatched via
+    // codecForBlockCompressor(2) — "2" selects the stock ZlibCodec (the only codec this
+    // plan registers for the compress-attempt trial); the ACTUAL header field emitted
+    // below (tocCompressor = 2 or 0) still reflects whether compression was beneficial,
+    // unchanged from pre-refactor behavior.
+    std::vector<uint8_t> tocCompressed = codecForBlockCompressor(2).deflate(tocUncomp);
     uint32_t tocCompressor, sizeOfTOC;
     if (!tocCompressed.empty()) {
         // Compressed TOC is beneficial
@@ -354,7 +344,9 @@ std::vector<uint8_t> TreBuilder::build(
     }
     const uint32_t uncompSizeOfNameBlock = static_cast<uint32_t>(nameBlockUncomp.size());
 
-    std::vector<uint8_t> nameCompressed = zlibCompress(nameBlockUncomp);
+    // Plan 04.4-06 (D-21, round-3 widened scope): name-block deflate dispatched via
+    // codecForBlockCompressor(2) — same rationale as the TOC deflate above.
+    std::vector<uint8_t> nameCompressed = codecForBlockCompressor(2).deflate(nameBlockUncomp);
     uint32_t blockCompressor, sizeOfNameBlock;
     if (!nameCompressed.empty()) {
         out.insert(out.end(), nameCompressed.begin(), nameCompressed.end());

@@ -183,4 +183,39 @@ std::vector<uint8_t> treInflate(
     return output;
 }
 
+// ─── treDeflate (write path — zlib only, miniz FORBIDDEN) ──────────────────────────
+//
+// Extracted from TreBuilder::zlibCompress (plan 04.4-06 Step 1), moved verbatim, so
+// TreBuilder::zlibCompress (thin wrapper) and TreCodec's ZlibCodec::deflate share ONE
+// implementation instead of a TreCodec.cpp <-> TreBuilder.cpp circular include.
+//
+// Source: swg-client-v2 ZlibCompressor.cpp:169 (deflateInit(&z, Z_DEFAULT_COMPRESSION));
+//         swg-client-v2 TreeFileBuilder.cpp:676-769 (compressAndWrite — zlib ONLY,
+//         try CT_zlib, emit code 0 or 2).
+std::vector<uint8_t> treDeflate(const uint8_t* src, size_t srcLen) {
+    // (a) size gate: only compress inputs > 1024 bytes (TreeFileBuilder.cpp:682)
+    if (srcLen <= 1024) return {};
+
+    const uLong srcLenU = static_cast<uLong>(srcLen);
+    uLong       dstLen  = compressBound(srcLenU);  // upper bound for compressBound
+
+    std::vector<uint8_t> dst(dstLen);
+
+    // Use compress2 (the zlib high-level deflate with level selection).
+    // compress2 uses wbits=MAX_WBITS(15) and memLevel=DEF_MEM_LEVEL(8) internally.
+    // Z_DEFAULT_COMPRESSION == 6.
+    // Source: zlib source compress.c::compress2; ZlibCompressor.cpp:169.
+    int ret = compress2(dst.data(), &dstLen,
+                        src, srcLenU,
+                        Z_DEFAULT_COMPRESSION);
+
+    if (ret != Z_OK) return {};  // compression failed — store raw
+
+    // (b) strictly smaller gate (TreeFileBuilder.cpp:705: "if (size < smallestSize)")
+    if (static_cast<size_t>(dstLen) >= srcLen) return {};
+
+    dst.resize(dstLen);
+    return dst;
+}
+
 } // namespace swg

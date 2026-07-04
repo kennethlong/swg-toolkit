@@ -10,6 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ── Source files ──────────────────────────────────────────────────────────────
 set(CORE_SOURCES
     compress/Zlib.cpp
+    compress/TreCodec.cpp
     tre/Crc.cpp
     tre/TreArchive.cpp
     tre/TreMount.cpp
