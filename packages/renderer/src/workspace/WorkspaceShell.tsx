@@ -35,6 +35,16 @@ import {
   buildInitialLayout,
 } from './workspace-config';
 import { setActiveDockPanel } from '../state/dockStateStore';
+import { installTestHooks } from '../testHooks';
+
+// SWG_TEST_MODE hook surface (04.4-09 Task 2, D-08): installed as a PLAIN STATEMENT at
+// MODULE SCOPE (not inside a useEffect/component body) so window.__testHooks exists the
+// instant this module is evaluated — before React's first render commits. WorkspaceShell.tsx
+// is unconditionally, statically imported by App.tsx on every boot (verified 2026-07-03 — the
+// Welcome/recents screen is itself one of this file's dockview panels), so this closes even
+// the small effect-timing gap a useEffect would leave for Welcome/New-Project-screen specs.
+// No-op unless SWG_TEST_MODE=1 (installTestHooks() itself gates on the env var).
+installTestHooks();
 
 // ─── Panel imports ────────────────────────────────────────────────────────────
 

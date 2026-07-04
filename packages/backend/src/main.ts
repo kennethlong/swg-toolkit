@@ -131,6 +131,18 @@ function setupCrossOriginIsolation(): void {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(() => {
+  // ── SWG_TEST_MODE: env-gated test hook surface (04.4-09 Task 2, D-08) ─────
+  // Dialog stubbing for Playwright specs (native OS dialogs cannot be driven by
+  // Playwright). Registered UNCONDITIONALLY (cheap — a no-op Map + one guard per
+  // handler) but every effect is gated behind SWG_TEST_MODE so it is provably inert
+  // unless the env var is explicitly set to '1'. Never active in a shipped build.
+  const SWG_TEST_MODE = process.env['SWG_TEST_MODE'] === '1';
+  const testStubPaths = new Map<string, string[]>();
+  ipcMain.handle('test:set-stub-paths', (_e, channel: string, paths: string[]) => {
+    if (!SWG_TEST_MODE) return;
+    testStubPaths.set(channel, paths);
+  });
+
   // ── STEP 1: COOP/COEP FIRST ──────────────────────────────────────────────
   // This must be the FIRST call in the whenReady callback (RESEARCH Pitfall 1).
   // Handles dev server (http://localhost:5173) responses.
@@ -245,6 +257,9 @@ app.whenReady().then(() => {
   // <input type=file> can no longer return a real filesystem path; the native OS
   // dialog is the correct source of truth for archive paths.
   ipcMain.handle('tre:pick-archives', async (): Promise<IpcChannels['tre:pick-archives']> => {
+    if (SWG_TEST_MODE && testStubPaths.has('tre:pick-archives')) {
+      return testStubPaths.get('tre:pick-archives')!;
+    }
     const result = await dialog.showOpenDialog(win, {
       title: 'Mount Archive…',
       filters: [{ name: 'TRE Archives', extensions: ['tre'] }],
@@ -257,6 +272,9 @@ app.whenReady().then(() => {
   // WorkspaceEntry.tsx invokes this channel to pick a project folder.
   // Returns an array of one path (the selected folder), or [] if cancelled.
   ipcMain.handle('workspace:pick-dir', async (_event, defaultPath?: string): Promise<IpcChannels['workspace:pick-dir']> => {
+    if (SWG_TEST_MODE && testStubPaths.has('workspace:pick-dir')) {
+      return testStubPaths.get('workspace:pick-dir')!;
+    }
     // Open the dialog at the caller's requested directory (e.g. the shared project store
     // for "Open Project"). Create it first if missing so the dialog actually lands there
     // — the project store may not exist until the first project is created.
@@ -275,6 +293,9 @@ app.whenReady().then(() => {
   // StagingPanel.tsx invokes this channel to pick a replacement file to stage.
   // Returns an array of one path (the selected file), or [] if cancelled.
   ipcMain.handle('workspace:pick-file', async (): Promise<IpcChannels['workspace:pick-file']> => {
+    if (SWG_TEST_MODE && testStubPaths.has('workspace:pick-file')) {
+      return testStubPaths.get('workspace:pick-file')!;
+    }
     const result = await dialog.showOpenDialog(win, {
       title: 'Add Replacement File…',
       properties: ['openFile'],
