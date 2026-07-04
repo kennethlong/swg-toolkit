@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.4-01-PLAN.md
-last_updated: "2026-07-04T02:56:28.592Z"
+stopped_at: Completed 04.4-02-PLAN.md
+last_updated: "2026-07-04T03:09:13.320Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 59
-  percent: 81
+  completed_plans: 60
+  percent: 82
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING
-Plan: 2 of 15
+Plan: 3 of 15
 Status: Ready to execute
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
@@ -42,7 +42,7 @@ Last activity: 2026-07-04
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
-Progress: [████████░░] 81%
+Progress: [████████░░] 82%
 
 ### 02-03 key facts (crew-verified)
 
@@ -111,6 +111,7 @@ Progress: [████████░░] 81%
 | Phase 04.3 P09 | 25 | 3 tasks | 11 files |
 | Phase 04.3-versioning-and-searchtoc-mount P11 | 90 | 3 tasks | 12 files |
 | Phase 04.4-ux-polish-deploy-hardening P01 | 25min | 3 tasks | 9 files |
+| Phase 04.4-ux-polish-deploy-hardening P02 | ~15min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -237,6 +238,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: Locked undo contract (04.4-01/10/14): Undo restores project bytes only, never re-deploys to the client
 - [Phase ?]: Completion-marker trash protocol (round-3): entryDir/.complete.json written LAST, only after both directory renames succeed — startup purge only removes MARKED entries
 - [Phase ?]: resetDeploymentFromRecord shared between DeployDialog.handleReset and deleteProject.ts (cleanupArtifacts opt-out) — never two parallel restore implementations
+- [Phase 04.4-02]: installConsoleCapture() installed at ConsolePanel.tsx MODULE SCOPE (not useEffect) so capture starts at true app-boot via WorkspaceShell's static import chain, not first-tab-open
+- [Phase 04.4-02]: resetConsoleCaptureForTests() test-only helper restores original console.* + removes window listeners + clears installed guard for cross-test-file isolation (round-2 fix)
 
 ### Pending Todos
 
@@ -266,8 +269,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T02:56:28.561Z
-Stopped at: Completed 04.4-01-PLAN.md
+Last session: 2026-07-04T03:09:13.292Z
+Stopped at: Completed 04.4-02-PLAN.md
   UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
   (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
   272 renderer tests green, typecheck clean).
