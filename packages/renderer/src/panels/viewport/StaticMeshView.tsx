@@ -8,12 +8,11 @@
  * Material: buildSwgMaterial (custom ShaderMaterial) replaces the 02-02 placeholder.
  * Textures: buildDdsTexture from resolution.materials[i].slotBytes (already plumbed by 02-02).
  *
- * Orientation: SWG→viewer pure rotation applied at the group level (NOT a mirror/scale):
- *   SWG uses forward=+Z, up=+Y. Three.js camera looks down -Z.
- *   Equivalent to io_scene_swg_msh @orientation_helper(axis_forward='Z', axis_up='Y')
- *   which imports with a 180° Y rotation (so SWG's +Z forward faces the camera's +Z view).
- *   Applied as a single group rotation: rotateY(Math.PI) so the authored front faces the viewer.
- *   HUMAN-VERIFY: compare vs SIE at checkpoint.
+ * Orientation: SWG→viewer pure rotation applied at the group level (NOT a mirror/scale).
+ *   Single source of truth is SWG_ORIENTATION in ./orientation.ts (D-16) — see that
+ *   file's header comment for the full falsified-180deg-Y history and the D-17
+ *   camera-azimuth-vs-mesh-rotation conclusion. Both this file and SkinnedMeshView.tsx
+ *   import the SAME constant; do not re-declare a local copy.
  *
  * Index type: Uint32 (NOT Uint16) — see mesh.ts for rationale.
  * No material.skinning — not applicable to static meshes.
@@ -33,6 +32,7 @@ import type { MeshParseResult } from '@swg/contracts';
 import type { ResolvedMaterial } from './resolver/appearanceResolver.js';
 import { buildSwgMaterial } from './material/swgMaterial.js';
 import { buildDdsTexture } from './material/ddsTexture.js';
+import { SWG_ORIENTATION } from './orientation.js';
 
 // ─── nativeCore for parseDds ─────────────────────────────────────────────────
 
@@ -47,15 +47,6 @@ const nativeCore = require('@swg/native-core') as {
 // Never re-created — reused across frames and component instances.
 const _scratchBox3 = new THREE.Box3();
 const _scratchVec3Center = new THREE.Vector3();
-
-// ─── SWG→Viewer axis rotation ─────────────────────────────────────────────────
-// SWG: forward=+Z, up=+Y. Three.js camera looks down -Z.
-// A 180° Y rotation brings SWG's authored front (+Z) to face the default camera.
-// Mesh is already correctly oriented (Y-up matches Three.js; geometry verified faithful).
-// The 180° Y guess showed the model's BACK ("facing away"); 0° shows its front. The residual
-// left-vs-right difference from SIE is a default CAMERA-AZIMUTH preference, not a mesh rotation
-// — tracked in viewport-default-facing-axis.md. Identity here keeps winding/normals correct.
-const SWG_ORIENTATION = new THREE.Euler(0, 0, 0);
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -380,8 +371,7 @@ export default function StaticMeshView({
   useAutoFrame(parsedMesh, geometry);
 
   return (
-    // SWG→Viewer orientation: 180° Y rotation (pure rotation, determinant +1).
-    // HUMAN-VERIFY at checkpoint: compare vs SIE default facing.
+    // SWG→Viewer orientation: see orientation.ts (SWG_ORIENTATION, D-16/D-17).
     <group rotation={SWG_ORIENTATION}>
       {parsedMesh.shaderGroups.map((group, i) => (
         <MeshGroup

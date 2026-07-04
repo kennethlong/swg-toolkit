@@ -12,8 +12,8 @@
  * Material: buildSwgMaterial (skinned:true) replaces the 02-02 placeholder.
  * Textures: buildDdsTexture from resolution.materials[i].slotBytes (already plumbed by 02-02).
  *
- * Orientation: same SWG→viewer 180° Y rotation as StaticMeshView (pure rotation, det=+1).
- *   HUMAN-VERIFY at checkpoint vs SIE.
+ * Orientation: same SWG→viewer rotation as StaticMeshView — single source of truth is
+ *   SWG_ORIENTATION in ./orientation.ts (D-16); see that file for the full history.
  *
  * Multi-PSDT: renders ALL shader groups as SkinnedMesh instances sharing one Skeleton.
  *
@@ -37,6 +37,7 @@ import type { MeshParseResult, SkeletonParseResult } from '@swg/contracts';
 import type { ResolvedMaterial } from './resolver/appearanceResolver.js';
 import { buildSwgMaterial } from './material/swgMaterial.js';
 import { buildDdsTexture } from './material/ddsTexture.js';
+import { SWG_ORIENTATION } from './orientation.js';
 
 // ─── Animation sampler constants ──────────────────────────────────────────────
 // Throttle the store flush to avoid per-frame Zustand churn (D-09 / RESEARCH anti-pattern).
@@ -70,11 +71,6 @@ const _scratchVecB  = new THREE.Vector3();
 // flags, unused by the quaternion CKAT/KFAT-0003 path). `SATCCF_X_TRANS << ax` selects
 // the x/y/z translation bit. Both CKAT and KFAT use these same flag values.
 const SATCCF_X_TRANS = 0x08;
-
-// ─── SWG→Viewer orientation ───────────────────────────────────────────────────
-// See StaticMeshView.tsx: identity. 180° Y showed the model's back; residual facing vs SIE
-// is a default camera-azimuth preference (viewport-default-facing-axis.md), not a mesh rotation.
-const SWG_ORIENTATION = new THREE.Euler(0, 0, 0);
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -936,8 +932,7 @@ export default function SkinnedMeshView(props: SkinnedMeshViewProps): React.Reac
   useSkeletonHelper(skeleton, meshGroupRef);
 
   return (
-    // SWG→Viewer orientation: 180° Y rotation (pure rotation, determinant +1).
-    // HUMAN-VERIFY at checkpoint: compare vs SIE default facing.
+    // SWG→Viewer orientation: see orientation.ts (SWG_ORIENTATION, D-16/D-17).
     <group ref={meshGroupRef} rotation={SWG_ORIENTATION}>
       {/*
         Mount the skeleton's root bone (and its whole hierarchy) into the scene
