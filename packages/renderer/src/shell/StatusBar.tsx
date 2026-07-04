@@ -31,6 +31,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { SAB_LAYOUT, BASELINE_ID } from '@swg/contracts';
 import { useTreStore }         from '../state/treStore.ts';
+import { useViewportStore }    from '../state/viewportStore.ts';
 import { useLiveStore }        from '../state/liveStore.ts';
 import { useWorkspaceStore }   from '../state/workspaceStore.ts';
 import { useChangesetStore }   from '../state/changesetStore.ts';
@@ -72,6 +73,10 @@ export default function StatusBar(): React.ReactElement {
 
   // Live injection mode from Zustand store (Plan 03-06)
   const liveMode = useLiveStore((s) => s.mode);
+
+  // Live mesh name / vert count (04.4-03 — replaces the old hardcoded mesh-chip text, D-18)
+  const loadStatus = useViewportStore((s) => s.loadStatus);
+  const parsedMesh = useViewportStore((s) => s.parsedMesh);
 
   // TRE VFS mount status from Zustand store (Plan 01-02 additions)
   const treArchives    = useTreStore((s) => s.archives);
@@ -223,6 +228,12 @@ export default function StatusBar(): React.ReactElement {
 
   const addonColor = addonStatus.includes('✓') ? 'var(--color-accent)' : 'var(--color-text-muted)';
 
+  // Live mesh name / vert count (04.4-03, D-18: no LOD-index shown, vert count is for the shown LOD only)
+  const meshLabel = loadStatus.kind === 'done' ? loadStatus.filename : '—';
+  const vertCount = parsedMesh
+    ? parsedMesh.shaderGroups.reduce((sum, g) => sum + g.vertexCount, 0).toLocaleString()
+    : '—';
+
   return (
     <div
       style={{
@@ -241,10 +252,10 @@ export default function StatusBar(): React.ReactElement {
         whiteSpace: 'nowrap',
       }}
     >
-      {/* Selection seed */}
-      <span>shared_landspeeder.msh</span>
+      {/* Live mesh name / vert count (04.4-03) */}
+      <span>{meshLabel}</span>
       <Dot />
-      <span>4,812 verts</span>
+      <span>{vertCount} verts</span>
       <Dot />
 
       {/* S6: sb-state chip — active dock panel + width (sketch 008) */}

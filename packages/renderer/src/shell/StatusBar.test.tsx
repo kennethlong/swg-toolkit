@@ -59,7 +59,10 @@ import StatusBar from './StatusBar';
 import { useChangesetStore }  from '../state/changesetStore';
 import { useDockStateStore }  from '../state/dockStateStore';
 import { useClientScanStore } from '../state/clientScanStore';
+import { useViewportStore }   from '../state/viewportStore';
 import { BASELINE_ID }        from '@swg/contracts';
+import type { MeshParseResult } from '@swg/contracts';
+import type { AppearanceResolutionResult } from '../panels/viewport/resolver/appearanceResolver';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -253,6 +256,46 @@ describe('StatusBar — KEEP: existing diagnostic chips', () => {
       render(<StatusBar />);
     });
     expect(document.body.textContent).toContain('pnpm');
+  });
+
+});
+
+describe('StatusBar — 04.4-03: live mesh name / vert-count chip', () => {
+
+  beforeEach(() => {
+    useChangesetStore.setState({
+      manifest: { activeVersionId: null, deployedVersionId: null, changesets: [] },
+      sealStatus: { kind: 'idle' },
+    });
+    useDockStateStore.setState({ activePanelId: null, dockWidth: 290 });
+    useClientScanStore.setState({ message: null });
+    useViewportStore.getState().reset();
+  });
+
+  it('Test 6: idle state renders "—" / "—" for the mesh chip (never the old hardcoded landspeeder text)', async () => {
+    await act(async () => {
+      render(<StatusBar />);
+    });
+
+    expect(document.body.textContent).not.toContain('shared_landspeeder.msh');
+    expect(document.body.textContent).not.toContain('4,812 verts');
+    expect(document.body.textContent).toContain('— verts');
+  });
+
+  it('Test 7: after loadComplete, renders the loaded filename and summed vert count', async () => {
+    const meshStub = {
+      shaderGroups: [{ vertexCount: 100 }, { vertexCount: 50 }],
+    } as unknown as MeshParseResult;
+    const resolutionStub = {} as AppearanceResolutionResult;
+
+    useViewportStore.getState().loadComplete('foo.msh', 'leaf', resolutionStub, false, meshStub);
+
+    await act(async () => {
+      render(<StatusBar />);
+    });
+
+    expect(document.body.textContent).toContain('foo.msh');
+    expect(document.body.textContent).toContain('150 verts');
   });
 
 });
