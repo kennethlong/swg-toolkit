@@ -14,6 +14,9 @@
  *     listeners, clearing the `installed` guard so a later installConsoleCapture() re-wraps.
  *
  * Source: 04.4-02-PLAN.md Task 1 (round-2 revision — resetConsoleCaptureForTests added).
+ *
+ * @vitest-environment jsdom
+ * (needs window/ErrorEvent; the root vitest.config.ts defaults to environment:node)
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
