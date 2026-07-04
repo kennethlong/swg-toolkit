@@ -1,3 +1,4 @@
+completed: 2026-07-04
 ---
 id: eft-parser-completion
 title: .eft parser — extract PTXM sampler→role map + activate byte-exact CORE-05 fixture
