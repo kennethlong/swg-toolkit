@@ -62,3 +62,7 @@ checking `git status` before committing — these files were never modified in t
 **Recommendation:** `logService.test.ts` likely needs a per-file `// @vitest-environment jsdom`
 pragma, or the suite needs a jsdom project split. Follow-up for whichever plan next touches
 `logService.ts`.
+
+## Flaky root-suite test (wave-2 post-merge gate, 2026-07-04)
+
+During the wave-2 post-merge gate, one root `npm test` run reported `1 failed | 444 passed`, but two immediate re-runs were fully green (445/445+2 skipped). The failing test name was not captured (truncated output). If a root-suite flake reappears, capture the reporter output and file it — candidate suspects are timing-sensitive tests added this phase (log capture, undo-toast timers).
