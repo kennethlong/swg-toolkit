@@ -45,6 +45,7 @@ import { ensureInclude, snapshotCfg, restoreCfg, getToolkitCfgPath } from '../..
 import { deployShadowBase, estimateTreSize } from '../../services/shadowBaseService.js';
 import { syncLiveToVersion, type ReconcileCtx } from '../../services/syncLiveToVersion.js';
 import { resetDeploymentFromRecord } from '../../services/deploymentReset.js';
+import { log } from '../../services/logService.js';
 import { BASELINE_ID, type TypedIpcRenderer } from '@swg/contracts';
 
 import type { DetectedClient, CfgDeployRecord, LooseDeployRecord } from '@swg/contracts';
@@ -407,14 +408,17 @@ export function DeployDialog({
           deployRecordRef.current = null;
           setHasPriorDeployment(false);
           setPhase({ kind: 'done', slot: 'Baseline (reset to stock)', cfgPath: rootCfgPath });
+          log('info', 'log', 'Deployed Baseline (reset to stock)');
         } catch (e) {
           // Baseline revert has no separate "build" step to fail.
+          const message = (e as Error).message ?? String(e);
           setPhase({
             kind: 'error',
             step: 'activate',
-            message: (e as Error).message ?? String(e),
+            message,
             cfgRestored: false,
           });
+          log('error', 'log', `Deploy failed: ${message}`);
         }
         return;
       }
@@ -483,13 +487,16 @@ export function DeployDialog({
           const result = await syncLiveToVersion(manifest.activeVersionId, ctx);
           deployRecordRef.current = result.record ?? null;
           setPhase({ kind: 'done', slot: 'override-dir', cfgPath: resolvedOverrideDir });
+          log('info', 'log', `Deployed ${workspaceName} via loose-override`);
         } catch (e) {
+          const message = (e as Error).message ?? String(e);
           setPhase({
             kind: 'error',
             step: 'activate',
-            message: (e as Error).message ?? String(e),
+            message,
             cfgRestored: false,
           });
+          log('error', 'log', `Deploy failed: ${message}`);
         }
         return;
       }
@@ -503,12 +510,14 @@ export function DeployDialog({
       try {
         packPatch(flattenedEntries, outputPath);  // W2: packPatch receives flatten() output
       } catch (e) {
+        const message = (e as Error).message ?? String(e);
         setPhase({
           kind: 'error',
           step: 'build',
-          message: (e as Error).message ?? String(e),
+          message,
           cfgRestored: false,
         });
+        log('error', 'log', `Deploy failed: ${message}`);
         return;
       }
 
@@ -543,6 +552,7 @@ export function DeployDialog({
             snapshotPath: shadowSnapshotPath,
           });
           setPhase({ kind: 'done', slot: 'hardlink-shadow', cfgPath: shadowRecord.cfgPath });
+          log('info', 'log', `Deployed ${patchName} via hardlink-shadow`);
         } catch (e) {
           // H5/M9 auto-rollback: restore ROOT cfg from snapshot if we took one
           let cfgRestored = false;
@@ -554,12 +564,14 @@ export function DeployDialog({
               }
             } catch { /* snapshot restore failed — log only */ }
           }
+          const message = (e as Error).message ?? String(e);
           setPhase({
             kind: 'error',
             step: 'activate',
-            message: (e as Error).message ?? String(e),
+            message,
             cfgRestored,
           });
+          log('error', 'log', `Deploy failed: ${message}`);
         }
         return;
       }
@@ -617,6 +629,7 @@ export function DeployDialog({
           slot: (result.record as CfgDeployRecord | undefined)?.keyName ?? 'deployed',
           cfgPath: swgtoolkitCfgPath,
         });
+        log('info', 'log', `Deployed ${patchName} via absolute-path`);
       } catch (e) {
         // H5/M9 auto-rollback: restore ROOT cfg from snapshot if we took one
         let cfgRestored = false;
@@ -628,12 +641,14 @@ export function DeployDialog({
             }
           } catch { /* snapshot restore failed — log only */ }
         }
+        const message = (e as Error).message ?? String(e);
         setPhase({
           kind: 'error',
           step: 'activate',
-          message: (e as Error).message ?? String(e),
+          message,
           cfgRestored,
         });
+        log('error', 'log', `Deploy failed: ${message}`);
       }
     } finally {
       deployingRef.current = false;  // W9: release mutex
@@ -684,16 +699,19 @@ export function DeployDialog({
       deployRecordRef.current = null;
       setHasPriorDeployment(false);
       setPhase({ kind: 'idle' });
+      log('info', 'log', 'Reset deployment');
     } catch (e) {
       console.error('[DeployDialog] Reset failed:', e);
       // Surface the failure — the old silent catch left the dialog showing the deployed
       // state with no explanation ("Reset does nothing").
+      const message = String((e as Error)?.message ?? e);
       setPhase({
         kind: 'error',
         step: 'reset',
-        message: String((e as Error)?.message ?? e),
+        message,
         cfgRestored: false,
       });
+      log('error', 'log', `Reset failed: ${message}`);
     }
   }, [selectedClient]);
 

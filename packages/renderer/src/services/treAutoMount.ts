@@ -30,6 +30,7 @@ import * as fs   from 'fs';
 import { resolveClientMountOrder } from './clientSearchOrder';
 import { readTocTreeNames }        from './tocReader';
 import { mountTrePaths, mountTreMountWithTocPaths, mountComplete, injectLooseDirOverlay, beginMountStatus, endMountStatusIfPending } from './treMount';
+import { log } from './logService';
 import type { ClientMountOrder }   from './clientSearchOrder';
 
 // ─── MountNode (internal) ─────────────────────────────────────────────────────
@@ -149,6 +150,7 @@ export async function autoMountClient(installPath: string, cfgPath?: string, tre
         if (treFiles.length > 0) {
           await mountTrePaths(treFiles.map(f => path.join(treDir, f)), treFiles.map((_, i) => i + 1));
           mountComplete();
+          log('info', 'log', `Mounted ${treFiles.length} archives for ${installPath} (directory scan)`);
           return;
         }
       }
@@ -195,8 +197,10 @@ export async function autoMountClient(installPath: string, cfgPath?: string, tre
 
     // Signal pipeline complete (B1 structural gate — called ONCE).
     mountComplete();
+    log('info', 'log', `Mounted ${treNodes.length} archives for ${installPath}`);
   } catch (err) {
     console.error('[autoMountClient] mount failed:', err);
+    log('warn', 'log', `Mount failed for ${installPath}: ${(err as Error)?.message ?? String(err)}`);
     endMountStatusIfPending();  // clear the spinner on failure
   }
 }
@@ -246,8 +250,10 @@ export async function autoMountTarget(params: AutoMountParams): Promise<void> {
     }
 
     await mountTrePaths(trePaths, priorities);
+    log('info', 'log', `Mounted ${trePaths.length} archives for ${target}`);
   } catch (err) {
     console.error('[autoMountTarget] mount failed:', err);
+    log('warn', 'log', `Mount failed for ${target}: ${(err as Error)?.message ?? String(err)}`);
     endMountStatusIfPending();  // clear the spinner on failure
   }
 }

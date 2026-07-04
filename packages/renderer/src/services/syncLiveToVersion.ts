@@ -37,6 +37,7 @@ import { deployLoose, resetLoose, resolveOverrideDir } from './looseOverrideDepl
 import { activatePatch, deactivatePatch, restoreCfg, scanSharedFile } from './cfgActivator';
 
 import { useUndoStore } from '../state/undoStore';
+import { log } from './logService';
 
 // ---------------------------------------------------------------------------
 // ReconcileCtx
@@ -188,6 +189,7 @@ export async function syncLiveToVersion(
     if (manifest.activeVersionId !== targetId || manifest.deployedVersionId !== targetId) {
       setLiveVersion(targetId);
     }
+    log('info', 'log', `Reconciled to version ${targetId} (${liveModel}, noop)`);
     return { noop: true, liveVersionId: targetId, model: liveModel };
   }
 
@@ -312,10 +314,15 @@ export async function syncLiveToVersion(
   // ─── Move the single live pointer atomically (D-08/VER-06) ───────────────
   setLiveVersion(targetId);
 
+  const resultModel = isBaseline ? liveModel : applyModel;
+  const fileCount =
+    newRecord && 'writtenFiles' in newRecord ? newRecord.writtenFiles.length : desired.length;
+  log('info', 'log', `Reconciled to version ${targetId} (${resultModel}, ${fileCount} files)`);
+
   return {
     noop: false,
     liveVersionId: targetId,
-    model: isBaseline ? liveModel : applyModel,
+    model: resultModel,
     record: newRecord,
   };
 }

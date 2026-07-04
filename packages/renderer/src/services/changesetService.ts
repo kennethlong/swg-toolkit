@@ -42,6 +42,7 @@ import { useChangesetStore } from '../state/changesetStore';
 import { useStagingStore } from '../state/stagingStore';
 import { useWorkspaceStore } from '../state/workspaceStore';
 import { isVirtualPathSafe } from './pathSafety';
+import { log } from './logService';
 
 // ─── Manifest I/O ─────────────────────────────────────────────────────────────
 
@@ -372,6 +373,7 @@ export async function sealVersion(params: SealVersionParams): Promise<void> {
   try {
     writeManifest(studioDir, manifest);
     useChangesetStore.getState().sealComplete(manifest);
+    log('info', 'log', `Saved version: ${cs.label}`);
   } catch (e) {
     useChangesetStore.getState().sealError(String((e as Error)?.message ?? e));
     throw e;
