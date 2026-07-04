@@ -82,6 +82,20 @@ export interface ReconcileCtx {
    * deployRecord yet" scenario as freshPatchPath.
    */
   freshSnapshotPath?: string;
+  /**
+   * 04.4-13 fix (Rule 1 — bug, blocking): explicit caller hint for which model to APPLY
+   * when the TARGET version has no prior deployRecord yet (i.e. its FIRST deploy). Without
+   * this, `applyModel` falls back to `'cfg'` unconditionally for a never-deployed target
+   * (there is no record to inspect for `'overrideDir' in deployRecord`), so choosing
+   * "Loose override dir" in DeployDialog for a brand-new version silently deployed via the
+   * cfg/absolute-path pipeline instead — which then threw `ENOENT` opening a non-existent
+   * `swgtoolkit.cfg` (verified via this plan's own e2e spec: Scenario 2's first deploy of a
+   * freshly-saved version, DeployDialog model radio set to "Loose override dir", failed with
+   * exactly this error). Only consulted when the target has NO existing deployRecord — an
+   * already-deployed target's OWN record remains authoritative (H4 contract unchanged for
+   * re-navigation/re-deploy).
+   */
+  intendedApplyModel?: 'loose' | 'cfg';
 }
 
 // ---------------------------------------------------------------------------
@@ -206,10 +220,19 @@ export async function syncLiveToVersion(
       ? (manifest.changesets.find(c => c.id === targetId) ?? null)
       : null;
 
+  // 04.4-13 fix: when the target has an EXISTING deployRecord, that record remains
+  // authoritative (H4 — re-navigating to an already-deployed version must reconcile via
+  // whatever model it was ORIGINALLY deployed with). Only when the target has no record
+  // yet (its first-ever deploy) does the caller's `intendedApplyModel` hint apply — this
+  // is what lets DeployDialog's "Loose override dir" model choice actually take effect for
+  // a brand-new version (previously always silently fell back to 'cfg' here — see the
+  // ReconcileCtx.intendedApplyModel doc comment for the verified failure this fixes).
   const applyModel: 'loose' | 'cfg' =
     targetChangeset?.deployRecord && 'overrideDir' in targetChangeset.deployRecord
       ? 'loose'
-      : 'cfg';
+      : targetChangeset?.deployRecord
+      ? 'cfg'
+      : (ctx.intendedApplyModel ?? 'cfg');
 
   // Baseline = desired is empty → revert-only (full restore-to-stock).
   const isBaseline = desired.length === 0;
@@ -228,7 +251,20 @@ export async function syncLiveToVersion(
       const liveCfgRecord = liveDeployRecord as CfgDeployRecord | undefined;
       if (liveCfgRecord?.snapshotPath) {
         // Primary: full restore from snapshot (D-07).
-        restoreCfg(liveCfgRecord.cfgPath, liveCfgRecord.snapshotPath);
+        // 04.4-13 fix (Rule 1 — bug, blocking): `liveCfgRecord.cfgPath` is the
+        // TOOLKIT-OWNED cfg path (swgtoolkit.cfg — see CfgDeployRecord/CfgInsertionRecord
+        // docs: "Absolute path to the toolkit-owned .cfg file written by activatePatch()").
+        // `snapshotCfg` (called by DeployDialog before any mutation) snapshots the CLIENT
+        // ROOT cfg (`selectedClient.cfgRootPath`), which is stored on the record as
+        // `includeTargetPath` ("Absolute path to the client root .cfg that .include's
+        // swgtoolkit.cfg"). Restoring into `.cfgPath` copied the client-root snapshot INTO
+        // the toolkit cfg — the wrong file — leaving the real client root cfg's `.include`
+        // line in place forever after a "revert to Baseline". Verified via this plan's own
+        // e2e spec: after Deploy Baseline (revert to stock), the client cfg still contained
+        // the `.include` line and `swgtoolkit.cfg` had been overwritten with client-root
+        // cfg content instead. Fix: restore into `includeTargetPath` (the actual client
+        // root cfg the snapshot was taken from), matching `snapshotCfg`'s source.
+        restoreCfg(liveCfgRecord.includeTargetPath, liveCfgRecord.snapshotPath);
       } else if (liveCfgRecord) {
         // Fallback (legacy pre-04.1-07 records without snapshotPath): line surgery.
         deactivatePatch(liveCfgRecord as unknown as CfgInsertionRecord);

@@ -75,6 +75,23 @@ function electronRendererBuiltins(): Plugin {
 // Plan 04 replaces the minimal proof entry (index.html + src/main.tsx) with the React shell.
 
 export default defineConfig({
+  define: {
+    // 04.4-13 fix: without this, Vite's default client-build behavior replaces the bare
+    // `process.env` token with a build-time-empty object literal — VERIFIED empirically
+    // (this plan's own e2e spec caught it): `appDataRoot()` (workspaceService.ts) reads
+    // `process.env['SWG_TOOLKIT_DATA_ROOT']` and `process.env['LOCALAPPDATA']`, both of
+    // which silently evaluated to `undefined` against the stub, so `appDataRoot()` fell
+    // through to its final `?? '.'` default — every project/studio path this renderer
+    // computes (`getDefaultProjectFolder`, `getStudioDir`, snapshot paths, etc.) resolved
+    // as a RELATIVE path off the process's cwd instead of the real LOCALAPPDATA location.
+    // Symptom that surfaced this: a Baseline revert's `restoreCfg` appeared to succeed
+    // (no error, deployedVersionId moved correctly) yet the client cfg still showed the
+    // `.include` line afterward — traced to `CfgDeployRecord.snapshotPath` being a
+    // relative string instead of an absolute LOCALAPPDATA path. This is a Path-B renderer
+    // (nodeIntegration:true) — `process.env` there IS the real Node global and must not
+    // be statically replaced. Same fix as vite.main.config.ts's identical `define` entry.
+    'process.env': 'process.env',
+  },
   // Renderer root is the packages/renderer directory where index.html lives.
   // Forge's Vite plugin serves this as the main window content.
   root: 'packages/renderer',

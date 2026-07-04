@@ -241,6 +241,16 @@ app.whenReady().then(() => {
       nodeIntegration: true,
       contextIsolation: false,
       preload: preloadPath,
+      // 04.4-13 fix: forward SWG_TEST_MODE to the renderer via additionalArguments
+      // (becomes part of the renderer process's own `process.argv`), NOT via env.
+      // VERIFIED (2026-07-04, empirically, via a diagnostic build): Chromium's renderer
+      // child process does NOT inherit the full parent (main-process) environment —
+      // `process.env['SWG_TEST_MODE']` reads as `undefined` in BOTH the preload script
+      // and the renderer's own page script even when Playwright's `electron.launch({env})`
+      // correctly sets it for the main process (confirmed present there via this same
+      // check). `additionalArguments` is Electron's documented mechanism for passing
+      // custom flags down to a renderer process reliably, independent of env inheritance.
+      additionalArguments: SWG_TEST_MODE ? ['--swg-test-mode=1'] : [],
     },
   });
 

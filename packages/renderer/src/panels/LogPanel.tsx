@@ -15,7 +15,7 @@
  * Source: 04.4-02-PLAN.md Task 3 (round-2 revision).
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 
 import { useLogStore } from '../state/logStore';
@@ -33,7 +33,13 @@ function formatTs(ts: number): string {
 }
 
 export default function LogPanel(_props: IDockviewPanelProps): React.ReactElement {
-  const entries = useLogStore((s) => s.entries.filter((e) => e.channel === 'log'));
+  // 04.4-13 fix (Rule 1 — bug, blocking): see ConsolePanel.tsx's identical fix for the
+  // full root-cause explanation — filtering inside the Zustand selector returned a new
+  // array reference every call, tripping React's useSyncExternalStore infinite-loop
+  // guard ("Maximum update depth exceeded") and crashing the entire app to a blank page
+  // on every boot. Select the raw, stable `entries` array and filter via useMemo instead.
+  const allEntries = useLogStore((s) => s.entries);
+  const entries = useMemo(() => allEntries.filter((e) => e.channel === 'log'), [allEntries]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [stickToBottom, setStickToBottom] = useState(true);
 

@@ -18,7 +18,7 @@
  * Source: 04.4-02-PLAN.md Task 3 (round-2 revision).
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 
 import { useLogStore } from '../state/logStore';
@@ -45,7 +45,23 @@ function formatTs(ts: number): string {
 }
 
 export default function ConsolePanel(_props: IDockviewPanelProps): React.ReactElement {
-  const entries = useLogStore((s) => s.entries.filter((e) => e.channel === 'console'));
+  // 04.4-13 fix (Rule 1 — bug, blocking): the selector previously called `.filter()`
+  // directly inside `useLogStore((s) => ...)`, returning a BRAND NEW array reference on
+  // every single call. React's `useSyncExternalStore` (which Zustand's `useStore` is built
+  // on) compares consecutive `getSnapshot()` results via `Object.is` to detect tearing;
+  // since a `.filter()`-produced array is never reference-equal to itself across calls
+  // (even with identical contents), React concluded the store was "still changing" on
+  // every render and re-scheduled indefinitely, hitting React's "Maximum update depth
+  // exceeded" safety cap and crashing the ENTIRE tree to a blank page on every boot
+  // (verified: reproduced consistently via a direct Electron launch, with the full
+  // non-minified React message "Maximum update depth exceeded..." plus the accompanying
+  // "The result of getSnapshot should be cached to avoid an infinite loop" warning).
+  // Fix: select the raw, stable `entries` array reference (only replaced by logStore's
+  // own `set()` on an actual append/clear) and derive the filtered view via `useMemo`,
+  // matching the pattern already used elsewhere in this codebase (e.g. DeployPanel.tsx's
+  // `uncommittedCount`) instead of filtering inside the Zustand selector itself.
+  const allEntries = useLogStore((s) => s.entries);
+  const entries = useMemo(() => allEntries.filter((e) => e.channel === 'console'), [allEntries]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [stickToBottom, setStickToBottom] = useState(true);
 

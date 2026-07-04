@@ -480,6 +480,11 @@ export function DeployDialog({
             cfgPath: selectedClient!.cfgRootPath,
             installRoot: selectedClient!.installPath,
             priorLiveLooseRecord: priorLoose,
+            // 04.4-13 fix: without this hint, syncLiveToVersion's applyModel falls back to
+            // 'cfg' for a target with no prior deployRecord (its first-ever deploy) — the
+            // "Loose override dir" model choice silently had no effect and the deploy threw
+            // ENOENT trying to write a nonexistent swgtoolkit.cfg (verified via e2e spec).
+            intendedApplyModel: 'loose',
           };
 
           // syncLiveToVersion already calls updateChangesetDeployRecord + setLiveVersion
@@ -609,6 +614,10 @@ export function DeployDialog({
           deployRecordRef.current && 'overrideDir' in (deployRecordRef.current as object)
             ? (deployRecordRef.current as LooseDeployRecord)
             : undefined,
+        // 04.4-13: explicit for clarity/defensiveness — this IS syncLiveToVersion's default
+        // fallback for a target with no prior deployRecord, but stating it here means this
+        // branch never silently depends on that default if it ever changes.
+        intendedApplyModel: 'cfg',
       };
 
       try {

@@ -39,6 +39,15 @@ export default defineConfig({
   define: {
     MAIN_WINDOW_VITE_DEV_SERVER_URL: 'undefined',
     MAIN_WINDOW_VITE_NAME: JSON.stringify('main_window'),
+    // 04.4-13 fix: without this, Vite's default client-build `define` replaces the bare
+    // `process.env` token with a build-time-empty object literal (verified locally — the
+    // built main.js contained `var D={}` standing in for every `process.env.X` read,
+    // including main.ts's own `SWG_TEST_MODE` gate, making it permanently false regardless
+    // of the real launch-time environment). This is a NODE-target build (main.ts is the
+    // Electron main process) — `process.env` there IS the real Node global and must not be
+    // statically replaced. Explicitly defining the two-token sequence as itself is the
+    // standard Vite workaround to suppress the client-build process.env stub.
+    'process.env': 'process.env',
   },
   build: {
     // Explicit outDir/format (04.4-09 Task 1): normally electron-forge's VitePlugin injects
