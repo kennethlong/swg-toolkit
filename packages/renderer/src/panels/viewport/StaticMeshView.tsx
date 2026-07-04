@@ -306,11 +306,20 @@ function useAutoFrame(
   geometry: ArrayBuffer,
 ): void {
   const { camera, invalidate } = useThree();
+  // OrbitControls instance (makeDefault in Viewport.tsx). Without re-targeting it,
+  // controls.update() re-aims the camera at its default (0,0,0) target — SWG meshes
+  // have their origin at the FEET, so the head clipped out of the top of the frustum
+  // (D-17 UAT finding, 2026-07-04). camera.lookAt alone is overridden by the controls.
+  const controls = useThree(
+    (s) => s.controls,
+  ) as unknown as { target: THREE.Vector3; update: () => void } | null;
   const framed = useRef(false);
 
   useEffect(() => {
     if (!parsedMesh || framed.current) return;
-    framed.current = true;
+    // Latch only once controls exist — if the mesh mounts a beat before OrbitControls
+    // registers (makeDefault), re-run on the controls dep and frame with the target set.
+    if (controls) framed.current = true;
 
     const box = _scratchBox3.makeEmpty();
 
@@ -330,8 +339,9 @@ function useAutoFrame(
 
     if (box.isEmpty()) {
       // Fallback: no real vertices found, park at default
-      camera.position.set(3, 2, 3);
+      camera.position.set(-3, 2, 3);
       camera.lookAt(0, 0, 0);
+      controls?.target.set(0, 0, 0);
     } else {
       box.getCenter(_scratchVec3Center);
       const sphere = box.getBoundingSphere(new THREE.Sphere());
@@ -339,19 +349,25 @@ function useAutoFrame(
       // FOV-based margin: ensure the sphere fits in the frustum with a 20% margin.
       const fovRad = ((camera as THREE.PerspectiveCamera).fov ?? 55) * (Math.PI / 180);
       const dist = (radius / Math.sin(fovRad / 2)) * 1.2;
+      // Default azimuth is the -X/+Z quadrant (viewing the character's RIGHT side),
+      // matching SIE's perceived default facing. The old +X/+Z default viewed the
+      // LEFT side — the documented "left-vs-right camera-azimuth" gap vs SIE (D-17).
       camera.position.set(
-        _scratchVec3Center.x + dist * 0.707,
+        _scratchVec3Center.x - dist * 0.707,
         _scratchVec3Center.y + dist * 0.424,
         _scratchVec3Center.z + dist * 0.707,
       );
       camera.lookAt(_scratchVec3Center);
-      // Update OrbitControls target to the mesh center.
+      // Re-target OrbitControls at the bounds center so the mesh stays centered
+      // (not its feet-origin) once controls take over the camera.
+      controls?.target.copy(_scratchVec3Center);
     }
+    controls?.update();
 
     // Trigger a repaint in demand mode.
     invalidate();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsedMesh]);
+  }, [parsedMesh, controls]);
 
   // Also invalidate after the frame fires so OrbitControls gets to run.
   useFrame(() => {
