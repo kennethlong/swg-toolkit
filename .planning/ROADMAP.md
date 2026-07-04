@@ -194,7 +194,7 @@ Core3/swg-main server-push target) — see `04.4-CONTEXT.md` D-19..D-23.
   3. The Data panel Console/Log tabs are selectable and show live app logs (no DevTools needed for basic diagnosis).
   4. The status bar mesh name/vert count updates on every viewport load.
   5. The VfsTree non-override archive label is legible across the 5 themes; a mesh's authored front faces the default camera like SIE (rotation only — geometry/winding untouched), OR — an accepted, consciously-documented alternative close per 04.4-04's round-2 revision note — the checkpoint confirms mesh identity is already correct and the residual gap is camera-azimuth-only, which is treated as satisfying this criterion by that characterization alone.
-**Plans:** 7/15 plans executed
+**Plans:** 8/15 plans executed
 
 Plans (revised via `/gsd:plan-phase --reviews` on 2026-07-03, ROUND 2 — folds in round-2 cross-AI review
 findings from 04.4-REVIEWS.md; see each PLAN.md's REVISION NOTE for details. 04.4-04 stays in Wave 3 (moved
@@ -212,7 +212,7 @@ on. 04.4-12 itself is now fully autonomous and stays in Wave 2):
 - [x] 04.4-06-PLAN.md — Native TRE codec interface (pluggable inflate/deflate seam via codecForCompressor/codecForTreVersion/codecForBlockCompressor, D-21) — round-3 (maintainer ruling): seam widened to cover BOTH the per-entry payload path AND the TOC/name-block path (header-field-keyed lookup), reversing round-2's payload-only narrowing; prescribed zlibCompress/treDeflate extraction seam to avoid a circular include retained
 - [x] 04.4-07-PLAN.md — Server push: Core3 (Lua-array `config-local.lua` injection, cross-restart persistence) + product-thesis close-out audit (D-20/D-22); round-2 locks the reset-vs-clear-record contract (resetCore3TreOverride never clears serverPush.core3.json — the caller, 04.4-12, always does)
 - [x] 04.4-08-PLAN.md — Server push: swg-main (loose-file `[SharedFile]` override, verified servercommon.cfg path, cross-restart persistence, D-22); round-2 locks the identical reset-vs-clear-record contract
-- [ ] 04.4-09-PLAN.md — E2E infra: CI build-before-E2E fix + `SWG_TEST_MODE` hook surface (module-scope install) + fixture client trees (D-06/D-08/D-11); round-2 adds a `listProjects()` test hook (needed by 04.4-14)
+- [x] 04.4-09-PLAN.md — E2E infra: CI build-before-E2E fix + `SWG_TEST_MODE` hook surface (module-scope install) + fixture client trees (D-06/D-08/D-11); round-2 adds a `listProjects()` test hook (needed by 04.4-14)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 04.4-10-PLAN.md — Delete UI: sketch-017 kebab menu, descriptive confirm modal, undo toast, inline dimmed rows (undo = project-bytes-only, no re-deploy); round-2 fixes the biggest single risk to this UI (both row surfaces now subscribe reactively to `useDeleteUndoStore`, not a one-shot re-fetch — a delete/restore reflects immediately even without a dialog remount), adds an in-flight guard on Delete, the sketch's global kebab-dismiss handlers, and a post-restore confirmation toast

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.4-08-PLAN.md
-last_updated: "2026-07-04T04:28:30.877Z"
+stopped_at: Completed 04.4-09-PLAN.md
+last_updated: "2026-07-04T04:59:53.171Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 65
-  percent: 89
+  completed_plans: 66
+  percent: 90
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING
-Plan: 8 of 15
+Plan: 9 of 15
 Status: Ready to execute
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
@@ -42,7 +42,7 @@ Last activity: 2026-07-04
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 90%
 
 ### 02-03 key facts (crew-verified)
 
@@ -117,6 +117,7 @@ Progress: [█████████░] 89%
 | Phase 04.4-ux-polish-deploy-hardening P06 | ~45min | 2 tasks | 8 files |
 | Phase 04.4-ux-polish-deploy-hardening P07 | ~20min | 3 tasks | 3 files |
 | Phase 04.4-ux-polish-deploy-hardening P08 | ~40min | 2 tasks | 3 files |
+| Phase 04.4 P09 | 65min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -255,6 +256,7 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 04.4-07]: Verified Core3 TRE search-path mechanism against real ../Core3 source (ConfigManager.cpp, DataArchiveStore.cpp, TreeFileRecord.h, SortedVector.h, TreeFile.cpp); docs/05-server-integration/core3-parity.md updated, AI-proposed caveat scoped to exclude the new verified section
 - [Phase 04.4-08]: swg-main server push: PATH CONTRACT locked (servercommonCfgPath = path.join(serverConfig.path, 'exe', 'shared', 'servercommon.cfg')); RESET-RECORD-CLEAR CONTRACT locked (resetSwgMainOverride never clears serverPush.swgmain.json, matching 04.4-07)
 - [Phase 04.4-08]: CORRECTED swg-main/client shared TreeFile.cpp same-priority searchPathN tie-break: LAST-declared value wins (not earlier-declared as 04.4-RESEARCH.md ADDENDUM claimed) — falsified by re-deriving std::lower_bound/vector::insert on TreeFile.cpp:285-308/294-296, confirmed by existing test-pinned precedent (TreMount.h:13-20, tre-override.test.ts 'tre priority tie-break', Phase 01/Plan 02: SECOND-mounted wins)
+- [Phase 04.4-09]: vite.main.config.ts/vite.preload.config.ts need explicit outDir/format/define/external-list fixes to work standalone (outside electron-forge) — CI's new build-before-E2E step invokes vite build directly, bypassing forge's own config injection (outDir, MAIN_WINDOW_VITE_* defines, Node-builtins external) — without these fixes the standalone build produced a crashing bundle
 
 ### Pending Todos
 
@@ -267,6 +269,7 @@ Roadmap-shaping decisions affecting current work:
 - [Standing risk]: Every binary format layout in `docs/` is an AI-proposed hypothesis (rated LOW—VERIFY). No parser merges without a cited `swg-client-v2` source + byte-exact round-trip on a real asset.
 - [Phase 3/5]: Live-injection pointer/offset discovery is per-client-build and effort-unbounded — mine Utinni, use runtime AOB resolution; treat magnitude as a planning unknown.
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
+- e2e/04-workspace.spec.ts has 2 pre-existing failures (SidebarPanel title-update timing, Titlebar theme-select timeout) that will now surface in CI since 04.4-09 finally lets the lean job build+run E2E for real. Confirmed unrelated to 04.4-09 via A/B test. See deferred-items.md in 04.4 phase dir.
 
 ### Quick Tasks Completed
 
@@ -284,8 +287,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T04:28:30.848Z
-Stopped at: Completed 04.4-08-PLAN.md
+Last session: 2026-07-04T04:59:53.131Z
+Stopped at: Completed 04.4-09-PLAN.md
   UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
   (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
   272 renderer tests green, typecheck clean).
