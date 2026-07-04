@@ -76,7 +76,8 @@ jobs:
             e2e/01-boot.spec.ts \
             e2e/02-isolation.spec.ts \
             e2e/03-sab-roundtrip.spec.ts \
-            e2e/04-workspace.spec.ts
+            e2e/04-workspace.spec.ts \
+            e2e/07-deploy-flow.spec.ts
 
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB B: packaged-gate — HARD GATE
