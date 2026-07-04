@@ -9,8 +9,13 @@
  *   - Commit button (calls getGuardStatus, then gitCommit with .studio changeset paths)
  *   - Push button (calls gitPush)
  *   - Recent commit log feed
+ *   - Server Push section (04.4-12) — visible only when workspace.serverConfig is set; dispatches
+ *     on serverConfig.type ('core3-wsl2' -> core3ServerPush.ts / 'swgsource-docker' ->
+ *     swgMainServerPush.ts), rehydrates its last-push record from disk on mount so Reset survives
+ *     a panel remount or app restart, and shows per-flavor post-push reload guidance.
  *
- * On mount: probes git-lfs availability and loads recent log via refreshLog.
+ * On mount: probes git-lfs availability, loads recent log via refreshLog, and rehydrates the
+ * Server Push record (if any) from studioDir/serverPush.{core3,swgmain}.json.
  *
  * UI-SPEC copy contract (verbatim):
  *   LFS present:  'git-lfs {version} · {n} pointers'
@@ -18,15 +23,28 @@
  *   Guard pass:   'guard passed — mod outputs only'
  *   Guard fail:   'blocked: {file} looks like retail/.tre bytes — never commit a patch or retail archive.'
  *   Commit done:  'committed {shortSha}'
+ *   Core3 push guidance:    'Pushed. Restart Core3 to load it — the server reads its TRE list once at boot.'
+ *   swg-main push guidance: 'Pushed. New files are live for not-yet-loaded assets; already-loaded
+ *                            datatables/templates need the server console's reloadTable/reloadServerTemplate
+ *                            (or a restart).'
+ *
+ * ROUND-2 LOCKED CONTRACT: resetCore3TreOverride/resetSwgMainOverride NEVER clear their persisted
+ * serverPush.*.json record file themselves — this panel's handleServerReset is the SOLE caller
+ * that explicitly clears it, unconditionally, immediately after a successful reset* call.
  *
  * Panel head structure follows LiveInspectorPanel.tsx (04-PATTERNS.md §VcsPanel.tsx).
  * All git calls go through gitLfsService — this component never calls child_process directly.
  *
- * Source: 04-05-PLAN.md Task 2; 04-CONTEXT.md §D-04-13..16; 04-PATTERNS.md §VcsPanel.tsx.
+ * Source: 04-05-PLAN.md Task 2; 04-CONTEXT.md §D-04-13..16; 04-PATTERNS.md §VcsPanel.tsx;
+ *         04.4-12-PLAN.md (Server Push section); 04.4-07/08-PLAN.md (core3ServerPush.ts /
+ *         swgMainServerPush.ts).
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
+import path from 'path';
+
+import type { LooseDeployRecord } from '@swg/contracts';
 
 import { useVcsStore }    from '../../state/vcsStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
@@ -39,6 +57,33 @@ import {
   getGuardStatus,
   probeLfsStatus,
 } from '../../services/gitLfsService';
+import { readManifest } from '../../services/changesetService';
+import {
+  pushCore3TreOverride,
+  resetCore3TreOverride,
+  readCore3PushRecord,
+  clearCore3PushRecordFile,
+  type Core3PushRecord,
+} from '../../services/core3ServerPush';
+import {
+  pushSwgMainOverride,
+  resetSwgMainOverride,
+  readSwgMainPushRecord,
+  clearSwgMainPushRecordFile,
+} from '../../services/swgMainServerPush';
+
+// ─── Server Push types ──────────────────────────────────────────────────────
+
+type ServerPushRecord = Core3PushRecord | LooseDeployRecord;
+
+/** Best-effort read of the current manifest's activeVersionId — never throws. */
+function activeVersionIdFor(studioDir: string): string | null {
+  try {
+    return readManifest(studioDir).activeVersionId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Button styles (mirrors ExportDialog.tsx lines 483-506) ──────────────────
 
@@ -81,6 +126,19 @@ export default function VcsPanel(_props: IDockviewPanelProps): React.ReactElemen
   const guardResult  = useVcsStore((s) => s.guardResult);
   const log          = useVcsStore((s) => s.log);
 
+  // ── Server Push state (04.4-12) ─────────────────────────────────────────────
+  const serverConfig = useWorkspaceStore((s) =>
+    s.status.kind === 'ready' ? s.status.info.serverConfig : undefined,
+  );
+  const studioDir     = useWorkspaceStore((s) => s.studioDir);
+  const workspaceName = useWorkspaceStore((s) => s.workspaceName);
+
+  const [pushRecord, setPushRecord] = useState<ServerPushRecord | null>(null);
+  const [pushBusy, setPushBusy]     = useState(false);
+  const [pushError, setPushError]   = useState<string | null>(null);
+  const [pushGuidance, setPushGuidance] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+
   // ── On mount: probe LFS + load log ─────────────────────────────────────────
   useEffect(() => {
     if (!folderPath) return;
@@ -94,6 +152,100 @@ export default function VcsPanel(_props: IDockviewPanelProps): React.ReactElemen
     // Load recent commits
     refreshLog(folderPath).catch(() => { /* best-effort */ });
   }, [folderPath]);
+
+  // ── Server Push: rehydrate the last push record from disk (04.4-12) ────────
+  // Runs on mount and whenever serverConfig/studioDir change — this is what makes the Reset
+  // button available again after a panel remount or app restart, not just in-memory state.
+  useEffect(() => {
+    setPushError(null);
+    setResetError(null);
+    setPushGuidance(null);
+
+    if (!serverConfig || !studioDir) {
+      setPushRecord(null);
+      return;
+    }
+
+    const record =
+      serverConfig.type === 'core3-wsl2'
+        ? readCore3PushRecord(studioDir)
+        : readSwgMainPushRecord(studioDir);
+    setPushRecord(record);
+  }, [serverConfig, studioDir]);
+
+  // Gates the Push button — a never-saved project has nothing to push.
+  const activeVersionId = studioDir ? activeVersionIdFor(studioDir) : null;
+
+  // ── Server Push handlers ─────────────────────────────────────────────────────
+  const handleServerPush = useCallback(async () => {
+    if (!serverConfig || !studioDir || !workspaceName || !activeVersionId) return;
+    if (pushBusy) return;
+
+    setPushBusy(true);
+    setPushError(null);
+    setPushGuidance(null);
+
+    try {
+      const manifest = readManifest(studioDir);
+
+      if (serverConfig.type === 'core3-wsl2') {
+        const confDir = path.join(serverConfig.path, 'conf');
+        // Round-2 note: projectSlug is display-name-derived and shares getStudioDir's
+        // pre-existing basename-collision surface — see 04.4-12-PLAN.md objective. Not fixed here.
+        const record = pushCore3TreOverride(
+          confDir,
+          studioDir,
+          activeVersionId,
+          manifest,
+          path.basename(workspaceName),
+        );
+        setPushRecord(record);
+        setPushGuidance(
+          'Pushed. Restart Core3 to load it — the server reads its TRE list once at boot.',
+        );
+      } else {
+        const servercommonCfgPath = path.join(serverConfig.path, 'exe', 'shared', 'servercommon.cfg');
+        const record = pushSwgMainOverride(servercommonCfgPath, studioDir, activeVersionId, manifest);
+        setPushRecord(record);
+        setPushGuidance(
+          'Pushed. New files are live for not-yet-loaded assets; already-loaded ' +
+            'datatables/templates need the server console\'s reloadTable/reloadServerTemplate (or a restart).',
+        );
+      }
+    } catch (err) {
+      setPushError(String((err as Error)?.message ?? err));
+    } finally {
+      setPushBusy(false);
+    }
+  }, [serverConfig, studioDir, workspaceName, activeVersionId, pushBusy]);
+
+  const handleServerReset = useCallback(() => {
+    if (!serverConfig || !studioDir || !pushRecord) return;
+
+    setResetError(null);
+
+    try {
+      if (serverConfig.type === 'core3-wsl2') {
+        resetCore3TreOverride(pushRecord as Core3PushRecord);
+      } else {
+        resetSwgMainOverride(pushRecord as LooseDeployRecord);
+      }
+
+      // ROUND-2 LOCKED CONTRACT: reset* NEVER clears the persisted record file itself — the
+      // Reset handler ALWAYS calls the matching clear function explicitly, right after a
+      // successful reset, unconditionally.
+      if (serverConfig.type === 'core3-wsl2') {
+        clearCore3PushRecordFile(studioDir);
+      } else {
+        clearSwgMainPushRecordFile(studioDir);
+      }
+
+      setPushRecord(null);
+      setPushGuidance(null);
+    } catch (err) {
+      setResetError(String((err as Error)?.message ?? err));
+    }
+  }, [serverConfig, studioDir, pushRecord]);
 
   // ── Commit handler ──────────────────────────────────────────────────────────
   const handleCommit = useCallback(async () => {
@@ -358,6 +510,96 @@ export default function VcsPanel(_props: IDockviewPanelProps): React.ReactElemen
                 </span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Server Push section (04.4-12) — visible ONLY when workspace.serverConfig is set */}
+        {!noWorkspace && serverConfig && (
+          <div
+            style={{
+              display:       'flex',
+              flexDirection: 'column',
+              gap:           'var(--space-2)',
+              paddingTop:    'var(--space-3)',
+              borderTop:     '1px solid var(--color-border)',
+            }}
+          >
+            <span
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize:   'var(--text-sm)',
+                fontWeight: 600,
+                color:      'var(--color-text)',
+              }}
+            >
+              Server Push
+            </span>
+
+            <div
+              style={{
+                display:       'flex',
+                flexDirection: 'column',
+                fontSize:      'var(--text-xs)',
+                color:         'var(--color-text-muted)',
+              }}
+            >
+              <span>{serverConfig.type}</span>
+              <span style={{ color: 'var(--color-text-faint)', wordBreak: 'break-all' }}>
+                {serverConfig.path}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <button
+                aria-label="Push to Server"
+                title={
+                  activeVersionId
+                    ? 'Push the active version override to this server'
+                    : 'no saved version yet'
+                }
+                disabled={!activeVersionId || pushBusy}
+                onClick={() => void handleServerPush()}
+                style={primaryBtnStyle(!activeVersionId || pushBusy)}
+              >
+                Push to Server
+              </button>
+              {pushRecord && (
+                <button
+                  aria-label="Reset server push"
+                  title="Undo the server push"
+                  onClick={handleServerReset}
+                  style={secondaryBtnStyle}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+
+            {!activeVersionId && (
+              <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>
+                no saved version yet
+              </span>
+            )}
+
+            {pushBusy && <AsyncProgress caption="Pushing to server…" />}
+
+            {pushError && (
+              <VerificationStatus
+                variant="fail"
+                caption={`push failed — ${pushError}`}
+              />
+            )}
+
+            {pushGuidance && (
+              <VerificationStatus variant="pass" caption={pushGuidance} />
+            )}
+
+            {resetError && (
+              <VerificationStatus
+                variant="fail"
+                caption={`reset failed — ${resetError}`}
+              />
+            )}
           </div>
         )}
       </div>
