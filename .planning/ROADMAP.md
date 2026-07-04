@@ -194,7 +194,7 @@ Core3/swg-main server-push target) — see `04.4-CONTEXT.md` D-19..D-23.
   3. The Data panel Console/Log tabs are selectable and show live app logs (no DevTools needed for basic diagnosis).
   4. The status bar mesh name/vert count updates on every viewport load.
   5. The VfsTree non-override archive label is legible across the 5 themes; a mesh's authored front faces the default camera like SIE (rotation only — geometry/winding untouched), OR — an accepted, consciously-documented alternative close per 04.4-04's round-2 revision note — the checkpoint confirms mesh identity is already correct and the residual gap is camera-azimuth-only, which is treated as satisfying this criterion by that characterization alone.
-**Plans:** 12/15 plans executed
+**Plans:** 13/15 plans executed
 
 Plans (revised via `/gsd:plan-phase --reviews` on 2026-07-03, ROUND 2 — folds in round-2 cross-AI review
 findings from 04.4-REVIEWS.md; see each PLAN.md's REVISION NOTE for details. 04.4-04 stays in Wave 3 (moved
@@ -222,7 +222,7 @@ on. 04.4-12 itself is now fully autonomous and stays in Wave 2):
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 04.4-04-PLAN.md — Viewport orientation shared module + facing-axis fix [autonomous: false — D-17 human-verify checkpoint; moved here in round 1 so it doesn't block Wave 2]; round-2 makes the SC #5/D-16 reconciliation explicit if the checkpoint reaches the identity outcome
-- [ ] 04.4-14-PLAN.md — E2E delete-flow spec (D-09: delete → confirm → client-pristine assert → undo → restored; undo asserts client stays in its delete-restored state, no re-deploy); round-2 fixes a reference to a nonexistent test hook, now naming 04.4-09's concrete `listProjects()` hook
+- [x] 04.4-14-PLAN.md — E2E delete-flow spec (D-09: delete → confirm → client-pristine assert → undo → restored; undo asserts client stays in its delete-restored state, no re-deploy); round-2 fixes a reference to a nonexistent test hook, now naming 04.4-09's concrete `listProjects()` hook
 - [ ] 04.4-15-PLAN.md — **(round-2 NEW plan)** Real-server round-trip checkpoint for server push (D-22's "working deploy target" bar), extracted from 04.4-12's round-1 Task 3 so it doesn't stall the Wave 2→3 barrier for 04.4-14 [autonomous: false]
 
 ### Phase 04.3: Versioning Model & SearchTOC Mount Completion (INSERTED)
