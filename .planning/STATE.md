@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.4-05-PLAN.md
-last_updated: "2026-07-04T03:39:44.692Z"
+stopped_at: Completed 04.4-06-PLAN.md
+last_updated: "2026-07-04T03:56:28.308Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 62
-  percent: 85
+  completed_plans: 63
+  percent: 86
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING
-Plan: 5 of 15
+Plan: 6 of 15
 Status: Ready to execute
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
@@ -42,7 +42,7 @@ Last activity: 2026-07-04
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
-Progress: [█████████░] 85%
+Progress: [█████████░] 86%
 
 ### 02-03 key facts (crew-verified)
 
@@ -114,6 +114,7 @@ Progress: [█████████░] 85%
 | Phase 04.4-ux-polish-deploy-hardening P02 | ~15min | 3 tasks | 5 files |
 | Phase 04.4 P03 | ~10min | 2 tasks | 3 files |
 | Phase 04.4-ux-polish-deploy-hardening P05 | 55min | 3 tasks | 5 files |
+| Phase 04.4-ux-polish-deploy-hardening P06 | ~45min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -247,6 +248,7 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 04.4-05]: Fixed-function stage index = 0-based sibling position among FORM STAG children (no separate index field like PTXM's textureIndex)
 - [Phase 04.4-05]: extract-effect-fixtures.cjs reads via readMountEntry(archiveIndex, entryIndex) directly off searchMount hits, not resolveEntry(path) -- searchMount hits carry no .path field
 - [Phase 04.4-05]: Synthetic STAG fixture registered unconditionally into the same shader-efct format id so CORE-05 always has >=1 fixture in CI even without the real client-extracted asset
+- [Phase 04.4-06]: Round-3 codec seam widened to TOC/name-block compression — codecForBlockCompressor is a separate lookup from codecForCompressor, keyed on the archive's own header fields, since the per-entry compressor code is unknown until the TOC is decoded
 
 ### Pending Todos
 
@@ -276,8 +278,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T03:39:44.667Z
-Stopped at: Completed 04.4-05-PLAN.md
+Last session: 2026-07-04T03:56:28.274Z
+Stopped at: Completed 04.4-06-PLAN.md
   UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
   (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
   272 renderer tests green, typecheck clean).
