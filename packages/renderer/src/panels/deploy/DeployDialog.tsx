@@ -41,17 +41,17 @@ import {
 } from '../../services/changesetService.js';
 import { packPatch, buildPatchName } from '../../services/packPatch.js';
 import { detectClients, scanSharedFile, chooseSlot } from '../../services/clientLocator.js';
-import { deactivatePatch, ensureInclude, snapshotCfg, restoreCfg, getToolkitCfgPath } from '../../services/cfgActivator.js';
-import { deployShadowBase, resetShadow, estimateTreSize } from '../../services/shadowBaseService.js';
+import { ensureInclude, snapshotCfg, restoreCfg, getToolkitCfgPath } from '../../services/cfgActivator.js';
+import { deployShadowBase, estimateTreSize } from '../../services/shadowBaseService.js';
 import { syncLiveToVersion, type ReconcileCtx } from '../../services/syncLiveToVersion.js';
+import { resetDeploymentFromRecord } from '../../services/deploymentReset.js';
 import { BASELINE_ID, type TypedIpcRenderer } from '@swg/contracts';
 
-import type { DetectedClient, CfgInsertionRecord, CfgDeployRecord, LooseDeployRecord } from '@swg/contracts';
+import type { DetectedClient, CfgDeployRecord, LooseDeployRecord } from '@swg/contracts';
 import type { SharedFileScan } from '../../services/clientLocator.js';
-import type { ShadowDeployRecord } from '../../services/shadowBaseService.js';
 
 import { resolveLayout } from '../../services/clientLayout.js';
-import { resolveOverrideDir, resetLoose } from '../../services/looseOverrideDeploy.js';
+import { resolveOverrideDir } from '../../services/looseOverrideDeploy.js';
 import { resolveClientMountOrder } from '../../services/clientSearchOrder.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -661,54 +661,12 @@ export function DeployDialog({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rec = deployRecordRef.current as any;
 
-      // Dispatch on the RECORD SHAPE — NOT the deployModel radio. The radio resets to
-      // 'absolute-path' on every dialog open and can't be trusted to know which model the
-      // LIVE deployment used (same rule as the Baseline deploy path above). Dispatching on
-      // the radio made Reset call the wrong revert path and throw — silently (old catch).
-      const isLooseRec  = 'overrideDir' in rec;
-      const isShadowRec = 'shadowDir' in rec || rec.patchEntry !== undefined;
-
-      if (isLooseRec) {
-        // ── Loose-override reset ───────────────────────────────────────────
-        // No cfg surgery, no .tre deletion — resetLoose restores (B3) or removes
-        // only the files written by the prior deployLoose call.
-        resetLoose(rec as LooseDeployRecord);
-      } else {
-        const rootCfgPath = selectedClient?.cfgRootPath ?? (rec.includeTargetPath as string | undefined);
-        const snapPath: string | undefined = rec.snapshotPath;
-
-        if (snapPath && rootCfgPath && fs.existsSync(snapPath)) {
-          // H5 PRIMARY: whole-file restore from snapshot — byte-pristine (D-07).
-          // Removes .include + any maxSearchPriority bumps; client returns to stock cfg.
-          restoreCfg(rootCfgPath, snapPath);
-        } else if (isShadowRec) {
-          // Fallback for shadow model without snapshot: line-surgery via resetShadow
-          resetShadow(rec as ShadowDeployRecord, true);
-        } else {
-          // Fallback for absolute-path model without snapshot: line-surgery via deactivatePatch
-          deactivatePatch(rec as CfgInsertionRecord);
-        }
-
-        // Model-specific artifact cleanup — record shape again, not the radio.
-        if (isShadowRec) {
-          // Remove toolkit cfg (client no longer reads it after root cfg restore)
-          const toolkitCfgPath = rec.cfgPath as string | undefined;
-          if (toolkitCfgPath) {
-            try { fs.unlinkSync(toolkitCfgPath); } catch { /* ignore — may already be gone */ }
-          }
-          // Clean up shadow dir (hardlinks; ~0 bytes for same-volume)
-          const shadowRec = rec as ShadowDeployRecord;
-          if (shadowRec.shadowDir && fs.existsSync(shadowRec.shadowDir)) {
-            try { fs.rmSync(shadowRec.shadowDir, { recursive: true, force: true }); } catch { /* ignore */ }
-          }
-        } else {
-          // Absolute-path: delete the deployed .tre from .studio/build/ if still there
-          // (the studio copy stays as history; patchPath IS the studioDir path for absolute-path)
-          if (rec.patchPath) {
-            try { fs.unlinkSync(rec.patchPath); } catch { /* file may already be gone */ }
-          }
-        }
-      }
+      // Delegate the record-shape dispatch + artifact cleanup to the shared
+      // deploymentReset module — the SAME function deleteProject.ts calls (with
+      // { cleanupArtifacts: false }). Keeps exactly ONE implementation of "how to
+      // undo a deploy" (04.4-01 Task 2 extraction). No opts here → cleanupArtifacts
+      // defaults to true, matching this component's pre-extraction behavior exactly.
+      resetDeploymentFromRecord(rec, selectedClient?.cfgRootPath);
 
       // Clear the PERSISTED deploy record too — otherwise the M8 rehydration on the next
       // dialog open resurrects the "deployed" record that was just reset. Read the pointer

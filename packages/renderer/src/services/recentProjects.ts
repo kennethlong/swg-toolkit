@@ -3,9 +3,11 @@
  * Recently-opened projects, persisted to localStorage. Powers the first-run Welcome
  * "Recent projects" list (sketch 007-B variant B). Renderer-only; no native dependency.
  *
- * The `folderPath` is the exact path handed to initProject/openWorkspace (a client
- * install path for client-bound projects, or the project folder for mod-projects), so
- * clicking a recent re-opens it via openWorkspace(folderPath).
+ * The `folderPath` is the exact path handed to initProject/openWorkspace — always the
+ * toolkit-owned umbrella project folder under getDefaultProjectsDir() (see projectBinding.ts's
+ * DECOUPLE refactor — the bound CLIENT install path is a separate field, `clientPath`, never
+ * the reopen key). Corrected 2026-07-03 (04.4-01 Task 2): the prior comment predated the
+ * 04.1-02 decouple and was stale.
  */
 
 import type { WorkspaceInfo } from '@swg/contracts';
@@ -65,6 +67,21 @@ export function addRecentProject(
     const rest = getRecentProjects().filter((r) => r.folderPath !== entry.folderPath);
     const next: RecentProject[] = [{ ...entry, lastOpenedISO }, ...rest].slice(0, MAX_RECENTS);
     localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage unavailable (e.g. node-env test) — non-fatal.
+  }
+}
+
+/**
+ * Remove a project from recents by folderPath (symmetric to addRecentProject). Never throws.
+ *
+ * Called by deleteProject.ts after a successful delete so a parked/removed project no longer
+ * appears in the Welcome "Recent projects" list.
+ */
+export function removeRecentProject(folderPath: string): void {
+  try {
+    const rest = getRecentProjects().filter((r) => r.folderPath !== folderPath);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(rest));
   } catch {
     // localStorage unavailable (e.g. node-env test) — non-fatal.
   }
