@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.4-12-PLAN.md
-last_updated: "2026-07-04T06:03:59.959Z"
+stopped_at: Completed 04.4-13-PLAN.md
+last_updated: "2026-07-04T07:23:38.759Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 69
-  percent: 95
+  completed_plans: 70
+  percent: 96
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING
-Plan: 12 of 15
+Plan: 13 of 15
 Status: Ready to execute
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
@@ -42,7 +42,7 @@ Last activity: 2026-07-04
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
-Progress: [██████████] 95%
+Progress: [██████████] 96%
 
 ### 02-03 key facts (crew-verified)
 
@@ -121,6 +121,7 @@ Progress: [██████████] 95%
 | Phase 04.4 P10 | ~60min | 3 tasks | 9 files |
 | Phase 04.4-ux-polish-deploy-hardening P11 | ~15min | 2 tasks | 7 files |
 | Phase 04.4-ux-polish-deploy-hardening P12 | ~15min | 2 tasks tasks | 2 files files |
+| Phase 04.4 P13 | ~3h | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -267,6 +268,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 04.4-11]: syncLiveToVersion.ts is the sole reconcile-result Log-tab site (noop + apply paths) -- setLiveVersion not separately logged to avoid double-logging one reconcile as two entries
 - [Phase 04.4-12]: VcsPanel Server Push: Tasks 1-2 combined into one commit (same contiguous UI block, not separable) — Task 1 (dispatch UI + rehydration) and Task 2 (handler wiring) modify the same Server Push section added in this plan
 - [Phase 04.4-12]: activeVersionId/manifest reads happen directly in render/handler bodies via readManifest, not cached in separate state — Matches existing codebase convention (ProjectListDialog.versionCountFor, DeleteUndoToast.safeChangesetCount)
+- [Phase 04.4]: Version-graph row select never silently reconciles/deploys — only the explicit Deploy dialog moves deployedVersionId — Ground-truth re-read of VersionHistoryBody.tsx superseded a stale plan assumption; corrected e2e spec assertions accordingly
+- [Phase 04.4]: SWG_TEST_MODE gate reads process.argv (additionalArguments), never process.env — Chromium renderer child processes don't inherit full main-process env, and Vite's client-build stubs bare process.env to an empty object -- fixed both testHooks.ts and vite.main/renderer.config.ts
 
 ### Pending Todos
 
@@ -297,8 +300,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T06:03:59.900Z
-Stopped at: Completed 04.4-12-PLAN.md
+Last session: 2026-07-04T07:23:38.691Z
+Stopped at: Completed 04.4-13-PLAN.md
   UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
   (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
   272 renderer tests green, typecheck clean).
