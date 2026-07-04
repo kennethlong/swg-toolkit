@@ -58,3 +58,5 @@ packages/harness/fixtures-real/lod/*.lod
 packages/harness/fixtures-real/appearance/*.apt
 packages/harness/fixtures-real/appearance/*.sat
 packages/harness/fixtures-real/skeleton/*.skt
+# Real shader-effect assets (04.4-05 — a_envmask_specmap.eft, local-only CORE-05 gate)
+packages/harness/fixtures-real/effect/*.eft
