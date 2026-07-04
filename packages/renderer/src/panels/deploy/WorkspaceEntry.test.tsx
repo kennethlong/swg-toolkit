@@ -13,7 +13,7 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // jsdom does not implement ResizeObserver — stub it.
@@ -44,9 +44,10 @@ vi.mock('path', () => {
   return { default: p, ...p };
 });
 
-// Mock electron (ipcRenderer)
+// Mock electron (ipcRenderer + shell.openPath for the "Reveal studio folder" kebab item)
 vi.mock('electron', () => ({
   ipcRenderer: { invoke: vi.fn().mockResolvedValue([]) },
+  shell: { openPath: vi.fn().mockResolvedValue('') },
 }));
 
 // clientLocator: one detected + one missing
@@ -60,10 +61,17 @@ vi.mock('../../services/clientLocator', () => ({
   ]),
 }));
 
-// recentProjects: empty list
+// recentProjects: one recent project (04.4-10: exercises the kebab menu + delete flow below;
+// harmless to the pre-existing P4/P9 tests, which don't assert on recents' absence).
+const { ONE_RECENT } = vi.hoisted(() => ({
+  ONE_RECENT: [{
+    folderPath: '/projects/Alpha Project', name: 'Alpha Project', kind: 'mod-project' as const,
+    lastOpenedISO: new Date().toISOString(),
+  }],
+}));
 vi.mock('../../services/recentProjects', () => ({
-  getRecentProjects:   vi.fn().mockReturnValue([]),
-  pruneRecentProjects: vi.fn().mockReturnValue([]),
+  getRecentProjects:   vi.fn().mockReturnValue(ONE_RECENT),
+  pruneRecentProjects: vi.fn().mockReturnValue(ONE_RECENT),
 }));
 
 // projectList: no bound projects
@@ -76,6 +84,22 @@ vi.mock('../../services/workspaceService', () => ({
   openWorkspace:          vi.fn().mockResolvedValue(undefined),
   getDefaultProjectFolder: vi.fn().mockReturnValue('/fake/projects/swg-infinity'),
   getStudioDir:            vi.fn().mockReturnValue('/fake/.studio'),
+}));
+
+// changesetService: read by DeleteProjectConfirmModal (never-deployed manifest — the "nothing
+// to restore" branch is sufficient for these delete-flow wiring tests).
+vi.mock('../../services/changesetService', () => ({
+  readManifest: vi.fn().mockReturnValue({ activeVersionId: null, deployedVersionId: null, changesets: [] }),
+}));
+
+// deleteProject: stub
+vi.mock('../../services/deleteProject', () => ({
+  deleteProject: vi.fn().mockResolvedValue({ restoreErrors: [] }),
+}));
+
+// logService: stub
+vi.mock('../../services/logService', () => ({
+  log: vi.fn(),
 }));
 
 // projectBinding: stub
@@ -99,13 +123,31 @@ vi.mock('../../state/openProjectStore', () => ({
 
 import WorkspaceEntry from './WorkspaceEntry';
 import { useWorkspaceStore } from '../../state/workspaceStore';
+import { useDeleteUndoStore, type TrashEntry } from '../../state/deleteUndoStore';
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   useWorkspaceStore.setState({ status: { kind: 'idle' } });
+  useDeleteUndoStore.setState({ pending: [] });
   mockSetClientScanMessage.mockClear();
 });
+
+function makePendingEntry(overrides: Partial<TrashEntry> = {}): TrashEntry {
+  return {
+    id: 'entry-1',
+    projectName: 'Alpha Project',
+    entryDir: '/trash/entry-1',
+    trashStudioPath: '/trash/entry-1/studio',
+    trashProjectPath: '/trash/entry-1/project',
+    originalStudioDir: '/fake/.studio',
+    originalFolderPath: '/projects/Alpha Project',
+    umbrellaMoveSkipped: false,
+    restoreErrors: [],
+    parkedAtISO: new Date().toISOString(),
+    ...overrides,
+  };
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -147,4 +189,41 @@ describe('WorkspaceEntry — P4 not-found rows + P9 scan message', () => {
     await findByText(/Detected clients/i);
   });
 
+});
+
+// ─── Sketch 017 (Variant B) delete flow — 04.4-10 Task 2 ───────────────────────
+
+describe('WorkspaceEntry — sketch 017 delete flow (04.4-10)', () => {
+  it('renders a kebab button on the recents row', () => {
+    render(<WorkspaceEntry />);
+    expect(screen.getByRole('button', { name: 'Project actions for Alpha Project' })).not.toBeNull();
+  });
+
+  it('kebab button click does not also trigger the row open handler (stopPropagation)', () => {
+    render(<WorkspaceEntry />);
+    const kebab = screen.getByRole('button', { name: 'Project actions for Alpha Project' });
+    fireEvent.click(kebab);
+    // Menu opened — the row's own onClick did not swallow/interfere with the kebab toggle.
+    expect(screen.getByRole('menuitem', { name: /Open/ })).not.toBeNull();
+  });
+
+  it('round-2: deleting a project from the Welcome recents list removes its row immediately, without a remount', () => {
+    render(<WorkspaceEntry />);
+    expect(screen.getByText('Alpha Project')).not.toBeNull();
+
+    act(() => { useDeleteUndoStore.getState().push(makePendingEntry()); });
+
+    // Round-2 element #16: absent, no dimmed remnant (WorkspaceEntry never renders one).
+    expect(screen.queryByText('Alpha Project')).toBeNull();
+  });
+
+  it('clicking anywhere outside an open kebab menu closes it', () => {
+    render(<WorkspaceEntry />);
+    const kebab = screen.getByRole('button', { name: 'Project actions for Alpha Project' });
+    fireEvent.click(kebab);
+    expect(screen.getByRole('menu')).not.toBeNull();
+
+    fireEvent.click(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
 });

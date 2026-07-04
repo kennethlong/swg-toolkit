@@ -10,15 +10,19 @@
  * Source: 04.1-04-PLAN.md Task 3; 04.1-11 UAT (full-fidelity 007-B); 04.1-UI-SPEC.md §Surface 2 §007-B.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { openWorkspace, getDefaultProjectFolder, getStudioDir } from '../../services/workspaceService';
 import { useOpenProjectStore } from '../../state/openProjectStore';
+import { useDeleteUndoStore } from '../../state/deleteUndoStore';
 import * as projectBinding from '../../services/projectBinding';
 import { detectClients, getKnownClientPaths, type KnownClientPath } from '../../services/clientLocator';
 import { setClientScanMessage } from '../../state/clientScanStore';
 import { listProjects } from '../../services/projectList';
 import { getRecentProjects, pruneRecentProjects, type RecentProject } from '../../services/recentProjects';
+import { deleteProject } from '../../services/deleteProject';
+import { log } from '../../services/logService';
+import DeleteProjectConfirmModal from './DeleteProjectConfirmModal';
 import type { DetectedClient } from '@swg/contracts';
 import AsyncProgress from '../../shared/AsyncProgress';
 
@@ -95,6 +99,37 @@ const rowStyle: React.CSSProperties = {
   cursor:       'pointer',
   background:   'var(--color-surface-2)',
   transition:   'border-color 0.12s ease',
+  position:     'relative', // anchors an optional kebab menu (04.4-10)
+};
+
+// ─── Kebab menu styles (sketch 017 Variant B, elements #1/#2/#17) ──────────────
+
+const kebabBtnStyle: React.CSSProperties = {
+  width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  background: 'none', border: '1px solid transparent', borderRadius: 'var(--radius-sm)',
+  color: 'var(--color-text-faint)', fontSize: 15, cursor: 'pointer',
+};
+
+const kebabMenuStyle: React.CSSProperties = {
+  position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 60,
+  minWidth: 170, padding: 4,
+  background: 'var(--color-header)', border: '1px solid var(--color-border)',
+  borderRadius: 'var(--radius-md)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+};
+
+const kebabItemStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+  fontSize: 'var(--text-sm)', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+  color: 'var(--color-text)',
+};
+
+const kebabDangerItemStyle: React.CSSProperties = {
+  ...kebabItemStyle,
+  color: 'var(--color-danger)',
+};
+
+const kebabSepStyle: React.CSSProperties = {
+  height: 1, margin: '4px 6px', background: 'var(--color-border)',
 };
 
 const pillBase: React.CSSProperties = {
@@ -125,10 +160,10 @@ function btnStyle(primary: boolean): React.CSSProperties {
 }
 
 function Row({
-  ico, name, sub, pill, ago, onClick, title, disabled,
+  ico, name, sub, pill, ago, onClick, title, disabled, actions,
 }: {
   ico: string; name: string; sub: string;
-  pill?: React.ReactNode; ago?: string;
+  pill?: React.ReactNode; ago?: string; actions?: React.ReactNode;
   onClick?: () => void; title?: string; disabled?: boolean;
 }): React.ReactElement {
   return (
@@ -146,6 +181,7 @@ function Row({
       </div>
       {pill}
       {ago && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', flex: '0 0 auto' }}>{ago}</span>}
+      {actions}
     </div>
   );
 }
@@ -159,6 +195,38 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
   const [recents, setRecents] = useState<RecentProject[]>([]);
   const [clientError, setClientError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+
+  // Sketch 017 (Variant B) delete flow — kebab menu + confirm modal state (04.4-10).
+  const [openKebabId, setOpenKebabId] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<{ folder: string; name: string } | null>(null);
+  const pending = useDeleteUndoStore((s) => s.pending);
+
+  // Round-2 fix: a just-deleted recent disappears from the list REACTIVELY (no remount
+  // required) — filtered by matching a pending trash entry's originalFolderPath, which is
+  // always current (updated synchronously by deleteProject/restore), rather than depending on
+  // a manually-remembered re-fetch at each mutation call site.
+  const pendingFolders = useMemo(
+    () => new Set(pending.map((e) => e.originalFolderPath)),
+    [pending],
+  );
+  const recentsToShow = useMemo(
+    () => recents.filter((r) => !pendingFolders.has(r.folderPath)),
+    [recents, pendingFolders],
+  );
+
+  // Round-2 element #17: global kebab dismiss — click anywhere outside an open kebab menu, or
+  // Escape, closes it (mirrors the same effect in ProjectListDialog.tsx).
+  useEffect(() => {
+    if (!openKebabId) return;
+    const closeAll = () => setOpenKebabId(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenKebabId(null); };
+    document.addEventListener('click', closeAll);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('click', closeAll);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [openKebabId]);
 
   // Auto-scan detected clients + load recents on mount.
   useEffect(() => {
@@ -219,6 +287,30 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
     }
   }, []);
 
+  // Sketch 017 (Variant B) kebab actions — "Reveal studio folder" / "Delete project…".
+  const handleReveal = useCallback((folderPath: string) => {
+    setOpenKebabId(null);
+    try {
+      // Path B renderer: nodeIntegration:true — electron's shell module usable directly.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { shell } = require('electron') as typeof import('electron');
+      void shell.openPath(getStudioDir(folderPath));
+    } catch (err) {
+      console.error('[WorkspaceEntry] Reveal studio folder failed:', err);
+    }
+  }, []);
+
+  const handleDeleteConfirmed = useCallback(async () => {
+    if (!confirmTarget) return;
+    const target = confirmTarget;
+    try {
+      const { restoreErrors } = await deleteProject(target.folder);
+      log(restoreErrors.length > 0 ? 'warn' : 'info', 'log', `Deleted project ${target.name}`);
+    } finally {
+      setConfirmTarget(null);
+    }
+  }, [confirmTarget]);
+
   // Click a detected client → quick-create a project named after the client, targeting
   // that install (decouple: the client is the target, not the project identity).
   const handleOpenClient = useCallback(async (client: DetectedClient) => {
@@ -277,6 +369,7 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
   }
 
   return (
+    <>
     <div
       style={{
         flex:          1,
@@ -306,10 +399,10 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
       )}
 
       {/* Recent projects */}
-      {recents.length > 0 && (
+      {recentsToShow.length > 0 && (
         <div>
           <div style={secTitleStyle}>Recent projects</div>
-          {recents.map((r) => (
+          {recentsToShow.map((r) => (
             <Row
               key={r.folderPath}
               ico="◆"
@@ -323,6 +416,50 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
                   <span aria-hidden="true">⛁</span>bound
                 </span>
               ) : undefined}
+              actions={(
+                <div style={{ position: 'relative', flex: '0 0 auto' }}>
+                  <button
+                    aria-label={`Project actions for ${r.name}`}
+                    title="Project actions"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenKebabId((cur) => (cur === r.folderPath ? null : r.folderPath));
+                    }}
+                    style={kebabBtnStyle}
+                  >
+                    ⋯
+                  </button>
+                  {openKebabId === r.folderPath && (
+                    <div role="menu" style={kebabMenuStyle} onClick={(e) => e.stopPropagation()}>
+                      <div
+                        role="menuitem"
+                        style={kebabItemStyle}
+                        onClick={() => { setOpenKebabId(null); void handleOpenRecent(r.folderPath); }}
+                      >
+                        ▸ Open
+                      </div>
+                      <div
+                        role="menuitem"
+                        style={kebabItemStyle}
+                        onClick={() => handleReveal(r.folderPath)}
+                      >
+                        ⛁ Reveal studio folder
+                      </div>
+                      <div style={kebabSepStyle} />
+                      <div
+                        role="menuitem"
+                        style={kebabDangerItemStyle}
+                        onClick={() => {
+                          setOpenKebabId(null);
+                          setConfirmTarget({ folder: r.folderPath, name: r.name });
+                        }}
+                      >
+                        🗑 Delete project…
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             />
           ))}
         </div>
@@ -401,5 +538,18 @@ export default function WorkspaceEntry({ onNewProject, onMount }: WorkspaceEntry
         )}
       </div>
     </div>
+
+    {confirmTarget && (
+      <DeleteProjectConfirmModal
+        projectFolder={confirmTarget.folder}
+        projectName={confirmTarget.name}
+        // WorkspaceEntry only renders when no workspace is open (the Welcome takeover) —
+        // a recent project being deleted here can never be the currently-open workspace.
+        isCurrentlyOpen={false}
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setConfirmTarget(null)}
+      />
+    )}
+    </>
   );
 }
