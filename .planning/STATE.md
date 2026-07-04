@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.4-11-PLAN.md
-last_updated: "2026-07-04T05:49:04.348Z"
+stopped_at: Completed 04.4-12-PLAN.md
+last_updated: "2026-07-04T06:03:59.959Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 68
-  percent: 93
+  completed_plans: 69
+  percent: 95
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING
-Plan: 11 of 15
+Plan: 12 of 15
 Status: Ready to execute
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
@@ -42,7 +42,7 @@ Last activity: 2026-07-04
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
-Progress: [█████████░] 93%
+Progress: [██████████] 95%
 
 ### 02-03 key facts (crew-verified)
 
@@ -120,6 +120,7 @@ Progress: [█████████░] 93%
 | Phase 04.4 P09 | 65min | 3 tasks | 8 files |
 | Phase 04.4 P10 | ~60min | 3 tasks | 9 files |
 | Phase 04.4-ux-polish-deploy-hardening P11 | ~15min | 2 tasks | 7 files |
+| Phase 04.4-ux-polish-deploy-hardening P12 | ~15min | 2 tasks tasks | 2 files files |
 
 ## Accumulated Context
 
@@ -264,6 +265,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 04.4-11]: main-log-forward subscription folded INSIDE installConsoleCapture()'s existing body (04.4-02 insertion point), guarded by process.env['VITEST'] -- no new exported function, no new call site
 - [Phase 04.4-11]: one-time 'app ready' main-log line moved to win.webContents.once('did-finish-load', ...) instead of app.whenReady().then(...) to avoid a lost-first-log listener-attachment race
 - [Phase 04.4-11]: syncLiveToVersion.ts is the sole reconcile-result Log-tab site (noop + apply paths) -- setLiveVersion not separately logged to avoid double-logging one reconcile as two entries
+- [Phase 04.4-12]: VcsPanel Server Push: Tasks 1-2 combined into one commit (same contiguous UI block, not separable) — Task 1 (dispatch UI + rehydration) and Task 2 (handler wiring) modify the same Server Push section added in this plan
+- [Phase 04.4-12]: activeVersionId/manifest reads happen directly in render/handler bodies via readManifest, not cached in separate state — Matches existing codebase convention (ProjectListDialog.versionCountFor, DeleteUndoToast.safeChangesetCount)
 
 ### Pending Todos
 
@@ -294,8 +297,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T05:49:04.314Z
-Stopped at: Completed 04.4-11-PLAN.md
+Last session: 2026-07-04T06:03:59.900Z
+Stopped at: Completed 04.4-12-PLAN.md
   UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
   (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
   272 renderer tests green, typecheck clean).
