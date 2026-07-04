@@ -13,6 +13,13 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   build: {
+    // emptyOutDir: false (04.4-09 Task 1 fix) — forge's VitePlugin always forces this to false
+    // ("prevent multiple builds from interfering with each other" — see @electron-forge/
+    // plugin-vite's getBuildConfig) when it drives the build. CI's lean job now invokes this
+    // config standalone via `vite build -c vite.preload.config.ts`, bypassing that injection —
+    // without an explicit false here, Vite's default emptyOutDir:true wipes `.vite/build/`
+    // (including main.js, written by the prior build step) before writing preload.js.
+    emptyOutDir: false,
     rollupOptions: {
       input: {
         preload: 'packages/backend/src/preload.ts',

@@ -54,6 +54,17 @@ jobs:
       - name: Unit tests (vitest)
         run: pnpm test
 
+      - name: Build renderer/main/preload bundles (lean, non-packaged)
+        # Playwright specs load the renderer via the app:// protocol from
+        # .vite/renderer/main_window/ (gitignored) and main.ts from .vite/build/main.js.
+        # A clean CI checkout has neither until a build runs. This runs the three
+        # underlying Vite builds directly (NOT `electron-forge package`, which the lean
+        # job deliberately avoids for speed — see job comment above).
+        run: |
+          pnpm exec vite build -c vite.main.config.ts
+          pnpm exec vite build -c vite.preload.config.ts
+          pnpm exec vite build -c vite.renderer.config.ts
+
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
 
