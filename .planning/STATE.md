@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.4-14-PLAN.md
-last_updated: "2026-07-04T07:40:17.861Z"
+stopped_at: Completed 04.4-04-PLAN.md
+last_updated: "2026-07-04T16:20:52.317Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 71
-  percent: 97
+  completed_plans: 72
+  percent: 99
 ---
 
 # Project State
@@ -25,24 +25,23 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING
-Plan: 14 of 15
-Status: Ready to execute
-        the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
-        Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
-        GRAPH-04/05/08 revised with dated markers in 04.3-RESEARCH.md). Supersedes 04.1-11 + 04.2-06
-        (SUMMARY stubs written) → Phases 04.1 and 04.2 are now fully closed too.
-        REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02 → Complete. DEPLOY-04 (Git/LFS) still Pending.
-Next: /gsd:discuss-phase 04.4 or /gsd:plan-phase 04.4 — knock out the 6 UI-related todos (delete-project-with-restore, e2e deploy-flow coverage, console/log tabs, statusbar mesh name, VFS dim, viewport facing); Phase 5 follows.
-      only DEPLOY-04 + the 04-06/06b bookkeeping remain from Phase 4). Consider /gsd:complete-milestone
-      audit or advance to the next phase when maintainer says go.
-      Follow-up todos: deploy-dialog-synclive-undo-wiring (Undo re-wiring), v6000-swg-source-plain-zlib
+Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING (14/15 plans complete)
+Plan: 15 of 15
+Status: 04.4-04 complete (D-17 checkpoint approved 2026-07-04). Only 04.4-15-PLAN.md
+        (D-22 real-server round-trip checkpoint for server push, autonomous:false) remains
+        to fully close Phase 04.4.
+        REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02 → Complete. viewport-default-facing-axis
+        → Complete (04.4-04). DEPLOY-04 (Git/LFS) still Pending (deferred, no phase assigned yet).
+Next: resolve 04.4-15's D-22 checkpoint (real-server round-trip for server push) to close Phase
+      04.4, then /gsd:discuss-phase 5 (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet) or a
+      backlog triage (/gsd:review-backlog) first.
+      Follow-up todos: deploy-dialog-synclive-undo-wiring (DONE), v6000-swg-source-plain-zlib
       (done via plans 10-11? verify against todo), server TRE search-path (deferred to Phase 8).
 Last activity: 2026-07-04
-  syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
-  deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
+  04.4-04: D-17 viewport facing/framing checkpoint approved; SWG_ORIENTATION stays identity,
+  camera-default azimuth + OrbitControls framing fix shipped. 350 renderer tests green.
 
-Progress: [██████████] 97%
+Progress: [██████████] 99%
 
 ### 02-03 key facts (crew-verified)
 
@@ -123,6 +122,7 @@ Progress: [██████████] 97%
 | Phase 04.4-ux-polish-deploy-hardening P12 | ~15min | 2 tasks tasks | 2 files files |
 | Phase 04.4 P13 | ~3h | 2 tasks | 10 files |
 | Phase 04.4-ux-polish-deploy-hardening P14 | 35min | 2 tasks | 2 files |
+| Phase 04.4-ux-polish-deploy-hardening P04 | 35min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -272,12 +272,16 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 04.4]: Version-graph row select never silently reconciles/deploys — only the explicit Deploy dialog moves deployedVersionId — Ground-truth re-read of VersionHistoryBody.tsx superseded a stale plan assumption; corrected e2e spec assertions accordingly
 - [Phase 04.4]: SWG_TEST_MODE gate reads process.argv (additionalArguments), never process.env — Chromium renderer child processes don't inherit full main-process env, and Vite's client-build stubs bare process.env to an empty object -- fixed both testHooks.ts and vite.main/renderer.config.ts
 - [Phase 04.4-ux-polish-deploy-hardening]: Seeded an already-deployed project directly on disk for 06-delete-flow.spec.ts rather than re-driving the New-Project wizard — e2e/07-deploy-flow.spec.ts already covers the wizard/stage/save/Deploy path end-to-end; direct-disk seeding keeps the delete-flow spec focused on delete/undo
+- [Phase 04.4-04, D-17 checkpoint]: SWG_ORIENTATION stays identity (0,0,0) — mesh was never wrong; residual SIE gap was camera-azimuth-only. Consciously supersedes D-16's 'rotation, not camera' mechanism claim with new maintainer-confirmed evidence; SC #5 satisfied by this characterization alone.
+- [Phase 04.4-04]: Camera-default azimuth match (SIE parity) explicitly out-of-scope per plan's round-2 note, but requested directly by maintainer mid-checkpoint and shipped in-task (round-2 approved) — no follow-up todo needed
+- [Phase 04.4-04]: Fixed OrbitControls-target framing bug found during D-17 UAT: useAutoFrame set camera.position/lookAt but never controls.target, so OrbitControls silently re-aimed at (0,0,0) on every update, centering SWG meshes' feet-origin and clipping the head — now retargets controls.target at bounds center
+- [Phase 04.4-09]: vite.main.config.ts MAIN_WINDOW_* defines now scoped to non-forge builds only (forgeConfigSelf absence check) — the unconditional defines from 04.4-09 were clobbering forge's own dev-server URL injection and breaking every pnpm/npm start boot
 
 ### Pending Todos
 
 - tre-mount-perf-marshalling (DONE — columnar bridge + VfsTree virtualization)
 - statusbar-mesh-name-stale (low — bottom bar mesh name/verts doesn't update per load)
-- viewport-default-facing-axis (low — default yaw vs SIE; fold into 02-03; pure rotation not mirror)
+- viewport-default-facing-axis (DONE 2026-07-04 — Phase 04.4-04, D-17: identity confirmed correct, camera-azimuth fix shipped, moved to todos/completed/)
 
 ### Blockers/Concerns
 
@@ -302,14 +306,16 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T07:40:17.808Z
-Stopped at: Completed 04.4-14-PLAN.md
-  UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
-  (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
-  272 renderer tests green, typecheck clean).
-Next session: pick up at ROADMAP Phase 5 (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet →
-  /gsd:discuss-phase 5 first), optionally after a backlog triage (/gsd:review-backlog — 22 pending
-  todos, several likely stale post-04.3). Remaining Phase-4 remnant: DEPLOY-04 (Git/LFS) only.
+Last session: 2026-07-04T16:20:52.301Z
+Stopped at: Completed 04.4-04-PLAN.md — D-17 checkpoint approved (identity confirmed correct,
+  camera-azimuth + OrbitControls framing fix shipped in-task); todo viewport-default-facing-axis
+  closed. Only 04.4-15-PLAN.md (D-22 real-server round-trip checkpoint) remains to close Phase 04.4
+  (14/15 plans complete).
+Next session: resolve 04.4-15's D-22 human-verify checkpoint (real-server round-trip for server
+  push) to fully close Phase 04.4, then pick up at ROADMAP Phase 5 (WYSIWYG Live-Sync & Typed
+  Editors — no CONTEXT.md yet → /gsd:discuss-phase 5 first), optionally after a backlog triage
+  (/gsd:review-backlog — several pending todos, some likely stale post-04.3/04.4). Remaining
+  Phase-4 remnant: DEPLOY-04 (Git/LFS) only.
   Worth a runtime sanity check: the 260703-bpu deploy/Undo rewiring is test-verified but has not
   yet been exercised in the live app — a quick deploy → Undo → redeploy in-client check on next
   run would confirm it end-to-end.

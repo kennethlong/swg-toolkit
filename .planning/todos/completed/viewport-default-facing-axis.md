@@ -5,7 +5,7 @@ created: 2026-06-24
 origin: Phase 02 checkpoint testing (02-02 human-verify, protocol_droid_red)
 severity: low
 area: renderer / viewport orientation
-status: pending
+status: done
 resolves_phase: "04.4"
 ---
 
@@ -43,3 +43,19 @@ tools) — do not conflate; the viewport fix is a rotation, the export transform
 
 Low / cosmetic — geometry is correct and orbit-able to any angle. Candidate for 02-03 (already
 touching the viewport for materials) or a quick standalone polish.
+
+## Resolution (2026-07-04, Phase 04.4-04, D-17 maintainer checkpoint)
+
+Closed as verified. `SWG_ORIENTATION` was extracted into a single shared `orientation.ts` module
+(imported by both `StaticMeshView.tsx` and `SkinnedMeshView.tsx`) and confirmed, via the D-17
+human-verify checkpoint (protocol_droid_red + one asymmetric mesh vs SIE, two UAT rounds), to
+already be correct as identity `(0, 0, 0)` — the mesh's authored front was never mirrored/rotated
+wrong. The residual difference from SIE's default view was a camera-azimuth preference, not a mesh
+issue: the default camera position was mirrored from the `+X/+Z` to the `-X/+Z` quadrant so the
+viewport now opens on the character's right side, matching SIE's perceived default facing. A
+related framing bug (feet-origin centered, head clipped) found during the same UAT round was also
+fixed by retargeting `OrbitControls.target` to the mesh bounds center. Maintainer round-2 approval,
+verbatim: "facing and framing look right now, approved". See
+`.planning/phases/04.4-ux-polish-deploy-hardening/04.4-04-SUMMARY.md` for full detail, including the
+explicit note that this consciously supersedes D-16's earlier "rotation, not camera" mechanism
+claim with new maintainer-confirmed evidence.
