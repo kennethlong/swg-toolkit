@@ -7,6 +7,7 @@
  *   swg-client-v2 ShaderImplementation.cpp:1692-1738 (ShaderImplementationPass::load_0009 DATA)
  *   swg-client-v2 ShaderImplementation.cpp:2600-2651 (ShaderImplementationPassPixelShader PPSH 0001)
  *   swg-client-v2 ShaderImplementation.cpp:3113-3181 (PTXM load_0000/0001/0002)
+ *   swg-client-v2 ShaderImplementation.cpp:2458-2536 (ShaderImplementationPassStage STAG load_0000/0001)
  *
  * Decision D-02: C++20, engine-free (no N-API, no SOE engine headers).
  */
@@ -206,6 +207,69 @@ static std::vector<EffectSampler> parsePpsh(
     return samplers;
 }
 
+// ─── STAG (fixed-function texture stage) parser ─────────────────────────────
+
+// Parse one FORM STAG entry (fixed-function texture stage), returning an EffectSampler.
+// STAG is a FORM containing a single version CHUNK (0000 or 0001) — unlike PTXM, whose
+// version children are FORMs wrapping a DATA chunk. Both STAG versions share the SAME
+// leading 18-byte field sequence (colorOperation..resultArgument) before m_textureTag;
+// only the TRAILING fields after textureTag differ (0000 keeps full texture-address/filter
+// state, 0001 truncates to just textureCoordinateGeneration) — irrelevant here since we
+// only need textureTag.
+// Source: ShaderImplementation.cpp:2458-2536 (ShaderImplementationPassStage::load_0000/load_0001)
+//
+// Leading field layout (both 0000 and 0001, byte offsets 0-17, all inside the chunk payload):
+//   u8    colorOperation                @0
+//   u8    colorArgument0                 @1
+//   bool8 colorArgument0Complement       @2
+//   bool8 colorArgument0AlphaReplicate   @3
+//   u8    colorArgument1                 @4
+//   bool8 colorArgument1Complement       @5
+//   bool8 colorArgument1AlphaReplicate   @6
+//   u8    colorArgument2                 @7
+//   bool8 colorArgument2Complement       @8
+//   bool8 colorArgument2AlphaReplicate   @9
+//   u8    alphaOperation                 @10
+//   u8    alphaArgument0                 @11
+//   bool8 alphaArgument0Complement       @12
+//   u8    alphaArgument1                 @13
+//   bool8 alphaArgument1Complement       @14
+//   u8    alphaArgument2                 @15
+//   bool8 alphaArgument2Complement       @16
+//   u8    resultArgument                 @17
+//   uint32 textureTag (LE)               @18-21   <- the sampler role tag we want
+//   ... (trailing fields differ by version — not read here)
+
+static std::optional<EffectSampler> parseStag(
+    const swg_core::iff::IffNode& stagForm,
+    const uint8_t* srcData, uint32_t srcSize, int stageIndex)
+{
+    // STAG's version tag (0000/0001) is a direct CHUNK child, not a nested FORM.
+    const swg_core::iff::IffNode* verChunk = findChunk(stagForm, "0000");
+    if (!verChunk) verChunk = findChunk(stagForm, "0001");
+    if (!verChunk) return std::nullopt;
+
+    auto cv = efctChunkPayload(*verChunk, srcData, srcSize);
+    if (cv.bytesLeft() < 22) return std::nullopt; // too short to reach textureTag
+
+    cv.skip(1);              // colorOperation
+    cv.skip(1); cv.skip(1); cv.skip(1); // colorArgument0 + complement + alphaReplicate
+    cv.skip(1); cv.skip(1); cv.skip(1); // colorArgument1 + complement + alphaReplicate
+    cv.skip(1); cv.skip(1); cv.skip(1); // colorArgument2 + complement + alphaReplicate
+    cv.skip(1);              // alphaOperation
+    cv.skip(1); cv.skip(1);  // alphaArgument0 + complement
+    cv.skip(1); cv.skip(1);  // alphaArgument1 + complement
+    cv.skip(1); cv.skip(1);  // alphaArgument2 + complement
+    cv.skip(1);              // resultArgument
+
+    uint32_t textureTag = cv.readU32LE();
+
+    EffectSampler sampler;
+    sampler.index = static_cast<int8_t>(stageIndex);
+    sampler.role  = tagToRoleString(textureTag);
+    return sampler;
+}
+
 // ─── PASS blend state parser ─────────────────────────────────────────────────
 
 // Parse the DATA chunk from a PASS version form (e.g. FORM 0009).
@@ -333,6 +397,22 @@ static EffectImpl parseImpl(
                     auto samps = parsePpsh(*ppshForm, srcData, srcSize);
                     for (auto& s : samps)
                         impl.samplers.push_back(std::move(s));
+                } else {
+                    // Fixed-function path: no FORM PPSH present — walk FORM STAG entries,
+                    // direct siblings of (not children of) where FORM PPSH would be, within
+                    // the same PASS version-form. Each STAG carries one m_textureTag; STAG's
+                    // 0-based position among its siblings IS the hardware stage index (the
+                    // fixed-function pipeline has no separate index field like PTXM does).
+                    // Source: ShaderImplementationPass::load_0009:1742-1770 — after DATA +
+                    // FORM PFFP, `numberOfStages` FORM STAG entries follow directly; PPSH is
+                    // the alternate branch taken only when numberOfStages==0.
+                    int stageIndex = 0;
+                    for (const auto& child : passVerForm.children) {
+                        if (!child.isForm || strncmp(child.subType, "STAG", 4) != 0) continue;
+                        auto sampler = parseStag(child, srcData, srcSize, stageIndex);
+                        if (sampler) impl.samplers.push_back(std::move(*sampler));
+                        ++stageIndex;
+                    }
                 }
 
                 break; // first version form only per PASS

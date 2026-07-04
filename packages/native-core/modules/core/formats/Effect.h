@@ -7,6 +7,7 @@
  *   swg-client-v2 ShaderImplementation.cpp:1692-1738 (ShaderImplementationPass::load_0009, PASS DATA)
  *   swg-client-v2 ShaderImplementation.cpp:2600-2651 (ShaderImplementationPassPixelShader PPSH 0001)
  *   swg-client-v2 ShaderImplementation.cpp:3113-3181 (ShaderImplementationPassPixelShaderTextureSampler PTXM)
+ *   swg-client-v2 ShaderImplementation.cpp:2458-2536 (ShaderImplementationPassStage STAG load_0000/0001)
  *
  * STRUCTURE (EFCT version 0000 / 0001):
  *   FORM EFCT
@@ -24,8 +25,15 @@
  *               FORM PPSH { FORM 0001: DATA{ int8 nSamplers, cstring psh path }
  *                                       FORM PTXM x nSamplers: {0002: int8 textureIndex, uint32 textureTag(LE)} }
  *               -- OR --
- *               FORM PFFP + FORM STAG (fixed-function path, we also walk it for sampler tags)
+ *               FORM PFFP + FORM STAG x numberOfStages (fixed-function path — direct siblings
+ *                                       of where FORM PPSH would be, NOT children of it).
+ *                                       Each FORM STAG carries a CHUNK 0000/0001 with a leading
+ *                                       18-byte field run then m_textureTag(u32 LE) — the same
+ *                                       sampler-role tag PTXM carries. IMPLEMENTED: parseStag
+ *                                       populates the SAME impl.samplers vector as PPSH/PTXM,
+ *                                       one sampler per STAG (stage position = sampler index).
  *
+
  * PTXM tag byte-order (LOCKED — verified vs PTXM load_0002):
  *   The textureTag is read with iff.read_uint32() which is a raw memcpy (LE on Windows).
  *   So bytes 00 4E 49 41 4D are: textureIndex=0x00, then tag bytes 4E 49 41 4D = 'NIAM' as LE uint32
