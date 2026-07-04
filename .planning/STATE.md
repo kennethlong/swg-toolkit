@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.4-10-PLAN.md
-last_updated: "2026-07-04T05:31:52.859Z"
+stopped_at: Completed 04.4-11-PLAN.md
+last_updated: "2026-07-04T05:49:04.348Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 67
-  percent: 92
+  completed_plans: 68
+  percent: 93
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING
-Plan: 10 of 15
+Plan: 11 of 15
 Status: Ready to execute
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
@@ -42,7 +42,7 @@ Last activity: 2026-07-04
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 93%
 
 ### 02-03 key facts (crew-verified)
 
@@ -119,6 +119,7 @@ Progress: [█████████░] 92%
 | Phase 04.4-ux-polish-deploy-hardening P08 | ~40min | 2 tasks | 3 files |
 | Phase 04.4 P09 | 65min | 3 tasks | 8 files |
 | Phase 04.4 P10 | ~60min | 3 tasks | 9 files |
+| Phase 04.4-ux-polish-deploy-hardening P11 | ~15min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -260,6 +261,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 04.4-09]: vite.main.config.ts/vite.preload.config.ts need explicit outDir/format/define/external-list fixes to work standalone (outside electron-forge) — CI's new build-before-E2E step invokes vite build directly, bypassing forge's own config injection (outDir, MAIN_WINDOW_VITE_* defines, Node-builtins external) — without these fixes the standalone build produced a crashing bundle
 - [Phase 04.4]: Client label in DeleteProjectConfirmModal is derived best-effort (detectClients match, falling back to parent-folder basename) rather than adding a client-name field to CfgDeployRecord/LooseDeployRecord — Keeps the modal store-independent and avoids widening the contracts package for display-only text
 - [Phase 04.4]: DeleteUndoToast detects restores generically by diffing the pending array rather than only reacting to its own Undo button — Makes the round-2 post-restore toast (element #17b) fire for BOTH Undo-from-toast and Restore-from-dimmed-row without coupling the two components
+- [Phase 04.4-11]: main-log-forward subscription folded INSIDE installConsoleCapture()'s existing body (04.4-02 insertion point), guarded by process.env['VITEST'] -- no new exported function, no new call site
+- [Phase 04.4-11]: one-time 'app ready' main-log line moved to win.webContents.once('did-finish-load', ...) instead of app.whenReady().then(...) to avoid a lost-first-log listener-attachment race
+- [Phase 04.4-11]: syncLiveToVersion.ts is the sole reconcile-result Log-tab site (noop + apply paths) -- setLiveVersion not separately logged to avoid double-logging one reconcile as two entries
 
 ### Pending Todos
 
@@ -290,8 +294,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T05:31:52.802Z
-Stopped at: Completed 04.4-10-PLAN.md
+Last session: 2026-07-04T05:49:04.314Z
+Stopped at: Completed 04.4-11-PLAN.md
   UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
   (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
   272 renderer tests green, typecheck clean).

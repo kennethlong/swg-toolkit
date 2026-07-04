@@ -194,7 +194,7 @@ Core3/swg-main server-push target) — see `04.4-CONTEXT.md` D-19..D-23.
   3. The Data panel Console/Log tabs are selectable and show live app logs (no DevTools needed for basic diagnosis).
   4. The status bar mesh name/vert count updates on every viewport load.
   5. The VfsTree non-override archive label is legible across the 5 themes; a mesh's authored front faces the default camera like SIE (rotation only — geometry/winding untouched), OR — an accepted, consciously-documented alternative close per 04.4-04's round-2 revision note — the checkpoint confirms mesh identity is already correct and the residual gap is camera-azimuth-only, which is treated as satisfying this criterion by that characterization alone.
-**Plans:** 9/15 plans executed
+**Plans:** 10/15 plans executed
 
 Plans (revised via `/gsd:plan-phase --reviews` on 2026-07-03, ROUND 2 — folds in round-2 cross-AI review
 findings from 04.4-REVIEWS.md; see each PLAN.md's REVISION NOTE for details. 04.4-04 stays in Wave 3 (moved
@@ -216,7 +216,7 @@ on. 04.4-12 itself is now fully autonomous and stays in Wave 2):
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 04.4-10-PLAN.md — Delete UI: sketch-017 kebab menu, descriptive confirm modal, undo toast, inline dimmed rows (undo = project-bytes-only, no re-deploy); round-2 fixes the biggest single risk to this UI (both row surfaces now subscribe reactively to `useDeleteUndoStore`, not a one-shot re-fetch — a delete/restore reflects immediately even without a dialog remount), adds an in-flight guard on Delete, the sketch's global kebab-dismiss handlers, and a post-restore confirmation toast
-- [ ] 04.4-11-PLAN.md — Console/Log: main-process `main-log` IPC forward folded into installConsoleCapture + deploy/reconcile/mount instrumentation (D-13/D-14); round-2 guards the added `require('electron')` seam so 04.4-02's own test doesn't regress, and defers the one-time "app ready" log to `did-finish-load`
+- [x] 04.4-11-PLAN.md — Console/Log: main-process `main-log` IPC forward folded into installConsoleCapture + deploy/reconcile/mount instrumentation (D-13/D-14); round-2 guards the added `require('electron')` seam so 04.4-02's own test doesn't regress, and defers the one-time "app ready" log to `did-finish-load`
 - [ ] 04.4-12-PLAN.md — Server push UI wiring (VcsPanel "Server Push" section, disk-backed record rehydration) [autonomous: true — round 2: the real-server checkpoint moved to 04.4-15]
 - [ ] 04.4-13-PLAN.md — E2E deploy-flow spec (D-07 re-based scenario: stage → save → select/reconcile → deploy → revert); round-3 (maintainer ruling): adds a second loose-override scenario in the same spec file, reversing round-2's cfg-model-only scoping for SC #2
 
