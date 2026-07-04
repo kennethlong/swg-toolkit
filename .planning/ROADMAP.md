@@ -193,31 +193,37 @@ Core3/swg-main server-push target) — see `04.4-CONTEXT.md` D-19..D-23.
   2. A Playwright spec suite drives the real Electron renderer through the full deploy loop (stage → save version → select → deploy → revert) with zero console errors, and runs in CI.
   3. The Data panel Console/Log tabs are selectable and show live app logs (no DevTools needed for basic diagnosis).
   4. The status bar mesh name/vert count updates on every viewport load.
-  5. The VfsTree non-override archive label is legible across the 5 themes; a mesh's authored front faces the default camera like SIE (rotation only — geometry/winding untouched).
-**Plans:** 14 plans
+  5. The VfsTree non-override archive label is legible across the 5 themes; a mesh's authored front faces the default camera like SIE (rotation only — geometry/winding untouched), OR — an accepted, consciously-documented alternative close per 04.4-04's round-2 revision note — the checkpoint confirms mesh identity is already correct and the residual gap is camera-azimuth-only, which is treated as satisfying this criterion by that characterization alone.
+**Plans:** 15 plans
 
-Plans (revised via `/gsd:plan-phase --reviews` on 2026-07-03 — folds in cross-AI review findings from
-04.4-REVIEWS.md; see each PLAN.md's REVISION NOTE for details. 04.4-04 moved from Wave 1 to Wave 3 so its
-blocking human-verify checkpoint no longer risks stalling the Wave 1→2 barrier for unrelated work):
+Plans (revised via `/gsd:plan-phase --reviews` on 2026-07-03, ROUND 2 — folds in round-2 cross-AI review
+findings from 04.4-REVIEWS.md; see each PLAN.md's REVISION NOTE for details. 04.4-04 stays in Wave 3 (moved
+there in round 1) so its blocking human-verify checkpoint doesn't stall Wave 2. ROUND 2 WAVE CHANGE: 04.4-12's
+round-1 Task 3 (a blocking real-server checkpoint) is extracted into its own new plan, **04.4-15** (Wave 3,
+`depends_on: ["04.4-12"]`) — the same reasoning Opus applied to flag 04.4-04's original Wave-1 placement:
+a blocking `autonomous:false` checkpoint in Wave 2 would otherwise stall the Wave 2→3 barrier and delay
+04.4-14 (fully autonomous) from starting on a maintainer-availability constraint it has no real dependency
+on. 04.4-12 itself is now fully autonomous and stays in Wave 2):
 **Wave 1** *(independent — no cross-file dependencies)*
-- [ ] 04.4-01-PLAN.md — Delete service core (TDD): `deleteProject.ts` restore-first + shared `deploymentReset.ts` (also used by DeployDialog.handleReset) + `.trash` session-scoped undo, `deleteUndoStore`, stale-trash startup purge
-- [ ] 04.4-02-PLAN.md — `logService`/`logStore` core (TDD) + Console/Log panel wiring, capture installed at module-scope/boot-time (D-12/D-15)
+- [ ] 04.4-01-PLAN.md — Delete service core (TDD): `deleteProject.ts` restore-first + shared `deploymentReset.ts` (also used by DeployDialog.handleReset, now with a `cleanupArtifacts` opt-out for delete's use — round 2) + `.trash` session-scoped undo, `deleteUndoStore` (round-2: occupied-destination guard on restore), stale-trash startup purge; round-2 also fixes close()-before-rename ordering for the currently-open project, an extended basename-collision guard, and a read-only server-push-orphan warning
+- [ ] 04.4-02-PLAN.md — `logService`/`logStore` core (TDD) + Console/Log panel wiring, capture installed at module-scope/boot-time (D-12/D-15); round-2 adds `resetConsoleCaptureForTests()` for cross-test console-spy isolation
 - [ ] 04.4-03-PLAN.md — StatusBar mesh name/vert-count wire-up (extends existing StatusBar.test.tsx) + VfsTree non-override label legibility polish
-- [ ] 04.4-05-PLAN.md — `.eft` parser: FORM STAG fixed-function sampler path + CI-enforced synthetic fixture + local-only real-fixture activation (native-core)
-- [ ] 04.4-06-PLAN.md — Native TRE codec interface (pluggable inflate/deflate seam via codecForCompressor/codecForTreVersion, D-21)
-- [ ] 04.4-07-PLAN.md — Server push: Core3 (Lua-array `config-local.lua` injection, cross-restart persistence) + product-thesis close-out audit (D-20/D-22)
-- [ ] 04.4-08-PLAN.md — Server push: swg-main (loose-file `[SharedFile]` override, verified servercommon.cfg path, cross-restart persistence, D-22)
-- [ ] 04.4-09-PLAN.md — E2E infra: CI build-before-E2E fix + `SWG_TEST_MODE` hook surface (module-scope install) + fixture client trees (D-06/D-08/D-11)
+- [ ] 04.4-05-PLAN.md — `.eft` parser: FORM STAG fixed-function sampler path + CI-enforced synthetic fixture (round-2: independently hex-sanity-checked against ShaderImplementation.cpp, not just self-consistent with the parser) + local-only real-fixture activation (native-core)
+- [ ] 04.4-06-PLAN.md — Native TRE codec interface (pluggable inflate/deflate seam via codecForCompressor/codecForTreVersion, D-21) — round-2: explicitly scoped to the PAYLOAD path only; TOC/name-block compression stays hardcoded stock zlib by design (enumeration metadata), with a prescribed zlibCompress extraction seam to avoid a circular include
+- [ ] 04.4-07-PLAN.md — Server push: Core3 (Lua-array `config-local.lua` injection, cross-restart persistence) + product-thesis close-out audit (D-20/D-22); round-2 locks the reset-vs-clear-record contract (resetCore3TreOverride never clears serverPush.core3.json — the caller, 04.4-12, always does)
+- [ ] 04.4-08-PLAN.md — Server push: swg-main (loose-file `[SharedFile]` override, verified servercommon.cfg path, cross-restart persistence, D-22); round-2 locks the identical reset-vs-clear-record contract
+- [ ] 04.4-09-PLAN.md — E2E infra: CI build-before-E2E fix + `SWG_TEST_MODE` hook surface (module-scope install) + fixture client trees (D-06/D-08/D-11); round-2 adds a `listProjects()` test hook (needed by 04.4-14)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 04.4-10-PLAN.md — Delete UI: sketch-017 kebab menu, descriptive confirm modal, undo toast, inline dimmed rows (undo = project-bytes-only, no re-deploy)
-- [ ] 04.4-11-PLAN.md — Console/Log: main-process `main-log` IPC forward folded into installConsoleCapture + deploy/reconcile/mount instrumentation (D-13/D-14)
-- [ ] 04.4-12-PLAN.md — Server push UI wiring (VcsPanel "Server Push" section, disk-backed record rehydration, real-server checkpoint) [autonomous: false]
-- [ ] 04.4-13-PLAN.md — E2E deploy-flow spec (D-07 re-based scenario: stage → save → select/reconcile → deploy → revert)
+- [ ] 04.4-10-PLAN.md — Delete UI: sketch-017 kebab menu, descriptive confirm modal, undo toast, inline dimmed rows (undo = project-bytes-only, no re-deploy); round-2 fixes the biggest single risk to this UI (both row surfaces now subscribe reactively to `useDeleteUndoStore`, not a one-shot re-fetch — a delete/restore reflects immediately even without a dialog remount), adds an in-flight guard on Delete, the sketch's global kebab-dismiss handlers, and a post-restore confirmation toast
+- [ ] 04.4-11-PLAN.md — Console/Log: main-process `main-log` IPC forward folded into installConsoleCapture + deploy/reconcile/mount instrumentation (D-13/D-14); round-2 guards the added `require('electron')` seam so 04.4-02's own test doesn't regress, and defers the one-time "app ready" log to `did-finish-load`
+- [ ] 04.4-12-PLAN.md — Server push UI wiring (VcsPanel "Server Push" section, disk-backed record rehydration) [autonomous: true — round 2: the real-server checkpoint moved to 04.4-15]
+- [ ] 04.4-13-PLAN.md — E2E deploy-flow spec (D-07 re-based scenario: stage → save → select/reconcile → deploy → revert); round-2 states explicitly that cfg-model-only coverage is sufficient for SC #2 (a stated decision, not a silent gap)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 04.4-04-PLAN.md — Viewport orientation shared module + facing-axis fix [autonomous: false — D-17 human-verify checkpoint; moved here so it doesn't block Wave 2]
-- [ ] 04.4-14-PLAN.md — E2E delete-flow spec (D-09: delete → confirm → client-pristine assert → undo → restored; undo asserts client stays in its delete-restored state, no re-deploy)
+- [ ] 04.4-04-PLAN.md — Viewport orientation shared module + facing-axis fix [autonomous: false — D-17 human-verify checkpoint; moved here in round 1 so it doesn't block Wave 2]; round-2 makes the SC #5/D-16 reconciliation explicit if the checkpoint reaches the identity outcome
+- [ ] 04.4-14-PLAN.md — E2E delete-flow spec (D-09: delete → confirm → client-pristine assert → undo → restored; undo asserts client stays in its delete-restored state, no re-deploy); round-2 fixes a reference to a nonexistent test hook, now naming 04.4-09's concrete `listProjects()` hook
+- [ ] 04.4-15-PLAN.md — **(round-2 NEW plan)** Real-server round-trip checkpoint for server push (D-22's "working deploy target" bar), extracted from 04.4-12's round-1 Task 3 so it doesn't stall the Wave 2→3 barrier for 04.4-14 [autonomous: false]
 
 ### Phase 04.3: Versioning Model & SearchTOC Mount Completion (INSERTED)
 
@@ -386,7 +392,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 4.2 -> 4.3 -> 4
 | 4.1 Deploy & Project UX *(INSERTED)* | 11/11 | Complete | 2026-07-03 |
 | 4.2 Dev-Client Support & Loose-Override Deploy *(INSERTED)* | 6/6 | Complete | 2026-07-03 |
 | 4.3 Versioning Model & SearchTOC Mount Completion *(INSERTED)* | 12/12 | Complete | 2026-07-03 |
-| 4.4 UX Polish & Deploy Hardening *(INSERTED)* | 0/14 | Planned, not executed | - |
+| 4.4 UX Polish & Deploy Hardening *(INSERTED)* | 0/15 | Planned, not executed | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |

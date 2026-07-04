@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 04.4 context gathered
-last_updated: "2026-07-03T23:08:55.875Z"
-last_activity: 2026-07-03 -- Phase 04.4 planning complete
+last_updated: "2026-07-04T01:31:43.523Z"
+last_activity: 2026-07-04 -- Phase 04.4 planning complete
 progress:
   total_phases: 13
   completed_phases: 8
-  total_plans: 72
+  total_plans: 73
   completed_plans: 58
-  percent: 81
+  percent: 79
 ---
 
 # Project State
@@ -37,7 +37,7 @@ Next: /gsd:discuss-phase 04.4 or /gsd:plan-phase 04.4 — knock out the 6 UI-rel
       audit or advance to the next phase when maintainer says go.
       Follow-up todos: deploy-dialog-synclive-undo-wiring (Undo re-wiring), v6000-swg-source-plain-zlib
       (done via plans 10-11? verify against todo), server TRE search-path (deferred to Phase 8).
-Last activity: 2026-07-03 -- Phase 04.4 planning complete
+Last activity: 2026-07-04 -- Phase 04.4 planning complete
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
