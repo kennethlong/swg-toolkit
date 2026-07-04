@@ -179,7 +179,7 @@ describe('core3ServerPush', () => {
     const record = pushCore3TreOverride(confDir, studioDir, 'v1', FAKE_MANIFEST, 'myproject');
 
     // Must land in the config-local value's dir, NOT config.lua's.
-    expect(record.trePath).toBe(trePathDir);
+    expect(path.resolve(record.trePath)).toBe(path.resolve(trePathDir));
     expect(fs.existsSync(path.join(trePathDir, record.treFileName))).toBe(true);
     expect(fs.existsSync(path.join(wrongTrePath, record.treFileName))).toBe(false);
 
