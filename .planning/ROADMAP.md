@@ -194,7 +194,7 @@ Core3/swg-main server-push target) — see `04.4-CONTEXT.md` D-19..D-23.
   3. The Data panel Console/Log tabs are selectable and show live app logs (no DevTools needed for basic diagnosis).
   4. The status bar mesh name/vert count updates on every viewport load.
   5. The VfsTree non-override archive label is legible across the 5 themes; a mesh's authored front faces the default camera like SIE (rotation only — geometry/winding untouched), OR — an accepted, consciously-documented alternative close per 04.4-04's round-2 revision note — the checkpoint confirms mesh identity is already correct and the residual gap is camera-azimuth-only, which is treated as satisfying this criterion by that characterization alone.
-**Plans:** 15 plans
+**Plans:** 1/15 plans executed
 
 Plans (revised via `/gsd:plan-phase --reviews` on 2026-07-03, ROUND 2 — folds in round-2 cross-AI review
 findings from 04.4-REVIEWS.md; see each PLAN.md's REVISION NOTE for details. 04.4-04 stays in Wave 3 (moved
@@ -205,7 +205,7 @@ a blocking `autonomous:false` checkpoint in Wave 2 would otherwise stall the Wav
 04.4-14 (fully autonomous) from starting on a maintainer-availability constraint it has no real dependency
 on. 04.4-12 itself is now fully autonomous and stays in Wave 2):
 **Wave 1** *(independent — no cross-file dependencies)*
-- [ ] 04.4-01-PLAN.md — Delete service core (TDD): `deleteProject.ts` restore-first + shared `deploymentReset.ts` (also used by DeployDialog.handleReset, now with a `cleanupArtifacts` opt-out for delete's use — round 2) + `.trash` session-scoped undo, `deleteUndoStore` (round-2: occupied-destination guard on restore), marked-only stale-trash startup purge (round-3: park under one `.trash/<id>/` entry with a `.complete.json` completion marker written last; purge removes only marked entries, unmarked crash-mid-park entries survive and are surfaced); round-2 also fixes close()-before-rename ordering for the currently-open project, an extended basename-collision guard, and a read-only server-push-orphan warning
+- [x] 04.4-01-PLAN.md — Delete service core (TDD): `deleteProject.ts` restore-first + shared `deploymentReset.ts` (also used by DeployDialog.handleReset, now with a `cleanupArtifacts` opt-out for delete's use — round 2) + `.trash` session-scoped undo, `deleteUndoStore` (round-2: occupied-destination guard on restore), marked-only stale-trash startup purge (round-3: park under one `.trash/<id>/` entry with a `.complete.json` completion marker written last; purge removes only marked entries, unmarked crash-mid-park entries survive and are surfaced); round-2 also fixes close()-before-rename ordering for the currently-open project, an extended basename-collision guard, and a read-only server-push-orphan warning
 - [ ] 04.4-02-PLAN.md — `logService`/`logStore` core (TDD) + Console/Log panel wiring, capture installed at module-scope/boot-time (D-12/D-15); round-2 adds `resetConsoleCaptureForTests()` for cross-test console-spy isolation
 - [ ] 04.4-03-PLAN.md — StatusBar mesh name/vert-count wire-up (extends existing StatusBar.test.tsx) + VfsTree non-override label legibility polish
 - [ ] 04.4-05-PLAN.md — `.eft` parser: FORM STAG fixed-function sampler path + CI-enforced synthetic fixture (round-2: independently hex-sanity-checked against ShaderImplementation.cpp, not just self-consistent with the parser) + local-only real-fixture activation (native-core)

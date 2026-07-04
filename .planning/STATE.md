@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 04.4 context gathered
-last_updated: "2026-07-04T01:31:43.523Z"
-last_activity: 2026-07-04 -- Phase 04.4 planning complete
+stopped_at: Completed 04.4-01-PLAN.md
+last_updated: "2026-07-04T02:56:28.592Z"
+last_activity: 2026-07-04
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 58
-  percent: 79
+  completed_plans: 59
+  percent: 81
 ---
 
 # Project State
@@ -25,7 +25,8 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 04.4 (ux-polish-deploy-hardening) — NOT PLANNED (inserted 2026-07-03; 6 UI/hardening todos)
+Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING
+Plan: 2 of 15
 Status: Ready to execute
         the full surface, each defect fixed + regression-tested in-session (269 renderer tests green).
         Model change mid-UAT (crew consult): selection DECOUPLED from deploy (VER-03/04/06/08 +
@@ -37,11 +38,11 @@ Next: /gsd:discuss-phase 04.4 or /gsd:plan-phase 04.4 — knock out the 6 UI-rel
       audit or advance to the next phase when maintainer says go.
       Follow-up todos: deploy-dialog-synclive-undo-wiring (Undo re-wiring), v6000-swg-source-plain-zlib
       (done via plans 10-11? verify against todo), server TRE search-path (deferred to Phase 8).
-Last activity: 2026-07-04 -- Phase 04.4 planning complete
+Last activity: 2026-07-04
   syncLiveToVersion (dedupe) + Undo restores the prior DEPLOYED state (todo
   deploy-dialog-synclive-undo-wiring → completed). 272 renderer tests green.
 
-Progress: [█████████▌] 95%
+Progress: [████████░░] 81%
 
 ### 02-03 key facts (crew-verified)
 
@@ -109,6 +110,7 @@ Progress: [█████████▌] 95%
 | Phase 04.3 P08 | 20 | 3 tasks | 10 files |
 | Phase 04.3 P09 | 25 | 3 tasks | 11 files |
 | Phase 04.3-versioning-and-searchtoc-mount P11 | 90 | 3 tasks | 12 files |
+| Phase 04.4-ux-polish-deploy-hardening P01 | 25min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -232,6 +234,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: 04.1-09-SUMMARY.md
 - [Phase ?]: swg-source v6000 plain-zlib fixture confirmed at 26174 bytes offset in patch_sku3_24_client_00.tre; resolveFull RED test uses synthetic TOC (CI-safe)
 - [Phase ?]: extractMountAt(handle, archiveIndex, descriptor) — container via archiveIndex not offset; plan 11 uses stubs without plan-10 wave dependency (checker W2 fix)
+- [Phase ?]: Locked undo contract (04.4-01/10/14): Undo restores project bytes only, never re-deploys to the client
+- [Phase ?]: Completion-marker trash protocol (round-3): entryDir/.complete.json written LAST, only after both directory renames succeed — startup purge only removes MARKED entries
+- [Phase ?]: resetDeploymentFromRecord shared between DeployDialog.handleReset and deleteProject.ts (cleanupArtifacts opt-out) — never two parallel restore implementations
 
 ### Pending Todos
 
@@ -261,8 +266,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-03T19:52:57.269Z
-Stopped at: Phase 04.4 context gathered
+Last session: 2026-07-04T02:56:28.561Z
+Stopped at: Completed 04.4-01-PLAN.md
   UAT criteria reconciled to the decoupled selection model) + quick task 260703-bpu complete
   (DeployDialog deploys routed through syncLiveToVersion; Undo restores prior DEPLOYED state;
   272 renderer tests green, typecheck clean).
@@ -272,4 +277,4 @@ Next session: pick up at ROADMAP Phase 5 (WYSIWYG Live-Sync & Typed Editors — 
   Worth a runtime sanity check: the 260703-bpu deploy/Undo rewiring is test-verified but has not
   yet been exercised in the live app — a quick deploy → Undo → redeploy in-client check on next
   run would confirm it end-to-end.
-Resume file: .planning/phases/04.4-ux-polish-deploy-hardening/04.4-CONTEXT.md
+Resume file: None
