@@ -2,7 +2,7 @@
 
 > Covers: Core3/SWGEmu client↔server parity, Lua template sync, master-file registry, server deployment daemon. Source: research doc lines 8547–8734, 10915–11088, 14551–14782.
 
-> **Caveat:** Core3 file paths and Lua schema shapes below are AI-proposed based on community documentation and must be validated against the actual `Core3` / `MMOCoreORB` source tree before production use. The REST deployment daemon (§ Server-Side Deployment Daemon) is a design sketch and requires a proper security review (authentication, TLS, rate-limiting) before exposure on any network. See [source provenance](../00-overview/source-provenance.md).
+> **Caveat:** Core3 file paths and Lua schema shapes below (Lua template generator, master-file registry, deployment orchestrators, React sync controls, "Key Concrete Paths" table) are AI-proposed based on community documentation and must be validated against the actual `Core3` / `MMOCoreORB` source tree before production use. The REST deployment daemon (§ Server-Side Deployment Daemon) is a design sketch and requires a proper security review (authentication, TLS, rate-limiting) before exposure on any network. See [source provenance](../00-overview/source-provenance.md). **EXCEPTION — scoped out of this caveat:** the "Verified: Product-Thesis Close-Out (2026-07-03)" section below (TRE search-path push mechanism + close-out audit) is confirmed against the real `Core3`/`MMOCoreORB` source tree and the maintainer's live WSL2 server, with file:line citations — it is NOT an AI-proposed section.
 
 ---
 
@@ -739,3 +739,131 @@ export const SwgGlobalParitySyncPanel: React.FC<ServerExtensionProps> = ({
 | Daemon changeset store | `<serverRoot>/.studio_server/changesets/<changesetId>/` |
 
 > All Core3 paths are AI-proposed and must be verified against the actual `MMOCoreORB` repository. See [source provenance](../00-overview/source-provenance.md).
+
+---
+
+## Verified: Product-Thesis Close-Out (2026-07-03)
+
+This section is confirmed against real, currently-shipped SWG-Toolkit source and the real
+`Core3`/`MMOCoreORB` repository (read directly this session at `../Core3`), plus the maintainer's
+live WSL2 Core3 instance. It replaces the "AI-proposed" caveat above for the TRE search-path
+subsection specifically (the rest of this file's design-sketch content, e.g. the Lua template
+generator and REST daemon, remains AI-proposed and unvalidated).
+
+### The five product-thesis "realized" claims — verified against shipped code
+
+1. **Lazy/virtual shadow (no multi-GB copy, only deltas materialize).** Confirmed. The DEFAULT
+   deploy path never copies the client's base TRE set: `changesetService.sealVersion` stores only
+   files that changed vs. the parent version (`packages/renderer/src/services/changesetService.ts`
+   — diff-vs-parent filter at lines 289-351, "CRITICAL: compute sha from the SOURCE file and filter
+   BEFORE copying any bytes" at lines 289-291), `flatten()` reconstructs the full override set by
+   walking the parentId chain (lines 139-189), and `packPatch(flatten(...))`
+   (`packages/renderer/src/services/packPatch.ts` lines 80-126) builds an override archive
+   containing ONLY those changed files. `cfgActivator.getToolkitCfgPath`
+   (`packages/renderer/src/services/cfgActivator.ts` lines 47-61) documents the footprint goal
+   explicitly: "the only change to the client install is a single absolute, quoted `.include` line."
+   The full-copy `shadowBaseService.ts` (hardlink-or-copy the entire base) still exists but is an
+   OPT-IN alternative model, not the default (confirmed by its own header comment "opt-in
+   shadow-base TRE copy").
+2. **Cfg snapshot/restore (byte-pristine whole-file restore).** Confirmed. `cfgActivator.snapshotCfg`
+   (`cfgActivator.ts` lines 112-128) copies the pristine root cfg into `.studio/snapshots/` before
+   the first mutation (idempotent — never overwrites an existing snapshot); `restoreCfg` (lines
+   146-151) does an atomic tmp+rename whole-file copy-back, explicitly NOT line-surgery ("the safest
+   approach — no risk of residual lines").
+3. **B3 loose-override snapshot pattern.** Confirmed.
+   `packages/renderer/src/services/looseOverrideDeploy.ts` `deployLoose` (lines 75-154) snapshots
+   any pre-existing file at the destination path before overwriting it (lines 121-129); `resetLoose`
+   (lines 176-201) RESTORES pre-existing files from their snapshot (lines 178-185) and only DELETES
+   files that did not pre-exist (lines 186-198) — matches the documented B3 contract exactly.
+4. **Baseline root changeset node.** Confirmed. `changesetService.seedBaseline`
+   (`changesetService.ts` lines 97-120) idempotently seeds a `BASELINE_ID` root node with
+   `deltas: []` (pristine, zero-override) via a direct manifest write (bypassing `sealVersion`'s
+   N4 empty-delta guard, as documented at lines 90-96), called on every `openWorkspace` (H2a,
+   `workspaceService.ts` lines 294-299).
+5. **Reconcile-to-version engine.** Confirmed — verified against `syncLiveToVersion`, the SHIPPED
+   engine (NOT `setLiveVersion` alone). `packages/renderer/src/services/syncLiveToVersion.ts`
+   `syncLiveToVersion()` (lines 153-321) performs the actual file-level revert/apply work: H4
+   dispatch on the live version's model for revert vs. the target version's model for apply (lines
+   166-173, 207-210), `flatEqual` noop fast path (lines 187-192), undo-stack push before any mutation
+   (lines 194-199), Baseline revert-only branch (lines 217-234), and cross-model
+   loose↔cfg transitions (lines 240-302). It calls `setLiveVersion(targetId)`
+   (`changesetService.ts` lines 465-494) internally as its LAST step (line 313) purely to move the
+   `activeVersionId`/`deployedVersionId` pointers — `setLiveVersion` is a pointer-mover, not the
+   engine.
+
+### Core3 TRE search-path push mechanism — verified against real source
+
+Read directly from `../Core3` this session (not the research doc's AI-proposed community-doc
+version):
+
+- **`Core3.TrePath` + `Core3.TreFiles`** are real Lua-table fields in
+  `MMOCoreORB/bin/conf/config.lua` (confirmed at lines 150-151 of the maintainer's checkout —
+  `TrePath = "/home/swgemu/Desktop/SWGEmu"`, `TreFiles = { "default_patch.tre", ... }`, index 0 =
+  first/highest-priority entry).
+- **`ConfigManager::loadConfigData()`** (`MMOCoreORB/src/conf/ConfigManager.cpp` lines 23-93) runs
+  `conf/config.lua` FIRST (line 33, `lua.runFile("conf/config.lua")`), then
+  `conf/config-local.lua` SECOND in the SAME Lua VM, but ONLY if it exists (lines 38-47,
+  `File file("conf/config-local.lua"); if (file.setReadOnly()) { lua.runFile(...) }`). Because both
+  files execute in one Lua VM, `config-local.lua` can `table.insert` into the already-populated
+  `Core3.TreFiles` table without redeclaring it, AND any `Core3.TrePath = "..."` assignment in
+  `config-local.lua` silently OVERRIDES `config.lua`'s value (last assignment in the VM wins — no
+  merge semantics). This is exactly the maintainer's live shape: `config-local.lua` overrides
+  `TrePath` to `/mnt/d/SWGEmu-Client/SWGEmu`.
+- **`DataArchiveStore::loadTres()`** (`MMOCoreORB/src/templates/manager/DataArchiveStore.cpp` lines
+  56-88) is hard-guarded against a second run: `if (treeDirectory != nullptr) return 0;` (lines
+  59-63) — TreFiles/TrePath are consumed EXACTLY ONCE at boot; no command, REST endpoint, or signal
+  re-triggers it. It iterates `treFilesToLoad` in array order (lines 78-83,
+  `for (int i = 0; i < treFilesToLoad.size(); ++i) { ...unpackFile(fullPath); }`) — index 0 is
+  processed first.
+- **First-listed-wins duplicate precedence** — confirmed via
+  `MMOCoreORB/utils/engine3/MMOEngine/src/system/util/SortedVector.h` (`NO_DUPLICATE` insert plan,
+  line 26 constant + lines 67-68 `setNoDuplicateInsertPlan()`): archives are installed into the tree
+  directory with this plan, so a LATER-inserted duplicate virtual path is REJECTED, not overwritten.
+  Combined with the load-order proof above, this confirms `table.insert(Core3.TreFiles, 1, ...)`
+  (prepend at index 0) is the correct override point — the newly-inserted archive is processed
+  first and wins any path collision with the base archives that follow it in the array.
+- **In-place overwrite of a mounted `.tre` serves garbage, not just stale data.**
+  `TreeFileRecord::getBytes()` (`MMOCoreORB/src/tre3/TreeFileRecord.h` lines 109-130) re-opens
+  `treeFilePath` fresh per request but seeks to `fileOffset` and decompresses using
+  `compressedSize`/`uncompressedSize`/`compressionType` captured in the boot-time index. If a `.tre`
+  file is overwritten in place with different content after boot, these stored offsets/sizes no
+  longer correspond to the new bytes on disk — the server serves garbage or fails to decompress
+  until restart. **Push design must therefore write a NEW, content-tokened filename per push and
+  never overwrite a previously-pushed archive in place** (only best-effort-unlink the OLD file once
+  the new one is registered).
+- **TRE version support** — `TreeFile::readHeader()` (`MMOCoreORB/src/tre3/TreeFile.cpp` lines
+  41-86) parses ONLY `'0005'` and `'0006'` (`switch (version)` at lines 53/80); any other version
+  hits the `default:` branch and logs `"Unknown Tree version"` (line 84). SWG-Toolkit's
+  `packPatch` builds archives with `buildTre(entries, '5000')` — on-disk `EERT5000` = version
+  `0005` — compatible with Core3's reader.
+
+### Mounting the live Core3 (WSL2) from Windows — walkthrough
+
+Ground-truthed against the maintainer's running server this session (2026-07-03 mount-research
+pass; full trace in `04.4-RESEARCH.md` ADDENDUM):
+
+1. **Push target is the LIVE server tree, not the source checkout.** The running Core3 lives in a
+   WSL2 distro (e.g. Debian) at `~/workspace/Core3/MMOCoreORB`, reachable from Windows as
+   `\\wsl.localhost\<distro>\home\<user>\workspace\Core3\MMOCoreORB\bin`. Enumerate distros with
+   `WSL_UTF8=1 wsl.exe -l -q` (the output is UTF-16LE without that env var). **The sibling
+   `D:\Code\Core3` checkout used for source-reading in this repository is NOT read by the running
+   server** — writes there have zero effect on the live instance.
+2. **`config-local.lua` overrides `config.lua` for `TrePath` resolution.** Resolve TrePath by
+   reading `conf/config-local.lua` first (if it assigns `Core3.TrePath`, that value wins); otherwise
+   fall back to `conf/config.lua`'s value.
+3. **Linux→host path translation.** `/mnt/<x>/rest` → `<X>:\rest` (WSL2's automount convention for
+   Windows drives); any OTHER absolute Linux path → `\\wsl.localhost\<distro>\<path>` (distro
+   derived from the `serverConfig.path` UNC root, or from an explicit option). A `TrePath` that is
+   already a Windows/UNC path passes through unchanged.
+4. **Restart required — no runtime reload exists.** `TreFiles`/`TrePath` are read once at boot
+   (`loadTres` hard-guard, `DataArchiveStore.cpp` lines 59-63) — there is no console command, REST
+   endpoint, or signal that re-reads config or rebuilds the tree archive. Any push MUST be followed
+   by a full server restart before the new archive takes effect. (Day-to-day runbook for the
+   maintainer's instance: `D:\Code\Core3\wsl2\RUNBOOK.md`.)
+5. **Duplicate-path precedence is FIRST-listed wins** (see SortedVector `NO_DUPLICATE` citation
+   above) — the INVERSE of the client's `searchTree` priority rule (client: highest numeric priority
+   wins; Core3: first array entry wins). `table.insert(Core3.TreFiles, 1, ...)` (prepend) is
+   therefore the correct override point.
+6. **Version compatibility** — Core3 parses only TRE `0005`/`0006` (`TreeFile.cpp` lines 41-86); the
+   toolkit's `packPatch` output (`buildTre` version `'5000'` = on-disk `EERT5000` = version `0005`)
+   is compatible.
