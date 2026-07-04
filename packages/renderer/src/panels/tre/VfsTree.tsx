@@ -370,7 +370,7 @@ function VfsRow({
           style={{
             fontFamily: 'var(--font-mono)',
             fontSize: 'var(--text-xs)',
-            color: entry.isOverride ? 'var(--color-accent)' : 'var(--color-text-faint)',
+            color: entry.isOverride ? 'var(--color-accent)' : 'var(--color-text-muted)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
