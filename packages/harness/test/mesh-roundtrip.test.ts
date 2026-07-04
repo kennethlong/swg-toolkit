@@ -698,6 +698,24 @@ beforeAll(() => {
     });
   }
 
+  // EFCT synthetic STAG fixture (Task 3, round 2): registered UNCONDITIONALLY (no
+  // gitignored-file gate) so 'shader-efct' always has >=1 CORE-05 fixture in CI even
+  // when the real client-extracted a_envmask_specmap.eft is absent (e.g. clean CI
+  // checkout). Proves the fixed-function FORM STAG path added in Task 1.
+  registerFormat('shader-efct', {
+    parse: (bytes: Uint8Array) => {
+      const iff = (nativeCore as unknown as typeof ncEfct).parseIff(bytes);
+      return ncEfct.parseEffect(iff, bytes);
+    },
+    serialize: (_parsed: unknown) => syntheticStagEftBytes,
+    fixtures: [{
+      name: 'synthetic fixed-function STAG EFCT (no PPSH, committed)',
+      bytes: syntheticStagEftBytes,
+      loaderSource: 'swg-client-v2 ShaderImplementation.cpp:2430-2560',
+    }],
+    loaderSource: 'swg-client-v2 ShaderImplementation.cpp:2430-2560',
+  });
+
   // CKAT-0001: swg-client-v2 CompressedKeyframeAnimationTemplate.cpp:1198-1313,553-594 +
   //             CompressedQuaternion.cpp:82-122,156-228,370-419 (verbatim port)
   // Real fixtures: acklay_std_turn_right.ans + all_b_cbt_pistol_*.ans (gitignored)
@@ -1228,6 +1246,157 @@ interface EfctResult {
   impls: EffectImpl[];
 }
 
+// ─── Task 3 (04.4-05, round 2): CI-enforced synthetic FORM STAG fixture ─────
+//
+// Hand-crafted, MINIMAL FORM EFCT with NO FORM PPSH (genuinely fixed-function):
+//   FORM EFCT → FORM 0001 → FORM IMPL → FORM 0002 → SCAP + FORM PASS → FORM 0009
+//     → DATA(56B blend) + FORM PFFP + FORM STAG × 2 (chunk 0000 each)
+// Committed (synthetic bytes — safe to commit, unlike the real a_envmask_specmap.eft).
+// This is the CI-ENFORCED half of D-19 (round-2 fix): runs everywhere, requires no
+// client install, and its byte layout is independently hex-sanity-checked below against
+// the SAME ShaderImplementation.cpp citation Task 1's parseStag used — so an error in
+// Task 1's own implementation cannot silently "prove itself" via this fixture.
+function buildSyntheticStagEftFixture(): Uint8Array {
+  // ROUND 2 — independent derivation of the STAG chunk-0000 byte layout, re-traced
+  // directly from ShaderImplementationPassStage::load_0000
+  // (swg-client-v2 ShaderImplementation.cpp:2458-2496) WITHOUT consulting Effect.cpp's
+  // own parseStag comments — a second, independent trace of the same ground truth, so
+  // an error in Task 1's implementation cannot silently propagate into a fixture that
+  // "proves" it:
+  //
+  //   u8    colorOperation                @0
+  //   u8    colorArgument0                 @1
+  //   bool8 colorArgument0Complement       @2
+  //   bool8 colorArgument0AlphaReplicate   @3
+  //   u8    colorArgument1                 @4
+  //   bool8 colorArgument1Complement       @5
+  //   bool8 colorArgument1AlphaReplicate   @6
+  //   u8    colorArgument2                 @7
+  //   bool8 colorArgument2Complement       @8
+  //   bool8 colorArgument2AlphaReplicate   @9
+  //   u8    alphaOperation                 @10
+  //   u8    alphaArgument0                 @11
+  //   bool8 alphaArgument0Complement       @12
+  //   u8    alphaArgument1                 @13
+  //   bool8 alphaArgument1Complement       @14
+  //   u8    alphaArgument2                 @15
+  //   bool8 alphaArgument2Complement       @16
+  //   u8    resultArgument                 @17
+  //   uint32 m_textureTag (LE)             @18-21  <- the sampler-role tag we care about
+  //   uint32 textureCoordinateSetTag        @22-25
+  //   u8 textureAddressU/V/W                @26/27/28
+  //   u8 textureMipFilter/min/magFilter      @29/30/31
+  //   u8 textureCoordinateGeneration         @32
+  //   Chunk-0000 payload total: 33 bytes.
+  //
+  // CROSS-CHECK (round-2 requirement): Effect.cpp's parseStag() issues 18 sequential
+  // skip(1) calls (one per leading field above, offsets 0-17) before calling
+  // readU32LE() for textureTag. This independent trace also computes textureTag @
+  // offset 18. AGREEMENT — no discrepancy to resolve.
+  function writeStagChunk0000Payload(u8: Uint8Array, off: number, role: string): void {
+    // 18 leading bytes (offsets 0-17) — values don't matter for this test.
+    for (let i = 0; i < 18; i++) u8[off + i] = 0;
+    // m_textureTag @ offset 18 (4 bytes): on-disk sequential bytes = REVERSE of the
+    // role ASCII string (verified: tagToRoleString reads high-byte-first after a raw
+    // LE memcpy — see Effect.cpp tagToRoleString + the existing "NIAM"/"MVNE"
+    // regression checks in the PPSH sampler-role test above).
+    for (let i = 0; i < 4; i++) u8[off + 18 + i] = role.charCodeAt(3 - i);
+    // Trailing bytes (offsets 22-32) — values don't matter for this test.
+    for (let i = 22; i < 33; i++) u8[off + i] = 0;
+  }
+
+  // ─── Compute lengths bottom-up ─────────────────────────────────────────────
+  const chunk0000Len = 8 + 33;                                   // 41
+  const stagBodyLen = 4 + chunk0000Len;                          // 45 (subType + chunk)
+  const stagFormLen = 8 + stagBodyLen;                           // 53
+  const numStages = 2;
+
+  const pffpBodyLen = 4;                                         // subType only, no content
+  const pffpFormLen = 8 + pffpBodyLen;                           // 12
+
+  const dataPayLen = 56;                                         // full load_0009 DATA layout
+  const dataChunkLen = 8 + dataPayLen;                           // 64
+
+  const passVerBodyLen = 4 + dataChunkLen + pffpFormLen + stagFormLen * numStages; // 186
+  const passVerFormLen = 8 + passVerBodyLen;                     // 194
+
+  const passBodyLen = 4 + passVerFormLen;                        // 198
+  const passFormLen = 8 + passBodyLen;                           // 206
+
+  const scapPayLen = 4;                                          // one int32 BE capability level
+  const scapChunkLen = 8 + scapPayLen;                           // 12
+
+  const implVerBodyLen = 4 + scapChunkLen + passFormLen;         // 222
+  const implVerFormLen = 8 + implVerBodyLen;                     // 230
+
+  const implBodyLen = 4 + implVerFormLen;                        // 234
+  const implFormLen = 8 + implBodyLen;                           // 242
+
+  const efctVerBodyLen = 4 + implFormLen;                        // 246
+  const efctVerFormLen = 8 + efctVerBodyLen;                     // 254
+
+  const efctBodyLen = 4 + efctVerFormLen;                        // 258
+  const total = 8 + efctBodyLen;                                 // 266
+
+  const ab = new ArrayBuffer(total);
+  const dv = new DataView(ab);
+  const u8 = new Uint8Array(ab);
+
+  function writeTag(off: number, tag: string): number {
+    for (let i = 0; i < 4; i++) u8[off + i] = tag.charCodeAt(i);
+    return off + 4;
+  }
+  function writeU32BE(off: number, v: number): number {
+    dv.setUint32(off, v, false); return off + 4;
+  }
+  function writeI32BE(off: number, v: number): number {
+    dv.setInt32(off, v, false); return off + 4;
+  }
+
+  let p = 0;
+  // FORM EFCT
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, efctBodyLen); p = writeTag(p, 'EFCT');
+  // FORM 0001
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, efctVerBodyLen); p = writeTag(p, '0001');
+  // FORM IMPL
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, implBodyLen); p = writeTag(p, 'IMPL');
+  // FORM 0002
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, implVerBodyLen); p = writeTag(p, '0002');
+  // SCAP chunk (int32 BE capability level = 3, arbitrary non-zero)
+  p = writeTag(p, 'SCAP'); p = writeU32BE(p, scapPayLen); p = writeI32BE(p, 3);
+  // FORM PASS
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, passBodyLen); p = writeTag(p, 'PASS');
+  // FORM 0009
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, passVerBodyLen); p = writeTag(p, '0009');
+  // DATA (56 bytes blend state): numberOfStages=2 @0, zWrite=true @5, rest zeroed
+  p = writeTag(p, 'DATA'); p = writeU32BE(p, dataPayLen);
+  {
+    const dataStart = p;
+    for (let i = 0; i < dataPayLen; i++) u8[dataStart + i] = 0;
+    u8[dataStart + 0] = numStages; // numberOfStages
+    u8[dataStart + 5] = 1;         // zWrite = true
+    p += dataPayLen;
+  }
+  // FORM PFFP (minimal — subType only; our parser doesn't read its content)
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, pffpBodyLen); p = writeTag(p, 'PFFP');
+  // FORM STAG × 2 — direct siblings of where FORM PPSH would be (fixed-function path)
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, stagBodyLen); p = writeTag(p, 'STAG');
+  p = writeTag(p, '0000'); p = writeU32BE(p, 33);
+  writeStagChunk0000Payload(u8, p, 'SPEC'); p += 33;
+
+  p = writeTag(p, 'FORM'); p = writeU32BE(p, stagBodyLen); p = writeTag(p, 'STAG');
+  p = writeTag(p, '0000'); p = writeU32BE(p, 33);
+  writeStagChunk0000Payload(u8, p, 'ENVM'); p += 33;
+
+  if (p !== total) {
+    throw new Error(`buildSyntheticStagEftFixture: byte accounting mismatch — wrote ${p}, expected ${total}`);
+  }
+
+  return u8;
+}
+
+const syntheticStagEftBytes = buildSyntheticStagEftFixture();
+
 describe('FORM EFCT (.eft) — shader effect (gap-closure 02-03)', () => {
   // registerFormat CORE-05 gate for EFCT
   // Source: swg-client-v2 ShaderEffect.cpp:86-179 + ShaderImplementation.cpp:1692-1738
@@ -1305,6 +1474,44 @@ describe('FORM EFCT (.eft) — shader effect (gap-closure 02-03)', () => {
     // For a_envmask_specmap.eft: opaque shader — alphaBlend=false, zWrite=true
     expect(blend.alphaBlendEnable).toBe(false);
     expect(blend.zWrite).toBe(true);
+  });
+
+  it('CI-ENFORCED: parseEffect — synthetic fixed-function (FORM STAG, no PPSH) fixture', () => {
+    // CI-enforced half of D-19 (round 2): committed synthetic bytes, no client install
+    // required. Proves the NEW STAG sampler-extraction path (Task 1) independently of
+    // the real, gitignored a_envmask_specmap.eft (which exercises the PPSH/PTXM path).
+    const bytes = syntheticStagEftBytes;
+
+    // Byte-exact IFF round-trip (generic-IFF pair, same gate as the real fixture).
+    assertIffRoundTrip(bytes, 'synthetic STAG EFCT IFF round-trip');
+
+    const iff = (nativeCore as unknown as typeof ncEfct).parseIff(bytes);
+    const result = ncEfct.parseEffect(iff, bytes);
+
+    expect(result.formatTag).toBe('EFCT');
+    expect(result.impls.length).toBeGreaterThan(0);
+    expect(result.bestImplIndex).toBeGreaterThanOrEqual(0);
+
+    const bestImpl = result.impls[result.bestImplIndex]!;
+    // The fixed-function IMPL has NO FORM PPSH — before Task 1, samplers would be 0.
+    expect(bestImpl.samplers.length).toBeGreaterThan(0);
+
+    const roles = bestImpl.samplers.map((s) => s.role);
+    // Roles must be correctly decoded (not reversed byte order).
+    for (const role of roles) {
+      expect(role).toMatch(/^[A-Z0-9]+$/);
+      expect(role).not.toBe('CEPS'); // would be reversed "SPEC"
+      expect(role).not.toBe('MVNE'); // would be reversed "ENVM"
+    }
+    expect(roles).toContain('SPEC');
+    expect(roles).toContain('ENVM');
+
+    // Stage index tracks sibling position (0-based) — the fixed-function pipeline has
+    // no separate index field like PTXM does.
+    const specSampler = bestImpl.samplers.find((s) => s.role === 'SPEC')!;
+    const envmSampler = bestImpl.samplers.find((s) => s.role === 'ENVM')!;
+    expect(specSampler.index).toBe(0);
+    expect(envmSampler.index).toBe(1);
   });
 });
 
