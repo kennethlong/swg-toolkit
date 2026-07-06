@@ -6,7 +6,8 @@ origin: Maintainer question during 04.4-15 D-22 UAT — "on the Version Control 
 severity: medium (panel now carries real product surface — Git/LFS + Server Push — with no UI contract; sketches are the UI source of truth per AGENTS.md)
 area: renderer / VcsPanel + .planning/sketches
 status: pending
-related: server-binding-post-create-ux
+related: server-binding-post-create-ux, DEPLOY-04
+trigger: run the sketch session BEFORE planning any DEPLOY-04 (Git/LFS) work — maintainer note 2026-07-06
 ---
 
 ## Problem — VcsPanel grew real features with no sketch
@@ -22,6 +23,11 @@ Sketch coverage today (checked 2026-07-06):
   per-flavor guidance copy) directly from plan spec — no sketch governs it.
 
 ## Wanted
+
+**Timing (maintainer, 2026-07-06):** run this sketch session when Git-integration work resumes —
+i.e. before planning DEPLOY-04 (Git/LFS versioning of mod outputs, still Pending with no phase
+assigned). The sketch is the gate: no DEPLOY-04 plan without the approved VcsPanel sketch, since
+Git/LFS actions land inside this panel.
 
 A /gsd-sketch session (next number, e.g. 018-version-control-panel) covering:
 - S3 placement decision: third tab in the Inspect group vs elsewhere — decided by the maintainer
