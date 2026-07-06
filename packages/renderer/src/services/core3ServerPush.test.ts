@@ -97,8 +97,29 @@ function writeConfigLua(confDir: string, trePathValue: string, treFiles: string[
 
 function writeConfigLocalWithOwnTrePath(confDir: string, trePathValue: string): void {
   const content = [
-    '-- maintainer real shape: config-local overrides TrePath in the same Lua VM',
+    '-- dotted shape: config-local overrides TrePath in the same Lua VM',
     `Core3.TrePath = "${trePathValue}"`,
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(confDir, 'config-local.lua'), content, 'utf8');
+}
+
+/**
+ * The maintainer's REAL live config-local.lua shape (D-22 real-server finding, 2026-07-06):
+ * bare LEGACY-GLOBAL assignments with aligned padding and trailing comments — NOT the dotted
+ * `Core3.TrePath` form. ConfigManager.cpp:57-75's second parse pass reads bare globals with
+ * prefix "Core3", so this shape overrides Core3.TrePath on a real server. The original
+ * dotted-only fixture labeled itself "maintainer real shape" and was wrong — the resolver
+ * fell back to config.lua's stock /home/swgemu default and EPERM'd during the D-22 UAT.
+ */
+function writeConfigLocalLegacyGlobalShape(confDir: string, trePathValue: string): void {
+  const content = [
+    ' -- Local overrides for Core3 (gitignored)',
+    ' AutoReg              = 1',
+    ' LoginRequiredVersion = ""                      -- accept any client version while debugging',
+    ` TrePath              = "${trePathValue}"   -- EDIT THIS — where your .tre files live on Windows`,
+    ' -- Optional: narrow zones for faster boot during testing',
+    ' -- ZonesEnabled       = { "tatooine" }',
     '',
   ].join('\n');
   fs.writeFileSync(path.join(confDir, 'config-local.lua'), content, 'utf8');
@@ -189,6 +210,29 @@ describe('core3ServerPush', () => {
     // Its pre-existing TrePath line must survive alongside our inserted line.
     const configLocal = readConfigLocal(confDir);
     expect(configLocal).toContain('Core3.TrePath');
+    expect(countToolkitInsertLines(configLocal)).toBe(1);
+  });
+
+  it('(b2) TrePath resolution: bare legacy-global TrePath in config-local.lua wins over config.lua (real live shape)', () => {
+    const wrongTrePath = path.join(root, 'wrong-tre-dir');
+    fs.mkdirSync(wrongTrePath, { recursive: true });
+    writeConfigLua(confDir, toForwardSlash(wrongTrePath), ['default_patch.tre']);
+    writeConfigLocalLegacyGlobalShape(confDir, toForwardSlash(trePathDir));
+
+    const record = pushCore3TreOverride(confDir, studioDir, 'v1', FAKE_MANIFEST, 'myproject');
+
+    // Must land in the config-local bare-global value's dir, NOT config.lua's stock default.
+    expect(path.resolve(record.trePath)).toBe(path.resolve(trePathDir));
+    expect(fs.existsSync(path.join(trePathDir, record.treFileName))).toBe(true);
+    expect(fs.existsSync(path.join(wrongTrePath, record.treFileName))).toBe(false);
+
+    expect(record.wasConfigLocalCreatedByToolkit).toBe(false);
+
+    // The maintainer's own lines (incl. the bare TrePath and its trailing comment) survive
+    // alongside exactly one toolkit insert line.
+    const configLocal = readConfigLocal(confDir);
+    expect(configLocal).toContain('TrePath              =');
+    expect(configLocal).toContain('-- EDIT THIS');
     expect(countToolkitInsertLines(configLocal)).toBe(1);
   });
 

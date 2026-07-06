@@ -168,12 +168,22 @@ function extractBareTrePath(luaContent: string): string | null {
 /**
  * Resolve the Linux-side TrePath value with config-local-first precedence (ConfigManager runs
  * config-local.lua SECOND in the same Lua VM, so its assignment wins).
+ *
+ * config-local.lua accepts BOTH assignment shapes (D-22 real-server finding, 2026-07-06):
+ *   - dotted `Core3.TrePath = "..."` — mutates the Core3 table, read by parse pass 1.
+ *   - bare-global `TrePath = "..."` — the LEGACY style. ConfigManager.cpp:57-75 runs a second
+ *     parse pass over the Lua GLOBAL table with prefix "Core3" AFTER the Core3-table pass, so a
+ *     bare global becomes Core3.TrePath and OVERRIDES the table value. The maintainer's real
+ *     live config-local.lua uses exactly this shape; resolving only the dotted form fell back
+ *     to config.lua's stock /home/swgemu default and EPERM'd on a nonexistent WSL home dir.
  */
 function resolveLinuxTrePath(confDir: string, configLocalPath: string, configLuaPath: string): string {
   if (fs.existsSync(configLocalPath)) {
     const localContent = fs.readFileSync(configLocalPath, 'utf8');
     const dotted = extractDottedTrePath(localContent);
     if (dotted !== null) return dotted;
+    const bareLocal = extractBareTrePath(localContent);
+    if (bareLocal !== null) return bareLocal;
   }
 
   const configContent = fs.readFileSync(configLuaPath, 'utf8');
