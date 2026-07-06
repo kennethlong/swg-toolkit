@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04.4-04-PLAN.md
-last_updated: "2026-07-04T16:20:52.317Z"
-last_activity: 2026-07-04
+stopped_at: Completed 04.4-15-PLAN.md (all 04.4 plans done — close-out chain next)
+last_updated: "2026-07-06T18:30:00.000Z"
+last_activity: 2026-07-06
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 73
-  completed_plans: 72
+  completed_plans: 73
   percent: 99
 ---
 
@@ -25,21 +25,24 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 04.4 (ux-polish-deploy-hardening) — EXECUTING (14/15 plans complete)
-Plan: 15 of 15
-Status: 04.4-04 complete (D-17 checkpoint approved 2026-07-04). Only 04.4-15-PLAN.md
-        (D-22 real-server round-trip checkpoint for server push, autonomous:false) remains
-        to fully close Phase 04.4.
-        REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02 → Complete. viewport-default-facing-axis
-        → Complete (04.4-04). DEPLOY-04 (Git/LFS) still Pending (deferred, no phase assigned yet).
-Next: resolve 04.4-15's D-22 checkpoint (real-server round-trip for server push) to close Phase
-      04.4, then /gsd:discuss-phase 5 (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet) or a
-      backlog triage (/gsd:review-backlog) first.
-      Follow-up todos: deploy-dialog-synclive-undo-wiring (DONE), v6000-swg-source-plain-zlib
-      (done via plans 10-11? verify against todo), server TRE search-path (deferred to Phase 8).
-Last activity: 2026-07-04
-  04.4-04: D-17 viewport facing/framing checkpoint approved; SWG_ORIENTATION stays identity,
-  camera-default azimuth + OrbitControls framing fix shipped. 350 renderer tests green.
+Phase: 04.4 (ux-polish-deploy-hardening) — ALL 15/15 PLANS EXECUTED; close-out chain pending
+Plan: 15 of 15 (complete)
+Status: 04.4-15 complete (D-22 checkpoint approved 2026-07-06, flavor core3-wsl2). The live run
+        found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
+        `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
+        REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02, viewport-default-facing-axis,
+        product-thesis-shadow-sandbox-and-server-push → Complete. DEPLOY-04 (Git/LFS) still
+        Pending (deferred, no phase assigned yet).
+Next: run the phase close-out chain — code_review_gate (/gsd:code-review 04.4) →
+      close_parent_artifacts (parent 04 UAT bookkeeping) → regression_gate → drift gates →
+      verify_phase_goal (gsd-verifier) → phase.complete 04.4. Then /gsd:discuss-phase 5
+      (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet) or /gsd:review-backlog triage
+      first (new todos: server-binding-post-create-ux, vcs-panel-sketch-and-placement,
+      e2e-leaked-temp-studios).
+Last activity: 2026-07-06
+  04.4-15: D-22 real-server push→reset round-trip approved against live Core3 (WSL2). New todos
+  captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
+  e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
 
 Progress: [██████████] 99%
 
