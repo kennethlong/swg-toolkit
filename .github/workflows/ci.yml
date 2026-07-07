@@ -71,6 +71,10 @@ jobs:
       - name: E2E tests — non-packaged specs (headless Electron, --forbid-only)
         # --forbid-only ensures nothing is silently focused or skipped. If any spec
         # is marked .only, the run fails immediately. Plans 04/05 create these spec files.
+        # shell: bash is REQUIRED: the default run shell on windows-latest is pwsh,
+        # where a trailing `\` is NOT a line continuation — pwsh would pass a literal
+        # `\` argument and then try to run each spec path as its own command.
+        shell: bash
         run: |
           pnpm playwright test --forbid-only \
             e2e/01-boot.spec.ts \
