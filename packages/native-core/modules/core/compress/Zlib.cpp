@@ -180,6 +180,33 @@ std::vector<uint8_t> treInflate(
     const size_t produced = zs.total_out;
     inflateEnd(&zs);
     output.resize(produced);
+
+    // ── Adler-32 validation (code 2 only) ────────────────────────────────────
+    // WR-10: the Zlib.h contract documents "@throws ... bad Adler32" and the header
+    // comment cites Utinni TreFile.cs:679's Adler validation as ported behavior — but
+    // because we strip the RFC1950 trailer and raw-inflate (-MAX_WBITS), zlib itself
+    // never checks it. Verify explicitly: compute adler32 over the produced output and
+    // compare against the stored big-endian trailer (last 4 bytes of the source block —
+    // RFC1950 §2.2 stores ADLER32 most-significant byte first). This gives the
+    // extractEntry path a real corruption signal (extractAt additionally has the
+    // independent F-4 exact-length gate; a throw here classifies as encrypted there).
+    if (compressor == 2) {
+        const uint8_t* trailer = src + srcLen - 4;
+        const uint32_t storedAdler =
+            (static_cast<uint32_t>(trailer[0]) << 24) |
+            (static_cast<uint32_t>(trailer[1]) << 16) |
+            (static_cast<uint32_t>(trailer[2]) <<  8) |
+             static_cast<uint32_t>(trailer[3]);
+        const uint32_t computedAdler = static_cast<uint32_t>(
+            adler32(adler32(0L, Z_NULL, 0),
+                    reinterpret_cast<const Bytef*>(output.data()),
+                    static_cast<uInt>(produced)));
+        if (computedAdler != storedAdler) {
+            throw std::runtime_error(
+                "Zlib::treInflate: Adler-32 mismatch — corrupted code-2 payload");
+        }
+    }
+
     return output;
 }
 
