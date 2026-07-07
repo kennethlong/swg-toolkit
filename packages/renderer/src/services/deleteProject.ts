@@ -131,15 +131,26 @@ export async function deleteProject(projectFolder: string): Promise<{ restoreErr
 
     if (studioMoved && projectMoved) {
       // ROUND 3: write the completion marker LAST, strictly after BOTH renames succeeded.
+      // WR-04: the write itself is try/caught — a disk-full/permission error here must NOT
+      // propagate (contract: non-fatal per-step failures, never thrown — D-05). On failure
+      // we degrade to the same "no marker" state as a partial park: the entry is never
+      // auto-purged and the delete still completes (undo entry pushed, recents row removed).
       const completeMarker = {
         deletedAt: new Date().toISOString(),
         projectName: path.basename(projectFolder),
         paths: { studio: trashStudioPath, project: trashProjectPath },
       };
-      fs.writeFileSync(
-        path.join(entryDir, '.complete.json'),
-        JSON.stringify(completeMarker),
-      );
+      try {
+        fs.writeFileSync(
+          path.join(entryDir, '.complete.json'),
+          JSON.stringify(completeMarker),
+        );
+      } catch (e) {
+        restoreErrors.push(
+          `Failed to write completion marker: ${String((e as Error)?.message ?? e)} — the ` +
+          `entry at ${entryDir} will not be auto-purged and must be inspected manually.`,
+        );
+      }
     } else {
       restoreErrors.push(
         `Delete for "${path.basename(projectFolder)}" did not complete fully — the entry at ` +
