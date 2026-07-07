@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 014 · Datatable (DTII) Grid Editor</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--color-bg); color: var(--color-text);
+    font-family: var(--font-sans); font-size: var(--text-base);
+    padding-top: 46px; overflow-x: hidden;
+  }
+
+  /* ── variant nav ─────────────────────────────────────────── */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+    padding: 8px 14px; display: flex; gap: 8px; align-items: center;
+  }
+  #variant-nav .ttl { font-size: var(--text-xs); color: var(--color-text-faint); margin-right: 8px; font-family: var(--font-mono); }
+  .variant-tab {
+    background: var(--color-widget); color: var(--color-text-muted);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    font: 600 var(--text-sm)/1 var(--font-sans); padding: 6px 12px; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .variant-tab:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .variant { display: none; }
+  .variant.active { display: block; }
+
+  /* ── stage ───────────────────────────────────────────────── */
+  .stage { display: flex; justify-content: center; padding: 26px 18px 90px; }
+  .pane-label {
+    font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px 2px;
+  }
+
+  /* ── editor panel frame (mimics a dockview tab group) ────── */
+  .panel {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-panel); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .tabstrip {
+    display: flex; align-items: stretch; background: var(--color-header-2);
+    border-bottom: 1px solid var(--color-border); height: 34px; font-size: var(--text-sm);
+  }
+  .tabstrip .tab {
+    display: flex; align-items: center; gap: 7px; padding: 0 14px;
+    border-right: 1px solid var(--color-border);
+    color: var(--color-text-muted); cursor: default;
+  }
+  .tabstrip .tab.on {
+    background: var(--color-surface); color: var(--color-text);
+    box-shadow: inset 0 2px 0 var(--color-accent);
+  }
+  .tabstrip .mod-dot { color: var(--color-warn); font-size: 10px; }
+
+  .crumb-bar {
+    display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+    border-bottom: 1px solid var(--color-border); background: var(--color-header);
+    font: 500 var(--text-xs)/1.4 var(--font-mono); color: var(--color-text-muted);
+  }
+  .crumb-bar .crumb b { color: var(--color-text); font-weight: 600; }
+  .crumb-bar .spacer { flex: 1; }
+  .abtn {
+    background: var(--color-widget); border: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted); border-radius: var(--radius-sm);
+    font: 600 var(--text-xs)/1 var(--font-sans); padding: 5px 10px; cursor: pointer;
+    transition: all .15s ease; white-space: nowrap;
+  }
+  .abtn:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .abtn.primary { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .abtn.primary:hover { background: var(--color-accent); color: var(--color-accent-text); }
+
+  /* ── grid toolbar ────────────────────────────────────────── */
+  .grid-toolbar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .grid-toolbar input[type=text] {
+    background: var(--color-widget); border: 1px solid var(--color-border-soft);
+    color: var(--color-text); border-radius: var(--radius-sm);
+    font: 500 var(--text-sm)/1 var(--font-sans); padding: 6px 9px; width: 210px;
+  }
+  .grid-toolbar input[type=text]:focus { outline: none; border-color: var(--color-accent-line); }
+  .grid-toolbar .sep { width: 1px; height: 18px; background: var(--color-border-soft); margin: 0 2px; }
+  .count-chip { font: 500 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint); margin-left: auto; }
+
+  /* ── the grid ────────────────────────────────────────────── */
+  .gridwrap { overflow: auto; max-height: 430px; }
+  table.dt { border-collapse: collapse; font-size: var(--text-sm); }
+  table.dt th, table.dt td {
+    border-right: 1px solid var(--color-border-soft);
+    border-bottom: 1px solid var(--color-border-soft);
+    padding: 5px 10px; text-align: left; white-space: nowrap;
+  }
+  table.dt thead th {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--color-header); color: var(--color-text);
+    font: 600 var(--text-xs)/1.5 var(--font-sans); cursor: pointer; user-select: none;
+  }
+  table.dt thead th:hover { background: var(--color-widget-hover); }
+  table.dt thead th .ty {
+    display: inline-block; margin-left: 7px; padding: 1px 5px;
+    border-radius: var(--radius-sm); font: 700 10px/1.4 var(--font-mono);
+  }
+  .ty.s { background: rgba(120,180,255,.13); color: #7fb2ff; }
+  .ty.i { background: rgba(160,255,170,.10); color: #7dd68a; }
+  .ty.f { background: rgba(255,200,120,.12); color: #e8b46a; }
+  table.dt thead th .arrow { color: var(--color-accent); font-size: 10px; margin-left: 4px; }
+  table.dt td.rownum {
+    background: var(--color-header); color: var(--color-text-faint);
+    font: 500 var(--text-xs)/1.5 var(--font-mono); text-align: right; min-width: 42px;
+    position: sticky; left: 0;
+  }
+  table.dt td.rownum .mdot { color: var(--color-warn); margin-right: 3px; }
+  table.dt td.cell { color: var(--color-text-muted); cursor: cell; font-family: var(--font-mono); font-size: var(--text-sm); }
+  table.dt td.cell.strcol { color: var(--color-text); }
+  table.dt td.cell:hover { background: var(--color-widget); }
+  table.dt tr.sel td { background: var(--color-accent-dim); }
+  table.dt td.cell.modified {
+    box-shadow: inset 3px 0 0 var(--color-warn);
+    background: rgba(230,180,80,0.07); color: var(--color-text);
+  }
+  table.dt td.cell.modified::after { content: " ●"; color: var(--color-warn); font-size: 9px; }
+  table.dt td.cell input {
+    background: var(--color-widget); border: 1px solid var(--color-accent-line);
+    color: var(--color-text); font: 500 var(--text-sm)/1.3 var(--font-mono);
+    padding: 2px 5px; border-radius: 3px; width: 110px;
+  }
+  table.dt td.cell input:focus { outline: none; }
+
+  /* ── footer / gate bar ───────────────────────────────────── */
+  .gate-bar {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-top: 1px solid var(--color-border); background: var(--color-header);
+    font-size: var(--text-xs);
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-full);
+    padding: 3px 10px; font: 600 var(--text-xs)/1.4 var(--font-sans);
+    color: var(--color-text-muted); background: var(--color-widget);
+  }
+  .chip.gate-ok { color: var(--color-accent); border-color: var(--color-accent-line); border-style: solid; background: var(--color-accent-dim); }
+  .chip.gate-run { color: var(--color-info); border-style: dashed; }
+  .chip.gate-fail { color: var(--color-danger); border-color: var(--color-danger); background: rgba(230,90,90,.08); }
+  .chip.staged { color: var(--color-info); }
+  .gate-bar .push { flex: 1; }
+
+  .fail-banner {
+    display: none; align-items: flex-start; gap: 10px; padding: 9px 12px;
+    background: rgba(230,90,90,.08); border-top: 1px solid var(--color-danger);
+    font-size: var(--text-xs); color: var(--color-text);
+  }
+  .fail-banner.show { display: flex; }
+  .fail-banner .sym { color: var(--color-danger); font-weight: 700; }
+  .fail-banner code { font-family: var(--font-mono); color: var(--color-danger); }
+  .fail-banner .acts { margin-left: auto; display: flex; gap: 6px; }
+
+  /* ── variant B: schema rail ──────────────────────────────── */
+  .split { display: flex; align-items: stretch; }
+  .split .gridside { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .rail {
+    width: 250px; border-left: 1px solid var(--color-border);
+    background: var(--color-surface-2); display: flex; flex-direction: column;
+    font-size: var(--text-xs);
+  }
+  .rail h4 {
+    font: 600 var(--text-xs)/1 var(--font-mono); text-transform: uppercase; letter-spacing: .07em;
+    color: var(--color-text-faint); padding: 9px 12px 7px; display: flex; align-items: center; gap: 6px;
+    border-bottom: 1px solid var(--color-border-soft); cursor: pointer; user-select: none;
+  }
+  .rail h4 .tw { transition: transform .15s ease; display: inline-block; }
+  .rail section.closed .tw { transform: rotate(-90deg); }
+  .rail section.closed .body { display: none; }
+  .rail .body { padding: 7px 12px 11px; }
+  .schema-row { display: flex; align-items: center; gap: 7px; padding: 3px 0; font-family: var(--font-mono); }
+  .schema-row .nm { color: var(--color-text); flex: 1; }
+  .kv { display: flex; gap: 8px; padding: 3px 0; }
+  .kv .k { width: 96px; color: var(--color-text-faint); font-family: var(--font-mono); }
+  .kv .v { color: var(--color-text); font-family: var(--font-mono); }
+  .kv .v.mod { color: var(--color-warn); }
+
+  /* ── variant C: Grid|Hex toggle ──────────────────────────── */
+  .seg {
+    display: inline-flex; border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); overflow: hidden;
+  }
+  .seg button {
+    background: var(--color-widget); border: none; color: var(--color-text-muted);
+    font: 600 var(--text-xs)/1 var(--font-sans); padding: 5px 12px; cursor: pointer;
+  }
+  .seg button.on { background: var(--color-accent-dim); color: var(--color-accent); }
+  .hexwrap { overflow: auto; max-height: 430px; padding: 10px 14px; display: none; }
+  .hexwrap.show { display: block; }
+  .hexwrap pre {
+    font: 500 var(--text-sm)/1.7 var(--font-mono); color: var(--color-text-muted);
+  }
+  .hexwrap .off { color: var(--color-text-faint); }
+  .hexwrap .asc { color: var(--color-accent); }
+  .hexwrap .hl { background: rgba(230,180,80,.15); color: var(--color-warn); border-radius: 2px; }
+
+  /* ── sketch toolbar ──────────────────────────────────────── */
+  #sketch-tools {
+    position: fixed; bottom: 12px; right: 12px; z-index: 9999;
+    font: 500 12px/1.4 system-ui; background: rgba(10,12,14,.82); color: #ddd;
+    padding: 8px 12px; border-radius: 8px; opacity: .4; transition: opacity .2s;
+    display: flex; gap: 10px; align-items: center;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button {
+    background: #222; color: #ddd; border: 1px solid #444; border-radius: 5px;
+    font: 500 11px/1.2 system-ui; padding: 3px 7px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="ttl">SKETCH 014 · DATATABLE GRID EDITOR</span>
+  <button class="variant-tab" onclick="showVariant('a', this)">A · Full-bleed spreadsheet</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B · Grid + schema rail</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C · Grid | Hex toggle</button>
+  <button class="variant-tab active" onclick="showVariant('d', this)">D · B + Hex toggle ★ Selected</button>
+</div>
+
+<!-- ═══════════ VARIANT D · synthesis: B rail + C hex toggle ★ ═══════════ -->
+<div id="variant-d" class="variant active">
+  <div class="stage"><div>
+    <div class="pane-label">Variant D ★ — synthesis: B's schema rail + C's Grid | Hex toggle</div>
+    <div class="panel" style="width: 1080px; max-width: 97vw;">
+      <div class="tabstrip">
+        <div class="tab on"><span class="mod-dot" data-moddot style="display:none">●</span> weapon.iff — Datatable</div>
+      </div>
+      <div class="crumb-bar">
+        <span class="crumb">FORM <b>DTII</b> ▸ FORM <b>0001</b> ▸ <b>DATA</b></span>
+        <span class="seg" style="margin-left:12px">
+          <button class="on" onclick="segTo('d','grid',this)">Grid</button>
+          <button onclick="segTo('d','hex',this)">Hex</button>
+        </span>
+        <span class="spacer"></span>
+        <button class="abtn" onclick="toast(this,'Diff vs base opened (sketch 015)')">⇄ Compare to base</button>
+        <button class="abtn" onclick="toast(this,'Added to working changes')">＋ Stage</button>
+        <button class="abtn primary" data-save onclick="runGate('d')">Save · run gate</button>
+      </div>
+      <div data-gridview>
+        <div class="split">
+          <div class="gridside">
+            <div class="grid-toolbar">
+              <input type="text" placeholder="Filter rows…" oninput="filterRows('d', this.value)">
+              <span class="sep"></span>
+              <button class="abtn" onclick="addRow('d')">＋ Row</button>
+              <button class="abtn" onclick="delRow('d')">− Row</button>
+              <span class="count-chip" data-count>10 rows · 7 cols</span>
+            </div>
+            <div class="gridwrap"><table class="dt" data-grid></table></div>
+          </div>
+          <div class="rail">
+            <section>
+              <h4 onclick="this.parentNode.classList.toggle('closed')"><span class="tw">▾</span> Schema · COLS / TYPE</h4>
+              <div class="body" data-schema></div>
+            </section>
+            <section>
+              <h4 onclick="this.parentNode.classList.toggle('closed')"><span class="tw">▾</span> Selected row</h4>
+              <div class="body" data-rowinspect><span style="color:var(--color-text-faint)">Click a row…</span></div>
+            </section>
+            <section>
+              <h4 onclick="this.parentNode.classList.toggle('closed')"><span class="tw">▾</span> Round-trip gate</h4>
+              <div class="body">
+                <div class="kv"><span class="k">last run</span><span class="v" data-gate-last>never</span></div>
+                <div class="kv"><span class="k">result</span><span class="v" data-gate-res>—</span></div>
+                <div class="kv"><span class="k">bytes</span><span class="v">DATA 4,812 B</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+      <div class="hexwrap" data-hexview>
+<pre><span class="off">0x1A30</span>  64 6C 34 34 5F 62 6C 61  73 74 65 72 00 <span class="hl">4B 00</span> 00   <span class="asc">dl44_blaster·K···</span>
+<span class="off">0x1A40</span>  00 E6 00 00 00 CD CC E6  3F 00 00 0C 42 01 00 00   <span class="asc">····Ìフ?···B····</span>
+<span class="off">0x1A50</span>  00 00 00 00 00 74 32 31  5F 72 69 66 6C 65 00 6E   <span class="asc">·····t21_rifle·n</span>
+<span class="off">0x1A60</span>  00 00 00 54 01 00 00 CD  CC 4C 40 00 00 80 42 01   <span class="asc">···T···ÌフL@···B·</span>
+<span class="off">0x1A70</span>  00 00 00 01 00 00 00 65  31 31 5F 63 61 72 62 69   <span class="asc">·······e11_carbi</span>
+<span class="off">0x1A80</span>  6E 65 00 52 00 00 00 04  01 00 00 66 66 06 40 00   <span class="asc">ne·R·······ff·@·</span></pre>
+        <div style="font:500 var(--text-xs)/1.6 var(--font-mono); color:var(--color-text-faint); margin-top:8px">
+          highlighted: <span class="hl">min_damage (int32) row 0</span> — the cell you edit in Grid view is these bytes
+        </div>
+      </div>
+      <div class="fail-banner" data-fail>
+        <span class="sym">✗</span>
+        <span>Round-trip gate FAILED at <code>DATA+0x1A4C</code> — expected <code>4B 00</code>, wrote <code>4B 01</code>. Not staged.</span>
+        <span class="acts">
+          <button class="abtn" onclick="segTo('d','hex',document.querySelector('#variant-d .seg button:last-child'))">Jump to bytes</button>
+          <button class="abtn" onclick="resetGate('d')">Revert cell</button>
+        </span>
+      </div>
+      <div class="gate-bar">
+        <span class="chip" data-gatechip>round-trip gate: not run</span>
+        <span class="chip staged" data-stagechip style="display:none">→ staged in working changes</span>
+        <span class="push"></span>
+        <button class="abtn" onclick="demoFail('d')">demo: gate fail</button>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ═══════════ VARIANT A · full-bleed spreadsheet ═══════════ -->
+<div id="variant-a" class="variant">
+  <div class="stage"><div>
+    <div class="pane-label">Variant A — the whole tab is the grid (path of least resistance)</div>
+    <div class="panel" style="width: 940px; max-width: 96vw;">
+      <div class="tabstrip">
+        <div class="tab on"><span class="mod-dot" data-moddot style="display:none">●</span> weapon.iff — Datatable</div>
+        <div class="tab">creature.iff — Datatable</div>
+      </div>
+      <div class="crumb-bar">
+        <span class="crumb">FORM <b>DTII</b> ▸ FORM <b>0001</b> ▸ <b>DATA</b></span>
+        <span class="spacer"></span>
+        <button class="abtn" onclick="toast(this,'Diff vs base opened (sketch 015)')">⇄ Compare to base</button>
+        <button class="abtn" onclick="toast(this,'Added to working changes')">＋ Stage</button>
+        <button class="abtn primary" data-save onclick="runGate('a')">Save · run gate</button>
+      </div>
+      <div class="grid-toolbar">
+        <input type="text" placeholder="Filter rows… (name contains)" oninput="filterRows('a', this.value)">
+        <span class="sep"></span>
+        <button class="abtn" onclick="addRow('a')">＋ Row</button>
+        <button class="abtn" onclick="delRow('a')">− Row</button>
+        <span class="count-chip" data-count>10 rows · 7 cols</span>
+      </div>
+      <div class="gridwrap"><table class="dt" data-grid></table></div>
+      <div class="fail-banner" data-fail>
+        <span class="sym">✗</span>
+        <span>Round-trip gate FAILED — re-encoded bytes differ at <code>DATA+0x1A4C</code>: expected <code>4B 00</code>, wrote <code>4B 01</code>. The file was <b>not</b> staged.</span>
+        <span class="acts">
+          <button class="abtn" onclick="toast(this,'Byte diff opened in hex view')">View byte diff</button>
+          <button class="abtn" onclick="resetGate('a')">Revert cell</button>
+        </span>
+      </div>
+      <div class="gate-bar">
+        <span class="chip" data-gatechip>round-trip gate: not run</span>
+        <span class="chip staged" data-stagechip style="display:none">→ staged in working changes</span>
+        <span class="push"></span>
+        <button class="abtn" onclick="demoFail('a')" title="Sketch-only: show the gate-failure state">demo: gate fail</button>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ═══════════ VARIANT B · grid + schema rail ═══════════ -->
+<div id="variant-b" class="variant">
+  <div class="stage"><div>
+    <div class="pane-label">Variant B — grid + collapsible schema/row rail (COLS · TYPE always visible)</div>
+    <div class="panel" style="width: 1080px; max-width: 97vw;">
+      <div class="tabstrip">
+        <div class="tab on"><span class="mod-dot" data-moddot style="display:none">●</span> weapon.iff — Datatable</div>
+      </div>
+      <div class="crumb-bar">
+        <span class="crumb">FORM <b>DTII</b> ▸ FORM <b>0001</b> ▸ <b>DATA</b></span>
+        <span class="spacer"></span>
+        <button class="abtn" onclick="toast(this,'Diff vs base opened (sketch 015)')">⇄ Compare to base</button>
+        <button class="abtn" onclick="toast(this,'Added to working changes')">＋ Stage</button>
+        <button class="abtn primary" data-save onclick="runGate('b')">Save · run gate</button>
+      </div>
+      <div class="split">
+        <div class="gridside">
+          <div class="grid-toolbar">
+            <input type="text" placeholder="Filter rows…" oninput="filterRows('b', this.value)">
+            <span class="sep"></span>
+            <button class="abtn" onclick="addRow('b')">＋ Row</button>
+            <button class="abtn" onclick="delRow('b')">− Row</button>
+            <span class="count-chip" data-count>10 rows · 7 cols</span>
+          </div>
+          <div class="gridwrap"><table class="dt" data-grid></table></div>
+        </div>
+        <div class="rail">
+          <section>
+            <h4 onclick="this.parentNode.classList.toggle('closed')"><span class="tw">▾</span> Schema · COLS / TYPE</h4>
+            <div class="body" data-schema></div>
+          </section>
+          <section>
+            <h4 onclick="this.parentNode.classList.toggle('closed')"><span class="tw">▾</span> Selected row</h4>
+            <div class="body" data-rowinspect><span style="color:var(--color-text-faint)">Click a row…</span></div>
+          </section>
+          <section>
+            <h4 onclick="this.parentNode.classList.toggle('closed')"><span class="tw">▾</span> Round-trip gate</h4>
+            <div class="body">
+              <div class="kv"><span class="k">last run</span><span class="v" data-gate-last>never</span></div>
+              <div class="kv"><span class="k">result</span><span class="v" data-gate-res>—</span></div>
+              <div class="kv"><span class="k">bytes</span><span class="v">DATA 4,812 B</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="fail-banner" data-fail>
+        <span class="sym">✗</span>
+        <span>Round-trip gate FAILED at <code>DATA+0x1A4C</code> — expected <code>4B 00</code>, wrote <code>4B 01</code>. Not staged.</span>
+        <span class="acts"><button class="abtn" onclick="resetGate('b')">Revert cell</button></span>
+      </div>
+      <div class="gate-bar">
+        <span class="chip" data-gatechip>round-trip gate: not run</span>
+        <span class="chip staged" data-stagechip style="display:none">→ staged in working changes</span>
+        <span class="push"></span>
+        <button class="abtn" onclick="demoFail('b')">demo: gate fail</button>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ═══════════ VARIANT C · Grid | Hex toggle ═══════════ -->
+<div id="variant-c" class="variant">
+  <div class="stage"><div>
+    <div class="pane-label">Variant C — 009's Fields|Hex idiom: grid is the decoded view, hex one toggle away</div>
+    <div class="panel" style="width: 940px; max-width: 96vw;">
+      <div class="tabstrip">
+        <div class="tab on"><span class="mod-dot" data-moddot style="display:none">●</span> weapon.iff — Datatable</div>
+      </div>
+      <div class="crumb-bar">
+        <span class="crumb">FORM <b>DTII</b> ▸ FORM <b>0001</b> ▸ <b>DATA</b></span>
+        <span class="seg" style="margin-left:12px">
+          <button class="on" onclick="segTo('c','grid',this)">Grid</button>
+          <button onclick="segTo('c','hex',this)">Hex</button>
+        </span>
+        <span class="spacer"></span>
+        <button class="abtn" onclick="toast(this,'Diff vs base opened (sketch 015)')">⇄ Compare to base</button>
+        <button class="abtn" onclick="toast(this,'Added to working changes')">＋ Stage</button>
+        <button class="abtn primary" data-save onclick="runGate('c')">Save · run gate</button>
+      </div>
+      <div data-gridview>
+        <div class="grid-toolbar">
+          <input type="text" placeholder="Filter rows…" oninput="filterRows('c', this.value)">
+          <span class="sep"></span>
+          <button class="abtn" onclick="addRow('c')">＋ Row</button>
+          <button class="abtn" onclick="delRow('c')">− Row</button>
+          <span class="count-chip" data-count>10 rows · 7 cols</span>
+        </div>
+        <div class="gridwrap"><table class="dt" data-grid></table></div>
+      </div>
+      <div class="hexwrap" data-hexview>
+<pre><span class="off">0x1A30</span>  64 6C 34 34 5F 62 6C 61  73 74 65 72 00 <span class="hl">4B 00</span> 00   <span class="asc">dl44_blaster·K···</span>
+<span class="off">0x1A40</span>  00 E6 00 00 00 CD CC E6  3F 00 00 0C 42 01 00 00   <span class="asc">····Ìフ?···B····</span>
+<span class="off">0x1A50</span>  00 00 00 00 00 74 32 31  5F 72 69 66 6C 65 00 6E   <span class="asc">·····t21_rifle·n</span>
+<span class="off">0x1A60</span>  00 00 00 54 01 00 00 CD  CC 4C 40 00 00 80 42 01   <span class="asc">···T···ÌフL@···B·</span>
+<span class="off">0x1A70</span>  00 00 00 01 00 00 00 65  31 31 5F 63 61 72 62 69   <span class="asc">·······e11_carbi</span>
+<span class="off">0x1A80</span>  6E 65 00 52 00 00 00 04  01 00 00 66 66 06 40 00   <span class="asc">ne·R·······ff·@·</span></pre>
+        <div style="font:500 var(--text-xs)/1.6 var(--font-mono); color:var(--color-text-faint); margin-top:8px">
+          highlighted: <span class="hl">min_damage (int32) row 0</span> — the cell you edit in Grid view is these bytes
+        </div>
+      </div>
+      <div class="fail-banner" data-fail>
+        <span class="sym">✗</span>
+        <span>Round-trip gate FAILED at <code>DATA+0x1A4C</code> — expected <code>4B 00</code>, wrote <code>4B 01</code>. Not staged.</span>
+        <span class="acts">
+          <button class="abtn" onclick="segTo('c','hex',document.querySelector('#variant-c .seg button:last-child'))">Jump to bytes</button>
+          <button class="abtn" onclick="resetGate('c')">Revert cell</button>
+        </span>
+      </div>
+      <div class="gate-bar">
+        <span class="chip" data-gatechip>round-trip gate: not run</span>
+        <span class="chip staged" data-stagechip style="display:none">→ staged in working changes</span>
+        <span class="push"></span>
+        <button class="abtn" onclick="demoFail('c')">demo: gate fail</button>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div id="sketch-tools">
+  <label>theme
+    <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'">
+      <option value="cyan" selected>cyan</option>
+      <option value="default">green</option>
+      <option value="amber">amber</option>
+      <option value="blue">blue</option>
+      <option value="high-contrast">high-contrast</option>
+    </select>
+  </label>
+</div>
+
+<script>
+/* ── shared data model (weapon.iff DTII — real-ish, per 009) ── */
+const COLS = [
+  { name: 'name',           ty: 's' },
+  { name: 'min_damage',     ty: 'i' },
+  { name: 'max_damage',     ty: 'i' },
+  { name: 'attack_speed',   ty: 'f' },
+  { name: 'attack_range',   ty: 'f' },
+  { name: 'damage_type',    ty: 'i' },
+  { name: 'armor_piercing', ty: 'i' },
+];
+const BASE_ROWS = [
+  ['dl44_blaster',    75, 230, 1.8, 35.0, 1, 0],
+  ['t21_rifle',      110, 340, 3.2, 64.0, 1, 1],
+  ['e11_carbine',     82, 260, 2.1, 48.0, 1, 0],
+  ['dxr6_disruptor', 140, 410, 3.8, 40.0, 3, 2],
+  ['fwg5_flechette',  95, 300, 2.6, 32.0, 2, 1],
+  ['laser_carbine',   70, 215, 1.9, 45.0, 1, 0],
+  ['tangle_pistol',   15,  60, 2.4, 20.0, 5, 0],
+  ['scout_blaster',   55, 170, 1.6, 30.0, 1, 0],
+  ['dh17_pistol',     60, 190, 1.7, 28.0, 1, 0],
+  ['jawa_ion_pistol', 40, 130, 2.0, 24.0, 4, 0],
+];
+
+const state = {}; // per-variant
+function initVariant(v) {
+  state[v] = {
+    rows: BASE_ROWS.map(r => r.slice()),
+    modified: new Set(), sort: null, filter: '', sel: -1,
+  };
+  renderGrid(v);
+  if (q(v, 'schema')) renderSchema(v);
+}
+
+function q(v, sel) { return document.querySelector('#variant-' + v + ' [data-' + sel + ']'); }
+
+function renderGrid(v) {
+  const st = state[v];
+  const tbl = q(v, 'grid');
+  let rows = st.rows.map((r, i) => ({ r, i }))
+    .filter(o => !st.filter || String(o.r[0]).includes(st.filter));
+  if (st.sort) rows.sort((a, b) => {
+    const { c, dir } = st.sort;
+    const x = a.r[c], y = b.r[c];
+    return (x > y ? 1 : x < y ? -1 : 0) * dir;
+  });
+  let h = '<thead><tr><th style="min-width:42px"></th>';
+  COLS.forEach((c, ci) => {
+    const arrow = st.sort && st.sort.c === ci ? '<span class="arrow">' + (st.sort.dir > 0 ? '▲' : '▼') + '</span>' : '';
+    h += '<th onclick="sortBy(\'' + v + '\',' + ci + ')">' + c.name + '<span class="ty ' + c.ty + '">' + c.ty + '</span>' + arrow + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+  rows.forEach(o => {
+    const rowMod = COLS.some((_, ci) => st.modified.has(o.i + ':' + ci));
+    h += '<tr' + (st.sel === o.i ? ' class="sel"' : '') + ' onclick="selRow(\'' + v + '\',' + o.i + ')">';
+    h += '<td class="rownum">' + (rowMod ? '<span class="mdot">●</span>' : '') + o.i + '</td>';
+    COLS.forEach((c, ci) => {
+      const mod = st.modified.has(o.i + ':' + ci) ? ' modified' : '';
+      const sc = c.ty === 's' ? ' strcol' : '';
+      h += '<td class="cell' + mod + sc + '" ondblclick="editCell(event,\'' + v + '\',' + o.i + ',' + ci + ')" title="double-click to edit">' + o.r[ci] + '</td>';
+    });
+    h += '</tr>';
+  });
+  h += '</tbody>';
+  tbl.innerHTML = h;
+  q(v, 'count').textContent = rows.length + ' rows · ' + COLS.length + ' cols' + (st.modified.size ? ' · ' + st.modified.size + ' cell(s) modified' : '');
+  const dot = q(v, 'moddot');
+  if (dot) dot.style.display = st.modified.size ? 'inline' : 'none';
+}
+
+function sortBy(v, c) {
+  const st = state[v];
+  st.sort = st.sort && st.sort.c === c ? { c, dir: -st.sort.dir } : { c, dir: 1 };
+  renderGrid(v);
+}
+function filterRows(v, t) { state[v].filter = t.trim(); renderGrid(v); }
+function selRow(v, i) {
+  state[v].sel = i; renderGrid(v);
+  if (q(v, 'rowinspect')) renderRowInspect(v, i);
+}
+function addRow(v) {
+  const st = state[v];
+  st.rows.push(['new_weapon_' + st.rows.length, 0, 0, 1.0, 10.0, 1, 0]);
+  COLS.forEach((_, ci) => st.modified.add((st.rows.length - 1) + ':' + ci));
+  renderGrid(v);
+}
+function delRow(v) {
+  const st = state[v];
+  if (st.sel < 0) { alert('Select a row first (sketch)'); return; }
+  st.rows.splice(st.sel, 1); st.sel = -1; st.modified.clear();
+  renderGrid(v);
+}
+function editCell(ev, v, ri, ci) {
+  ev.stopPropagation();
+  const td = ev.target.closest('td'); if (td.querySelector('input')) return;
+  const st = state[v]; const old = st.rows[ri][ci];
+  td.innerHTML = '<input value="' + old + '">';
+  const inp = td.querySelector('input'); inp.focus(); inp.select();
+  const commit = () => {
+    let val = inp.value;
+    const ty = COLS[ci].ty;
+    if (ty === 'i') val = parseInt(val || 0, 10);
+    if (ty === 'f') val = parseFloat(val || 0);
+    if (String(val) !== String(old)) { st.rows[ri][ci] = val; st.modified.add(ri + ':' + ci); }
+    renderGrid(v);
+    if (q(v, 'rowinspect') && st.sel === ri) renderRowInspect(v, ri);
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = old; inp.blur(); } });
+}
+
+function runGate(v) {
+  const chip = q(v, 'gatechip'); const fail = q(v, 'fail'); const stage = q(v, 'stagechip');
+  fail.classList.remove('show');
+  chip.className = 'chip gate-run'; chip.textContent = 'round-trip gate: re-encoding DTII…';
+  setTimeout(() => {
+    chip.className = 'chip gate-ok'; chip.textContent = '✓ byte-exact round-trip (4,812 B)';
+    stage.style.display = 'inline-flex';
+    state[v].modified.clear(); renderGrid(v);
+    if (q(v,'gate-last')) { q(v,'gate-last').textContent = 'just now'; q(v,'gate-res').textContent = '✓ byte-exact'; }
+  }, 750);
+}
+function demoFail(v) {
+  const chip = q(v, 'gatechip'); const fail = q(v, 'fail');
+  chip.className = 'chip gate-run'; chip.textContent = 'round-trip gate: re-encoding DTII…';
+  setTimeout(() => {
+    chip.className = 'chip gate-fail'; chip.textContent = '✗ round-trip mismatch — not staged';
+    fail.classList.add('show');
+    if (q(v,'gate-last')) { q(v,'gate-last').textContent = 'just now'; q(v,'gate-res').textContent = '✗ mismatch @0x1A4C'; }
+  }, 750);
+}
+function resetGate(v) {
+  const chip = q(v, 'gatechip'); q(v, 'fail').classList.remove('show');
+  chip.className = 'chip'; chip.textContent = 'round-trip gate: not run';
+}
+
+/* ── schema/row rail (variants B and D) ── */
+function renderSchema(v) {
+  q(v, 'schema').innerHTML = COLS.map(c =>
+    '<div class="schema-row"><span class="ty ' + c.ty + '">' + c.ty + '</span><span class="nm">' + c.name + '</span>' +
+    '<span style="color:var(--color-text-faint)">' + (c.ty === 's' ? 'ascii·z' : c.ty === 'i' ? 'int32' : 'float32') + '</span></div>'
+  ).join('');
+}
+function renderRowInspect(v, i) {
+  const st = state[v]; const r = st.rows[i];
+  if (!r) { q(v,'rowinspect').innerHTML = '<span style="color:var(--color-text-faint)">Click a row…</span>'; return; }
+  q(v, 'rowinspect').innerHTML = COLS.map((c, ci) =>
+    '<div class="kv"><span class="k">' + c.name + '</span><span class="v' + (st.modified.has(i + ':' + ci) ? ' mod' : '') + '">' + r[ci] + '</span></div>'
+  ).join('');
+}
+
+/* ── variant C seg toggle ── */
+function segTo(v, mode, btn) {
+  document.querySelectorAll('#variant-' + v + ' .seg button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  q(v, 'gridview').style.display = mode === 'grid' ? 'block' : 'none';
+  q(v, 'hexview').classList.toggle('show', mode === 'hex');
+}
+
+/* ── misc ── */
+function toast(btn, msg) {
+  const t = btn.textContent; btn.textContent = '✓ ' + msg; btn.disabled = true;
+  setTimeout(() => { btn.textContent = t; btn.disabled = false; }, 1300);
+}
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+
+['a', 'b', 'c', 'd'].forEach(initVariant);
+</script>
+</body>
+</html>
