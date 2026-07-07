@@ -21,17 +21,19 @@ If everything else is cut, this must work: open SWG assets, edit them with live 
 <!-- Shipped and confirmed valuable. -->
 
 - ✓ **Core engine** — Phase 1: mount `.tre` archives as a priority-resolved virtual filesystem (override/shadow chains, v6000 enumerate-only), parse/serialize SWG's IFF chunk format byte-exact, zero-copy binary bridge (C++ → N-API → TS), TRE builder/repacker with raw-slice identity. Byte-exact round-trip gate (CORE-05) verified on **real assets** (61/61 IFF, TOC crc-first 200/200); 91/91 harness tests; UAT 10/10; security SECURED (21/21 threats). See `docs/01-core-engine/`.
+- ✓ **3D asset viewer** — Phase 2: real SWG meshes (`.msh`/`.apt`/`.lod`/`.sat`) render in the Three.js/R3F viewport with textures/materials, skeletons & animation, and glTF export; geometry verified byte-identical against `io_scene_swg_msh`; viewport orientation/framing SIE-parity closed in Phase 04.4 (D-17).
+- ✓ **Live-injection foundation** — Phase 3: attach/inject into a running client on both the advertised (`swg-client-v2`) and legacy SWGEmu paths, x64→x86 cross-arch resolved in-target, SharedArrayBuffer channel streaming live state (~30fps, no torn reads) — validated in live in-world UATs. The zero-restart WYSIWYG *edit* loop remains Phase 5.
+- ✓ **Edit & deploy loop** — Phases 4 + 04.1–04.4: stage → save version → select/reconcile → deploy → revert against a real client, lazy shadow-sandbox (client never permanently broken; snapshot+restore verified byte-pristine), cfg/searchTree + loose-override + searchTOC mounts, project↔client binding, version graph, delete-with-restore + session undo, Core3/swg-main **server push** (approved against live Core3, D-22), real-Electron e2e coverage in CI. Git/LFS versioning (DEPLOY-04) still pending — tracked under Mod workflow below.
 
 ### Active
 
 <!-- Hypotheses we're building toward. Detailed specs live in docs/. -->
 
-- [ ] **3D asset viewer**: render meshes, composite appearances, skeletons & animations in a Three.js/R3F viewport. See `docs/02-formats/meshes-and-appearances.md`, `skeletons-and-animation.md`.
 - [ ] **Format editors**: terrain (`.trn`), flora (`.fld`), world snapshots (`.ws`), datatables (DTII), strings (`.stf`), audio (`.snd`), particles/effects (`.prt`/`.eft`), collision/portals (`.cdf`/`.pob`/`.floc`), UI (`.ui`), properties/config/environment. See `docs/02-formats/`.
-- [ ] **Live in-game sync**: attach to a running client, push transforms/edits to live memory, packet inspection. See `docs/04-live-sync/`.
+- [ ] **Live in-game sync** (WYSIWYG loop — Phase 5): push transforms/edits to live memory over the proven SAB channel; foundation (attach + read-verify) validated in Phase 3. See `docs/04-live-sync/`.
 - [ ] **Blender integration**: WebSocket bridge + Python plugin; export Blender animation to `.ans`; AI mocap retargeting. See `docs/07-blender/`.
-- [ ] **Server parity**: keep client `.iff`/`.tre` data in sync with Core3/SWGEmu Lua templates. See `docs/05-server-integration/`.
-- [ ] **Mod workflow**: virtual workspaces, Git/LFS versioning, changeset/rollback, one-click `.tre` patch packaging & distribution. See `docs/06-workflow/`.
+- [ ] **Server parity**: keep client `.iff`/`.tre` data in sync with Core3/SWGEmu Lua templates (server *push* of TRE overrides shipped in 04.4; parity sync is Phase 8). See `docs/05-server-integration/`.
+- [ ] **Mod workflow** (remaining): Git/LFS versioning of mod outputs (DEPLOY-04) + patch distribution; workspaces, changeset/rollback, and `.tre` packaging shipped in Phases 4–04.4. See `docs/06-workflow/`.
 - [ ] **Studio UX**: dockable IDE-style workspace, dark theme. See `docs/08-ui-ux/`.
 - [ ] **MCP + AI layer**: expose the toolkit as an MCP server; AI assists (NL queries, mocap, format reverse-engineering, asset search). See `docs/09-ai-mcp/`.
 
@@ -94,4 +96,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-23 after Phase 1 (Core Engine — IFF + TRE + Verification Harness)*
+*Last updated: 2026-07-07 after Phase 04.4 (UX Polish & Deploy Hardening) — phases 0–4 and 04.1–04.4 complete and verified; next: Phase 5 (WYSIWYG Live-Sync & Typed Editors)*
