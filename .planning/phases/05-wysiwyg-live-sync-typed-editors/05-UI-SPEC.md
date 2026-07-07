@@ -1,7 +1,8 @@
 ---
 phase: "05"
 slug: wysiwyg-live-sync-typed-editors
-status: draft
+status: approved
+reviewed_at: 2026-07-07
 shadcn_initialized: false
 preset: none
 created: 2026-07-07
@@ -78,7 +79,10 @@ Exceptions: the 3px-grid deviation above (whole-project); the sketch-locked fixe
 
 ## Typography
 
-> Existing token scale. Two weights only: **400 (regular)** and **600 (semibold)**.
+> Existing token scale. Weights: **400 (regular)** and **600 (semibold)**, plus a **700 micro-label
+> exception** (10px type badges, 9px axis tags — sketch-locked in 014/011, maintainer-approved
+> 2026-07-07). The 11/12/13/14px roles are 1px-apart because they are the shipped token scale — do
+> NOT add a 5th text role in planning.
 
 | Role | Size | Weight | Line Height | Token |
 |------|------|--------|-------------|-------|
@@ -257,6 +261,7 @@ sibling-locale readout is the approved growth direction.
 | Secondary actions (both editors) | `⇄ Compare to base` · `＋ Stage` |
 | DTII crumb | `FORM DTII ▸ FORM 0001 ▸ DATA` |
 | DTII toolbar | `Filter rows…` · `＋ Row` · `− Row` · `<N> rows · <M> cols[ · <K> cell(s) modified]` |
+| DTII filter zero-result (grid body) | `No rows match "<query>"` (muted, centered — never a silent blank grid) |
 | DTII gate states | `round-trip gate: not run` → `round-trip gate: re-encoding DTII…` → `✓ byte-exact round-trip (<N> B)` / `✗ round-trip mismatch — not staged` |
 | DTII fail banner | `✗ Round-trip gate FAILED at DATA+0x<offset> — expected <bytes>, wrote <bytes>. Not staged.` + `Jump to bytes` / `Revert cell` |
 | DTII rail headers | `Schema · COLS / TYPE` · `Selected row` · `Round-trip gate` |
@@ -266,6 +271,7 @@ sibling-locale readout is the approved growth direction.
 | Staged chip (both editors) | `→ staged in working changes` |
 | .stf crumb | `string/<locale>/<file>.stf · STF␠ · <N> entries (<M> shown)` |
 | .stf toolbar | `Search keys and text…` · `＋ Add key` · `<visible> / <total> keys[ · <K> modified]` |
+| .stf search zero-result (grid body) | `No keys match "<query>"` (muted, centered — never a silent blank grid) |
 | .stf column headers | `key` · `crc32` · `localized text (<locale>)` |
 | .stf new-key CRC | `0x········ (auto on save)` |
 | .stf gate states | `round-trip gate: not run` → `gate: rebuilding index + payload…` → `✓ byte-exact round-trip · CRC index rebuilt` |
