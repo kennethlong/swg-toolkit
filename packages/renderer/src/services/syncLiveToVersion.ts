@@ -187,6 +187,19 @@ export async function syncLiveToVersion(
       ? 'loose'
       : 'cfg';
 
+  // WR-06: the loose record to REVERT with. ctx.priorLiveLooseRecord keeps priority when
+  // supplied (the caller may hold a FRESHER record than the manifest snapshot — pinned by
+  // syncLiveToVersion.test.ts case (f)); when the caller omits it, fall back to the live
+  // changeset's OWN stored record (already resolved above — the manifest carries it).
+  // Previously the two resetLoose sites below ran ONLY off ctx.priorLiveLooseRecord, so a
+  // caller supplying the manifest but omitting the ctx field silently skipped the revert —
+  // the client kept stale loose overrides while deployedVersionId moved on.
+  const liveLooseRecord: LooseDeployRecord | undefined =
+    priorLiveLooseRecord ??
+    (liveDeployRecord && 'overrideDir' in liveDeployRecord
+      ? (liveDeployRecord as LooseDeployRecord)
+      : undefined);
+
   // ─── Compute entry sets ──────────────────────────────────────────────────
   const liveEntries = flatten(liveId, manifest, studioDir);
   const desired = flatten(targetId, manifest, studioDir);
@@ -243,8 +256,9 @@ export async function syncLiveToVersion(
     // ─── REVERT ONLY — dispatch on liveModel (H4) ───────────────────────
     if (liveModel === 'loose') {
       // Loose-live → Baseline: resetLoose removes override files (H4 revert-only).
-      if (priorLiveLooseRecord) {
-        resetLoose(priorLiveLooseRecord);
+      // WR-06: liveLooseRecord falls back to the live changeset's own stored record.
+      if (liveLooseRecord) {
+        resetLoose(liveLooseRecord);
       }
     } else {
       // Cfg-live → Baseline: byte-pristine whole-file restore via snapshotPath.
@@ -308,8 +322,9 @@ export async function syncLiveToVersion(
       }
 
       // Step 3: For loose→cfg cross-model: resetLoose the prior loose override.
-      if (liveModel === 'loose' && priorLiveLooseRecord) {
-        resetLoose(priorLiveLooseRecord);
+      // WR-06: liveLooseRecord falls back to the live changeset's own stored record.
+      if (liveModel === 'loose' && liveLooseRecord) {
+        resetLoose(liveLooseRecord);
       }
 
       // Step 4: Activate the target cfg entry.
