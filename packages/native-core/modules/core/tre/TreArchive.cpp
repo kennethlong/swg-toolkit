@@ -246,6 +246,18 @@ TreArchive TreArchive::parse(IInputStream& stream) {
         e.compressor     = readLE32s(r + 12);
         e.compressedLength = readLE32s(r + 16);
         e.fileNameOffset = readLE32s(r + 20);
+        // Security T-01-02: fileNameOffset is attacker-controlled TOC data. Validate it
+        // against the name block ONCE here, so resolve()/resolveTombstoneIndex()/nameAt()
+        // (and TreBuilder::repack via nameAt) can index m_nameBlock without re-checking.
+        // Checking < nameData.size() (strict) also guarantees every stored name is
+        // NUL-terminated within the block: std::string::c_str() provides the terminal
+        // NUL at the block end. (Subtraction/negative form, same discipline as the
+        // T-01-01/02/03/19 caps above.)
+        if (e.fileNameOffset < 0 ||
+            static_cast<size_t>(e.fileNameOffset) >= nameData.size()) {
+            throw std::runtime_error(
+                "TreArchive::parse: TOC fileNameOffset out of name-block bounds (T-01-02)");
+        }
         // stride-32 (V6000) has 8 bytes of padding at [24..31] — ignored
     }
 
