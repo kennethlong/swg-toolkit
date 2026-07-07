@@ -15,7 +15,8 @@
  *       DATA { int8 numImpls, bool8 precalcVtxLighting }   (v0001 only; v0000 has different shape)
  *       FORM IMPL ... (one per capability tier, numImpls entries)
  *         FORM 0002..0005
- *           SCAP chunk  (int32 shaderCapability levels)
+ *           SCAP chunk  (int32 shaderCapability levels — raw LE via iff.read_int32(),
+ *                        ShaderImplementation.cpp:375; same convention as PTXM textureTag)
  *           OPTN chunk  (optional uint32 tags e.g. "DOT3", "HIQL")
  *           DATA chunk  (int8 passCount, uint32 phaseTag; v0005 adds bool8 castsShadows/isCollidable)
  *           FORM PASS (per pass)
@@ -42,6 +43,9 @@
  * IMPL SELECTION RULE (mirrors ShaderEffectList / ShaderImplementationList::fetch):
  *   Iterate all IMPLs. For each: check if SCAP contains a valid level AND PPSH/PTXM samplers exist.
  *   Pick the IMPL with the highest max SCAP value that has readable PTXM samplers.
+ *   SCAP values compare as the client stores them: raw-LE int32 (read_int32 memcpy —
+ *   ShaderImplementation.cpp:375). They MUST NOT be byte-swapped before comparison:
+ *   the swap is not order-preserving, so a BE read would invert this selection.
  *   We don't validate capability at parse time (no GPU context) — we pick the highest-SCAP IMPL
  *   with PTXM entries (the one most likely to have the richest sampler role map).
  *

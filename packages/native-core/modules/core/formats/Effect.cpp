@@ -46,19 +46,6 @@ struct EfctChunkView {
         pos += 4;
         return v;
     }
-    // Big-endian int32 (SCAP capability levels stored with htonl/ntohl)
-    int32_t readI32BE() {
-        if (!canRead(4)) throw FormatParseError("EfctChunkView: unexpected end");
-        uint32_t raw;
-        std::memcpy(&raw, data + pos, 4);
-        pos += 4;
-        // Swap bytes: IFF structural integers are big-endian
-        uint32_t be = ((raw & 0xFF000000u) >> 24) |
-                      ((raw & 0x00FF0000u) >>  8) |
-                      ((raw & 0x0000FF00u) <<  8) |
-                      ((raw & 0x000000FFu) << 24);
-        return static_cast<int32_t>(be);
-    }
     std::string readCString() {
         std::string s;
         while (pos < size) {
@@ -344,11 +331,17 @@ static EffectImpl parseImpl(
         if (!verChild.isForm) continue;
 
         // ─── SCAP chunk ───────────────────────────────────────────────────
+        // SCAP capability levels are read by the client via iff.read_int32() — a raw
+        // memcpy, i.e. LITTLE-endian on Windows. GROUND TRUTH: swg-client-v2
+        // ShaderImplementation.cpp:375,435,494 (read_int32) + Iff.h:575-580 (read_misc
+        // raw copy) — the SAME convention as the PTXM textureTag handled above. NOT
+        // htonl/BE: byte-swapping is not order-preserving (0x00020000 vs 0x04000100)
+        // and would invert the highest-max-SCAP IMPL selection in parseEffect().
         const auto* scapNode = findChunk(verChild, "SCAP");
         if (scapNode) {
             auto cv = efctChunkPayload(*scapNode, srcData, srcSize);
             while (cv.bytesLeft() >= 4) {
-                impl.scapValues.push_back(cv.readI32BE());
+                impl.scapValues.push_back(static_cast<int32_t>(cv.readU32LE()));
             }
         }
 
