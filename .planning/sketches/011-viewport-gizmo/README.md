@@ -2,11 +2,20 @@
 sketch: 011
 name: viewport-gizmo
 question: "How do the viewport HUD + transform gizmo + live-sync state read for Phase 5's headline interaction — drag a gizmo and the object moves in the running game client?"
-winner: "B (Full overlay HUD)"
+winner: "B (Full overlay HUD) + B2 revert/guard refinement (approved 2026-07-07)"
 tags: [viewport, gizmo, live-sync, hud, wysiwyg, phase-5, phase-3]
 ---
 
 # Sketch 011 · Viewport Gizmo + Live-Sync
+
+> **Refinement round (2026-07-07, pre-Phase-5):** added variant **B2 · revert & guard** — the
+> LIVE-03 SC2 safety beats missing from B: a session **write log** with per-write revert +
+> **Revert ALL to snapshot**, the **read-verify guard** as a permanent card row, the
+> **guard-blocked** state (mismatched bytes named, write refused, re-read/revert offered — fails
+> closed, no force-write path), and the **reverted** confirmation state. Cycle the three states
+> with the buttons at the top of the B2 tab. B stays the winning HUD; B2 only proposes what folds
+> *into* B's live-sync card. **✅ Approved by maintainer 2026-07-07 — B2's write log, guard row,
+> guard-blocked and reverted states are part of the B contract.**
 
 ## ✅ Decision — B (Full overlay HUD)
 

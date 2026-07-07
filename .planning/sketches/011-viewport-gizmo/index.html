@@ -229,6 +229,7 @@
   <span class="brand">SKETCH 011 · viewport-gizmo · ★ WINNER: B (Full overlay HUD)</span>
   <button class="variant-tab" onclick="showVariant('a', this)">A · Minimal HUD</button>
   <button class="variant-tab active" onclick="showVariant('b', this)">B · Full overlay ★</button>
+  <button class="variant-tab" onclick="showVariant('b2', this)">B2 · revert &amp; guard ✓ approved</button>
   <button class="variant-tab" onclick="showVariant('c', this)">C · Gizmo-focused</button>
 </div>
 
@@ -474,6 +475,168 @@
 </div>
 
 <!-- ============================================================= -->
+<!-- VARIANT B2 — refinement: revert & read-verify guard (LIVE-03)  -->
+<!-- ============================================================= -->
+<div id="variant-b2" class="variant">
+<style>
+  /* b2-scoped additions — safety affordances on the winning B HUD */
+  .b2-stage { display: flex; gap: 26px; justify-content: center; align-items: flex-start; padding: 26px 18px 60px; flex-wrap: wrap; }
+  .b2-col { width: 380px; max-width: 94vw; }
+  .b2-lbl { font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 8px 2px; }
+  .b2-note { font: 500 var(--text-xs)/1.6 var(--font-sans); color: var(--color-text-muted); margin: 10px 2px 0; }
+  .b2-card { position: static; width: 100%; }
+  .b2-card .cc-body { max-height: none; }
+  .b2-guard-ok   { color: var(--color-accent); }
+  .b2-guard-bad  { color: var(--color-danger); }
+  .b2-wlog { border-top: 1px solid var(--color-border-soft); margin-top: 7px; padding-top: 6px; }
+  .b2-wlog-title { font: 600 10px/1.6 var(--font-mono); color: var(--color-text-faint); text-transform: uppercase; letter-spacing: .07em; }
+  .b2-wrow { display: flex; align-items: center; gap: 7px; font: 500 var(--text-xs)/1.7 var(--font-mono); color: var(--color-text-muted); }
+  .b2-wrow .t { color: var(--color-text-faint); width: 44px; }
+  .b2-wrow .rv {
+    margin-left: auto; background: none; border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    color: var(--color-text-muted); font: 600 10px/1.2 var(--font-sans); padding: 2px 7px; cursor: pointer; transition: all .15s ease;
+  }
+  .b2-wrow .rv:hover { color: var(--color-danger); border-color: var(--color-danger); }
+  .b2-wrow.reverted { text-decoration: line-through; opacity: .55; }
+  .b2-actions { display: flex; gap: 7px; margin-top: 9px; }
+  .b2-btn {
+    flex: 1; background: var(--color-widget); border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    color: var(--color-text-muted); font: 600 var(--text-xs)/1.2 var(--font-sans); padding: 6px 8px; cursor: pointer; transition: all .15s ease;
+  }
+  .b2-btn:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .b2-btn.danger { color: var(--color-danger); border-color: rgba(230,90,90,.4); }
+  .b2-btn.danger:hover { background: rgba(230,90,90,.12); }
+  .b2-banner {
+    display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--color-danger); border-radius: var(--radius-sm);
+    background: rgba(230,90,90,.08); padding: 9px 11px; font: 500 var(--text-xs)/1.55 var(--font-sans); color: var(--color-text); margin-top: 10px;
+  }
+  .b2-banner .sym { color: var(--color-danger); font-weight: 700; }
+  .b2-banner code { font-family: var(--font-mono); color: var(--color-danger); }
+  .b2-banner.okk { border-color: var(--color-accent-line); background: var(--color-accent-dim); }
+  .b2-banner.okk .sym { color: var(--color-accent); }
+  .b2-states { display: flex; gap: 6px; margin: 0 0 14px; justify-content: center; width: 100%; }
+  .b2-sbtn {
+    background: var(--color-widget); border: 1px solid var(--color-border-soft); border-radius: var(--radius-full);
+    color: var(--color-text-muted); font: 600 var(--text-xs)/1.2 var(--font-sans); padding: 6px 13px; cursor: pointer; transition: all .15s ease;
+  }
+  .b2-sbtn.on { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .b2-state { display: none; }
+  .b2-state.on { display: flex; gap: 26px; justify-content: center; flex-wrap: wrap; width: 100%; }
+</style>
+  <div class="app">
+    <div class="titlebar">
+      <div class="logo"></div><div class="app-name">SWG Toolkit</div>
+      <div class="menu"><span>File</span><span>Edit</span><span>View</span><span>Asset</span><span>Window</span><span>Help</span></div>
+      <div class="winctl"><b class="c2"></b><b class="c3"></b><b class="c1"></b></div>
+    </div>
+
+    <div class="b2-stage">
+      <div class="b2-states">
+        <button class="b2-sbtn on" onclick="b2State(1, this)">1 · normal write</button>
+        <button class="b2-sbtn" onclick="b2State(2, this)">2 · guard blocked</button>
+        <button class="b2-sbtn" onclick="b2State(3, this)">3 · reverted</button>
+      </div>
+
+      <!-- STATE 1 — normal write + write-log + revert affordance -->
+      <div class="b2-state on" data-b2="1">
+        <div class="b2-col">
+          <div class="b2-lbl">live-sync card (B, zoomed) + write log</div>
+          <div class="client-card b2-card">
+            <div class="cc-head">
+              <div class="live-chip"><span class="lc-glyph">●</span><span class="lc-label">Live · injected</span></div>
+            </div>
+            <div class="cc-body">
+              <div class="cc-row"><span class="k">client</span><span class="v">SWG Infinity</span></div>
+              <div class="cc-row"><span class="k">pid</span><span class="v cc-pid">8841</span></div>
+              <div class="cc-row"><span class="k">COW snapshot</span><span class="v ok">✓ saved · 14:02:51</span></div>
+              <div class="cc-row"><span class="k">read-verify</span><span class="v b2-guard-ok">✓ client bytes = snapshot</span></div>
+              <div class="b2-wlog">
+                <div class="b2-wlog-title">write log · this session</div>
+                <div class="b2-wrow"><span class="t">0.2s</span><span>pos.x +0.42m</span><button class="rv" onclick="b2Toast(this,'reverted')">revert</button></div>
+                <div class="b2-wrow"><span class="t">3.1s</span><span>rot.y +12.5°</span><button class="rv" onclick="b2Toast(this,'reverted')">revert</button></div>
+                <div class="b2-wrow"><span class="t">9.8s</span><span>pos.z −1.06m</span><button class="rv" onclick="b2Toast(this,'reverted')">revert</button></div>
+              </div>
+              <div class="b2-actions">
+                <button class="b2-btn danger" onclick="b2State(3, document.querySelectorAll('.b2-sbtn')[2])">⟲ Revert ALL to snapshot</button>
+              </div>
+            </div>
+          </div>
+          <div class="b2-note">Every live write lands in a session <b>write log</b> with per-write revert;
+          <b>Revert ALL</b> restores the COW snapshot. The guard row shows read-verify is green
+          <i>before</i> each write.</div>
+        </div>
+      </div>
+
+      <!-- STATE 2 — read-verify guard blocks the write -->
+      <div class="b2-state" data-b2="2">
+        <div class="b2-col">
+          <div class="b2-lbl">guard blocked — write refused</div>
+          <div class="client-card b2-card" style="border-color: var(--color-danger)">
+            <div class="cc-head">
+              <div class="live-chip"><span class="lc-glyph">●</span><span class="lc-label">Live · injected</span></div>
+            </div>
+            <div class="cc-body">
+              <div class="cc-row"><span class="k">client</span><span class="v">SWG Infinity</span></div>
+              <div class="cc-row"><span class="k">COW snapshot</span><span class="v ok">✓ saved · 14:02:51</span></div>
+              <div class="cc-row"><span class="k">read-verify</span><span class="v b2-guard-bad">✗ client bytes ≠ snapshot</span></div>
+              <div class="b2-banner">
+                <span class="sym">✗</span>
+                <span><b>Write refused.</b> The object's memory changed outside the toolkit
+                (<code>0x0A4C1F30</code>: expected <code>42 C8 00 00</code>, read <code>00 00 80 3F</code>) —
+                the game or another tool moved it. Nothing was written.</span>
+              </div>
+              <div class="b2-actions">
+                <button class="b2-btn" onclick="b2State(1, document.querySelectorAll('.b2-sbtn')[0])">↻ Re-read &amp; retry</button>
+                <button class="b2-btn danger" onclick="b2State(3, document.querySelectorAll('.b2-sbtn')[2])">⟲ Revert to snapshot</button>
+              </div>
+            </div>
+          </div>
+          <div class="b2-note">The read-verify guard (LIVE-03 SC2) fails <b>closed</b>: mismatch → refuse the
+          write, name the bytes, offer re-read or revert. No silent force-write path.</div>
+        </div>
+      </div>
+
+      <!-- STATE 3 — reverted from snapshot -->
+      <div class="b2-state" data-b2="3">
+        <div class="b2-col">
+          <div class="b2-lbl">reverted — snapshot restored</div>
+          <div class="client-card b2-card">
+            <div class="cc-head">
+              <div class="live-chip"><span class="lc-glyph">●</span><span class="lc-label">Live · injected</span></div>
+            </div>
+            <div class="cc-body">
+              <div class="cc-row"><span class="k">client</span><span class="v">SWG Infinity</span></div>
+              <div class="cc-row"><span class="k">COW snapshot</span><span class="v ok">✓ restored · just now</span></div>
+              <div class="cc-row"><span class="k">read-verify</span><span class="v b2-guard-ok">✓ client bytes = snapshot</span></div>
+              <div class="b2-banner okk">
+                <span class="sym">✓</span>
+                <span><b>Reverted.</b> Transform restored from the COW snapshot taken at attach
+                (14:02:51). The in-game object snapped back — nothing is staged.</span>
+              </div>
+              <div class="b2-wlog">
+                <div class="b2-wlog-title">write log · this session</div>
+                <div class="b2-wrow reverted"><span class="t">0.2s</span><span>pos.x +0.42m</span></div>
+                <div class="b2-wrow reverted"><span class="t">3.1s</span><span>rot.y +12.5°</span></div>
+                <div class="b2-wrow reverted"><span class="t">9.8s</span><span>pos.z −1.06m</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="b2-note">Post-revert the log keeps the history struck-through — you can still see
+          what you tried. Statusbar and readout bar mirror the restored values.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span>shared_landspeeder.msh</span>
+      <span class="sep">·</span><span class="sb-sync">sync: <span class="ok">● Live · injected · pid 8841</span></span>
+      <span class="sep">·</span><span>guard: <span class="ok" data-b2guard>read-verify ✓</span></span>
+      <span style="margin-left:auto">refinement of B — safety beats only</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
 <!-- VARIANT C — Gizmo-focused                                      -->
 <!-- ============================================================= -->
 <div id="variant-c" class="variant">
@@ -609,6 +772,22 @@
     btn.classList.add('on');
   }
   function toggleAnnot(btn) { btn.classList.toggle('on'); document.body.classList.toggle('annotate', btn.classList.contains('on')); }
+
+  // ---- B2 refinement: revert & read-verify guard states ----
+  function b2State(n, btn) {
+    document.querySelectorAll('#variant-b2 .b2-state').forEach(s => s.classList.toggle('on', s.dataset.b2 == n));
+    document.querySelectorAll('#variant-b2 .b2-sbtn').forEach(b => b.classList.remove('on'));
+    if (btn) btn.classList.add('on');
+    const g = document.querySelector('#variant-b2 [data-b2guard]');
+    if (g) {
+      g.textContent = n === 2 ? 'read-verify ✗ — write refused' : 'read-verify ✓';
+      g.className = n === 2 ? 'warn' : 'ok';
+    }
+  }
+  function b2Toast(btn, msg) {
+    const row = btn.closest('.b2-wrow');
+    row.classList.add('reverted'); btn.remove();
+  }
 
   // ---- live-sync state (gated, explicit — Phase 5 injection vs Phase 3 file-patch fallback) ----
   let syncLive = true;
