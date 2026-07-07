@@ -343,9 +343,13 @@ std::vector<uint8_t> TreArchive::extractEntry(int idx, IInputStream& stream) con
 
     // Security T-01-02: bounds check before read (subtraction form)
     // Source: Utinni TreFile.cs:328.
+    // e.offset < 0: a negative TOC offset passes the subtraction-form check (negative <
+    // positive) and would hand IInputStream::read a negative offset — same hardening
+    // extractAt already has via its unsigned form (F-5).
     const int streamLen = stream.length();
     const int32_t readLen = (e.compressor != 0) ? e.compressedLength : e.length;
-    if (readLen < 0 || static_cast<int64_t>(e.offset) > static_cast<int64_t>(streamLen) - readLen) {
+    if (readLen < 0 || e.offset < 0 ||
+        static_cast<int64_t>(e.offset) > static_cast<int64_t>(streamLen) - readLen) {
         throw std::runtime_error("TreArchive::extractEntry: entry out of stream bounds (T-01-02)");
     }
 

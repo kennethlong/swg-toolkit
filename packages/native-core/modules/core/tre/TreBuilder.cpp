@@ -435,7 +435,12 @@ std::vector<uint8_t> TreBuilder::repack(
             //         storedSlices[i] = rawCompressed; — NEVER recompress).
             const int32_t readLen = (e.compressor != 0) ? e.compressedLength : e.length;
             if (readLen > 0) {
-                if (static_cast<int64_t>(e.offset) + readLen > sourceSrcLen) {
+                // e.offset < 0: negative TOC offset would pass the additive check
+                // (negative + readLen can stay under sourceSrcLen) and reach
+                // sourceStream.read with a negative offset (T-01-02, same hardening
+                // as TreArchive::extractEntry / extractAt F-5).
+                if (e.offset < 0 ||
+                    static_cast<int64_t>(e.offset) + readLen > sourceSrcLen) {
                     throw std::runtime_error(
                         "TreBuilder::repack: entry payload out of stream bounds"
                     );
