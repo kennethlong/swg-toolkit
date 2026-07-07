@@ -84,12 +84,15 @@ export function installConsoleCapture(): void {
   window.addEventListener('unhandledrejection', onUnhandledRejection);
 
   // 04.4-11: main-process log-forward subscription, folded into this SAME function
-  // (not a new exported function/call site — see module doc comment). Guarded by
-  // process.env['VITEST'] (matches 04.4-02's own idiom exactly, so it protects
-  // logService.test.ts's DIRECT call to installConsoleCapture() — that test bypasses
-  // ConsolePanel.tsx's module-scope VITEST guard entirely). The try/catch +
-  // optional-chaining is defense-in-depth for any OTHER non-Electron caller.
-  if (typeof process === 'undefined' || process.env['VITEST'] !== '1') {
+  // (not a new exported function/call site — see module doc comment). Guarded by a
+  // TRUTHY check on process.env['VITEST'] (WR-11 fix: Vitest sets VITEST='true', NOT
+  // '1' — the old `!== '1'` comparison was always true, so the guard never fired and
+  // the subscription only survived vitest runs by accident of the require('electron')
+  // fallback). This now genuinely matches ConsolePanel.tsx's module-scope idiom
+  // (`!process.env['VITEST']`), protecting logService.test.ts's DIRECT call to
+  // installConsoleCapture(). The try/catch + optional-chaining stays as
+  // defense-in-depth for any OTHER non-Electron caller.
+  if (typeof process === 'undefined' || !process.env['VITEST']) {
     try {
       // Path B (nodeIntegration:true) — never bundled by Vite.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
