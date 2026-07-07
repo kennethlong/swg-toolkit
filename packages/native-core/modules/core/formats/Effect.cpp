@@ -290,7 +290,11 @@ static EffectBlend parsePassData(
     if (!dataNode) return blend;
 
     auto cv = efctChunkPayload(*dataNode, srcData, srcSize);
-    if (cv.bytesLeft() < 14) return blend; // too short to be valid
+    // Guard must cover the FULL 17 bytes consumed below (5 skips + zWrite + zCompare +
+    // 4 blend reads + alphaTestEnable + skip(4) + alphaTestFunc) — a 14-16 byte chunk
+    // would pass a `< 14` guard, skip(4) clamps to end, and the final readI8() throws
+    // FormatParseError, failing the whole effect instead of returning the opaque default.
+    if (cv.bytesLeft() < 17) return blend; // too short to be valid — return defaults
 
     cv.skip(1);  // int8 numberOfStages
     cv.skip(1);  // int8 shadeMode
