@@ -101,24 +101,35 @@ export const useDeleteUndoStore = create<DeleteUndoStore>((set, get) => ({
     const entry = get().pending.find((e) => e.id === id);
     if (!entry) return;
 
-    // Round-2: occupied-destination guard — check BOTH destinations before touching anything.
-    if (fs.existsSync(entry.originalStudioDir)) {
+    // WR-05: an entry may be only HALF-parked (deleteProject pushes a TrashEntry even when
+    // just one of the two renames succeeded — verified by design in deleteProject.test.ts
+    // case K). Restore ONLY the halves whose parked SOURCE actually exists, and run the
+    // occupied-destination guard ONLY for those halves. Without this, a half-restore (or a
+    // half-park) left the destination guard tripping forever on a directory that restore
+    // itself just recreated (or that was never moved out in the first place), bricking retry.
+    const studioParked = fs.existsSync(entry.trashStudioPath);
+    const projectParked = !entry.umbrellaMoveSkipped && fs.existsSync(entry.trashProjectPath);
+
+    // Round-2: occupied-destination guard — check all PARKED halves before touching anything.
+    if (studioParked && fs.existsSync(entry.originalStudioDir)) {
       throw new Error(
         `Cannot restore "${entry.projectName}" — ${entry.originalStudioDir} already exists; ` +
         'move or remove it, then retry Undo.',
       );
     }
-    if (!entry.umbrellaMoveSkipped && fs.existsSync(entry.originalFolderPath)) {
+    if (projectParked && fs.existsSync(entry.originalFolderPath)) {
       throw new Error(
         `Cannot restore "${entry.projectName}" — ${entry.originalFolderPath} already exists; ` +
         'move or remove it, then retry Undo.',
       );
     }
 
-    // Both destinations are free — perform the restore. Locked undo contract: bytes only,
-    // no client/cfg mutation.
-    fs.renameSync(entry.trashStudioPath, entry.originalStudioDir);
-    if (!entry.umbrellaMoveSkipped) {
+    // All parked-half destinations are free — perform the restore. Locked undo contract:
+    // bytes only, no client/cfg mutation.
+    if (studioParked) {
+      fs.renameSync(entry.trashStudioPath, entry.originalStudioDir);
+    }
+    if (projectParked) {
       fs.renameSync(entry.trashProjectPath, entry.originalFolderPath);
     }
 
