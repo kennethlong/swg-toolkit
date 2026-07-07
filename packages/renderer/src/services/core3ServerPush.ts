@@ -308,18 +308,31 @@ export function pushCore3TreOverride(
 
   // (6) Read (or create) config-local.lua; idempotent replace-or-append of our toolkit line
   // (mirrors cfgActivator.ensureInclude's idempotency discipline).
+  //
+  // WR-03 fix: the replace target is THIS project's exact prior line from the persisted
+  // record — NOT a slug-prefix regex. sanitizeToken keeps '_' in slugs, so a prefix
+  // pattern for slug "my" (`swgtoolkit_my_[^"]*`) would ALSO match project "my_proj"'s
+  // line and silently clobber ANOTHER project's mount when two projects push to the
+  // same Core3 server. Matching priorRecord.insertedLine verbatim scopes the surgery
+  // to our own prior push (the same discipline resetCore3TreOverride already uses).
   const insertedLine = `table.insert(Core3.TreFiles, 1, "${treFileName}")`;
-  const toolkitLinePattern = new RegExp(
-    `^[\\t ]*table\\.insert\\(Core3\\.TreFiles,\\s*1,\\s*"swgtoolkit_${escapeRegex(safeSlug)}_[^"]*"\\)[\\t ]*$`,
-    'm',
-  );
+  const exactLinePattern = (line: string): RegExp =>
+    new RegExp(`^[\\t ]*${escapeRegex(line)}[\\t ]*$`, 'm');
+  const newLinePattern = exactLinePattern(insertedLine);
+  const priorLinePattern =
+    priorRecord && priorRecord.insertedLine !== insertedLine
+      ? exactLinePattern(priorRecord.insertedLine)
+      : null;
 
   let newConfigLocalContent: string;
   if (wasConfigLocalPreExisting) {
     const existing = fs.readFileSync(configLocalPath, 'utf8');
     const eol = existing.includes('\r\n') ? '\r\n' : '\n';
-    if (toolkitLinePattern.test(existing)) {
-      newConfigLocalContent = existing.replace(toolkitLinePattern, insertedLine);
+    if (newLinePattern.test(existing)) {
+      // Idempotent re-push: our exact line is already present — leave the file as-is.
+      newConfigLocalContent = existing;
+    } else if (priorLinePattern && priorLinePattern.test(existing)) {
+      newConfigLocalContent = existing.replace(priorLinePattern, insertedLine);
     } else {
       newConfigLocalContent = existing.trimEnd() + eol + insertedLine + eol;
     }
