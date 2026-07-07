@@ -67,9 +67,13 @@ static EfctChunkView efctChunkPayload(const swg_core::iff::IffNode& leaf,
                                        const uint8_t* srcData, uint32_t srcSize)
 {
     if (leaf.isForm) throw FormatParseError("efctChunkPayload: called on form node");
-    uint32_t payloadStart = leaf.byteOffset + 8;
-    uint32_t payloadLen   = leaf.declaredLength;
-    if (payloadStart + payloadLen > srcSize)
+    const uint32_t payloadStart = leaf.byteOffset + 8;
+    const uint32_t payloadLen   = leaf.declaredLength;
+    // 64-bit sum: a corrupted declaredLength near UINT32_MAX would wrap a uint32
+    // `payloadStart + payloadLen` below srcSize, passing the check and handing every
+    // EFCT chunk reader a view far past the source buffer.
+    const uint64_t end = static_cast<uint64_t>(leaf.byteOffset) + 8ull + leaf.declaredLength;
+    if (end > srcSize)
         throw FormatParseError("efctChunkPayload: chunk extends beyond source buffer");
     return { srcData + payloadStart, payloadLen, 0 };
 }
