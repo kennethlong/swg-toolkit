@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: ready_to_plan
 stopped_at: Completed 04.4-15-PLAN.md (all 04.4 plans done — close-out chain next)
 last_updated: "2026-07-06T18:30:00.000Z"
 last_activity: 2026-07-06
 progress:
   total_phases: 13
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 73
   completed_plans: 73
-  percent: 99
+  percent: 69
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 04.4 (ux-polish-deploy-hardening) — ALL 15/15 PLANS EXECUTED; close-out chain pending
-Plan: 15 of 15 (complete)
-Status: 04.4-15 complete (D-22 checkpoint approved 2026-07-06, flavor core3-wsl2). The live run
+Phase: 5
+Plan: Not started
+Status: Ready to plan
         found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
         `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
         REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02, viewport-default-facing-axis,
@@ -39,7 +39,7 @@ Next: run the phase close-out chain — code_review_gate (/gsd:code-review 04.4)
       (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet) or /gsd:review-backlog triage
       first (new todos: server-binding-post-create-ux, vcs-panel-sketch-and-placement,
       e2e-leaked-temp-studios).
-Last activity: 2026-07-06
+Last activity: 2026-07-07
   04.4-15: D-22 real-server push→reset round-trip approved against live Core3 (WSL2). New todos
   captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
   e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
@@ -60,7 +60,7 @@ Progress: [██████████] 99%
 
 **Velocity:**
 
-- Total plans completed: 8
+- Total plans completed: 23
 - Average duration: — min
 - Total execution time: 0 hours
 
@@ -70,6 +70,7 @@ Progress: [██████████] 99%
 |-------|-------|-------|----------|
 | 00 | 4 | - | - |
 | 01 | 4 | - | - |
+| 04.4 | 15 | - | - |
 
 **Recent Trend:**
 
