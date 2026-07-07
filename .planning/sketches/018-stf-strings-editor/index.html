@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 018 · .stf Strings Editor</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--color-bg); color: var(--color-text);
+    font-family: var(--font-sans); font-size: var(--text-base);
+    padding-top: 46px; overflow-x: hidden;
+  }
+
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+    padding: 8px 14px; display: flex; gap: 8px; align-items: center;
+  }
+  #variant-nav .ttl { font-size: var(--text-xs); color: var(--color-text-faint); margin-right: 8px; font-family: var(--font-mono); }
+  .variant-tab {
+    background: var(--color-widget); color: var(--color-text-muted);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    font: 600 var(--text-sm)/1 var(--font-sans); padding: 6px 12px; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .variant-tab:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .variant { display: none; }
+  .variant.active { display: block; }
+
+  .stage { display: flex; justify-content: center; padding: 26px 18px 90px; }
+  .pane-label {
+    font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px 2px;
+  }
+
+  .panel {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-panel); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .tabstrip {
+    display: flex; align-items: stretch; background: var(--color-header-2);
+    border-bottom: 1px solid var(--color-border); height: 34px; font-size: var(--text-sm);
+  }
+  .tabstrip .tab {
+    display: flex; align-items: center; gap: 7px; padding: 0 14px;
+    border-right: 1px solid var(--color-border); color: var(--color-text-muted); cursor: default;
+  }
+  .tabstrip .tab.on {
+    background: var(--color-surface); color: var(--color-text);
+    box-shadow: inset 0 2px 0 var(--color-accent);
+  }
+  .tabstrip .mod-dot { color: var(--color-warn); font-size: 10px; }
+
+  .crumb-bar {
+    display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+    border-bottom: 1px solid var(--color-border); background: var(--color-header);
+    font: 500 var(--text-xs)/1.4 var(--font-mono); color: var(--color-text-muted);
+  }
+  .crumb-bar b { color: var(--color-text); font-weight: 600; }
+  .crumb-bar .spacer { flex: 1; }
+  .loc-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-full);
+    padding: 2px 9px; font: 600 var(--text-xs)/1.5 var(--font-sans); color: var(--color-text-muted);
+    background: var(--color-widget); cursor: pointer;
+  }
+  .loc-chip.on { color: var(--color-accent); border-color: var(--color-accent-line); background: var(--color-accent-dim); }
+
+  .abtn {
+    background: var(--color-widget); border: 1px solid var(--color-border-soft);
+    color: var(--color-text-muted); border-radius: var(--radius-sm);
+    font: 600 var(--text-xs)/1 var(--font-sans); padding: 5px 10px; cursor: pointer;
+    transition: all .15s ease; white-space: nowrap;
+  }
+  .abtn:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .abtn.primary { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .abtn.primary:hover { background: var(--color-accent); color: var(--color-accent-text); }
+
+  .grid-toolbar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .grid-toolbar input[type=text] {
+    background: var(--color-widget); border: 1px solid var(--color-border-soft);
+    color: var(--color-text); border-radius: var(--radius-sm);
+    font: 500 var(--text-sm)/1 var(--font-sans); padding: 6px 9px; width: 230px;
+  }
+  .grid-toolbar input[type=text]:focus { outline: none; border-color: var(--color-accent-line); }
+  .count-chip { font: 500 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint); margin-left: auto; }
+
+  /* ── flat key/value table (A, C) ── */
+  .gridwrap { overflow: auto; max-height: 430px; }
+  table.stf { border-collapse: collapse; font-size: var(--text-sm); width: 100%; }
+  table.stf th, table.stf td {
+    border-bottom: 1px solid var(--color-border-soft);
+    padding: 6px 10px; text-align: left; vertical-align: top;
+  }
+  table.stf thead th {
+    position: sticky; top: 0; background: var(--color-header); color: var(--color-text);
+    font: 600 var(--text-xs)/1.5 var(--font-sans); z-index: 2;
+  }
+  table.stf td.key { font-family: var(--font-mono); color: var(--color-text); white-space: nowrap; }
+  table.stf td.crc { font-family: var(--font-mono); color: var(--color-text-faint); font-size: var(--text-xs); white-space: nowrap; }
+  table.stf td.val { color: var(--color-text-muted); cursor: text; width: 100%; }
+  table.stf td.val:hover { background: var(--color-widget); }
+  table.stf td.val.modified {
+    box-shadow: inset 3px 0 0 var(--color-warn);
+    background: rgba(230,180,80,0.07); color: var(--color-text);
+  }
+  table.stf td.val.modified::after { content: " ●"; color: var(--color-warn); font-size: 9px; }
+  table.stf td.val input, table.stf td.val textarea {
+    background: var(--color-widget); border: 1px solid var(--color-accent-line);
+    color: var(--color-text); font: 500 var(--text-sm)/1.4 var(--font-sans);
+    padding: 3px 6px; border-radius: 3px; width: 100%;
+  }
+  table.stf td.val input:focus { outline: none; }
+  table.stf tr.sel td { background: var(--color-accent-dim); }
+  table.stf tr.newrow td.key input {
+    background: var(--color-widget); border: 1px solid var(--color-accent-line);
+    color: var(--color-text); font: 500 var(--text-sm)/1.3 var(--font-mono);
+    padding: 3px 6px; border-radius: 3px; width: 190px;
+  }
+
+  /* ── master-detail (B) ── */
+  .split { display: flex; align-items: stretch; min-height: 430px; }
+  .keylist {
+    width: 270px; border-right: 1px solid var(--color-border); display: flex; flex-direction: column;
+  }
+  .keylist .search { padding: 8px 10px; border-bottom: 1px solid var(--color-border-soft); }
+  .keylist .search input {
+    width: 100%; background: var(--color-widget); border: 1px solid var(--color-border-soft);
+    color: var(--color-text); border-radius: var(--radius-sm);
+    font: 500 var(--text-sm)/1 var(--font-sans); padding: 6px 9px;
+  }
+  .keylist .search input:focus { outline: none; border-color: var(--color-accent-line); }
+  .keylist ul { list-style: none; overflow: auto; flex: 1; }
+  .keylist li {
+    display: flex; align-items: center; gap: 7px; padding: 6px 12px;
+    font: 500 var(--text-sm)/1.3 var(--font-mono); color: var(--color-text-muted);
+    cursor: pointer; border-bottom: 1px solid transparent;
+  }
+  .keylist li:hover { background: var(--color-widget); }
+  .keylist li.on { background: var(--color-accent-dim); color: var(--color-accent); box-shadow: inset 2px 0 0 var(--color-accent); }
+  .keylist li .mdot { color: var(--color-warn); font-size: 9px; }
+  .detail { flex: 1; padding: 16px 18px; overflow: auto; }
+  .detail .fld { margin-bottom: 14px; }
+  .detail label {
+    display: block; font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint);
+    text-transform: uppercase; letter-spacing: .07em; margin-bottom: 5px;
+  }
+  .detail input[type=text], .detail textarea {
+    width: 100%; background: var(--color-widget); border: 1px solid var(--color-border-soft);
+    color: var(--color-text); border-radius: var(--radius-sm);
+    font: 500 var(--text-sm)/1.5 var(--font-sans); padding: 7px 10px;
+  }
+  .detail textarea { font-family: var(--font-sans); resize: vertical; min-height: 74px; }
+  .detail input:focus, .detail textarea:focus { outline: none; border-color: var(--color-accent-line); }
+  .detail .ro { color: var(--color-text-faint); font-family: var(--font-mono); font-size: var(--text-xs); }
+  .sibling {
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    padding: 8px 10px; margin-top: 6px; font-size: var(--text-xs);
+    display: flex; gap: 10px; align-items: baseline;
+  }
+  .sibling .loc { font: 700 10px/1.6 var(--font-mono); color: var(--color-text-faint); width: 64px; }
+  .sibling .txt { color: var(--color-text-muted); }
+  .sibling .missing { color: var(--color-warn); font-style: italic; }
+
+  /* ── footer / gate bar ── */
+  .gate-bar {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-top: 1px solid var(--color-border); background: var(--color-header);
+    font-size: var(--text-xs);
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-full);
+    padding: 3px 10px; font: 600 var(--text-xs)/1.4 var(--font-sans);
+    color: var(--color-text-muted); background: var(--color-widget);
+  }
+  .chip.gate-ok { color: var(--color-accent); border-color: var(--color-accent-line); background: var(--color-accent-dim); }
+  .chip.gate-run { color: var(--color-info); border-style: dashed; }
+  .chip.staged { color: var(--color-info); }
+  .gate-bar .push { flex: 1; }
+
+  #sketch-tools {
+    position: fixed; bottom: 12px; right: 12px; z-index: 9999;
+    font: 500 12px/1.4 system-ui; background: rgba(10,12,14,.82); color: #ddd;
+    padding: 8px 12px; border-radius: 8px; opacity: .4; transition: opacity .2s;
+    display: flex; gap: 10px; align-items: center;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select {
+    background: #222; color: #ddd; border: 1px solid #444; border-radius: 5px;
+    font: 500 11px/1.2 system-ui; padding: 3px 7px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="ttl">SKETCH 018 · .STF STRINGS EDITOR</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A · Flat key/value grid ★ Selected</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B · Master–detail + locales</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C · Compact (Inspect width)</button>
+</div>
+
+<!-- ═══════════ VARIANT A · flat grid (sibling of 014) ═══════════ -->
+<div id="variant-a" class="variant active">
+  <div class="stage"><div>
+    <div class="pane-label">Variant A — flat key/value grid; sibling idiom of the 014 datatable editor</div>
+    <div class="panel" style="width: 880px; max-width: 96vw;">
+      <div class="tabstrip">
+        <div class="tab on"><span class="mod-dot" data-moddot style="display:none">●</span> item_n.stf — Strings</div>
+        <div class="tab">weapon.iff — Datatable</div>
+      </div>
+      <div class="crumb-bar">
+        <span>string/<b>en</b>/item_n.stf · <b>STF␠</b> · 2,014 entries (8 shown)</span>
+        <span class="spacer"></span>
+        <button class="abtn" onclick="toast(this,'Diff vs base opened')">⇄ Compare to base</button>
+        <button class="abtn" onclick="toast(this,'Added to working changes')">＋ Stage</button>
+        <button class="abtn primary" onclick="runGate('a')">Save · run gate</button>
+      </div>
+      <div class="grid-toolbar">
+        <input type="text" placeholder="Search keys and text…" oninput="filterStf('a', this.value)">
+        <button class="abtn" onclick="addKey('a')">＋ Add key</button>
+        <span class="count-chip" data-count></span>
+      </div>
+      <div class="gridwrap">
+        <table class="stf" data-grid></table>
+      </div>
+      <div class="gate-bar">
+        <span class="chip" data-gatechip>round-trip gate: not run</span>
+        <span class="chip staged" data-stagechip style="display:none">→ staged in working changes</span>
+        <span class="push"></span>
+        <span style="color:var(--color-text-faint); font-family:var(--font-mono)">values are UTF-16LE · keys ASCII · CRC32 auto</span>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ═══════════ VARIANT B · master-detail + locale siblings ═══════════ -->
+<div id="variant-b" class="variant">
+  <div class="stage"><div>
+    <div class="pane-label">Variant B — key list + editor card, sibling-locale files surfaced per key</div>
+    <div class="panel" style="width: 880px; max-width: 96vw;">
+      <div class="tabstrip">
+        <div class="tab on"><span class="mod-dot" data-moddot style="display:none">●</span> item_n.stf — Strings</div>
+      </div>
+      <div class="crumb-bar">
+        <span>string/<b>en</b>/item_n.stf</span>
+        <span class="loc-chip on">en ★</span>
+        <span class="loc-chip" onclick="toast(this,'switch: string/de/item_n.stf')">de</span>
+        <span class="loc-chip" onclick="toast(this,'switch: string/fr/item_n.stf')">fr</span>
+        <span class="loc-chip" onclick="toast(this,'switch: string/ja/item_n.stf')">ja</span>
+        <span class="spacer"></span>
+        <button class="abtn primary" onclick="runGate('b')">Save · run gate</button>
+      </div>
+      <div class="split">
+        <div class="keylist">
+          <div class="search"><input type="text" placeholder="Filter keys…" oninput="filterStf('b', this.value)"></div>
+          <ul data-keylist></ul>
+          <div style="padding:8px 10px; border-top:1px solid var(--color-border-soft)">
+            <button class="abtn" style="width:100%" onclick="addKey('b')">＋ Add key</button>
+          </div>
+        </div>
+        <div class="detail" data-detail></div>
+      </div>
+      <div class="gate-bar">
+        <span class="chip" data-gatechip>round-trip gate: not run</span>
+        <span class="chip staged" data-stagechip style="display:none">→ staged in working changes</span>
+        <span class="push"></span>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ═══════════ VARIANT C · compact Inspect-width ═══════════ -->
+<div id="variant-c" class="variant">
+  <div class="stage"><div>
+    <div class="pane-label">Variant C — compact 440px, lives in the Inspect group for quick fixes</div>
+    <div class="panel" style="width: 440px; max-width: 94vw;">
+      <div class="tabstrip">
+        <div class="tab">Inspect</div>
+        <div class="tab on"><span class="mod-dot" data-moddot style="display:none">●</span> Strings</div>
+        <div class="tab">Deploy</div>
+      </div>
+      <div class="crumb-bar">
+        <span>string/<b>en</b>/item_n.stf</span>
+        <span class="spacer"></span>
+        <button class="abtn primary" onclick="runGate('c')">Save</button>
+      </div>
+      <div class="grid-toolbar">
+        <input type="text" placeholder="Search…" style="width: 100%" oninput="filterStf('c', this.value)">
+      </div>
+      <div class="gridwrap" style="max-height: 380px">
+        <table class="stf" data-grid data-compact="1"></table>
+      </div>
+      <div class="gate-bar">
+        <span class="chip" data-gatechip>gate: not run</span>
+        <span class="chip staged" data-stagechip style="display:none">staged</span>
+        <span class="push"></span>
+        <span class="count-chip" data-count></span>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div id="sketch-tools">
+  <label>theme
+    <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'">
+      <option value="cyan" selected>cyan</option>
+      <option value="default">green</option>
+      <option value="amber">amber</option>
+      <option value="blue">blue</option>
+      <option value="high-contrast">high-contrast</option>
+    </select>
+  </label>
+</div>
+
+<script>
+/* ── data: string/en/item_n.stf (real-ish keys per docs + 009 weapons) ── */
+const BASE = [
+  { key: 'dl44_blaster',     crc: '0x7A3E19C4', val: 'DL-44 Blaster Pistol' },
+  { key: 't21_rifle',        crc: '0x1F88B02D', val: 'T21 Rifle' },
+  { key: 'e11_carbine',      crc: '0x93C64A11', val: 'E11 Carbine' },
+  { key: 'dxr6_disruptor',   crc: '0x5D02E7F8', val: 'DXR-6 Disruptor Rifle' },
+  { key: 'heavy_blaster',    crc: '0xC41A9B60', val: 'Heavy Blaster' },
+  { key: 'survival_knife',   crc: '0x2E77D40B', val: 'Survival Knife' },
+  { key: 'crafted_saber',    crc: '0x88F1523A', val: 'Crafted Lightsaber' },
+  { key: 'quest_greeting_01',crc: '0x0B94CE72', val: 'Greetings, traveler. The Empire pays well for those who ask no questions — interested in some honest work?' },
+];
+const SIBLINGS = {
+  dl44_blaster: { de: 'DL-44 Blasterpistole', fr: 'Pistolet blaster DL-44', ja: null },
+  t21_rifle:    { de: 'T21-Gewehr',           fr: 'Fusil T21',              ja: 'T21ライフル' },
+};
+
+const st = {};
+function initV(v) {
+  st[v] = { rows: BASE.map(r => ({ ...r })), modified: new Set(), filter: '', sel: 0 };
+  render(v);
+}
+function q(v, sel) { return document.querySelector('#variant-' + v + ' [data-' + sel + ']'); }
+
+function visible(v) {
+  const s = st[v];
+  return s.rows.map((r, i) => ({ r, i }))
+    .filter(o => !s.filter || o.r.key.includes(s.filter) || o.r.val.toLowerCase().includes(s.filter.toLowerCase()));
+}
+
+function render(v) {
+  if (v === 'b') { renderKeylist(); renderDetail(); }
+  else renderTable(v);
+  const dot = q(v, 'moddot');
+  if (dot) dot.style.display = st[v].modified.size ? 'inline' : 'none';
+  const cnt = q(v, 'count');
+  if (cnt) cnt.textContent = visible(v).length + ' / ' + st[v].rows.length + ' keys' +
+    (st[v].modified.size ? ' · ' + st[v].modified.size + ' modified' : '');
+}
+
+function renderTable(v) {
+  const compact = q(v, 'grid').dataset.compact === '1';
+  let h = '<thead><tr><th>key</th>' + (compact ? '' : '<th>crc32</th>') + '<th>localized text (en)</th></tr></thead><tbody>';
+  visible(v).forEach(o => {
+    const mod = st[v].modified.has(o.i) ? ' modified' : '';
+    h += '<tr>';
+    h += '<td class="key">' + o.r.key + '</td>';
+    if (!compact) h += '<td class="crc">' + o.r.crc + '</td>';
+    h += '<td class="val' + mod + '" ondblclick="editVal(event,\'' + v + '\',' + o.i + ')" title="double-click to edit">' + o.r.val + '</td>';
+    h += '</tr>';
+  });
+  h += '</tbody>';
+  q(v, 'grid').innerHTML = h;
+}
+
+function editVal(ev, v, i) {
+  const td = ev.target.closest('td'); if (td.querySelector('input')) return;
+  const old = st[v].rows[i].val;
+  td.innerHTML = '<input value="' + old.replace(/"/g, '&quot;') + '">';
+  const inp = td.querySelector('input'); inp.focus(); inp.select();
+  const commit = () => {
+    if (inp.value !== old) { st[v].rows[i].val = inp.value; st[v].modified.add(i); }
+    render(v);
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = old; inp.blur(); } });
+}
+
+function addKey(v) {
+  st[v].rows.unshift({ key: 'new_key_' + st[v].rows.length, crc: '0x········ (auto on save)', val: '' });
+  st[v].modified = new Set([...st[v].modified].map(i => i + 1)); st[v].modified.add(0);
+  st[v].sel = 0;
+  render(v);
+}
+function filterStf(v, t) { st[v].filter = t.trim(); render(v); }
+
+/* ── variant B ── */
+function renderKeylist() {
+  const s = st['b'];
+  q('b', 'keylist').innerHTML = visible('b').map(o =>
+    '<li class="' + (s.sel === o.i ? 'on' : '') + '" onclick="selKey(' + o.i + ')">' +
+    (s.modified.has(o.i) ? '<span class="mdot">●</span>' : '') + o.r.key + '</li>'
+  ).join('');
+}
+function selKey(i) { st['b'].sel = i; renderKeylist(); renderDetail(); }
+function renderDetail() {
+  const s = st['b']; const r = s.rows[s.sel];
+  if (!r) { q('b','detail').innerHTML = ''; return; }
+  const sib = SIBLINGS[r.key] || {};
+  q('b', 'detail').innerHTML =
+    '<div class="fld"><label>key (ascii)</label><input type="text" value="' + r.key + '" onchange="st.b.rows[' + s.sel + '].key=this.value; st.b.modified.add(' + s.sel + '); render(\'b\')"></div>' +
+    '<div class="fld"><label>crc32 · IEEE 0xEDB88320</label><div class="ro">' + r.crc + ' — recomputed on save</div></div>' +
+    '<div class="fld"><label>localized text — en (UTF-16LE)</label><textarea onchange="st.b.rows[' + s.sel + '].val=this.value; st.b.modified.add(' + s.sel + '); render(\'b\')">' + r.val + '</textarea></div>' +
+    '<div class="fld"><label>sibling locales</label>' +
+      '<div class="sibling"><span class="loc">de</span><span class="txt' + (sib.de ? '' : ' missing') + '">' + (sib.de || 'key missing in string/de/item_n.stf') + '</span></div>' +
+      '<div class="sibling"><span class="loc">fr</span><span class="txt' + (sib.fr ? '' : ' missing') + '">' + (sib.fr || 'key missing in string/fr/item_n.stf') + '</span></div>' +
+      '<div class="sibling"><span class="loc">ja</span><span class="txt' + (sib.ja ? '' : ' missing') + '">' + (sib.ja || 'key missing in string/ja/item_n.stf') + '</span></div>' +
+    '</div>';
+}
+
+/* ── gate flow ── */
+function runGate(v) {
+  const chip = q(v, 'gatechip'); const stage = q(v, 'stagechip');
+  chip.className = 'chip gate-run'; chip.textContent = 'gate: rebuilding index + payload…';
+  setTimeout(() => {
+    chip.className = 'chip gate-ok'; chip.textContent = '✓ byte-exact round-trip · CRC index rebuilt';
+    stage.style.display = 'inline-flex';
+    st[v].modified.clear(); render(v);
+  }, 750);
+}
+
+function toast(el, msg) {
+  const t = el.textContent; el.textContent = '✓ ' + msg;
+  setTimeout(() => { el.textContent = t; }, 1300);
+}
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('#variant-nav .variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+
+['a', 'b', 'c'].forEach(initV);
+</script>
+</body>
+</html>
