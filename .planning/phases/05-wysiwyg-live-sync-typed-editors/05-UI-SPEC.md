@@ -323,7 +323,7 @@ sibling-locale readout is the approved growth direction.
 | .stf toolbar | `Search keys and text…` · `＋ Add key` · `<visible> / <total> keys[ · <K> modified]` |
 | .stf search zero-result (grid body) | `No keys match "<query>"` (muted, centered — never a silent blank grid) |
 | .stf column headers | `key` · `crc32` · `localized text (<locale>)` |
-| .stf new-key CRC | `0x········ (unset)` — preserved verbatim thereafter, never auto-recomputed (D-10/Errata 4) |
+| .stf new-key CRC | `unset · assigned on first save` — preserved verbatim thereafter, never auto-recomputed (D-10/Errata 4; copy unified with 05-09 in the Phase-5 review round) |
 | .stf gate states | `round-trip gate: not run` → `gate: rebuilding index + payload…` → `✓ byte-exact round-trip · CRC index rebuilt` |
 | .stf footer note | `values are UTF-16LE · keys ASCII · sourceCrc preserved` (D-10/Errata 4 — supersedes "CRC32 auto") |
 | Live chip | `● Live · injected` (card) / `● Live · pid <pid>` (compact) — offline: `○ Offline` |
