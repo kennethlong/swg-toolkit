@@ -12,6 +12,7 @@ governing_sketches:
   - "018-stf-strings-editor — winner A (Flat key/value grid) → DATA-02"
   - "009-iff-tree-hex — winner B (shared tabstrip/crumb/gate-chip anatomy + content-width rule that 014/018 inherit)"
 locked_by: ".planning/todos/pending/phase5-plans-must-match-sketches.md"
+amended: "2026-07-08 — errata D-05, D-07, D-10, D-11 folded in, see ## Errata"
 ---
 
 # Phase 05 — UI Design Contract (WYSIWYG Live-Sync & Typed Editors)
@@ -30,6 +31,48 @@ locked_by: ".planning/todos/pending/phase5-plans-must-match-sketches.md"
 > **Refactor caveat (locked):** reusing or relocating an existing component (e.g. the
 > `DatatablePanel` placeholder, `LiveInspectorPanel`, `Viewport.tsx`) does NOT excuse divergence
 > from these sketches. Verification diffs each built surface against its sketch element-by-element.
+
+---
+
+## Errata (post-approval corrections — 2026-07-08)
+
+> This contract was approved 2026-07-07. Ground-truth research + maintainer decisions made the
+> following day corrected four points below (05-CONTEXT.md D-05/D-07/D-10/D-11). The sketch anatomy
+> everywhere else in this document is UNCHANGED — these four corrections supersede the specific
+> copy/scope noted, wherever it recurs below (state-encoding table, Surface 1 items 2/5/6/8,
+> Interaction Contract, Surface 2 type badges, Surface 3 anatomy, Copywriting Contract). Do not
+> re-derive the superseded copy from the recurring tables further down; these four corrections win.
+
+1. **D-05 — the viewport gizmo's offline write target is NOT `→ staged (patch)`.** That copy
+   remains correct for the **two typed editors** (DTII/`.stf`, which stage to working changes via
+   `＋ Stage`/the gate). It does NOT apply to the **gizmo or the transform-readout-bar numboxes**
+   (a numbox edit is the same write path as a gizmo drag) — offline, both are
+   **disabled-with-reason**, copy exactly `○ Offline — attach a client to move objects live`. No
+   staging, no fake local-only move: a live object has no file target until `.ws` placement editing
+   lands in Phase 7 (FMT-02). See `05-10-PLAN.md` (gizmo) / `05-11-PLAN.md` (readout bar).
+2. **D-07 — DTII type badges are not `s`/`i`/`f`-only.** SWG DTII has 10 column types
+   (`DT_Int/Float/String/HashString/Enum/Bool/BitVector/Comment/PackedObjVars` + table-sourced
+   `z(...)` Enum); the grid editor (Surface 2) designs an inline editor AND a type badge for every
+   non-Comment type — Enum (dropdown), Bool (checkbox), BitVector (flag chips), HashString/
+   PackedObjVars/`z(...)` (typed badges over the same underlying int/string physical storage) —
+   inside the SAME badge/letter-carries-type + color-reinforcement idiom the `s`/`i`/`f` badges
+   establish, never a redesign. `DT_Comment` never appears in a compiled `.iff` (stripped at
+   spreadsheet-compile time) and gets no badge. See `05-02-PLAN.md` (native physical-type dispatch).
+3. **D-11 — `.stf` is not a flat `key|crc32|text` grid underneath.** On disk it is two
+   independently-ordered sections: an id-ascending string table (`id, sourceCrc, buflen, buflen*2
+   bytes UTF-16LE text`) and a separate name-ascending key→id map — not one row-per-key table. The
+   magic is the 4-byte integer `0xABCD` (LE bytes `CD AB 00 00`), never ASCII `"STF␠"`. Surface 3's
+   grid still presents a flat key/value UX (id/name resolved into one visual row per string), but
+   the model and round-trip gate underneath MUST preserve both sections' independent order — a
+   fixture where both orders coincidentally match would not catch a regression here. See
+   `05-05-PLAN.md`.
+4. **D-10 — `.stf`'s `crc32` column is not "auto"-recomputed on save.** The per-string CRC on disk
+   (`sourceCrc`) is the CRC of the **source-language** text a translation was generated from — a
+   translation-staleness marker, not a self-hash of the edited row. Default save behavior
+   **preserves `sourceCrc` byte-identical**; it is never recomputed from the edited row's own text.
+   The "CRC32 auto" / "0x········ (auto on save)" copy below is retired in favor of a read-only
+   `sourceCrc` column plus an explicit, opt-in **"mark re-synced to source"** action that recomputes
+   it from the default-locale file's current text. See `05-05-PLAN.md`.
 
 ---
 
@@ -120,13 +163,13 @@ Conventions (from sketches, locked):
 5. Focus ring (`--focus-ring`) and active dockview sash.
 
 **Secondary semantic colors (existing tokens — sparingly, always triple-encoded):**
-- `--color-warn` `#e0a13a` — **the modified/dirty channel**: modified cell left-border/bg tint/`●` suffix, row `●`, tab `●`; offline live-chip glyph `○` + dashed border + `file-patch fallback` row; `→ staged (patch)` write target when offline; statusbar offline span.
+- `--color-warn` `#e0a13a` — **the modified/dirty channel**: modified cell left-border/bg tint/`●` suffix, row `●`, tab `●`; offline live-chip glyph `○` + dashed border + `file-patch fallback` row; `→ staged (patch)` write target when offline (editors only — see Errata 1 for the gizmo/readout-numbox exception); statusbar offline span.
 - `--color-danger` `#e0584f` — guard-blocked card border + banner, gate-fail chip/banner, `Revert ALL` / `Revert to snapshot` buttons (danger-outline), per-write revert hover.
 - `--color-info` `#4a8cff` — gate-running chip text, `→ staged in working changes` chip.
 
 **Sketch-locked fixed hexes (do NOT theme-switch — they encode axis/type identity):**
 - Gizmo axes: **X `#e0584f` / Y `#6db33f` / Z `#4a8cff`** — each axis ALWAYS carries its letter label (X/Y/Z text on the arrow and on the readout axis tag); color never carries axis identity alone.
-- Column type badges: `s` `#7fb2ff` on `rgba(120,180,255,.13)` · `i` `#7dd68a` on `rgba(160,255,170,.10)` · `f` `#e8b46a` on `rgba(255,200,120,.12)` — the badge letter carries the type; color is reinforcement.
+- Column type badges: `s` `#7fb2ff` on `rgba(120,180,255,.13)` · `i` `#7dd68a` on `rgba(160,255,170,.10)` · `f` `#e8b46a` on `rgba(255,200,120,.12)` — the badge letter carries the type; color is reinforcement. **Widened beyond s/i/f to all 9 non-Comment DTII types per D-07/Errata 2** — same letter+color-reinforcement idiom; additional badge letters/hexes are the DTII grid-editor plan's call.
 - Modified-cell tint `rgba(230,180,80,0.07)`; fail-banner tint `rgba(230,90,90,.08)`; hex highlight `rgba(230,180,80,.15)`.
 
 **Live ↔ offline state encoding (011 locked rule — never color alone):**
@@ -135,7 +178,7 @@ Conventions (from sketches, locked):
 | Glyph | `●` (accent) | `○` (warn) |
 | Border | solid `--color-accent-line` | **dashed** `--color-warn` |
 | Label | `Live · injected` / `Live · pid <pid>` | `Offline` + `mode: file-patch fallback` row |
-| Write target | `→ client ✓` (accent) | `→ staged (patch)` (warn) |
+| Write target | `→ client ✓` (accent) | `→ staged (patch)` (warn) — **editors only; the gizmo/readout numboxes use disabled-with-reason instead, see Errata 1** |
 
 Offline is a **first-class safe mode, not an error state** (LIVE-05) — no danger styling, no error copy.
 
@@ -186,7 +229,7 @@ is a plan `must_have`.
    - **`⟲ Revert ALL to snapshot`** button (danger-outline, full-width) below the log.
 3. **Gizmo-mode rail, left edge, vertically centered** — vertical buttons 40px wide, icon over key label: `✥ W` Move · `⟳ E` Rotate · `⤢ R` Scale · `✛ Q` Universal. Active = `--color-accent-dim` fill + accent border + accent text. Keyboard shortcuts W/E/R/Q live.
 4. **Transform gizmo on the model** — X/Y/Z arrows in the fixed axis hexes, each with a letter label and a wide invisible hit stroke (~16px); hover thickens line 2.6→4.2 and enlarges the label; center dot accent. Cursor `grab`/`grabbing`.
-5. **Bottom transform readout bar, bottom-center** — translucent bar: `Pos` group (X/Y/Z axis tags + 52px right-aligned mono numboxes), `Rot` group, `Scale` group, then a border-left-separated **write-target indicator**: `⇄ writing to client → client ✓` (live) / `⇄ staging patch → staged (patch)` (offline). Numboxes mirror the gizmo live during drag AND accept typed values (numbox edit = same write path as a drag).
+5. **Bottom transform readout bar, bottom-center** — translucent bar: `Pos` group (X/Y/Z axis tags + 52px right-aligned mono numboxes), `Rot` group, `Scale` group, then a border-left-separated **write-target indicator**: `⇄ writing to client → client ✓` (live, numboxes editable) / disabled-with-reason `○ Offline — attach a client to move objects live` (offline, numboxes disabled — Errata 1; NOT `staged (patch)`, since a numbox edit is the identical write path as a gizmo drag and has no file target yet). Numboxes mirror the gizmo live during drag AND accept typed values when live (numbox edit = same write path as a drag).
 6. **Floating delta readout while dragging** — top-center, only during drag: `Δ pos.x +0.42m → client ✓` (axis accent-bold, value mono, target reflects live/offline).
 7. **Corner axis gizmo, bottom-right** + **vp-stats, bottom-left**: `persp · <W>×<H> · <fps> fps · SAB ✓` (faint mono).
 8. **Statusbar mirror (extend `StatusBar.tsx`)**: mesh name · `mode: Move (W)` · `sync: ● Live · injected · pid <pid>` (or `○ Offline — file-patch fallback`, warn) · `COW snapshot ✓` · `guard: read-verify ✓` (or `read-verify ✗ — write refused`, warn). Every surface (chip, card, readout, statusbar) switches together on live↔offline.
@@ -199,8 +242,9 @@ is a plan `must_have`.
 
 **Interaction contract (LIVE-03 SC1):** the drag → SAB write → readout update path runs at 60fps
 with **zero allocation** — HUD numbox/delta text updates during drag are imperative (refs/direct
-DOM), never per-frame React state churn. Offline mode reroutes the identical gesture to the
-staging path (`→ staged (patch)`), no feature gated behind injection (LIVE-05).
+DOM), never per-frame React state churn. Offline, the gizmo and readout-bar numboxes are
+disabled-with-reason (Errata 1) — LIVE-05 is satisfied by the two typed editors working fully
+offline, not by the gizmo/readout write path.
 
 ### Surface 2 — DTII datatable grid editor (DATA-01; sketch 014-D)
 
@@ -210,13 +254,13 @@ Full editor tab (main editor group, ~940–1080px). Anatomy top→bottom — eve
 2. **Crumb bar** (`--color-header` bg, mono): `FORM DTII ▸ FORM 0001 ▸ DATA` (tags bold/text-color) · **`Grid | Hex` segmented toggle** (active side accent-dim/accent) · spacer · action buttons: `⇄ Compare to base` (ghost) · `＋ Stage` (ghost) · **`Save · run gate`** (primary accent).
 3. **Grid toolbar**: `Filter rows…` text input (filters by name column) · separator · `＋ Row` · `− Row` · right-aligned count chip `N rows · M cols[ · K cell(s) modified]` (faint mono).
 4. **The grid** (Grid view; virtualized; content-width/left-packed per 009's rule):
-   - Sticky header: column name + **type badge** `s`/`i`/`f` (fixed badge hexes) + accent sort arrow `▲`/`▼` on the sorted column; click header to sort (toggle direction).
+   - Sticky header: column name + **type badge** `s`/`i`/`f` (fixed badge hexes) + accent sort arrow `▲`/`▼` on the sorted column; click header to sort (toggle direction). **Badge set widens to all 9 non-Comment DTII types (D-07/Errata 2 — Enum/Bool/BitVector/HashString/PackedObjVars/z-Enum), same idiom.**
    - Sticky left row-number column (`--color-header` bg, faint mono, right-aligned) — shows warn `●` before the number when any cell in the row is modified.
    - Cells: mono, muted (string column = full text color); hover `--color-widget`; `cursor: cell`; **double-click to edit** (inline input, accent-line border; Enter commits, Escape cancels, blur commits); typed coercion per column type (`i` → int, `f` → float).
    - **Modified cell triple-encoding**: inset 3px warn left border + `rgba(230,180,80,0.07)` bg + `" ●"` warn suffix → row-number `●` → tab `●`.
    - Row click selects (accent-dim row) and populates the rail's Selected-row inspector.
 5. **Schema rail** (right, 250px, `--color-surface-2`, each section collapsible with rotating `▾` twisty):
-   - `Schema · COLS / TYPE` — one row per column: type badge + name + storage type (`ascii·z` / `int32` / `float32`, faint).
+   - `Schema · COLS / TYPE` — one row per column: type badge (widened set, Errata 2) + name + storage type (`ascii·z` / `int32` / `float32`, faint).
    - `Selected row` — vertical key/value inspector of the selected row; modified values in warn; empty state `Click a row…` (faint).
    - `Round-trip gate` — kv rows: `last run` (`never` / `just now`), `result` (`—` / `✓ byte-exact` / `✗ mismatch @0x<off>`), `bytes` (`DATA <N> B`).
 6. **Hex view** (toggle target): 3-column hex dump — faint offset gutter, bytes grouped 8+8, accent ASCII gutter — with the **edited cell's bytes highlighted** (warn tint) and caption: `highlighted: <col> (<type>) row <n> — the cell you edit in Grid view is these bytes`.
@@ -236,16 +280,22 @@ staged" (CORE-05 standing gate surfaced as UI). Pass → staged; fail → diagno
 
 Full editor tab, direct **sibling of 014** — same tabstrip/crumb/gate-chip anatomy (shared
 components mandatory). One file = one locale; other locales are sibling files in the VFS tree (no
-locale chips — 018-B was not selected). Every element is a plan `must_have`:
+locale chips — 018-B was not selected). **The on-disk layout, magic, and `crc32`/`sourceCrc`
+semantics described below are corrected by D-10/D-11 — see Errata 3–4; the flat key/value UX
+presented to the user is unchanged.** Every element is a plan `must_have`:
 
 1. **Dockview tab**: `<file>.stf — Strings` + warn `●` mod-dot while dirty.
-2. **Crumb bar**: `string/<locale>/<file>.stf · STF␠ · <N> entries (<M> shown)` (locale + magic bold, mono) · spacer · `⇄ Compare to base` · `＋ Stage` · **`Save · run gate`** (primary).
+2. **Crumb bar**: `string/<locale>/<file>.stf · STF␠ · <N> entries (<M> shown)` (locale + magic bold, mono; `STF␠` is a human-readable display label — the real on-disk magic is the 4-byte integer `0xABCD`, Errata 3) · spacer · `⇄ Compare to base` · `＋ Stage` · **`Save · run gate`** (primary).
 3. **Toolbar**: `Search keys and text…` input — **filters by key AND localized text** · **`＋ Add key`** · right count chip `<visible> / <total> keys[ · K modified]`.
 4. **The grid** (flat table, virtualized): columns **`key | crc32 | localized text (<locale>)`**.
    - `key`: mono, text color, nowrap. New rows get an inline key input.
-   - `crc32`: mono, faint, `--text-xs` — **read-only / machine-owned, never editable**; recomputed on save; new keys display `0x········ (auto on save)`.
+   - `sourceCrc` (displayed as `crc32` for user familiarity): mono, faint, `--text-xs` — **read-only /
+     machine-owned, never editable**; **preserved byte-identical on save, never recomputed from
+     the edited row (D-10/Errata 4)**; a new key with no source text yet displays
+     `0x········ (unset)`. An explicit, separate **"mark re-synced to source"** action (not
+     implicit on save) recomputes it from the default-locale file's current text.
    - `localized text`: takes remaining width; long strings wrap (`vertical-align: top`); **double-click to edit** (Enter commits, Escape cancels); modified value triple-encodes (warn left border + tint + `●` suffix) → tab `●`.
-5. **Gate bar**: same shared chip machine as 014 with .stf copy — running: `gate: rebuilding index + payload…`; pass: **`✓ byte-exact round-trip · CRC index rebuilt`** + `→ staged in working changes` chip + modified marks clear. Right-aligned faint mono note: `values are UTF-16LE · keys ASCII · CRC32 auto`.
+5. **Gate bar**: same shared chip machine as 014 with .stf copy — running: `gate: rebuilding index + payload…`; pass: **`✓ byte-exact round-trip · CRC index rebuilt`** + `→ staged in working changes` chip + modified marks clear. Right-aligned faint mono note: `values are UTF-16LE · keys ASCII · sourceCrc preserved` (D-10/Errata 4 — supersedes the earlier "CRC32 auto" copy).
 6. **Fail state**: inherits 014's anatomy — gate-fail chip `✗ round-trip mismatch — not staged` + danger banner naming offset + expected/got bytes + not-staged guarantee. (018-A doesn't demo it; the sibling contract requires it via the shared `GateBar`/`FailBanner`.)
 
 Documented fallback (do not build now): if cross-locale pain shows in real use, 018-B's per-key
@@ -273,9 +323,9 @@ sibling-locale readout is the approved growth direction.
 | .stf toolbar | `Search keys and text…` · `＋ Add key` · `<visible> / <total> keys[ · <K> modified]` |
 | .stf search zero-result (grid body) | `No keys match "<query>"` (muted, centered — never a silent blank grid) |
 | .stf column headers | `key` · `crc32` · `localized text (<locale>)` |
-| .stf new-key CRC | `0x········ (auto on save)` |
+| .stf new-key CRC | `0x········ (unset)` — preserved verbatim thereafter, never auto-recomputed (D-10/Errata 4) |
 | .stf gate states | `round-trip gate: not run` → `gate: rebuilding index + payload…` → `✓ byte-exact round-trip · CRC index rebuilt` |
-| .stf footer note | `values are UTF-16LE · keys ASCII · CRC32 auto` |
+| .stf footer note | `values are UTF-16LE · keys ASCII · sourceCrc preserved` (D-10/Errata 4 — supersedes "CRC32 auto") |
 | Live chip | `● Live · injected` (card) / `● Live · pid <pid>` (compact) — offline: `○ Offline` |
 | Client card rows | `client` / `pid` / `fps` / `last sync` / `COW snapshot` (`✓ saved · <HH:MM:SS>` · `✓ restored · just now` · `○ staged`) / `read-verify` / `mode: file-patch fallback` (offline only) |
 | Guard row | `✓ client bytes = snapshot` / `✗ client bytes ≠ snapshot` |
@@ -283,7 +333,8 @@ sibling-locale readout is the approved growth direction.
 | Revert ALL | `⟲ Revert ALL to snapshot` |
 | Guard-blocked banner | `✗ Write refused. The object's memory changed outside the toolkit (<addr>: expected <bytes>, read <bytes>) — the game or another tool moved it. Nothing was written.` + `↻ Re-read & retry` / `⟲ Revert to snapshot` |
 | Reverted banner | `✓ Reverted. Transform restored from the COW snapshot taken at attach (<HH:MM:SS>). The in-game object snapped back — nothing is staged.` |
-| Write target | `→ client ✓` (live) / `→ staged (patch)` (offline); readout label `writing to client` / `staging patch` |
+| Write target (editors) | `→ client ✓` (live) / `→ staged (patch)` (offline) |
+| Write target (gizmo/readout numboxes) | `writing to client → client ✓` (live) / `○ Offline — attach a client to move objects live` (offline, disabled — Errata 1; NOT `staged (patch)`) |
 | Drag delta | `Δ pos.<axis> <±0.00>m → client ✓` |
 | Statusbar segments | `mode: Move (W)` · `sync: ● Live · injected · pid <pid>` / `sync: ○ Offline — file-patch fallback` · `COW snapshot ✓` · `guard: read-verify ✓` / `guard: read-verify ✗ — write refused` |
 | Gizmo modes | `Move (W)` · `Rotate (E)` · `Scale (R)` · `Universal (Q)` |

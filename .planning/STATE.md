@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
+status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-07-08T00:01:42.823Z"
-last_activity: 2026-07-07
+last_updated: "2026-07-08T13:12:09.670Z"
+last_activity: 2026-07-08 -- Phase 05 planning complete
 progress:
   total_phases: 13
   completed_phases: 9
-  total_plans: 73
+  total_plans: 85
   completed_plans: 73
-  percent: 100
+  percent: 86
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 Phase: 5
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
         found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
         `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
         REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02, viewport-default-facing-axis,
@@ -39,7 +39,7 @@ Next: run the phase close-out chain — code_review_gate (/gsd:code-review 04.4)
       (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet) or /gsd:review-backlog triage
       first (new todos: server-binding-post-create-ux, vcs-panel-sketch-and-placement,
       e2e-leaked-temp-studios).
-Last activity: 2026-07-07
+Last activity: 2026-07-08 -- Phase 05 planning complete
   04.4-15: D-22 real-server push→reset round-trip approved against live Core3 (WSL2). New todos
   captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
   e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.

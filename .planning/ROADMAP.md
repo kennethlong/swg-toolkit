@@ -335,7 +335,31 @@ Plans:
   2. A bad live write can be reverted via the changeset/snapshot system (read-verify guard before write).
   3. The user can view and edit DTII datatables in a virtualized grid and save them back, passing the byte-exact round-trip gate.
   4. The user can view and edit `.stf` localized strings and save them back, passing the byte-exact round-trip gate.
-**Plans**: TBD
+**Plans**: 12 plans
+Plans:
+**Wave 1**
+- [ ] 05-01-PLAN.md — Command-slot channel contract + native seqlock extension + pure read-verify guard (write.h/.cpp)
+- [ ] 05-02-PLAN.md — DTII native parser/serializer (DataTable.h/.cpp) + N-API binding + CORE-05 fixture
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 05-03-PLAN.md — Agent integration: setTransform_o2w write-slot + setScale (D-09) + legacy 64-bit networkId + 60fps guarded poll loop + clean stop-signal
+- [ ] 05-04-PLAN.md — Host N-API writeCommand export (channel_binding.cpp)
+- [ ] 05-05-PLAN.md — .stf native parser/serializer (two-section layout, sourceCrc-preserving) + N-API binding + CORE-05 fixture
+- [ ] 05-06-PLAN.md — Shared GateBar/GateChip/FailBanner + DatatableGridEditor core grid (crumb/toolbar/virtualized typed grid, D-07 widened badges)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 05-07-PLAN.md — Renderer write path: useCommandWriter (zero-alloc) + liveStore COW/write-log/guard extension + detach control wiring
+- [ ] 05-08-PLAN.md — DatatableGridEditor completion: SchemaRail + Hex toggle + gate-bar wiring to native round-trip + staging + dockview tab (retires DatatablePanel placeholder)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 05-09-PLAN.md — StfStringsEditor (sibling reuse of shared gate/grid idiom) + gate wiring + dockview tab
+- [ ] 05-10-PLAN.md — TransformGizmo (restyled drei TransformControls, 4 modes, D-05 offline disabled-with-reason) + GizmoModeRail
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 05-11-PLAN.md — LiveSyncClientCard (full B2 safety states) + TransformReadoutBar + StatusBar mirror + corner-gizmo/vp-stats + final Viewport wiring
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 05-12-PLAN.md — GC-pressure soak test + maintainer in-world UAT checkpoint (both targets, incl. Scale) [autonomous: false]
 **UI hint**: yes
 
 ### Phase 6: Blender Bridge
@@ -393,7 +417,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 4.2 -> 4.3 -> 4
 | 4.2 Dev-Client Support & Loose-Override Deploy *(INSERTED)* | 6/6 | Complete | 2026-07-03 |
 | 4.3 Versioning Model & SearchTOC Mount Completion *(INSERTED)* | 12/12 | Complete | 2026-07-03 |
 | 4.4 UX Polish & Deploy Hardening *(INSERTED)* | 0/15 | Planned, not executed | - |
-| 5. WYSIWYG Live-Sync & Typed Editors | 0/TBD | Not started | - |
+| 5. WYSIWYG Live-Sync & Typed Editors | 0/12 | Planned, not executed | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
 | 8. Parity, Navmesh, MCP & AI | 0/TBD | Not started | - |

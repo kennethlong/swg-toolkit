@@ -637,10 +637,10 @@ Transform, LiveState) and the `setTransform_o2w`/`setObjectToWorldDirty`/`setSca
 findings are `[VERIFIED]` against exact `file:line` citations in `../swg-client-v2` / `../Utinni` /
 this repo, not `[ASSUMED]`.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **How should the Scale gizmo mode behave on the advertised client, given `setScale` has no
-   advertised endpoint?**
+1. **(RESOLVED — D-09, 2026-07-08 maintainer correction)** How should the Scale gizmo mode behave on the advertised client, given `setScale` has no
+   advertised endpoint?
    - What we know: `object::setScale` is absent from `engine_advertise.cpp`'s full catalog; only a
      legacy Utinni RVA (`0x00B23A10`) exists, which only helps against the out-of-scope-fenced legacy
      SWGEmu build.
@@ -652,8 +652,9 @@ this repo, not `[ASSUMED]`.
      mode's write behavior; in the meantime, plan Scale mode's UI to at minimum not silently pretend
      to work when it can't reach the client.
 
-2. **`z(tableName)` DT_Enum variant needs to load a sibling DataTable — how does that interact with
-   the toolkit's VFS/mount model?**
+2. **(RESOLVED — D-12: treated as a read-only/opaque int column in Phase 5; no cross-table
+   `DataTableManager` resolution built now)** `z(tableName)` DT_Enum variant needs to load a sibling
+   DataTable — how does that interact with the toolkit's VFS/mount model?
    - What we know: `DataTableColumnType`'s `'z'` branch calls `DataTableManager::getTable(fileName,
      true)` (`DataTableColumnType.cpp:203`) to populate its enum labels from another table's first two
      columns.
@@ -665,8 +666,10 @@ this repo, not `[ASSUMED]`.
      over-building this; if rare, treat as a documented editor limitation (numeric-only edit, no
      dropdown) rather than blocking the phase on a full cross-table resolution system.
 
-3. **Is the UI-SPEC crumb bar's `FORM DTII ▸ FORM 0001 ▸ DATA` meant to reflect the literal IFF tree,
-   or is "DATA" an intentional abstraction over the three sibling `COLS`/`TYPE`/`ROWS` chunks?**
+3. **(RESOLVED — NON-BLOCKING, D-12: low-stakes; planner may name the real `COLS`/`TYPE`/`ROWS`
+   chunks in the crumb, does not block planning either way)** Is the UI-SPEC crumb bar's
+   `FORM DTII ▸ FORM 0001 ▸ DATA` meant to reflect the literal IFF tree, or is "DATA" an intentional
+   abstraction over the three sibling `COLS`/`TYPE`/`ROWS` chunks?
    - What we know: the real tree has no `DATA` node — `FORM 0001` directly contains three sibling
      chunks.
    - What's unclear: designer intent — is this cosmetic labeling (fine) or an assumption that will
@@ -675,7 +678,9 @@ this repo, not `[ASSUMED]`.
    - Recommendation: low-stakes — confirm with a one-line maintainer check or just change the crumb to
      name the real chunks; does not block planning either way.
 
-4. **What should happen to `.stf`'s `sourceCrc` field when the toolkit edits a string?**
+4. **(RESOLVED — D-10: preserve `sourceCrc` verbatim on every edit, plus an explicit opt-in
+   "mark re-synced to source" action; option (a) below is the locked default)** What should happen
+   to `.stf`'s `sourceCrc` field when the toolkit edits a string?
    - What we know: on disk it's the CRC of the *source-language* text a translation was generated
      from, not a hash of the edited row itself; the UI-SPEC's "CRC32 auto" copy implies a naive
      self-hash that would corrupt this semantic for every translated-locale file.
