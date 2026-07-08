@@ -120,6 +120,47 @@ deliberate divergences from the UI-SPEC that require errata** (see D-05 and D-08
   GateBar/FailBanner), and the type-badge set widens beyond `s/i/f` (keep the letter-carries-type +
   color-reinforcement accessibility rule). This is an in-idiom extension, not a redesign.
 
+### Session addenda — research-driven maintainer decisions (2026-07-08)
+
+Resolved from `05-RESEARCH.md` Open Questions after the ground-truth pass (`af1c1a4`):
+
+- **D-09: Scale gizmo mode = disabled-with-reason on the advertised client.** Research ground-truth
+  found `object::setScale` has **NO advertised endpoint** (`engine_advertise.cpp` catalog checked
+  directly — only `getTransform_o2w`/`setTransform_o2w`/`setPosition_w` are advertised; the only
+  `setScale` is a legacy Utinni RVA `0x00B23A10`, which is out-of-scope-fenced legacy SWGEmu). D-01's
+  `setTransform_o2w` alone is sufficient for Move+Rotate (ground-truth trace `Object.cpp:1450→744→1250`
+  shows it internally calls `setObjectToWorldDirty(true)` and fires the full notification list — a
+  separate `setObjectToWorldDirty` call is neither advertised nor needed, correcting D-01's parenthetical).
+  **Scale mode ships in the rail but its write-target indicator reads a disabled/no-endpoint reason**
+  (mirror D-05's disabled-with-reason pattern). It must NOT silently pretend to write. Move+Rotate are
+  fully live. Revisit if an appearance-level scale setter is found in a later phase.
+
+- **D-10: `.stf` `sourceCrc` = preserve verbatim on save + explicit "re-sync to source" action.** Research
+  falsified the UI-SPEC's "CRC32 auto on save" assumption: the per-string `sourceCrc` on disk is the CRC
+  of the **source-language** text a translation was generated from (a translation-staleness marker), NOT
+  a self-hash of the edited row (verified vs `LocalizedString.cpp:generateCrc()` +
+  `LocalizedStringTableReaderWriter`). **Default save behavior: preserve `sourceCrc` byte-identical** —
+  never recompute it from the edited row's own text (that would corrupt staleness for every
+  translated-locale file and, per Pitfall 4, could falsely pass the round-trip gate while breaking
+  semantics). **Plus an explicit, opt-in "mark re-synced to source" action** that recomputes `sourceCrc`
+  from the default-locale file's current text. The naive auto-CRC-on-save copy is a **UI-SPEC ERRATUM**.
+
+- **D-11 (STF layout erratum): `.stf` is two independently-ordered sections, not a flat `key|crc32|text`
+  grid.** Magic is a 4-byte integer `0xABCD` (not ASCII `"STF "`). File = an id-ascending string table
+  (each entry: `id(4B), sourceCrc(4B), buflen(4B), buflen*2 bytes UTF-16LE text`) followed by a
+  name-ascending key→id map. The editor MUST round-trip BOTH sections independently (Pitfall 4). This is
+  a **UI-SPEC ERRATUM** the plan must fold in alongside D-05/D-07.
+
+- **D-12: DTII 10 types collapse to 3 physical wire encodings.** The 10 `DataType` values map to exactly
+  3 `DataTableCell::CellType` encodings (int32/float32/string) via `getBasicType()`; the other 7 are
+  type-spec-string-driven UI/validation layers over an int or string column. `DT_Comment` never appears
+  in a compiled `.iff` (stripped at spreadsheet-compile time) — do not build a physical decoder for it.
+  D-07's "editors for all 10 types" stands as a **UI concern**, but the native round-trip decoder needs
+  only the 3 physical types. **`z(tableName)` DT_Enum** (loads labels from a sibling DataTable) is treated
+  as a **read-only/opaque int column** in Phase 5 unless a real fixture uses it (Open Question 2 safe
+  default — no cross-table `DataTableManager` resolution built now). The crumb bar's `DATA` node is a
+  cosmetic label — plan may name the real `COLS`/`TYPE`/`ROWS` chunks (Open Question 3, low-stakes).
+
 ### Claude's Discretion / Planner decides
 
 - **Wave sequencing** — the maintainer chose "let planner sequence." Order the waves from the
