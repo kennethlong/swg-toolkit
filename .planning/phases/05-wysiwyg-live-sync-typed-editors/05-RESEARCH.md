@@ -15,11 +15,26 @@ CONTEXT.md's D-01: **`setObjectToWorldDirty` does not need to be called separate
 client's `setTransform_o2w` → `setTransform_o2p` → `positionAndRotationChanged()` call chain
 **already calls `setObjectToWorldDirty(true)` internally** and fires the render/collision
 notification list. It is also **not advertised** on the advertised-client endpoint table at all, so
-there is no way to call it separately even if desired. A second, more consequential finding: **there
-is no advertised or legacy-viable write endpoint for object *scale*** — `object::setScale` is absent
-from `engine_advertise.cpp`'s catalog entirely (only a legacy Utinni RVA exists, `0x00B23A10`,
-useless against the advertised build). This is a real scope gap in the Scale gizmo mode that the
-planner must explicitly address (see Pitfall 1 and Open Questions).
+there is no way to call it separately even if desired.
+
+> **⚠ CORRECTED 2026-07-08 (maintainer) — SCOPE ERROR IN THIS SECTION.** The original text below
+> claimed Scale had "no advertised or legacy-viable write endpoint" and called the legacy RVA
+> "useless against the advertised build." That rested on a **wrong scope assumption**: it treated the
+> legacy SWGEmu build as fenced out. **SWGEmu is IN scope** — both SWGEmu (legacy known-RVA) and
+> swg-client-v2 (advertised) are explicit Phase-5 targets; the only Phase-3 fence is
+> AOB/unknown-build/x64. Corrected write paths for `object::setScale`: **(1) legacy SWGEmu** — known
+> RVA `0x00B23A10` (`Utinni/.../object.cpp:155`), Utinni-proven, harvest per the Phase-3 idiom;
+> **(2) advertised swg-client-v2** — via `GetEngineHookPoints()`; `setScale` is not in the catalog
+> dump this session read, but the maintainer's client is intended to advertise the full Utinni
+> surface, so this is a **one-row hookpoint addition**, not a missing capability. **Scale IS in scope
+> and writes live on both targets.** See CONTEXT.md D-09 (corrected). Pitfall 1 and Open Question 1
+> below are superseded by D-09.
+
+~~A second, more consequential finding: **there is no advertised or legacy-viable write endpoint for
+object *scale*** — `object::setScale` is absent from `engine_advertise.cpp`'s catalog entirely (only
+a legacy Utinni RVA exists, `0x00B23A10`, useless against the advertised build). This is a real scope
+gap in the Scale gizmo mode that the planner must explicitly address (see Pitfall 1 and Open
+Questions).~~ *(struck — see correction above)*
 
 Tracks 2 and 3 (DATA-01/DATA-02) are grounded directly in the client's own `DataTable`/
 `DataTableColumnType`/`DataTableWriter` and `LocalizedStringTable`/`LocalizedStringTableRW` source.
@@ -38,8 +53,9 @@ byte-exact round-trip must reproduce independently, and the on-disk magic is a 4
 
 **Primary recommendation:** Build the command-slot write path as a straightforward extension of the
 existing seqlock channel (same shared mapping, mirrored protocol, agent-side poll-and-apply loop
-calling only `setTransform_o2w`), explicitly descope/flag Scale live-writes on the advertised client
-as a known gap, and build DTII/STF native parse+serialize as two new files in
+calling `setTransform_o2w` for Move/Rotate and `setScale` for Scale — see D-09 correction; Scale is
+IN scope on both the advertised (add the `GetEngineHookPoints` row) and legacy SWGEmu (RVA
+`0x00B23A10`) targets), and build DTII/STF native parse+serialize as two new files in
 `packages/native-core/modules/core/formats/` registered with the existing `packages/harness`
 CORE-05 fixture registry — reusing the already-verified `Crc.cpp`/`crc32.ts` port for `.stf`'s CRC
 fields. Route both UI-SPEC corrections (offline-gizmo copy already flagged as D-05; add the two new

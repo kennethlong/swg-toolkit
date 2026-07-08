@@ -124,16 +124,25 @@ deliberate divergences from the UI-SPEC that require errata** (see D-05 and D-08
 
 Resolved from `05-RESEARCH.md` Open Questions after the ground-truth pass (`af1c1a4`):
 
-- **D-09: Scale gizmo mode = disabled-with-reason on the advertised client.** Research ground-truth
-  found `object::setScale` has **NO advertised endpoint** (`engine_advertise.cpp` catalog checked
-  directly — only `getTransform_o2w`/`setTransform_o2w`/`setPosition_w` are advertised; the only
-  `setScale` is a legacy Utinni RVA `0x00B23A10`, which is out-of-scope-fenced legacy SWGEmu). D-01's
-  `setTransform_o2w` alone is sufficient for Move+Rotate (ground-truth trace `Object.cpp:1450→744→1250`
-  shows it internally calls `setObjectToWorldDirty(true)` and fires the full notification list — a
-  separate `setObjectToWorldDirty` call is neither advertised nor needed, correcting D-01's parenthetical).
-  **Scale mode ships in the rail but its write-target indicator reads a disabled/no-endpoint reason**
-  (mirror D-05's disabled-with-reason pattern). It must NOT silently pretend to write. Move+Rotate are
-  fully live. Revisit if an appearance-level scale setter is found in a later phase.
+- **D-09: Scale gizmo mode IS in scope and writes live on BOTH target builds.** *(Corrected 2026-07-08
+  by maintainer — supersedes the initial "disabled-with-reason descope", which rested on a research
+  scope error: it wrongly treated the legacy SWGEmu build as fenced out. SWGEmu and swg-client-v2 are
+  BOTH explicit in-scope targets — the only Phase-3 fence is AOB/unknown-build/x64, NOT SWGEmu.)*
+  Ground-truth write paths for `object::setScale`:
+  - **Legacy SWGEmu (in scope):** known RVA `setScale = 0x00B23A10` (`Utinni/UtinniCore/swg/object/object.cpp:155`,
+    `pSetScale = void(__thiscall*)(Object*, Vector& scale)`) — harvest per the Phase-3 in-process idiom,
+    exactly as Move/Rotate are.
+  - **swg-client-v2 advertised (in scope):** written via the advertised `GetEngineHookPoints()` table
+    (`engine_advertise.cpp:456`, `s_engineHookPoints[]`). `object::setScale` is not in the current
+    catalog dump the research read, but the maintainer's advertised client is intended to advertise the
+    full Utinni surface — so this is a **one-row hookpoint addition** (add `object::setScale` alongside
+    `setTransform_o2w`), not a missing capability. **Plan task: confirm/add the advertised `setScale`
+    hookpoint row, then wire Scale writes on the advertised path.**
+  D-01's `setTransform_o2w` remains sufficient for Move+Rotate (ground-truth trace `Object.cpp:1450→744→1250`
+  shows it internally calls `setObjectToWorldDirty(true)` and fires the full notification list — a separate
+  `setObjectToWorldDirty` call is neither needed nor advertised, correcting D-01's parenthetical). Scale
+  writes through `setScale(Vector)` (its own call, separate from the 48-byte transform). Disabled-with-reason
+  now applies ONLY to a genuinely-unknown/fenced build lacking the hook — never to the two in-scope targets.
 
 - **D-10: `.stf` `sourceCrc` = preserve verbatim on save + explicit "re-sync to source" action.** Research
   falsified the UI-SPEC's "CRC32 auto on save" assumption: the per-string `sourceCrc` on disk is the CRC
