@@ -2,7 +2,19 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-07-01-phase-04.3-uat-and-sonnet5-config.md](2026-07-01-phase-04.3-uat-and-sonnet5-config.md)** — ACTIVE. ← start here.
+- **[2026-07-09-phase05-plan-review-round3.md](2026-07-09-phase05-plan-review-round3.md)** — ACTIVE. ← start here.
+  Phase **05 (WYSIWYG Live-Sync & Typed Editors)** planning + **3 cross-AI review rounds done**. The round-3
+  `--reviews` replan (folding the four round-2 decisions: targeting 1b, W2 bit4 scale-guard, revert coalesce,
+  byte prose) is **UNCOMMITTED in the working tree** (7 plan files + STATE.md) — the round-3 review reviewed
+  exactly that state; **do nothing destructive before preserving it.** Verdict **HIGH — do NOT execute
+  05-03/05-07 as written:** round-2 mechanical fixes all confirmed landed, but the two headline changes each
+  opened a new provable HIGH (ungated rebaseline defeats the transform guard; once-per-attach baseline
+  unreconciled with the per-frame focus resolver breaks D-03), plus the WYSIWYG viewport-asset→live-object
+  promise is still unmet + self-contradicting in 05-03. Three maintainer decisions (#1 re-key baseline,
+  #2 gate+unify rebaseline, #3 targeting honesty a-vs-b) in `05-REVIEWS.md`, then `/gsd:plan-phase 5 --reviews`.
+  HEAD `2be9586`, not pushed. Supersedes the 04.3 handoff for the active workstream.
+
+- **[2026-07-01-phase-04.3-uat-and-sonnet5-config.md](2026-07-01-phase-04.3-uat-and-sonnet5-config.md)** — superseded by the Phase-05 handoff above (04.3 closed; Phase 04.4 then 05 came since).
   Phase **04.3 is 11/12 done, D-16 crew gate = GO** (F-2 searchTOC-extraction blocker + F-3/F-4/F-5 found and
   fixed; v6000 tests reconciled to per-payload truth; full suite green). Paused at **plan 13 — the combined
   in-client UAT** (manual `human-verify` checkpoint on both a searchTree and a searchTOC client; UAT-RESULTS
