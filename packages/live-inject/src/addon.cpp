@@ -16,6 +16,7 @@
  *     openChannel(name) → ArrayBuffer
  *     closeChannel(name)
  *     readChannelView(name) → ArrayBuffer | null
+ *     writeCommand(name, transformBytes, scaleBytes, flags) → undefined
  *
  *   Test-utility resolver (Plan 03-02 TDD) → inject_binding.cpp:
  *     lookupByNameInTable, resolveFromSyntheticTable, resolveFromExe, isAdvertisedClient
@@ -46,6 +47,7 @@ Napi::Value IsAdvertisedClientProcess(const Napi::CallbackInfo& info);  // proce
 Napi::Value OpenChannel(const Napi::CallbackInfo& info);
 Napi::Value CloseChannel(const Napi::CallbackInfo& info);
 Napi::Value ReadChannelView(const Napi::CallbackInfo& info);
+Napi::Value WriteCommand(const Napi::CallbackInfo& info);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Inject/attach/detach + PID discovery
@@ -71,6 +73,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("openChannel",     Napi::Function::New(env, OpenChannel));
     exports.Set("closeChannel",    Napi::Function::New(env, CloseChannel));
     exports.Set("readChannelView", Napi::Function::New(env, ReadChannelView));
+    exports.Set("writeCommand",    Napi::Function::New(env, WriteCommand));
 
     return exports;
 }

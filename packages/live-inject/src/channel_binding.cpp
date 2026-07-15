@@ -5,6 +5,7 @@
  *   openChannel(name: string)  → ArrayBuffer (mapped view, CHANNEL_BYTE_SIZE bytes)
  *   closeChannel(name: string) → undefined
  *   readChannelView(name: string) → ArrayBuffer | null
+ *   writeCommand(name: string, transformBytes: Float32Array(12), scaleBytes: Float32Array(3), flags?: number) → undefined
  *
  * CHANNEL OWNERSHIP (Scheme A — locked in 03-03/03-04):
  *   The HOST creates the named memory-backed page (host side, before inject).
@@ -24,6 +25,17 @@
  *   V8 SAB cannot cross OS process boundaries ("could not be cloned").
  *   The file-mapping IS the cross-process hop; the ArrayBuffer here is the
  *   renderer-side JS surface only — never use SAB across processes.
+ *
+ * CHANNEL LAYOUT (05-01 ROUND 5, 400 bytes total — see packages/contracts/src/live-inject.ts):
+ *   [0..319]   read frame (agent-written every tick — SEQ_COUNTER/TRANSFORM/NETWORK_ID/
+ *              TEMPLATE_NAME/LIVENESS), unchanged since Phase 3.
+ *   [320..323] FOCUS_TOKEN — agent-authoritative, part of the read frame. Read-only here.
+ *   [324..391] command region — writeCommand's ENTIRE write span (seqlock LONG at 324,
+ *              cmdTransform 328-375, cmdScale 376-387, cmdFlags 388-391).
+ *   [392..395] GUARD_STATUS — agent-authoritative. Read-only here.
+ *   [396..399] GUARD_ADDR — agent-authoritative. Read-only here.
+ *   writeCommand NEVER touches offsets 320-323 or 392-399 — those three fields are
+ *   written exclusively by the agent (channel.cpp's channelWrite / channelWriteGuardStatus).
  */
 
 #include <napi.h>
@@ -32,8 +44,9 @@
 #include <unordered_map>
 #include <cstring>
 
-// Channel byte size — matches LIVE_CHANNEL_LAYOUT.TOTAL_SIZE (320 bytes)
-static constexpr size_t CHANNEL_BYTE_SIZE = 320;
+// Channel byte size — matches LIVE_CHANNEL_LAYOUT.TOTAL_SIZE (400 bytes, 05-01 ROUND 5:
+// read frame + FOCUS_TOKEN + command region + GUARD_STATUS + GUARD_ADDR).
+static constexpr size_t CHANNEL_BYTE_SIZE = 400;
 
 // ---------------------------------------------------------------------------
 // Per-channel state.
@@ -176,4 +189,112 @@ Napi::Value ReadChannelView(const Napi::CallbackInfo& info) {
         return env.Null();
     }
     return it->second.abRef.Value();
+}
+
+// ---------------------------------------------------------------------------
+// WriteCommand — host writes a target transform/scale into the command region.
+//
+// writeCommand(name: string, transformBytes: Float32Array(12), scaleBytes: Float32Array(3), flags?: number) → undefined
+//
+// Writes into the SAME named mapping openChannel already created — no second
+// CreateFileMappingA call. Seqlock write spans EXACTLY offsets 324-391
+// (cmdSeqCounter/cmdTransform/cmdScale/cmdFlags). Offsets 320-323 (FOCUS_TOKEN)
+// and 392-399 (GUARD_STATUS/GUARD_ADDR) are agent-authoritative and are NEVER
+// written here — mirrors the agent's own channelWrite increment-write-increment
+// shape (channel.cpp), just run from the host side at the command-slot offset.
+// ---------------------------------------------------------------------------
+
+Napi::Value WriteCommand(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 3 || !info[0].IsString()) {
+        Napi::TypeError::New(env,
+            "writeCommand: (name: string, transformBytes: Float32Array(12), "
+            "scaleBytes: Float32Array(3), flags?: number) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    const std::string name = info[0].As<Napi::String>().Utf8Value();
+
+    // --- Validate transform (info[1]): must be exactly 12 floats / 48 bytes. ---
+    if (!info[1].IsTypedArray() && !info[1].IsArrayBuffer()) {
+        Napi::TypeError::New(env, "writeCommand: transformBytes must be a Float32Array or ArrayBuffer")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    const void* transformData = nullptr;
+    size_t transformByteLength = 0;
+    if (info[1].IsTypedArray()) {
+        Napi::TypedArray ta = info[1].As<Napi::TypedArray>();
+        transformData = static_cast<const char*>(ta.ArrayBuffer().Data()) + ta.ByteOffset();
+        transformByteLength = ta.ByteLength();
+    } else {
+        Napi::ArrayBuffer ab = info[1].As<Napi::ArrayBuffer>();
+        transformData = ab.Data();
+        transformByteLength = ab.ByteLength();
+    }
+    if (transformByteLength != 48) {
+        Napi::RangeError::New(env,
+            "writeCommand: transformBytes must be exactly 12 floats (48 bytes)")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // --- Validate scale (info[2]): must be exactly 3 floats / 12 bytes. ---
+    if (!info[2].IsTypedArray() && !info[2].IsArrayBuffer()) {
+        Napi::TypeError::New(env, "writeCommand: scaleBytes must be a Float32Array or ArrayBuffer")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    const void* scaleData = nullptr;
+    size_t scaleByteLength = 0;
+    if (info[2].IsTypedArray()) {
+        Napi::TypedArray ta = info[2].As<Napi::TypedArray>();
+        scaleData = static_cast<const char*>(ta.ArrayBuffer().Data()) + ta.ByteOffset();
+        scaleByteLength = ta.ByteLength();
+    } else {
+        Napi::ArrayBuffer ab = info[2].As<Napi::ArrayBuffer>();
+        scaleData = ab.Data();
+        scaleByteLength = ab.ByteLength();
+    }
+    if (scaleByteLength != 12) {
+        Napi::RangeError::New(env,
+            "writeCommand: scaleBytes must be exactly 3 floats (12 bytes)")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // --- flags (info[3]): optional, defaults to 0. ---
+    uint32_t flags = 0;
+    if (info.Length() >= 4 && !info[3].IsUndefined() && !info[3].IsNull()) {
+        if (!info[3].IsNumber()) {
+            Napi::TypeError::New(env, "writeCommand: flags must be a number")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        flags = static_cast<uint32_t>(info[3].As<Napi::Number>().Uint32Value());
+    }
+
+    // --- Look up the channel — reuse the existing s_channels map (no second registry). ---
+    auto it = s_channels.find(name);
+    if (it == s_channels.end() || it->second.abRef.IsEmpty()) {
+        Napi::Error::New(env, "writeCommand: channel not open — call openChannel first")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    char* view = static_cast<char*>(it->second.abRef.Value().Data());
+
+    // Seqlock write at offset 324 — spans EXACTLY the command region (324-391).
+    // FOCUS_TOKEN (320-323), GUARD_STATUS (392-395), and GUARD_ADDR (396-399) are
+    // agent-authoritative and are NEVER touched here.
+    volatile LONG* cmdSeq = reinterpret_cast<volatile LONG*>(view + 324);
+
+    InterlockedIncrement(cmdSeq);                       // seq → odd: write in progress
+    std::memcpy(view + 328, transformData, 48);          // COMMAND_TRANSFORM
+    std::memcpy(view + 376, scaleData, 12);               // COMMAND_SCALE
+    std::memcpy(view + 388, &flags, 4);                    // COMMAND_FLAGS
+    InterlockedIncrement(cmdSeq);                       // seq → even: write complete
+
+    return env.Undefined();
 }
