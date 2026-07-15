@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-05-PLAN.md (.stf localized-string-table native parser + real-asset round-trip gate)
-last_updated: "2026-07-15T16:59:53.413Z"
+stopped_at: "Completed 05-06-PLAN.md (DTII grid editor: shared gate UI, dtiiTypeSpec grammar, DatatableGridEditor crumb/toolbar/grid)"
+last_updated: "2026-07-15T17:19:29.009Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 78
-  percent: 92
+  completed_plans: 79
+  percent: 93
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 6 of 12
+Plan: 7 of 12
 Status: Ready to execute
         found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
         `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
@@ -44,7 +44,7 @@ Last activity: 2026-07-15
   captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
   e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 93%
 
 ### 02-03 key facts (crew-verified)
 
@@ -132,6 +132,7 @@ Progress: [█████████░] 92%
 | Phase 05 P03 | 20min | 2 tasks | 7 files |
 | Phase 05 P04 | ~7min | 1 tasks | 2 files |
 | Phase 05 P05 | ~20min | 4 tasks | 8 files |
+| Phase 05 P06 | ~20min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -300,6 +301,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05-05]: Magic/two-section-order/sourceCrc interfaces verified correct on first read against swg-client-v2 ground truth -- no falsification found (unlike 05-02's two DTII corrections). — LocalizedStringTable.h/.cpp, LocalizedString.h/.cpp, LocalizedStringTableReaderWriter.cpp all confirm the plan's stated 0xABCD magic, id_type/crc_type=4 bytes, char16_t text encoding, and dual id-ascending/name-ascending section ordering.
 - [Phase 05-05]: recomputeSourceCrcFromText regenerates its own CRC-32 table per-TU (same polynomial/algorithm as tre/Crc.cpp) rather than calling across the TU boundary; zero call sites in this plan (opt-in helper for a future 05-09 UI action, not the default save path).
 - [Phase 05-05]: Real .stf VFS prefix confirmed as string/<locale>/ (e.g. string/en/aprilfools.stf) via an interactive mount+listMountEntries pass before writing extract-stf-fixtures.cjs -- 7906 real .stf entries found, extraction succeeded on the first candidate tried.
+- [Phase 05-06]: GateBar's pass-state staged chip is a plain --color-info span, not a second VerificationStatus instance (avoids glyph collision with the chip copy's own leading arrow)
+- [Phase 05-06]: dtiiTypeSpec.ts strengthens ground-truth getDelimStr to return null (not a garbage substring) when the closing delimiter is absent/precedes the opening one, so malformed specs like e(malformed degrade to unknown instead of a mis-parsed enum
+- [Phase 05-06]: Schema rail, real Hex view, and GateBar/FailBanner live wiring to the native round-trip gate are 05-08's scope per this plan's objective; 05-06 ships static not-run/placeholder stand-ins only
 
 ### Pending Todos
 
@@ -330,8 +334,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T16:59:53.397Z
-Stopped at: Completed 05-05-PLAN.md (.stf localized-string-table native parser + real-asset round-trip gate)
+Last session: 2026-07-15T17:19:28.993Z
+Stopped at: Completed 05-06-PLAN.md (DTII grid editor: shared gate UI, dtiiTypeSpec grammar, DatatableGridEditor crumb/toolbar/grid)
   camera-azimuth + OrbitControls framing fix shipped in-task); todo viewport-default-facing-axis
   closed. Only 04.4-15-PLAN.md (D-22 real-server round-trip checkpoint) remains to close Phase 04.4
   (14/15 plans complete).
