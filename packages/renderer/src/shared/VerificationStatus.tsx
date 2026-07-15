@@ -24,6 +24,8 @@ export type VerificationVariant =
   | 'fail'        // round-trip FAIL
   | 'warn'        // trailing bytes or enumerate-only
   | 'parse-error' // IFF parse error
+  | 'running'     // in-progress (Phase 5 gate machine — 05-UI-SPEC.md Surface 2 item 7:
+                  // "running: info text, dashed border" — pair with dashedBorder prop below)
   | 'neutral';    // informational
 
 /** Configuration for each variant. */
@@ -35,6 +37,7 @@ const VARIANT_CONFIG: Record<
   'fail':        { glyph: '✕', colorVar: 'var(--color-danger)' },
   'warn':        { glyph: '▴', colorVar: 'var(--color-warn)' },
   'parse-error': { glyph: '✕', colorVar: 'var(--color-danger)', ariaRole: 'alert' },
+  'running':     { glyph: '⋯', colorVar: 'var(--color-info)' },
   'neutral':     { glyph: '·', colorVar: 'var(--color-text-muted)' },
 };
 
@@ -46,6 +49,14 @@ export interface VerificationStatusProps {
   ariaLabel?: string;
   /** Compact mode: hide the caption visually (still in the DOM for a11y). */
   compact?: boolean;
+  /**
+   * Wrap the pill in a dashed border of the variant's color. Used by the Phase-5 gate machine's
+   * 'running' state ("info text, dashed border" — 05-UI-SPEC.md Surface 2 item 7), which needs a
+   * border-style change on top of the existing glyph+color+caption triple-encoding, not just a
+   * color swap. Defaults to false so every pre-existing call site (IffStructureTree etc.) renders
+   * identically to before.
+   */
+  dashedBorder?: boolean;
 }
 
 export default function VerificationStatus({
@@ -53,10 +64,11 @@ export default function VerificationStatus({
   caption,
   ariaLabel,
   compact = false,
+  dashedBorder = false,
 }: VerificationStatusProps): React.ReactElement {
   const { glyph, colorVar, ariaRole } = VARIANT_CONFIG[variant];
 
-  return (
+  const pill = (
     <span
       role={ariaRole}
       aria-label={ariaLabel ?? caption}
@@ -88,6 +100,23 @@ export default function VerificationStatus({
       >
         {caption}
       </span>
+    </span>
+  );
+
+  if (!dashedBorder) return pill;
+
+  return (
+    <span
+      data-dashed-border="true"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        border: `1px dashed ${colorVar}`,
+        borderRadius: 'var(--radius-sm)',
+        padding: '1px 6px',
+      }}
+    >
+      {pill}
     </span>
   );
 }
