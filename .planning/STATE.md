@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 05-09-PLAN.md (.stf strings editor: crumb/toolbar/grid, sourceCrc-preserving gate wiring, dockview tab opening -- DATA-02 complete)"
-last_updated: "2026-07-15T18:43:46.547Z"
+stopped_at: "Completed 05-10-PLAN.md (transform gizmo + mode rail: TransformGizmo.tsx guard-aware zero-alloc write path, GizmoStatusLabel, GizmoModeRail.tsx, Viewport.tsx wiring -- LIVE-03 first user-visible viewport capability)"
+last_updated: "2026-07-15T19:01:55.489Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 82
-  percent: 96
+  completed_plans: 83
+  percent: 98
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 10 of 12
+Plan: 11 of 12
 Status: Ready to execute
         05-08 completed the DTII grid editor end-to-end: SchemaRail (Schema·COLS/TYPE,
         Selected row, Round-trip gate), the real Hex view (byte-accurate highlight sourced
@@ -44,7 +44,7 @@ Last activity: 2026-07-15
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [██████████] 96%
+Progress: [██████████] 98%
 
 ### 02-03 key facts (crew-verified)
 
@@ -136,6 +136,7 @@ Progress: [██████████] 96%
 | Phase 05 P07 | ~24min | 3 tasks | 11 files |
 | Phase 05 P08 | single session | 3 tasks | 18 files |
 | Phase 05 P09 | single session | 3 tasks | 9 files |
+| Phase 05 P10 | ~13min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -315,6 +316,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: [Phase 05-09]: .stf working-row model merges byId+nameToId into ONE row per string; both on-disk orderings (D-11) re-derived fresh at serialize time by sorting on id vs key, not tracked as two parallel arrays
 - [Phase ?]: [Phase 05-09]: GateBar.tsx gained an optional note prop (right-aligned faint mono footer) for the .stf gate-bar footer note -- backward compatible, DTII omits it
 - [Phase ?]: [Phase 05-09]: .stf double-click branch lives in TreVfsBrowser.handleOpenEditor (not VfsTree.tsx as the plan named) -- VfsTree.tsx has no native-core/dockview access, matching 05-08's established DTII pattern
+- [Phase 05]: 05-10: Universal gizmo mode renders 3 stacked drei TransformControls (translate+rotate+scale) simultaneously attached to the same object -- drei 10.7.7 has no combined mode
+- [Phase 05]: 05-10: TransformGizmo.tsx split into an R3F 3D component (default export) + a plain-DOM GizmoStatusLabel (named export, MissingDepsOverlay idiom) -- no R3F/WebGL test harness exists in this project, so the offline/target/scale-unavailable labels needed to live outside the Canvas-scoped component to stay testable
+- [Phase 05]: 05-10: DatatableGridEditor's existing Grid|Hex toggle already carries role=radiogroup + role=radio/aria-checked (correct a11y pairing) -- no change made; StfStringsEditor has no Grid|Hex toggle at all
 
 ### Pending Todos
 
@@ -345,8 +349,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T18:43:46.529Z
-Stopped at: Completed 05-09-PLAN.md (.stf strings editor: crumb/toolbar/grid, sourceCrc-preserving gate wiring, dockview tab opening -- DATA-02 complete)
+Last session: 2026-07-15T19:01:55.472Z
+Stopped at: Completed 05-10-PLAN.md (transform gizmo + mode rail: TransformGizmo.tsx guard-aware zero-alloc write path, GizmoStatusLabel, GizmoModeRail.tsx, Viewport.tsx wiring -- LIVE-03 first user-visible viewport capability)
   Full renderer suite (59 files / 453 tests) green post-commit; tsc --noEmit clean. Two commits:
   83012d7 (SchemaRail + real Hex view + gate wiring), 0523aef (editorTabs.ts + VfsTree/
   TreVfsBrowser wiring + DatatablePanel retirement, LAYOUT_VERSION 3→4).

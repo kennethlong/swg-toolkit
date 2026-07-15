@@ -353,7 +353,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [x] 05-09-PLAN.md — StfStringsEditor (sibling reuse of shared gate/grid idiom) + gate wiring + dockview tab
-- [ ] 05-10-PLAN.md — TransformGizmo (restyled drei TransformControls, 4 modes, D-05 offline disabled-with-reason) + GizmoModeRail
+- [x] 05-10-PLAN.md — TransformGizmo (restyled drei TransformControls, 4 modes, D-05 offline disabled-with-reason) + GizmoModeRail
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 05-11-PLAN.md — LiveSyncClientCard (full B2 safety states) + TransformReadoutBar + StatusBar mirror + corner-gizmo/vp-stats + final Viewport wiring
