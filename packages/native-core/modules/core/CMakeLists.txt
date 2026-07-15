@@ -32,6 +32,7 @@ set(CORE_SOURCES
     math/CompressedQuaternion.cpp
     formats/Animation.cpp
     formats/DataTable.cpp
+    formats/StringTable.cpp
 )
 
 # ── Vendored zlib 1.2.3 (static) ───────────────────────────────────────────────
