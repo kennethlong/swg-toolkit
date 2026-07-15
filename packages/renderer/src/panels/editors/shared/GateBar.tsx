@@ -40,6 +40,12 @@ export interface GateBarProps {
   /** Wired by 05-08/05-09 to trigger "Save . run gate" from the gate bar itself, if present.
    *  Optional — the primary CTA usually lives in the crumb bar; this is a secondary affordance. */
   onSaveRunGate?: () => void;
+  /**
+   * Right-aligned faint mono footer note (05-09 — .stf UI-SPEC Surface 3 item 5: "values are
+   * UTF-16LE . keys ASCII . sourceCrc preserved on save"). Optional — DTII (05-06/05-08) has no
+   * footer note and omits this prop, so the gate bar's height/anatomy is unchanged for DTII.
+   */
+  note?: string;
 }
 
 const STAGED_CHIP_LABEL = '→ staged in working changes';
@@ -50,6 +56,7 @@ export default function GateBar({
   runningLabel,
   passLabel,
   failLabel,
+  note,
 }: GateBarProps): React.ReactElement {
   const { variant, caption, dashedBorder } = mapStateToStatus(state, {
     notRunLabel,
@@ -84,6 +91,19 @@ export default function GateBar({
           }}
         >
           {STAGED_CHIP_LABEL}
+        </span>
+      )}
+      {note && (
+        <span
+          data-testid="gate-bar-note"
+          style={{
+            marginLeft: 'auto',
+            color: 'var(--color-text-faint)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
+          }}
+        >
+          {note}
         </span>
       )}
     </div>

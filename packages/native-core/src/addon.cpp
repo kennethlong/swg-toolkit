@@ -153,6 +153,9 @@ Napi::Value SerializeDataTable(const Napi::CallbackInfo& info);
 //                LocalizedStringTableReaderWriter.cpp:107-203 (str_write/write, both sections)
 Napi::Value ParseStf(const Napi::CallbackInfo& info);
 Napi::Value SerializeStf(const Napi::CallbackInfo& info);
+// Phase 5 Plan 05-09: opt-in "mark re-synced to source" per-row action (implemented in
+// stf_binding.cpp) — 05-05 left recomputeSourceCrcFromText unbound by design; this plan wires it.
+Napi::Value RecomputeSourceCrcFromText(const Napi::CallbackInfo& info);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
@@ -219,6 +222,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 5 Plan 05-05 .stf localized string table parser + serializer:
     exports.Set("parseStf",                 Napi::Function::New(env, ParseStf));
     exports.Set("serializeStf",             Napi::Function::New(env, SerializeStf));
+    // Phase 5 Plan 05-09: opt-in re-sync-to-source action (05-05 left this unbound by design).
+    exports.Set("recomputeSourceCrcFromText", Napi::Function::New(env, RecomputeSourceCrcFromText));
 
     // Phase 4 Plan 04.3-10 Pillar B: v6000 per-payload extract + SearchTOC mount:
     exports.Set("extractMountAt",         Napi::Function::New(env, ExtractMountAt));

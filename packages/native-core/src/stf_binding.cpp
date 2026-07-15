@@ -11,6 +11,9 @@
  * Exports (registered in addon.cpp):
  *   parseStf(bytes: ArrayBuffer|Uint8Array) -> StfBindingResult (+ roundTripBytes: ArrayBuffer)
  *   serializeStf(table: object) -> ArrayBuffer
+ *   recomputeSourceCrcFromText(text: string) -> number (05-09: the DATA-02 editor's explicit,
+ *     opt-in "mark re-synced to source" per-row action — the ONLY call site for this function.
+ *     05-05 left it unbound (zero call sites, by design); this plan is the one that wires it.)
  *
  * Return contract:
  *   - Struct/metadata crosses as JS objects (numbers, strings, arrays).
@@ -212,4 +215,29 @@ Napi::Value SerializeStf(const Napi::CallbackInfo& info) {
         std::memcpy(ab.Data(), serialized.data(), serialized.size());
     }
     return ab;
+}
+
+// ─── RecomputeSourceCrcFromText ─────────────────────────────────────────────────
+
+/**
+ * recomputeSourceCrcFromText(text: string) -> number
+ *
+ * Thin binding for StringTable.h's recomputeSourceCrcFromText (05-05). This is the DATA-02
+ * editor's explicit, opt-in "mark re-synced to source" per-row action (05-09 UI-SPEC Surface 3
+ * Interfaces) — NOT called by SerializeStf's default save path, which preserves sourceCrc
+ * verbatim (D-10). This binding has exactly one intended caller in the renderer: the .stf
+ * editor's per-row "↻ Mark re-synced to source" action.
+ */
+Napi::Value RecomputeSourceCrcFromText(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "recomputeSourceCrcFromText: (text: string) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    std::u16string text = jsStringToU16(info[0].As<Napi::String>());
+    uint32_t crc = swg_core::formats::recomputeSourceCrcFromText(text);
+    return Napi::Number::New(env, crc);
 }
