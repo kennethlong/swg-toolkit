@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-11-PLAN.md (LiveSyncClientCard + TransformReadoutBar + StatusBar mirror + Viewport final HUD assembly -- LIVE-03 full anatomy)
-last_updated: "2026-07-15T19:42:55.464Z"
+status: paused
+stopped_at: "05-12 Task 1 (GC-pressure soak test) complete and committed (d141373). Task 2 checkpoint:human-verify (gate=blocking, maintainer in-world UAT) PENDING -- not yet run. Phase 05 (12/12 plans) does NOT close until Task 2 is approved."
+last_updated: "2026-07-15T19:55:58.708Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
 Plan: 12 of 12
-Status: Ready to execute
+Status: PAUSED -- 05-12 Task 2 checkpoint:human-verify (gate=blocking) pending; maintainer in-world UAT required before Phase 05 (12/12) closes. Task 1 (GC-pressure soak test) done and committed.
         05-08 completed the DTII grid editor end-to-end: SchemaRail (Schema·COLS/TYPE,
         Selected row, Round-trip gate), the real Hex view (byte-accurate highlight sourced
         directly from 05-02's per-cell offsets, no re-derivation), Save·run gate/＋Stage
@@ -138,6 +138,7 @@ Progress: [██████████] 99%
 | Phase 05 P09 | single session | 3 tasks | 9 files |
 | Phase 05 P10 | ~13min | 2 tasks | 5 files |
 | Phase 05-wysiwyg-live-sync-typed-editors P11 | ~37min | 3 tasks | 16 files |
+| Phase 05 P12 | ~7min (Task 1 only) | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -323,6 +324,7 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05-11]: recordWrite coalesces rapid in-drag writeLog appends (<500ms) into the current row instead of one entry per 60fps onChange tick
 - [Phase 05-11]: Guard-blocked/StatusBar scale-precedence logic extracted to liveSyncGuardPrecedence.ts, shared by LiveSyncClientCard and StatusBar
 - [Phase 05-11]: Gizmo mode lifted from Viewport.tsx local useState to gizmoModeStore.ts so StatusBar's mode segment shares the same source of truth
+- [Phase 05-12]: Vitest 4 removed test.poolOptions; --expose-gc for the GC-pressure soak test is now a top-level test.execArgv option, not poolOptions.forks.execArgv
 
 ### Pending Todos
 
@@ -336,6 +338,7 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 3/5]: Live-injection pointer/offset discovery is per-client-build and effort-unbounded — mine Utinni, use runtime AOB resolution; treat magnitude as a planning unknown.
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
 - e2e/04-workspace.spec.ts has 2 pre-existing failures (SidebarPanel title-update timing, Titlebar theme-select timeout) that will now surface in CI since 04.4-09 finally lets the lean job build+run E2E for real. Confirmed unrelated to 04.4-09 via A/B test. See deferred-items.md in 04.4 phase dir.
+- 05-12 Task 2 (checkpoint:human-verify, gate=blocking): maintainer in-world UAT pending -- attach to real advertised (swg-client-v2) and legacy (SWGEmu) clients and step through 05-12-PLAN.md how-to-verify steps 1-8 (cross-build targeting, mismatch warning, guard fail-closed, coalesced Revert ALL, clean detach incl. null-player, despawn-retarget). LIVE-03 and Phase 05 (12/12 plans) do not close until approved.
 
 ### Quick Tasks Completed
 
@@ -353,8 +356,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T19:42:55.434Z
-Stopped at: Completed 05-11-PLAN.md (LiveSyncClientCard + TransformReadoutBar + StatusBar mirror + Viewport final HUD assembly -- LIVE-03 full anatomy)
+Last session: 2026-07-15T19:53:31.031Z
+Stopped at: 05-12 Task 1 (GC-pressure soak test) complete and committed (d141373). Task 2 checkpoint:human-verify (gate=blocking, maintainer in-world UAT) PENDING -- not yet run. Phase 05 (12/12 plans) does NOT close until Task 2 is approved.
   Full renderer suite (59 files / 453 tests) green post-commit; tsc --noEmit clean. Two commits:
   83012d7 (SchemaRail + real Hex view + gate wiring), 0523aef (editorTabs.ts + VfsTree/
   TreVfsBrowser wiring + DatatablePanel retirement, LAYOUT_VERSION 3→4).
