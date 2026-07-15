@@ -18,14 +18,20 @@
 
 import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, Grid } from '@react-three/drei';
+import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
 import { useViewportStore } from '../../state/viewportStore.js';
+import { useGizmoModeStore } from '../../state/gizmoModeStore.js';
 import StaticMeshView from './StaticMeshView.js';
 import SkinnedMeshView from './SkinnedMeshView.js';
 import TransformGizmo, { GizmoStatusLabel } from './TransformGizmo.js';
-import type { GizmoMode } from './TransformGizmo.js';
 import GizmoModeRail from './GizmoModeRail.js';
+import LiveSyncClientCard from './LiveSyncClientCard.js';
+import TransformReadoutBar from './TransformReadoutBar.js';
+
+// Sketch-locked axis hexes (UI-SPEC Color) — the corner axis gizmo (item 7)
+// reuses the SAME fixed hexes the transform gizmo's arrows use.
+const AXIS_HEX = { x: '#e0584f', y: '#6db33f', z: '#4a8cff' } as const;
 
 // ─── Live-scene capture (module-level, not reactive) ─────────────────────────
 // The live R3F scene (THREE.Scene) is captured inside the Canvas by SceneCapturer
@@ -232,6 +238,36 @@ function SceneContent({ targetRef }: SceneContentProps): React.ReactElement {
   );
 }
 
+// ─── vp-stats collector (inside Canvas) — UI-SPEC Surface 1 item 7 ───────────
+// DISTINCT from and additional to StatsCollector's existing verts/tris/draws
+// overlay (which stays mounted in ViewportPanel.tsx, unmodified) — this is a
+// NEW perspective/resolution/fps/SAB-status line (05-11 Task 3).
+
+interface VpStats {
+  width: number;
+  height: number;
+  fps: number;
+}
+
+function VpStatsCollector({ onStats }: { onStats: (s: VpStats) => void }): null {
+  const { size } = useThree();
+  const frameCountRef = useRef(0);
+  const lastCalcRef = useRef(0);
+
+  useFrame(() => {
+    const now = performance.now();
+    frameCountRef.current += 1;
+    if (lastCalcRef.current === 0) lastCalcRef.current = now;
+    if (now - lastCalcRef.current >= 1000) {
+      onStats({ width: Math.round(size.width), height: Math.round(size.height), fps: frameCountRef.current });
+      frameCountRef.current = 0;
+      lastCalcRef.current = now;
+    }
+  });
+
+  return null;
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export interface ViewportProps {
@@ -245,12 +281,20 @@ export default function Viewport({ onStats }: ViewportProps): React.ReactElement
   const handleStats = useCallback((s: FrameStats) => onStats(s), [onStats]);
 
   // Gizmo mode: SINGLE source of truth shared by GizmoModeRail (DOM overlay,
-  // sibling of <Canvas>) and TransformGizmo (3D, inside <Canvas>) — 05-10
-  // Task 2's explicit "not two independently-tracked states" contract.
-  const [gizmoMode, setGizmoMode] = useState<GizmoMode>('translate');
+  // sibling of <Canvas>), TransformGizmo (3D, inside <Canvas>), AND (05-11
+  // Task 3) StatusBar's new mode segment — lifted from local useState (05-10)
+  // to a small dedicated store so a shell-level component can read it too.
+  const gizmoMode = useGizmoModeStore((s) => s.mode);
+  const setGizmoMode = useGizmoModeStore((s) => s.setMode);
   // Stable target group the gizmo attaches to — persists across mesh swaps
   // (05-10: "the same object SceneContent already renders").
   const targetRef = useRef<THREE.Group>(null);
+
+  const [vpStats, setVpStats] = useState<VpStats>({ width: 0, height: 0, fps: 0 });
+  const handleVpStats = useCallback((s: VpStats) => setVpStats(s), []);
+  // Best-effort read of the Phase-0 SAB proof's single-owner test hook
+  // (StatusBar.tsx) — informational display only, never written here.
+  const sabOk = typeof window !== 'undefined' && (window as unknown as { __sabIsShared?: boolean }).__sabIsShared === true;
 
   return (
     <>
@@ -267,11 +311,45 @@ export default function Viewport({ onStats }: ViewportProps): React.ReactElement
         <SceneContent targetRef={targetRef} />
         <TransformGizmo object={targetRef} mode={gizmoMode} />
         <StatsCollector onStats={handleStats} />
+        <VpStatsCollector onStats={handleVpStats} />
         <SceneCapturer />
+        {/* Corner axis gizmo, bottom-right (UI-SPEC Surface 1 item 7) — a REAL
+            drei on-canvas orientation widget, distinct from the flat SVG
+            corner indicator ViewportPanel.tsx already renders as a DOM
+            overlay (unmodified, stays as-is). */}
+        <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
+          <GizmoViewport axisColors={[AXIS_HEX.x, AXIS_HEX.y, AXIS_HEX.z]} labelColor="black" />
+        </GizmoHelper>
       </Canvas>
       <GizmoModeRail mode={gizmoMode} onModeChange={setGizmoMode} />
       <div style={{ position: 'absolute', left: 56, top: 'calc(50% - 20px)', zIndex: 3 }}>
         <GizmoStatusLabel mode={gizmoMode} />
+      </div>
+
+      {/* Live-sync client card, top-right (UI-SPEC Surface 1 item 2) */}
+      <div style={{ position: 'absolute', top: 'calc(var(--tabstrip-h) + 44px)', right: 8, zIndex: 3 }}>
+        <LiveSyncClientCard />
+      </div>
+
+      {/* Transform readout bar, bottom-center (UI-SPEC Surface 1 items 5-6) —
+          mounts its own floating drag-delta readout (top-center) internally. */}
+      <TransformReadoutBar />
+
+      {/* vp-stats, bottom-left (UI-SPEC Surface 1 item 7) — NEW, distinct from
+          ViewportPanel's existing verts/tris/draws overlay at bottom:8. */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 26,
+          left: 8,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--text-xs)',
+          color: 'var(--color-text-faint)',
+          zIndex: 3,
+          pointerEvents: 'none',
+        }}
+      >
+        persp · {vpStats.width}×{vpStats.height} · {vpStats.fps} fps · SAB {sabOk ? '✓' : '—'}
       </div>
     </>
   );

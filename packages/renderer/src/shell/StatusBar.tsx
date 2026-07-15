@@ -38,6 +38,8 @@ import { useChangesetStore }   from '../state/changesetStore.ts';
 import { useDockStateStore }   from '../state/dockStateStore.ts';
 import { useClientScanStatus } from '../state/clientScanStore.ts';
 import { laneLayout }          from '../panels/deploy/laneLayout.ts';
+import { useGizmoModeStore, GIZMO_MODE_LABELS } from '../state/gizmoModeStore.ts';
+import { isScaleGenuinelyBlocked } from '../panels/viewport/liveSyncGuardPrecedence.ts';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -73,6 +75,14 @@ export default function StatusBar(): React.ReactElement {
 
   // Live injection mode from Zustand store (Plan 03-06)
   const liveMode = useLiveStore((s) => s.mode);
+
+  // Live-sync HUD mirror (05-11 Task 3) — same store fields the client card
+  // reads, one source of truth.
+  const liveStatus = useLiveStore((s) => s.status);
+  const cowSnapshot = useLiveStore((s) => s.cowSnapshot);
+  const guardState = useLiveStore((s) => s.guardState);
+  const scaleUnavailableOnBuild = useLiveStore((s) => s.verifiedState?.scaleUnavailableOnBuild ?? false);
+  const gizmoModeValue = useGizmoModeStore((s) => s.mode);
 
   // Live mesh name / vert count (04.4-03 — replaces the old hardcoded mesh-chip text, D-18)
   const loadStatus = useViewportStore((s) => s.loadStatus);
@@ -228,6 +238,20 @@ export default function StatusBar(): React.ReactElement {
 
   const addonColor = addonStatus.includes('✓') ? 'var(--color-accent)' : 'var(--color-text-muted)';
 
+  // Live-sync guard chip (05-11 Task 3, REVIEWS.md Fix B + ROUND 2 precedence)
+  // — names WHICH channel(s) are genuinely blocked, reusing the SAME
+  // precedence helper the client card's scale row uses, so a build-capability
+  // gap is never misreported here as a tamper.
+  const transformBlocked = guardState.transform === 'blocked';
+  const scaleBlocked = isScaleGenuinelyBlocked(scaleUnavailableOnBuild, guardState.scale);
+  let guardChipText: string;
+  if (!transformBlocked && !scaleBlocked) {
+    guardChipText = 'guard: read-verify ok';
+  } else {
+    const channels = [transformBlocked && 'transform', scaleBlocked && 'scale'].filter(Boolean).join(', ');
+    guardChipText = `guard: read-verify refused (${channels})`;
+  }
+
   // Live mesh name / vert count (04.4-03, D-18: no LOD-index shown, vert count is for the shown LOD only)
   const meshLabel = loadStatus.kind === 'done' ? loadStatus.filename : '—';
   const vertCount = parsedMesh
@@ -342,6 +366,28 @@ export default function StatusBar(): React.ReactElement {
           {liveMode === 'live' ? '● Live' : '○ File-patch'}
         </span>
       </span>
+
+      {/* Live-sync HUD mirror (05-11 Task 3, UI-SPEC Surface 1 item 8) — mode /
+          sync / COW-snapshot / guard segments, extending the live-mode
+          indicator above with the SAME store fields the client card reads. */}
+      <Dot />
+      <span>mode: {GIZMO_MODE_LABELS[gizmoModeValue]}</span>
+      <Dot />
+      <span style={{ color: liveStatus.kind === 'attached' ? 'var(--color-accent)' : 'var(--color-warn)' }}>
+        sync: {liveStatus.kind === 'attached' ? `● Live · injected · pid ${liveStatus.pid}` : '○ Offline — file-patch fallback'}
+      </span>
+      {liveStatus.kind === 'attached' && (
+        <>
+          <Dot />
+          <span style={{ color: cowSnapshot ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
+            COW snapshot {cowSnapshot ? '✓' : '—'}
+          </span>
+          <Dot />
+          <span style={{ color: !transformBlocked && !scaleBlocked ? 'var(--color-accent)' : 'var(--color-warn)' }}>
+            {guardChipText}
+          </span>
+        </>
+      )}
 
       {/* Workspace name (Plan 04-02 / W7) */}
       <Dot />

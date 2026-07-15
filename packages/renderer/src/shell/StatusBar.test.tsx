@@ -60,6 +60,8 @@ import { useChangesetStore }  from '../state/changesetStore';
 import { useDockStateStore }  from '../state/dockStateStore';
 import { useClientScanStore } from '../state/clientScanStore';
 import { useViewportStore }   from '../state/viewportStore';
+import { useLiveStore }       from '../state/liveStore';
+import { useGizmoModeStore }  from '../state/gizmoModeStore';
 import { BASELINE_ID }        from '@swg/contracts';
 import type { MeshParseResult } from '@swg/contracts';
 import type { AppearanceResolutionResult } from '../panels/viewport/resolver/appearanceResolver';
@@ -296,6 +298,83 @@ describe('StatusBar — 04.4-03: live mesh name / vert-count chip', () => {
 
     expect(document.body.textContent).toContain('foo.msh');
     expect(document.body.textContent).toContain('150 verts');
+  });
+
+});
+
+describe('StatusBar — 05-11 Task 3: live-sync HUD mirror (mode/sync/COW/guard segments)', () => {
+
+  beforeEach(() => {
+    useChangesetStore.setState({
+      manifest: { activeVersionId: null, deployedVersionId: null, changesets: [] },
+      sealStatus: { kind: 'idle' },
+    });
+    useDockStateStore.setState({ activePanelId: null, dockWidth: 290 });
+    useClientScanStore.setState({ message: null });
+    useLiveStore.getState().detach();
+    useGizmoModeStore.setState({ mode: 'translate' });
+  });
+
+  it('renders the mode segment reading the shared gizmoModeStore', async () => {
+    useGizmoModeStore.getState().setMode('scale');
+    await act(async () => { render(<StatusBar />); });
+    expect(document.body.textContent).toContain('mode: Scale (R)');
+  });
+
+  it('renders "sync: ○ Offline — file-patch fallback" while idle, and omits COW/guard segments', async () => {
+    await act(async () => { render(<StatusBar />); });
+    expect(document.body.textContent).toContain('sync: ○ Offline — file-patch fallback');
+    expect(document.body.textContent).not.toContain('COW snapshot');
+    expect(document.body.textContent).not.toContain('guard:');
+  });
+
+  it('renders "sync: ● Live · injected · pid <pid>" plus COW/guard segments while attached', async () => {
+    useLiveStore.getState().attachComplete(4242, 'Local\\SwgToolkitLive_sbtest');
+    await act(async () => { render(<StatusBar />); });
+    expect(document.body.textContent).toContain('sync: ● Live · injected · pid 4242');
+    expect(document.body.textContent).toContain('COW snapshot');
+    expect(document.body.textContent).toContain('guard: read-verify ok');
+  });
+
+  it('names transform specifically when guardState.transform is blocked (not a bare ambiguous refused state)', async () => {
+    useLiveStore.getState().attachComplete(1, 'Local\\SwgToolkitLive_sbguard1');
+    useLiveStore.getState().setGuardState('transform', 'blocked');
+    await act(async () => { render(<StatusBar />); });
+    expect(document.body.textContent).toContain('guard: read-verify refused (transform)');
+  });
+
+  it('ROUND 2: scaleUnavailableOnBuild=true reads the PLAIN "ok" chip — scale is NOT named (build gap, not a tamper)', async () => {
+    useLiveStore.getState().attachComplete(1, 'Local\\SwgToolkitLive_sbguard2');
+    useLiveStore.getState().updateState({
+      networkId: 0n,
+      templateName: 'x.iff',
+      transform: new Float32Array(12),
+      playerAlive: true,
+      hasTarget: false,
+      targetUnavailableOnBuild: false,
+      scaleUnavailableOnBuild: true,
+      focusToken: 1,
+    });
+    useLiveStore.getState().setGuardState('scale', 'blocked');
+    await act(async () => { render(<StatusBar />); });
+    expect(document.body.textContent).toContain('guard: read-verify ok');
+  });
+
+  it('ROUND 2 companion: the SAME guardState.scale=blocked with scaleUnavailableOnBuild=false names scale as refused', async () => {
+    useLiveStore.getState().attachComplete(1, 'Local\\SwgToolkitLive_sbguard3');
+    useLiveStore.getState().updateState({
+      networkId: 0n,
+      templateName: 'x.iff',
+      transform: new Float32Array(12),
+      playerAlive: true,
+      hasTarget: false,
+      targetUnavailableOnBuild: false,
+      scaleUnavailableOnBuild: false,
+      focusToken: 1,
+    });
+    useLiveStore.getState().setGuardState('scale', 'blocked');
+    await act(async () => { render(<StatusBar />); });
+    expect(document.body.textContent).toContain('guard: read-verify refused (scale)');
   });
 
 });
