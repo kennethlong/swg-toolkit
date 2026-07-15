@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: "Completed 05-06-PLAN.md (DTII grid editor: shared gate UI, dtiiTypeSpec grammar, DatatableGridEditor crumb/toolbar/grid)"
-last_updated: "2026-07-15T17:19:29.009Z"
+last_updated: "2026-07-15T17:47:58.035Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 79
-  percent: 93
+  completed_plans: 80
+  percent: 94
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 7 of 12
+Plan: 8 of 12
 Status: Ready to execute
         found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
         `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
@@ -44,7 +44,7 @@ Last activity: 2026-07-15
   captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
   e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
 
-Progress: [█████████░] 93%
+Progress: [█████████░] 94%
 
 ### 02-03 key facts (crew-verified)
 
@@ -133,6 +133,7 @@ Progress: [█████████░] 93%
 | Phase 05 P04 | ~7min | 1 tasks | 2 files |
 | Phase 05 P05 | ~20min | 4 tasks | 8 files |
 | Phase 05 P06 | ~20min | 3 tasks | 9 files |
+| Phase 05 P07 | ~24min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -304,6 +305,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05-06]: GateBar's pass-state staged chip is a plain --color-info span, not a second VerificationStatus instance (avoids glyph collision with the chip copy's own leading arrow)
 - [Phase 05-06]: dtiiTypeSpec.ts strengthens ground-truth getDelimStr to return null (not a garbage substring) when the closing delimiter is absent/precedes the opening one, so malformed specs like e(malformed degrade to unknown instead of a mis-parsed enum
 - [Phase 05-06]: Schema rail, real Hex view, and GateBar/FailBanner live wiring to the native round-trip gate are 05-08's scope per this plan's objective; 05-06 ships static not-run/placeholder stand-ins only
+- [Phase 05-07]: identityCache keys on the agent-published focusToken exclusively (never networkId/templateName); every cache HIT cross-checks templateName/networkId before restoring (evicts+recreates on mismatch); cache bounded to 64 entries via least-recently-active eviction
+- [Phase 05-07]: vi.mock does NOT intercept a bare require() of a native addon in this project's vitest setup (confirmed for both @swg/live-inject and @swg/native-core) -- test pattern is: monkey-patch the real process-cached addon object, then dynamically import() the module under test
 
 ### Pending Todos
 
@@ -334,7 +337,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T17:19:28.993Z
+Last session: 2026-07-15T17:47:58.019Z
 Stopped at: Completed 05-06-PLAN.md (DTII grid editor: shared gate UI, dtiiTypeSpec grammar, DatatableGridEditor crumb/toolbar/grid)
   camera-azimuth + OrbitControls framing fix shipped in-task); todo viewport-default-facing-axis
   closed. Only 04.4-15-PLAN.md (D-22 real-server round-trip checkpoint) remains to close Phase 04.4

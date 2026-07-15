@@ -348,7 +348,7 @@ Plans:
 - [x] 05-06-PLAN.md — Shared GateBar/GateChip/FailBanner + DatatableGridEditor core grid (crumb/toolbar/virtualized typed grid, D-07 widened badges)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 05-07-PLAN.md — Renderer write path: useCommandWriter (zero-alloc) + liveStore COW/write-log/guard extension + detach control wiring
+- [x] 05-07-PLAN.md — Renderer write path: useCommandWriter (zero-alloc) + liveStore COW/write-log/guard extension + detach control wiring
 - [ ] 05-08-PLAN.md — DatatableGridEditor completion: SchemaRail + Hex toggle + gate-bar wiring to native round-trip + staging + dockview tab (retires DatatablePanel placeholder)
 
 **Wave 4** *(blocked on Wave 3 completion)*
