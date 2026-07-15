@@ -62,7 +62,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 
 ### Typed Data Editors (DATA)
 - [x] **DATA-01**: User can view and edit DTII datatables in a virtualized grid and save them back.
-- [ ] **DATA-02**: User can view and edit `.stf` localized strings and save them back.
+- [x] **DATA-02**: User can view and edit `.stf` localized strings and save them back.
 
 ### Format Editors — leaves (FMT)
 - [ ] **FMT-01**: User can view/edit and serialize terrain (`.trn`) layers and fractals.
@@ -142,7 +142,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | CLIENT-02 | Phase 4.2 | Complete (04.3-13 UAT; detection now content-based, 2026-07-02) |
 | LIVE-03 | Phase 5 | Complete |
 | DATA-01 | Phase 5 | Complete |
-| DATA-02 | Phase 5 | Pending |
+| DATA-02 | Phase 5 | Complete |
 | BLND-01 | Phase 6 | Pending |
 | BLND-02 | Phase 6 | Pending |
 | FMT-01 | Phase 7 | Pending |

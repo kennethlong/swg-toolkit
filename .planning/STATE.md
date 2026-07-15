@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-04-PLAN.md (host-side writeCommand N-API export)
-last_updated: "2026-07-15T16:42:48.971Z"
+stopped_at: Completed 05-05-PLAN.md (.stf localized-string-table native parser + real-asset round-trip gate)
+last_updated: "2026-07-15T16:59:53.413Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 77
-  percent: 91
+  completed_plans: 78
+  percent: 92
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 5 of 12
+Plan: 6 of 12
 Status: Ready to execute
         found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
         `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
@@ -44,7 +44,7 @@ Last activity: 2026-07-15
   captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
   e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 92%
 
 ### 02-03 key facts (crew-verified)
 
@@ -131,6 +131,7 @@ Progress: [█████████░] 91%
 | Phase 05-wysiwyg-live-sync-typed-editors P02 | 25min | 4 tasks | 8 files |
 | Phase 05 P03 | 20min | 2 tasks | 7 files |
 | Phase 05 P04 | ~7min | 1 tasks | 2 files |
+| Phase 05 P05 | ~20min | 4 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -296,6 +297,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase ?]: 05-03: guard-baseline re-key cross-checks templateName by CONTENT (strncmp against an owned copy), never by pointer -- closes agent-side pointer-ABA
 - [Phase ?]: 05-03: MSVC C2712 (__try + magic-static dynamic initializer conflict) fixed by splitting static declaration from its dynamic assignment
 - [Phase 05-04]: WriteCommand accepts either a Float32Array (honoring byteOffset) or a raw ArrayBuffer for transform/scale arguments — matches the plan's own Float32Array/ArrayBuffer acceptance-criteria phrasing without a second validation path
+- [Phase 05-05]: Magic/two-section-order/sourceCrc interfaces verified correct on first read against swg-client-v2 ground truth -- no falsification found (unlike 05-02's two DTII corrections). — LocalizedStringTable.h/.cpp, LocalizedString.h/.cpp, LocalizedStringTableReaderWriter.cpp all confirm the plan's stated 0xABCD magic, id_type/crc_type=4 bytes, char16_t text encoding, and dual id-ascending/name-ascending section ordering.
+- [Phase 05-05]: recomputeSourceCrcFromText regenerates its own CRC-32 table per-TU (same polynomial/algorithm as tre/Crc.cpp) rather than calling across the TU boundary; zero call sites in this plan (opt-in helper for a future 05-09 UI action, not the default save path).
+- [Phase 05-05]: Real .stf VFS prefix confirmed as string/<locale>/ (e.g. string/en/aprilfools.stf) via an interactive mount+listMountEntries pass before writing extract-stf-fixtures.cjs -- 7906 real .stf entries found, extraction succeeded on the first candidate tried.
 
 ### Pending Todos
 
@@ -326,8 +330,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T16:42:48.955Z
-Stopped at: Completed 05-04-PLAN.md (host-side writeCommand N-API export)
+Last session: 2026-07-15T16:59:53.397Z
+Stopped at: Completed 05-05-PLAN.md (.stf localized-string-table native parser + real-asset round-trip gate)
   camera-azimuth + OrbitControls framing fix shipped in-task); todo viewport-default-facing-axis
   closed. Only 04.4-15-PLAN.md (D-22 real-server round-trip checkpoint) remains to close Phase 04.4
   (14/15 plans complete).
