@@ -56,13 +56,12 @@ GuardResult checkWriteGuard(const float liveXform[3][4], const float expectedXfo
                              const float liveScale[3], const float expectedScale[3]);
 
 /**
- * applyWrite — setter-invocation wrapper (declared here so its call-site type
- * is stable for 05-04's host consumers; NOT defined in this task). 05-03
- * completes the definition alongside the fn-pointer typedefs it needs to call
- * the real setTransform_o2w/setScale endpoints, each gated on its OWN guard
- * bit AND its OWN non-null resolved-fn check (REVIEWS.md Fix A). This task
- * implements ONLY checkWriteGuard; applyWrite is intentionally left
- * undefined here (declaration only, no body) — nothing in Task 2's scope
- * calls it.
+ * applyWrite — setter-invocation wrapper, defined in write.cpp (05-03).
+ * Calls the resolved setTransform_o2w/setScale endpoints, each gated
+ * INDEPENDENTLY on its OWN guard bit AND its OWN non-null resolved-fn check
+ * (REVIEWS.md Fix A) — a write is never attempted through an unresolved
+ * setter. write.cpp's definition needs LiveCommand's full layout (channel.h)
+ * to read cmd.transform/cmd.scale, so it is NOT held to this header's
+ * lean-header (Windows.h-free) contract — only write.h itself is.
  */
 void applyWrite(void* target, const LiveCommand& cmd, const GuardResult& guard);

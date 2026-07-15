@@ -27,10 +27,6 @@ import { describe, it, expect } from 'vitest';
 // ---------------------------------------------------------------------------
 // TypeScript port of agent_main.cpp's re-key mismatch condition
 // ---------------------------------------------------------------------------
-//
-// RED STUB — intentionally wrong (always reports "not implemented" via a
-// thrown error) so this file's tests fail before Task 2's implementation
-// step. Made GREEN in the same task's implementation commit.
 
 const TEMPLATE_NAME_LEN = 256; // mirrors channel.h's char templateName[256] / k_templateNameLen
 
@@ -56,8 +52,21 @@ interface FocusIdentity {
  * despawned object's address reallocated to a DIFFERENT object no longer
  * skips re-capture merely because the raw pointer/token happens to match).
  */
-function shouldRecapture(_current: FocusIdentity, _captured: FocusIdentity): boolean {
-  throw new Error('shouldRecapture not implemented (RED stub)');
+function templateContentEquals(a: Uint8Array, b: Uint8Array): boolean {
+  // Mirrors strncmp(a, b, k_templateNameLen) == 0 — a byte-for-byte CONTENT
+  // compare, never a reference/pointer compare (Opus 3c-ii).
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return false;
+  }
+  return true;
+}
+
+function shouldRecapture(current: FocusIdentity, captured: FocusIdentity): boolean {
+  if (current.focusToken !== captured.focusToken) return true;
+  if (!templateContentEquals(current.templateBytes, captured.templateBytes)) return true;
+  if (current.networkId !== captured.networkId) return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,15 +91,21 @@ describe('shouldRecapture (agent-side guard-baseline re-key)', () => {
     // compare against that address would ALWAYS report "unchanged"), but this
     // tick's BYTES differ from what was captured — a genuine object-identity
     // change (e.g. despawn+realloc landed a different templated object at the
-    // same focus address). The captured snapshot is an OWNED COPY taken before
-    // the buffer's contents changed.
-    const capturedBuf = encodeTemplateName('object/creature/player/shared_human_male.iff');
-    const captured: FocusIdentity = { focusToken: 0xdead0000, templateBytes: capturedBuf, networkId: 123n };
+    // same focus address). The captured snapshot is an OWNED COPY (mirrors
+    // s_expectedCapturedAgainstTemplate's strncpy semantics — a real content
+    // copy, taken BEFORE the live buffer's contents change), so mutating the
+    // live buffer afterward can never retroactively alter what was captured.
+    const liveBuf = encodeTemplateName('object/creature/player/shared_human_male.iff');
+    const captured: FocusIdentity = { focusToken: 0xdead0000, templateBytes: liveBuf.slice(), networkId: 123n };
 
     // The SAME physical buffer reference is reused for this tick's live read,
     // but its content has since changed underneath — mirrors a reused/relocated
-    // memory address whose bytes were overwritten by a different object.
-    const liveBuf = capturedBuf; // same reference as a naive pointer-compare would see
+    // memory address whose bytes were overwritten by a different object. A
+    // naive pointer/reference compare against the OWNED captured snapshot
+    // would never even consider these the "same" pointer (different objects
+    // by construction here) — the point this case proves is narrower and more
+    // direct: the compare must be driven by CURRENT BYTES, not by whatever the
+    // buffer looked like at some prior moment in time.
     liveBuf.fill(0);
     liveBuf.set(new TextEncoder().encode('object/creature/npc/shared_womprat.iff'));
     const current: FocusIdentity = { focusToken: 0xdead0000, templateBytes: liveBuf, networkId: 123n };

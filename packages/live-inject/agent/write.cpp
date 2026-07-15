@@ -1,14 +1,46 @@
 /**
- * write.cpp — pure read-verify write guard implementation (D-03).
+ * write.cpp — pure read-verify write guard implementation (D-03), plus
+ * applyWrite's definition (05-03).
  *
- * See write.h for the full contract. Pure C++, no Windows.h, no I/O, no
- * side effects — mirrors sentinels.cpp's testability discipline.
- *
- * applyWrite is intentionally NOT defined in this file — see write.h's
- * comment. 05-03 completes it alongside the resolved setter fn pointers.
+ * checkWriteGuard (below) stays pure/Win32-free, mirroring sentinels.cpp's
+ * testability discipline exactly. applyWrite, by contrast, is a thin
+ * setter-invocation wrapper that DOES need the resolved fn-pointer slots and
+ * LiveCommand's full definition (channel.h) — it is intentionally NOT held to
+ * write.h's lean-header contract (that contract only binds the HEADER,
+ * write.h, which stays Windows.h-free via LiveCommand's forward declaration).
  */
 
 #include "write.h"
+#include "channel.h"  // full LiveCommand definition — needed to read cmd.transform/cmd.scale
+
+// ---------------------------------------------------------------------------
+// applyWrite's resolved setter fn-pointer typedefs — mirrors rva_table.cpp's
+// pSetTransform_o2w/pSetScale exactly (same calling conventions, opaque
+// void* Transform*/Vector* args, no concrete struct dependency).
+// ---------------------------------------------------------------------------
+
+typedef void(__thiscall* pSetTransform_o2w)(void*, const void*);
+typedef void(__thiscall* pSetScale)(void*, const void*);
+
+namespace swg { namespace endpoints {
+    extern pSetTransform_o2w setTransform_o2w;
+    extern pSetScale         setScale;
+}}
+
+// ---------------------------------------------------------------------------
+// applyWrite — setter-invocation wrapper (REVIEWS.md Fix A). Each channel is
+// gated INDEPENDENTLY on both its own guard bit AND its own non-null resolved
+// fn pointer — a write is NEVER attempted through an unresolved setter.
+// ---------------------------------------------------------------------------
+
+void applyWrite(void* target, const LiveCommand& cmd, const GuardResult& guard) {
+    if (guard.transformPassed && swg::endpoints::setTransform_o2w) {
+        swg::endpoints::setTransform_o2w(target, &cmd.transform);
+    }
+    if (guard.scalePassed && swg::endpoints::setScale) {
+        swg::endpoints::setScale(target, &cmd.scale);
+    }
+}
 
 namespace {
 
