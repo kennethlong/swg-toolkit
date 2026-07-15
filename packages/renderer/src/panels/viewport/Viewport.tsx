@@ -16,13 +16,16 @@
  *         + 02-UI-SPEC.md Surface 1 (Canvas chrome, empty/loading/error states, 'binary' badge)
  */
 
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useViewportStore } from '../../state/viewportStore.js';
 import StaticMeshView from './StaticMeshView.js';
 import SkinnedMeshView from './SkinnedMeshView.js';
+import TransformGizmo, { GizmoStatusLabel } from './TransformGizmo.js';
+import type { GizmoMode } from './TransformGizmo.js';
+import GizmoModeRail from './GizmoModeRail.js';
 
 // ─── Live-scene capture (module-level, not reactive) ─────────────────────────
 // The live R3F scene (THREE.Scene) is captured inside the Canvas by SceneCapturer
@@ -129,7 +132,15 @@ export function MissingDepsOverlay(): React.ReactElement | null {
 
 // ─── Scene content (inside Canvas) ───────────────────────────────────────────
 
-function SceneContent(): React.ReactElement {
+interface SceneContentProps {
+  /** The transform gizmo's target — a stable group wrapping whatever mesh is
+   *  currently loaded (05-10: "the same object SceneContent already renders",
+   *  no separate object picker). Persists across mesh swaps; TransformGizmo
+   *  attaches to it once and never needs a re-render on ref mutation alone. */
+  targetRef: React.RefObject<THREE.Group | null>;
+}
+
+function SceneContent({ targetRef }: SceneContentProps): React.ReactElement {
   const { isSkinned, parsedMesh, parsedSkeleton, renderMode, resolution, selectedLod } = useViewportStore();
 
   // Multi-part composed skinned .sat: select each part's mesh at the shared selectedLod.
@@ -186,31 +197,34 @@ function SceneContent(): React.ReactElement {
 
       {/* Mesh render. Multi-part composed skinned .sat → render all parts at selectedLod
           sharing the merged skeleton. Otherwise the legacy single-mesh path (static
-          redirects, leaf .mgn). */}
-      {isSkinned && skinnedParts && skinnedParts.length > 0 ? (
-        <SkinnedMeshView
-          parts={skinnedParts}
-          parsedSkeleton={parsedSkeleton}
-          renderMode={renderMode}
-        />
-      ) : activeMesh && geometryBuffer && (
-        isSkinned ? (
+          redirects, leaf .mgn). Wrapped in a stable group — the transform gizmo's
+          target (05-10: same object already rendered here, no separate picker). */}
+      <group ref={targetRef}>
+        {isSkinned && skinnedParts && skinnedParts.length > 0 ? (
           <SkinnedMeshView
-            parsedMesh={activeMesh}
-            geometry={geometryBuffer}
+            parts={skinnedParts}
             parsedSkeleton={parsedSkeleton}
             renderMode={renderMode}
-            materials={resolution?.materials}
           />
-        ) : (
-          <StaticMeshView
-            parsedMesh={activeMesh}
-            geometry={geometryBuffer}
-            renderMode={renderMode}
-            materials={resolution?.materials}
-          />
-        )
-      )}
+        ) : activeMesh && geometryBuffer && (
+          isSkinned ? (
+            <SkinnedMeshView
+              parsedMesh={activeMesh}
+              geometry={geometryBuffer}
+              parsedSkeleton={parsedSkeleton}
+              renderMode={renderMode}
+              materials={resolution?.materials}
+            />
+          ) : (
+            <StaticMeshView
+              parsedMesh={activeMesh}
+              geometry={geometryBuffer}
+              renderMode={renderMode}
+              materials={resolution?.materials}
+            />
+          )
+        )}
+      </group>
 
       {/* Repaint trigger for demand frameloop after async loadComplete */}
       <LoadInvalidator />
@@ -230,21 +244,36 @@ export interface ViewportProps {
 export default function Viewport({ onStats }: ViewportProps): React.ReactElement {
   const handleStats = useCallback((s: FrameStats) => onStats(s), [onStats]);
 
+  // Gizmo mode: SINGLE source of truth shared by GizmoModeRail (DOM overlay,
+  // sibling of <Canvas>) and TransformGizmo (3D, inside <Canvas>) — 05-10
+  // Task 2's explicit "not two independently-tracked states" contract.
+  const [gizmoMode, setGizmoMode] = useState<GizmoMode>('translate');
+  // Stable target group the gizmo attaches to — persists across mesh swaps
+  // (05-10: "the same object SceneContent already renders").
+  const targetRef = useRef<THREE.Group>(null);
+
   return (
-    <Canvas
-      style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}
-      camera={{ position: [3, 2, 3], fov: 55 }}
-      gl={{
-        antialias: true,
-        toneMapping: 3, // ACESFilmicToneMapping
-        toneMappingExposure: 1.0,
-      }}
-      frameloop="demand"
-    >
-      <SceneContent />
-      <StatsCollector onStats={handleStats} />
-      <SceneCapturer />
-    </Canvas>
+    <>
+      <Canvas
+        style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}
+        camera={{ position: [3, 2, 3], fov: 55 }}
+        gl={{
+          antialias: true,
+          toneMapping: 3, // ACESFilmicToneMapping
+          toneMappingExposure: 1.0,
+        }}
+        frameloop="demand"
+      >
+        <SceneContent targetRef={targetRef} />
+        <TransformGizmo object={targetRef} mode={gizmoMode} />
+        <StatsCollector onStats={handleStats} />
+        <SceneCapturer />
+      </Canvas>
+      <GizmoModeRail mode={gizmoMode} onModeChange={setGizmoMode} />
+      <div style={{ position: 'absolute', left: 56, top: 'calc(50% - 20px)', zIndex: 3 }}>
+        <GizmoStatusLabel mode={gizmoMode} />
+      </div>
+    </>
   );
 }
 
