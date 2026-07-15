@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 05-06-PLAN.md (DTII grid editor: shared gate UI, dtiiTypeSpec grammar, DatatableGridEditor crumb/toolbar/grid)"
-last_updated: "2026-07-15T17:47:58.035Z"
+stopped_at: "Completed 05-08-PLAN.md (DTII grid editor: SchemaRail, real Hex view, round-trip gate wiring, dockview tab opening -- DATA-01 complete)"
+last_updated: "2026-07-15T18:22:10.480Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 80
-  percent: 94
+  completed_plans: 81
+  percent: 95
 ---
 
 # Project State
@@ -26,25 +26,25 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
 Status: Ready to execute
-        found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
-        `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
-        REQUIREMENTS: TRE-05, DEPLOY-01/02/03/08, CLIENT-02, viewport-default-facing-axis,
-        product-thesis-shadow-sandbox-and-server-push → Complete. DEPLOY-04 (Git/LFS) still
-        Pending (deferred, no phase assigned yet).
-Next: run the phase close-out chain — code_review_gate (/gsd:code-review 04.4) →
-      close_parent_artifacts (parent 04 UAT bookkeeping) → regression_gate → drift gates →
-      verify_phase_goal (gsd-verifier) → phase.complete 04.4. Then /gsd:discuss-phase 5
-      (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet) or /gsd:review-backlog triage
-      first (new todos: server-binding-post-create-ux, vcs-panel-sketch-and-placement,
-      e2e-leaked-temp-studios).
+        05-08 completed the DTII grid editor end-to-end: SchemaRail (Schema·COLS/TYPE,
+        Selected row, Round-trip gate), the real Hex view (byte-accurate highlight sourced
+        directly from 05-02's per-cell offsets, no re-derivation), Save·run gate/＋Stage
+        wired to the actual native round-trip (pass stages, fail never does, T-05-21), and
+        editorTabs.openEditorTab opening the editor as a real main-editor-group dockview
+        tab from a VfsTree double-click. DatatablePanel.tsx placeholder retired
+        (LAYOUT_VERSION 3→4). DATA-01 requirement complete.
+Next: 05-09 (.stf strings editor — reuses editorTabs.openEditorTab + GateBar/FailBanner
+      unchanged per this plan's readiness notes), then 05-10/11/12 (viewport gizmo +
+      live-sync HUD, LIVE-03).
 Last activity: 2026-07-15
-  04.4-15: D-22 real-server push→reset round-trip approved against live Core3 (WSL2). New todos
-  captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
-  e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
+  05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
+  dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
+  test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
+  process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [█████████░] 94%
+Progress: [██████████] 95%
 
 ### 02-03 key facts (crew-verified)
 
@@ -134,6 +134,7 @@ Progress: [█████████░] 94%
 | Phase 05 P05 | ~20min | 4 tasks | 8 files |
 | Phase 05 P06 | ~20min | 3 tasks | 9 files |
 | Phase 05 P07 | ~24min | 3 tasks | 11 files |
+| Phase 05 P08 | single session | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -307,6 +308,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05-06]: Schema rail, real Hex view, and GateBar/FailBanner live wiring to the native round-trip gate are 05-08's scope per this plan's objective; 05-06 ships static not-run/placeholder stand-ins only
 - [Phase 05-07]: identityCache keys on the agent-published focusToken exclusively (never networkId/templateName); every cache HIT cross-checks templateName/networkId before restoring (evicts+recreates on mismatch); cache bounded to 64 entries via least-recently-active eviction
 - [Phase 05-07]: vi.mock does NOT intercept a bare require() of a native addon in this project's vitest setup (confirmed for both @swg/live-inject and @swg/native-core) -- test pattern is: monkey-patch the real process-cached addon object, then dynamically import() the module under test
+- [Phase 05-08]: STATIC_PANEL_IDS allowlist (WorkspaceShell.tsx) drives the reopen-closed-panel menu instead of Object.keys(panelComponents) -- keeps dynamic per-file editor tab components (e.g. datatable-grid-editor) out of the generic reopen menu, which assumes a fixed id and no required params
+- [Phase 05-08]: @swg/native-core is a bare require() of a native addon -- vi.mock silently no-ops for it in this project's vitest setup; tests must monkey-patch the real process-cached addon object's methods instead (same fix already established for @swg/live-inject in useLiveService.test.ts)
 
 ### Pending Todos
 
@@ -337,17 +340,12 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T17:47:58.019Z
-Stopped at: Completed 05-06-PLAN.md (DTII grid editor: shared gate UI, dtiiTypeSpec grammar, DatatableGridEditor crumb/toolbar/grid)
-  camera-azimuth + OrbitControls framing fix shipped in-task); todo viewport-default-facing-axis
-  closed. Only 04.4-15-PLAN.md (D-22 real-server round-trip checkpoint) remains to close Phase 04.4
-  (14/15 plans complete).
-Next session: resolve 04.4-15's D-22 human-verify checkpoint (real-server round-trip for server
-  push) to fully close Phase 04.4, then pick up at ROADMAP Phase 5 (WYSIWYG Live-Sync & Typed
-  Editors — no CONTEXT.md yet → /gsd:discuss-phase 5 first), optionally after a backlog triage
-  (/gsd:review-backlog — several pending todos, some likely stale post-04.3/04.4). Remaining
-  Phase-4 remnant: DEPLOY-04 (Git/LFS) only.
-  Worth a runtime sanity check: the 260703-bpu deploy/Undo rewiring is test-verified but has not
-  yet been exercised in the live app — a quick deploy → Undo → redeploy in-client check on next
-  run would confirm it end-to-end.
+Last session: 2026-07-15T18:22:10.464Z
+Stopped at: Completed 05-08-PLAN.md (DTII grid editor: SchemaRail, real Hex view, round-trip gate wiring, dockview tab opening -- DATA-01 complete)
+  Full renderer suite (59 files / 453 tests) green post-commit; tsc --noEmit clean. Two commits:
+  83012d7 (SchemaRail + real Hex view + gate wiring), 0523aef (editorTabs.ts + VfsTree/
+  TreVfsBrowser wiring + DatatablePanel retirement, LAYOUT_VERSION 3→4).
+Next session: pick up 05-09 (.stf strings editor, DATA-02, sketch 018-A) — reuses
+  editorTabs.openEditorTab and the shared GateBar/FailBanner unchanged per 05-08's readiness
+  notes. Then 05-10/11/12 (viewport gizmo + live-sync HUD, LIVE-03).
 Resume file: None
