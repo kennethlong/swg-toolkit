@@ -342,7 +342,7 @@ Plans:
 - [x] 05-02-PLAN.md — DTII native parser/serializer (DataTable.h/.cpp) + N-API binding + CORE-05 fixture
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 05-03-PLAN.md — Agent integration: setTransform_o2w write-slot + setScale (D-09) + legacy 64-bit networkId + 60fps guarded poll loop + clean stop-signal
+- [x] 05-03-PLAN.md — Agent integration: setTransform_o2w write-slot + setScale (D-09) + legacy 64-bit networkId + 60fps guarded poll loop + clean stop-signal
 - [ ] 05-04-PLAN.md — Host N-API writeCommand export (channel_binding.cpp)
 - [ ] 05-05-PLAN.md — .stf native parser/serializer (two-section layout, sourceCrc-preserving) + N-API binding + CORE-05 fixture
 - [ ] 05-06-PLAN.md — Shared GateBar/GateChip/FailBanner + DatatableGridEditor core grid (crumb/toolbar/virtualized typed grid, D-07 widened badges)

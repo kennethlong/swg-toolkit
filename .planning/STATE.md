@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-02-PLAN.md (DTII datatable native parser + serializer)
-last_updated: "2026-07-15T16:13:05.438Z"
+stopped_at: Completed 05-03-PLAN.md (agent-side guarded write path + cross-build object targeting)
+last_updated: "2026-07-15T16:34:49.799Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 75
-  percent: 88
+  completed_plans: 76
+  percent: 89
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 3 of 12
+Plan: 4 of 12
 Status: Ready to execute
         found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
         `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
@@ -44,7 +44,7 @@ Last activity: 2026-07-15
   captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
   e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 89%
 
 ### 02-03 key facts (crew-verified)
 
@@ -129,6 +129,7 @@ Progress: [█████████░] 88%
 | Phase 04.4-ux-polish-deploy-hardening P04 | 35min | 3 tasks | 5 files |
 | Phase 05 P01 | 20min | 2 tasks | 7 files |
 | Phase 05-wysiwyg-live-sync-typed-editors P02 | 25min | 4 tasks | 8 files |
+| Phase 05 P03 | 20min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -288,6 +289,11 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05-02]: String cells are NUL-terminated (Iff::read_string), NOT length-prefixed as the plan's Interfaces section claimed -- verified against swg-client-v2 Iff.cpp:1539-1564 and the codebase's own ChunkView::readString precedent.
 - [Phase 05-02]: Legacy FORM 0000's TYPE chunk is int32 DataType codes, a DIFFERENT wire shape than 0001's string TYPE chunk (DataTable.cpp:500-535) -- corrects the plan's 'same three-chunk shape' claim; serializeDataTable always emits canonical 0001.
 - [Phase 05-02]: Real-fixture extraction uses listMountEntries() (real paths) not searchMount() (archiveIndex/entryIndex only, no .path per T-01-06); version-gated to '0001' since the serializer only emits canonical 0001.
+- [Phase ?]: 05-03: setScale seeded nullptr, applied to legacy RVA only post-resolveFromExe confirming legacy build (BLOCKER fix A)
+- [Phase ?]: 05-03: advertised focus resolution is a real two-step cuiHud::g_instance -> cuiHud::getTarget resolver, not a relabeled player fallback
+- [Phase ?]: 05-03: no getScale/m_scale binding in rva_table.cpp -- scale-guard comparand is a per-build-gated member-offset read (kLegacyScaleOffset=0x44) owned by agent_main.cpp
+- [Phase ?]: 05-03: guard-baseline re-key cross-checks templateName by CONTENT (strncmp against an owned copy), never by pointer -- closes agent-side pointer-ABA
+- [Phase ?]: 05-03: MSVC C2712 (__try + magic-static dynamic initializer conflict) fixed by splitting static declaration from its dynamic assignment
 
 ### Pending Todos
 
@@ -318,8 +324,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T16:13:05.419Z
-Stopped at: Completed 05-02-PLAN.md (DTII datatable native parser + serializer)
+Last session: 2026-07-15T16:34:49.784Z
+Stopped at: Completed 05-03-PLAN.md (agent-side guarded write path + cross-build object targeting)
   camera-azimuth + OrbitControls framing fix shipped in-task); todo viewport-default-facing-axis
   closed. Only 04.4-15-PLAN.md (D-22 real-server round-trip checkpoint) remains to close Phase 04.4
   (14/15 plans complete).
