@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-07-08T20:43:08.579Z"
-last_activity: 2026-07-08 -- Phase 05 planning complete
+stopped_at: Completed 05-01-PLAN.md (channel layout + write guard comparator)
+last_updated: "2026-07-15T15:50:35.149Z"
+last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 73
-  percent: 86
+  completed_plans: 74
+  percent: 87
 ---
 
 # Project State
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 04.4 — ux-polish-deploy-hardening
+**Current focus:** Phase 05 — wysiwyg-live-sync-typed-editors
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
+Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
+Plan: 2 of 12
 Status: Ready to execute
         found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
         `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
@@ -39,12 +39,12 @@ Next: run the phase close-out chain — code_review_gate (/gsd:code-review 04.4)
       (WYSIWYG Live-Sync & Typed Editors — no CONTEXT.md yet) or /gsd:review-backlog triage
       first (new todos: server-binding-post-create-ux, vcs-panel-sketch-and-placement,
       e2e-leaked-temp-studios).
-Last activity: 2026-07-08 -- Phase 05 planning complete
+Last activity: 2026-07-15
   04.4-15: D-22 real-server push→reset round-trip approved against live Core3 (WSL2). New todos
   captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
   e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
 
-Progress: [██████████] 99%
+Progress: [█████████░] 87%
 
 ### 02-03 key facts (crew-verified)
 
@@ -127,6 +127,7 @@ Progress: [██████████] 99%
 | Phase 04.4 P13 | ~3h | 2 tasks | 10 files |
 | Phase 04.4-ux-polish-deploy-hardening P14 | 35min | 2 tasks | 2 files |
 | Phase 04.4-ux-polish-deploy-hardening P04 | 35min | 3 tasks | 5 files |
+| Phase 05 P01 | 20min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -280,6 +281,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 04.4-04]: Camera-default azimuth match (SIE parity) explicitly out-of-scope per plan's round-2 note, but requested directly by maintainer mid-checkpoint and shipped in-task (round-2 approved) — no follow-up todo needed
 - [Phase 04.4-04]: Fixed OrbitControls-target framing bug found during D-17 UAT: useAutoFrame set camera.position/lookAt but never controls.target, so OrbitControls silently re-aimed at (0,0,0) on every update, centering SWG meshes' feet-origin and clipping the head — now retargets controls.target at bounds center
 - [Phase 04.4-09]: vite.main.config.ts MAIN_WINDOW_* defines now scoped to non-forge builds only (forgeConfigSelf absence check) — the unconditional defines from 04.4-09 were clobbering forge's own dev-server URL injection and breaking every pnpm/npm start boot
+- [Phase 05]: Command slot carries the full target state (transform + scale) every write, not a mode-tagged partial update
+- [Phase 05]: applyWrite is declared in write.h (forward-declaring LiveCommand) but left undefined in 05-01 -- 05-03 completes it with the resolved setter fn pointers
+- [Phase 05]: FOCUS_TOKEN inserted at offset 320 immediately after LIVENESS, inside the SAME seqlocked read-frame span as transform/networkId/templateName/liveness, shifting all command-region fields +4 bytes
 
 ### Pending Todos
 
@@ -310,8 +314,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T00:01:42.792Z
-Stopped at: Phase 5 context gathered
+Last session: 2026-07-15T15:50:35.131Z
+Stopped at: Completed 05-01-PLAN.md (channel layout + write guard comparator)
   camera-azimuth + OrbitControls framing fix shipped in-task); todo viewport-default-facing-axis
   closed. Only 04.4-15-PLAN.md (D-22 real-server round-trip checkpoint) remains to close Phase 04.4
   (14/15 plans complete).
@@ -323,4 +327,4 @@ Next session: resolve 04.4-15's D-22 human-verify checkpoint (real-server round-
   Worth a runtime sanity check: the 260703-bpu deploy/Undo rewiring is test-verified but has not
   yet been exercised in the live app — a quick deploy → Undo → redeploy in-client check on next
   run would confirm it end-to-end.
-Resume file: .planning/phases/05-wysiwyg-live-sync-typed-editors/05-CONTEXT.md
+Resume file: .planning/phases/05-wysiwyg-live-sync-typed-editors/05-02-PLAN.md

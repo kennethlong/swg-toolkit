@@ -338,7 +338,7 @@ Plans:
 **Plans**: 12 plans
 Plans:
 **Wave 1**
-- [ ] 05-01-PLAN.md — Command-slot channel contract + native seqlock extension + pure read-verify guard (write.h/.cpp)
+- [x] 05-01-PLAN.md — Command-slot channel contract + native seqlock extension + pure read-verify guard (write.h/.cpp)
 - [ ] 05-02-PLAN.md — DTII native parser/serializer (DataTable.h/.cpp) + N-API binding + CORE-05 fixture
 
 **Wave 2** *(blocked on Wave 1 completion)*
