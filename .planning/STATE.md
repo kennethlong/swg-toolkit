@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 05-08-PLAN.md (DTII grid editor: SchemaRail, real Hex view, round-trip gate wiring, dockview tab opening -- DATA-01 complete)"
-last_updated: "2026-07-15T18:22:10.480Z"
+stopped_at: "Completed 05-09-PLAN.md (.stf strings editor: crumb/toolbar/grid, sourceCrc-preserving gate wiring, dockview tab opening -- DATA-02 complete)"
+last_updated: "2026-07-15T18:43:46.547Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 81
-  percent: 95
+  completed_plans: 82
+  percent: 96
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 9 of 12
+Plan: 10 of 12
 Status: Ready to execute
         05-08 completed the DTII grid editor end-to-end: SchemaRail (Schema·COLS/TYPE,
         Selected row, Round-trip gate), the real Hex view (byte-accurate highlight sourced
@@ -44,7 +44,7 @@ Last activity: 2026-07-15
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [██████████] 95%
+Progress: [██████████] 96%
 
 ### 02-03 key facts (crew-verified)
 
@@ -135,6 +135,7 @@ Progress: [██████████] 95%
 | Phase 05 P06 | ~20min | 3 tasks | 9 files |
 | Phase 05 P07 | ~24min | 3 tasks | 11 files |
 | Phase 05 P08 | single session | 3 tasks | 18 files |
+| Phase 05 P09 | single session | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -310,6 +311,10 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05-07]: vi.mock does NOT intercept a bare require() of a native addon in this project's vitest setup (confirmed for both @swg/live-inject and @swg/native-core) -- test pattern is: monkey-patch the real process-cached addon object, then dynamically import() the module under test
 - [Phase 05-08]: STATIC_PANEL_IDS allowlist (WorkspaceShell.tsx) drives the reopen-closed-panel menu instead of Object.keys(panelComponents) -- keeps dynamic per-file editor tab components (e.g. datatable-grid-editor) out of the generic reopen menu, which assumes a fixed id and no required params
 - [Phase 05-08]: @swg/native-core is a bare require() of a native addon -- vi.mock silently no-ops for it in this project's vitest setup; tests must monkey-patch the real process-cached addon object's methods instead (same fix already established for @swg/live-inject in useLiveService.test.ts)
+- [Phase ?]: [Phase 05-09]: recomputeSourceCrcFromText declared in 05-05 but deliberately left unbound; 05-09 adds the N-API binding (its one intended caller, the per-row re-sync action) and rebuilds native-core
+- [Phase ?]: [Phase 05-09]: .stf working-row model merges byId+nameToId into ONE row per string; both on-disk orderings (D-11) re-derived fresh at serialize time by sorting on id vs key, not tracked as two parallel arrays
+- [Phase ?]: [Phase 05-09]: GateBar.tsx gained an optional note prop (right-aligned faint mono footer) for the .stf gate-bar footer note -- backward compatible, DTII omits it
+- [Phase ?]: [Phase 05-09]: .stf double-click branch lives in TreVfsBrowser.handleOpenEditor (not VfsTree.tsx as the plan named) -- VfsTree.tsx has no native-core/dockview access, matching 05-08's established DTII pattern
 
 ### Pending Todos
 
@@ -340,8 +345,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T18:22:10.464Z
-Stopped at: Completed 05-08-PLAN.md (DTII grid editor: SchemaRail, real Hex view, round-trip gate wiring, dockview tab opening -- DATA-01 complete)
+Last session: 2026-07-15T18:43:46.529Z
+Stopped at: Completed 05-09-PLAN.md (.stf strings editor: crumb/toolbar/grid, sourceCrc-preserving gate wiring, dockview tab opening -- DATA-02 complete)
   Full renderer suite (59 files / 453 tests) green post-commit; tsc --noEmit clean. Two commits:
   83012d7 (SchemaRail + real Hex view + gate wiring), 0523aef (editorTabs.ts + VfsTree/
   TreVfsBrowser wiring + DatatablePanel retirement, LAYOUT_VERSION 3→4).

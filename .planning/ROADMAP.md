@@ -352,7 +352,7 @@ Plans:
 - [x] 05-08-PLAN.md — DatatableGridEditor completion: SchemaRail + Hex toggle + gate-bar wiring to native round-trip + staging + dockview tab (retires DatatablePanel placeholder)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 05-09-PLAN.md — StfStringsEditor (sibling reuse of shared gate/grid idiom) + gate wiring + dockview tab
+- [x] 05-09-PLAN.md — StfStringsEditor (sibling reuse of shared gate/grid idiom) + gate wiring + dockview tab
 - [ ] 05-10-PLAN.md — TransformGizmo (restyled drei TransformControls, 4 modes, D-05 offline disabled-with-reason) + GizmoModeRail
 
 **Wave 5** *(blocked on Wave 4 completion)*
