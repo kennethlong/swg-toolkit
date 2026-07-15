@@ -32,6 +32,7 @@ import { TransformControls, Html } from '@react-three/drei';
 import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import { useLiveStore } from '../../state/liveStore.js';
 import { writeTransform } from '../../hooks/useCommandWriter.js';
+import { publishDragTick } from './liveDragTelemetry.js';
 
 // ─── Sketch-locked fixed hexes (do NOT theme-switch — UI-SPEC Color) ─────────
 
@@ -104,6 +105,19 @@ type WriteChannel = 'transform' | 'scale';
  *  Interaction Contract (zero React state churn during drag). */
 function trySendWrite(object: THREE.Object3D | null, channel: WriteChannel): void {
   if (!object) return;
+
+  // Compute + publish the object's CURRENT pose unconditionally, before any
+  // suppression check — drei's gizmo has already moved the 3D object locally
+  // by the time onChange fires (the write suppression below only gates
+  // whether WE forward that pose to the live client, not whether the local
+  // visual drag happened). TransformReadoutBar.tsx (05-11 Task 2) subscribes
+  // to this for its imperative, zero-React-state-churn numbox mirror.
+  objectToTransform12(object, _scratchTransform);
+  _scratchScale[0] = object.scale.x;
+  _scratchScale[1] = object.scale.y;
+  _scratchScale[2] = object.scale.z;
+  publishDragTick(_scratchTransform, _scratchScale);
+
   const { status, verifiedState, guardState } = useLiveStore.getState();
   // Belt-and-suspenders (T-05-16): TransformControls is enabled={false} whenever
   // not attached, so drei never fires onChange in that state — but the gate is
@@ -121,11 +135,11 @@ function trySendWrite(object: THREE.Object3D | null, channel: WriteChannel): voi
     if (guardState.transform === 'blocked') return;
   }
 
-  objectToTransform12(object, _scratchTransform);
-  _scratchScale[0] = object.scale.x;
-  _scratchScale[1] = object.scale.y;
-  _scratchScale[2] = object.scale.z;
   writeTransform(status.mappingName, _scratchTransform, _scratchScale);
+  // 05-11 Task 1 (Rule 2) — records this write into the client card's session
+  // write log. recordWrite coalesces rapid in-drag ticks into the CURRENT row
+  // (see liveStore.ts) rather than appending one entry per 60fps onChange tick.
+  useLiveStore.getState().recordWrite(_scratchTransform, _scratchScale);
 }
 
 // ─── Axis letter labels (UI-SPEC Accessibility Rule 1 — color never alone) ───

@@ -73,6 +73,21 @@ amended: "2026-07-08 — errata D-05, D-07, D-10, D-11 folded in, see ## Errata"
    The "CRC32 auto" / "0x········ (auto on save)" copy below is retired in favor of a read-only
    `sourceCrc` column plus an explicit, opt-in **"mark re-synced to source"** action that recomputes
    it from the default-locale file's current text. See `05-05-PLAN.md`.
+5. **ROUND 2 — `scaleUnavailableOnBuild` is a THIRD, structural, non-alarming disabled state,
+   distinct from both "offline" (D-05) and a genuine guard-tamper refusal.** True only on the
+   advertised build when the `object::setScale` engine endpoint has not been resolved this session
+   (05-03) — Scale writes are guaranteed to be refused, but this is a build-capability gap, not
+   tampering. Every surface that shares the gizmo's write path applies the SAME precedence rule
+   (`scaleUnavailableOnBuild` always wins over an ordinary `guardState.scale==='blocked'` tamper
+   read): the transform gizmo's Scale mode (05-10 `TransformGizmo`/`GizmoStatusLabel`, "Scale
+   unavailable on this build"), the readout bar's Scale numbox group (05-11 `TransformReadoutBar`,
+   same structural-disabled styling + label, numboxes non-interactive), the client card's scale guard
+   row (05-11 `LiveSyncClientCard`, four-branch precedence — unavailable > blocked > not-yet-written
+   > ok), and the StatusBar compact guard chip (05-11, `isScaleGenuinelyBlocked` — scale is NEVER
+   named in the refused list when it is merely build-unavailable). See `05-03-PLAN.md` (the liveness
+   bit), `05-07-PLAN.md` (`verifiedState.scaleUnavailableOnBuild`), `05-10-PLAN.md` (gizmo/label),
+   `05-11-PLAN.md` (readout bar / client card / statusbar — all reuse
+   `liveSyncGuardPrecedence.ts`'s shared precedence helpers rather than re-deriving the rule per file).
 
 ---
 
