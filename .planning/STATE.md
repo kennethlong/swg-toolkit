@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 05-10-PLAN.md (transform gizmo + mode rail: TransformGizmo.tsx guard-aware zero-alloc write path, GizmoStatusLabel, GizmoModeRail.tsx, Viewport.tsx wiring -- LIVE-03 first user-visible viewport capability)"
-last_updated: "2026-07-15T19:01:55.489Z"
+stopped_at: Completed 05-11-PLAN.md (LiveSyncClientCard + TransformReadoutBar + StatusBar mirror + Viewport final HUD assembly -- LIVE-03 full anatomy)
+last_updated: "2026-07-15T19:42:55.464Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 83
-  percent: 98
+  completed_plans: 84
+  percent: 99
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 11 of 12
+Plan: 12 of 12
 Status: Ready to execute
         05-08 completed the DTII grid editor end-to-end: SchemaRail (Schema·COLS/TYPE,
         Selected row, Round-trip gate), the real Hex view (byte-accurate highlight sourced
@@ -44,7 +44,7 @@ Last activity: 2026-07-15
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [██████████] 98%
+Progress: [██████████] 99%
 
 ### 02-03 key facts (crew-verified)
 
@@ -137,6 +137,7 @@ Progress: [██████████] 98%
 | Phase 05 P08 | single session | 3 tasks | 18 files |
 | Phase 05 P09 | single session | 3 tasks | 9 files |
 | Phase 05 P10 | ~13min | 2 tasks | 5 files |
+| Phase 05-wysiwyg-live-sync-typed-editors P11 | ~37min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -319,6 +320,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05]: 05-10: Universal gizmo mode renders 3 stacked drei TransformControls (translate+rotate+scale) simultaneously attached to the same object -- drei 10.7.7 has no combined mode
 - [Phase 05]: 05-10: TransformGizmo.tsx split into an R3F 3D component (default export) + a plain-DOM GizmoStatusLabel (named export, MissingDepsOverlay idiom) -- no R3F/WebGL test harness exists in this project, so the offline/target/scale-unavailable labels needed to live outside the Canvas-scoped component to stay testable
 - [Phase 05]: 05-10: DatatableGridEditor's existing Grid|Hex toggle already carries role=radiogroup + role=radio/aria-checked (correct a11y pairing) -- no change made; StfStringsEditor has no Grid|Hex toggle at all
+- [Phase 05-11]: recordWrite coalesces rapid in-drag writeLog appends (<500ms) into the current row instead of one entry per 60fps onChange tick
+- [Phase 05-11]: Guard-blocked/StatusBar scale-precedence logic extracted to liveSyncGuardPrecedence.ts, shared by LiveSyncClientCard and StatusBar
+- [Phase 05-11]: Gizmo mode lifted from Viewport.tsx local useState to gizmoModeStore.ts so StatusBar's mode segment shares the same source of truth
 
 ### Pending Todos
 
@@ -349,8 +353,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T19:01:55.472Z
-Stopped at: Completed 05-10-PLAN.md (transform gizmo + mode rail: TransformGizmo.tsx guard-aware zero-alloc write path, GizmoStatusLabel, GizmoModeRail.tsx, Viewport.tsx wiring -- LIVE-03 first user-visible viewport capability)
+Last session: 2026-07-15T19:42:55.434Z
+Stopped at: Completed 05-11-PLAN.md (LiveSyncClientCard + TransformReadoutBar + StatusBar mirror + Viewport final HUD assembly -- LIVE-03 full anatomy)
   Full renderer suite (59 files / 453 tests) green post-commit; tsc --noEmit clean. Two commits:
   83012d7 (SchemaRail + real Hex view + gate wiring), 0523aef (editorTabs.ts + VfsTree/
   TreVfsBrowser wiring + DatatablePanel retirement, LAYOUT_VERSION 3→4).

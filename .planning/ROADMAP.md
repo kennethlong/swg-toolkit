@@ -356,7 +356,7 @@ Plans:
 - [x] 05-10-PLAN.md — TransformGizmo (restyled drei TransformControls, 4 modes, D-05 offline disabled-with-reason) + GizmoModeRail
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 05-11-PLAN.md — LiveSyncClientCard (full B2 safety states) + TransformReadoutBar + StatusBar mirror + corner-gizmo/vp-stats + final Viewport wiring
+- [x] 05-11-PLAN.md — LiveSyncClientCard (full B2 safety states) + TransformReadoutBar + StatusBar mirror + corner-gizmo/vp-stats + final Viewport wiring
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 05-12-PLAN.md — GC-pressure soak test + maintainer in-world UAT checkpoint (both targets, incl. Scale) [autonomous: false]
