@@ -18,7 +18,7 @@ vi.mock('../hooks/useCommandWriter', () => ({
   writeTransform: vi.fn(),
 }));
 
-import { useLiveStore } from './liveStore';
+import { useLiveStore, computeDeltaLabel, formatAddr } from './liveStore';
 import { writeTransform } from '../hooks/useCommandWriter';
 
 const mockWriteTransform = writeTransform as ReturnType<typeof vi.fn>;
@@ -273,5 +273,93 @@ describe('liveStore COW snapshot / identity cache (05-07 Task 2)', () => {
     // cowSnapshot.scale is null (never captured) — falls back to identity scale, not
     // the write-log's resultingScale (2,2,2) and not any "current" value.
     expect(Array.from(sentScale as Float32Array)).toEqual([1, 1, 1]);
+  });
+});
+
+// ─── recordWrite / computeDeltaLabel (05-11 Task 1 — Rule 2 deviation) ────────
+// Closes the gap where TransformGizmo.tsx (05-10) called writeTransform
+// directly and NEVER appended to the write log — the client card's "every
+// live write appends a row" contract could never be observed from a real
+// drag. recordWrite is the ONE call site both TransformGizmo.tsx and
+// TransformReadoutBar.tsx now invoke.
+
+describe('liveStore.recordWrite (05-11 Task 1)', () => {
+  it('does nothing while not attached', () => {
+    useLiveStore.getState().recordWrite(new Float32Array(12), new Float32Array([1, 1, 1]));
+    expect(useLiveStore.getState().writeLog).toEqual([]);
+  });
+
+  it('appends a new entry when the log is empty, sourcing the delta from cowSnapshot', () => {
+    attach();
+    useLiveStore.getState().updateState(makeState({ focusToken: 1, transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]) }));
+    const t = new Float32Array([1, 0, 0, 0.5, 0, 1, 0, 0, 0, 0, 1, 0]);
+    useLiveStore.getState().recordWrite(t, new Float32Array([1, 1, 1]));
+
+    const log = useLiveStore.getState().writeLog;
+    expect(log.length).toBe(1);
+    expect(log[0]!.deltaLabel).toBe('pos.x +0.50m');
+    expect(Array.from(log[0]!.resultingTransform)).toEqual(Array.from(t));
+  });
+
+  it('coalesces a SECOND recordWrite call within the debounce window into the SAME row (not a new one)', () => {
+    attach();
+    useLiveStore.getState().updateState(makeState({ focusToken: 1 }));
+    const t1 = new Float32Array([1, 0, 0, 0.5, 0, 1, 0, 0, 0, 0, 1, 0]);
+    const t2 = new Float32Array([1, 0, 0, 0.9, 0, 1, 0, 0, 0, 0, 1, 0]);
+    useLiveStore.getState().recordWrite(t1, new Float32Array([1, 1, 1]));
+    useLiveStore.getState().recordWrite(t2, new Float32Array([1, 1, 1]));
+
+    const log = useLiveStore.getState().writeLog;
+    expect(log.length).toBe(1);
+    expect(Array.from(log[0]!.resultingTransform)).toEqual(Array.from(t2));
+  });
+
+  it('appends a distinct SECOND row once the coalesce window has elapsed', () => {
+    vi.useFakeTimers();
+    try {
+      attach();
+      useLiveStore.getState().updateState(makeState({ focusToken: 1 }));
+      const t1 = new Float32Array([1, 0, 0, 0.5, 0, 1, 0, 0, 0, 0, 1, 0]);
+      useLiveStore.getState().recordWrite(t1, new Float32Array([1, 1, 1]));
+      vi.advanceTimersByTime(600);
+      const t2 = new Float32Array([1, 0, 0, 1.5, 0, 1, 0, 0, 0, 0, 1, 0]);
+      useLiveStore.getState().recordWrite(t2, new Float32Array([1, 1, 1]));
+
+      expect(useLiveStore.getState().writeLog.length).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('computeDeltaLabel (05-11 Task 1)', () => {
+  const identity = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
+
+  it('prefers a scale delta when scale changed', () => {
+    const label = computeDeltaLabel(identity, identity, new Float32Array([1, 1, 1]), new Float32Array([2, 1, 1]));
+    expect(label).toBe('scale.x ×2.00');
+  });
+
+  it('prefers a position delta when position changed and scale did not', () => {
+    const newT = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0.75, 0, 0, 1, 0]);
+    const label = computeDeltaLabel(identity, newT, null, new Float32Array([1, 1, 1]));
+    expect(label).toBe('pos.y +0.75m');
+  });
+
+  it('falls back to a rotation-angle delta when neither position nor scale changed', () => {
+    // 90-degree rotation about Z: [0,-1,0 / 1,0,0 / 0,0,1] row-major, translation 0.
+    const rotated = new Float32Array([0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]);
+    const label = computeDeltaLabel(identity, rotated, null, new Float32Array([1, 1, 1]));
+    expect(label).toMatch(/^rot Δ\+90\.0°$/);
+  });
+});
+
+describe('formatAddr (05-11 Task 1 — exported for LiveSyncClientCard reuse)', () => {
+  it('formats null as 0x0', () => {
+    expect(formatAddr(null)).toBe('0x0');
+  });
+
+  it('formats a real pointer as uppercase hex', () => {
+    expect(formatAddr(0xdeadbeef)).toBe('0xDEADBEEF');
   });
 });

@@ -43,6 +43,12 @@ export interface CowSnapshot {
   networkId: string;
   /** DISPLAY ONLY — never used for identity comparison (see focusToken). */
   templateName: string;
+  /** Wall-clock ms this identity's snapshot was captured (attach-time or
+   *  re-key-time) — the HUD's "COW snapshot: saved · HH:MM:SS" row and the
+   *  reverted banner's "taken at attach (HH:MM:SS)" clause both source this
+   *  (05-11 Task 1 — Rule 2, the field the plan's copy contract requires but
+   *  round 1 of this store never captured). */
+  capturedAtMs: number;
 }
 
 /** One append-only write-log entry (a completed, guard-accepted write). */
@@ -97,6 +103,7 @@ function freshSlot(state: VerifiedObjectState, nowMs: number): IdentitySlot {
       scale: null,
       networkId: state.networkId.toString(),
       templateName: state.templateName,
+      capturedAtMs: nowMs,
     },
     writeLog: [],
     guardState: freshGuardState(),
@@ -106,9 +113,98 @@ function freshSlot(state: VerifiedObjectState, nowMs: number): IdentitySlot {
 }
 
 /** Formats an agent-published x86 pointer for HUD display. `null` (never
- *  guard-checked yet) renders as '0x0'. */
-function formatAddr(addr: number | null): string {
+ *  guard-checked yet) renders as '0x0'. Exported (05-11 Task 1) — the
+ *  guard-blocked banner's address and the reverted banner's discarded-change
+ *  clause must format `liveStore.guardAddr` with the SAME helper
+ *  `lastDiscardedChange.addr` is already produced by, not a re-derived
+ *  duplicate (ROUND 5, REVIEWS.md round-4 maintainer decision #4). */
+export function formatAddr(addr: number | null): string {
   return addr === null ? '0x0' : '0x' + (addr >>> 0).toString(16).toUpperCase();
+}
+
+// ─── Write-log delta-label + recorder (05-11 Task 1 — Rule 2) ─────────────────
+// 05-10's TransformGizmo.tsx calls writeTransform directly (useCommandWriter,
+// bypassing liveStore) on every drag-move tick, but NEVER called
+// liveStore.appendWriteLog — the write log could never populate from a real
+// live write (grepped: appendWriteLog had zero non-test call sites before this
+// plan), silently defeating this plan's own "every live write appends a row"
+// contract and 05-12's UAT step 2 ("a new row appears in the client card's
+// write log" after a drag). recordWrite() closes that gap: it is the ONE call
+// site both TransformGizmo.tsx (05-10) and TransformReadoutBar.tsx (05-11
+// Task 2) invoke after a successful writeTransform, and it COALESCES rapid
+// per-tick calls (60fps during a drag) into the CURRENT row rather than
+// flooding the log with one entry per animation frame — a row keeps refreshing
+// live while dragging and settles into a discrete entry once the drag pauses.
+
+/** Rapid successive recordWrite calls within this window update the CURRENT
+ *  row in place instead of appending a new one (one row per drag gesture, not
+ *  one row per 60fps onChange tick). */
+const WRITE_LOG_COALESCE_MS = 500;
+
+/** Monotonic id generator for write-log entries recordWrite creates — module
+ *  singleton (a UI-local id, never persisted/compared across sessions). */
+let nextWriteLogId = 1;
+
+/** Extracts translation (columns 3/7/11 of the row-major float[3][4]) as [x,y,z]. */
+function positionOf(t: Float32Array): [number, number, number] {
+  return [t[3] ?? 0, t[7] ?? 0, t[11] ?? 0];
+}
+
+/** Rotation "amount" via the standard trace-based angle-of-rotation formula
+ *  (angle = acos((trace(R)-1)/2)) — a single scalar, not a per-axis Euler
+ *  decomposition (Flagged Assumption 4 leaves exact rot delta format to
+ *  implementer discretion). Radians. */
+function rotationAngle(t: Float32Array): number {
+  const trace = (t[0] ?? 0) + (t[5] ?? 0) + (t[10] ?? 0);
+  return Math.acos(Math.min(1, Math.max(-1, (trace - 1) / 2)));
+}
+
+/**
+ * Pure, unit-testable delta-label formatter (Flagged Assumption 4 — rot in
+ * degrees, scale unitless factor, exact format left to implementer). Prefers
+ * whichever channel actually changed: scale first (distinguishable from
+ * position/rotation by magnitude, not merely order), then position, then a
+ * trace-based rotation-angle delta as the fallback when neither position nor
+ * scale moved.
+ */
+export function computeDeltaLabel(
+  prevTransform: Float32Array | null,
+  newTransform: Float32Array,
+  prevScale: Float32Array | null,
+  newScale: Float32Array,
+): string {
+  const ps = prevScale ?? new Float32Array([1, 1, 1]);
+  const axisNames = ['x', 'y', 'z'] as const;
+
+  let scaleBestIdx = 0;
+  let scaleBestDelta = 0;
+  for (let i = 0; i < 3; i++) {
+    const d = Math.abs((newScale[i] ?? 1) - (ps[i] ?? 1));
+    if (d > scaleBestDelta) { scaleBestDelta = d; scaleBestIdx = i; }
+  }
+  if (scaleBestDelta > 1e-4) {
+    const base = ps[scaleBestIdx] || 1;
+    const factor = (newScale[scaleBestIdx] ?? 1) / base;
+    return `scale.${axisNames[scaleBestIdx]} ×${factor.toFixed(2)}`;
+  }
+
+  const pt = prevTransform ?? newTransform;
+  const [px, py, pz] = positionOf(pt);
+  const [nx, ny, nz] = positionOf(newTransform);
+  const deltas: Array<[(typeof axisNames)[number], number]> = [
+    ['x', nx - px],
+    ['y', ny - py],
+    ['z', nz - pz],
+  ];
+  const [posAxis, posDelta] = deltas.reduce((a, b) => (Math.abs(b[1]) > Math.abs(a[1]) ? b : a));
+  if (Math.abs(posDelta) > 1e-4) {
+    const sign = posDelta >= 0 ? '+' : '';
+    return `pos.${posAxis} ${sign}${posDelta.toFixed(2)}m`;
+  }
+
+  const deltaDeg = (rotationAngle(newTransform) - rotationAngle(pt)) * (180 / Math.PI);
+  const sign = deltaDeg >= 0 ? '+' : '';
+  return `rot Δ${sign}${deltaDeg.toFixed(1)}°`;
 }
 
 /** No historical scale was ever captured this identity (cowSnapshot.scale
@@ -132,6 +228,13 @@ export interface LiveStore {
   verifiedState: VerifiedObjectState | null;
   /** Raw region bytes for the HexInspector view (D-07). Null until a region read. */
   regionBytes: Uint8Array | null;
+  /** The clientExe/PID string passed to beginAttach() — LiveInspectorPanel.tsx
+   *  already tracks this as local component state (clientExe input) but never
+   *  threaded it through the store, so no OTHER consumer could read it (05-11
+   *  Task 1, Rule 2 — the client card's `client` row needs this). Null until
+   *  the first attach attempt this session; persists through attachComplete/
+   *  attachError so the row stays populated in all three post-attempt states. */
+  clientLabel: string | null;
 
   // ─── D-03 COW / write-log / guard state (ROUND 5 — per-identity cache) ────
 
@@ -175,6 +278,12 @@ export interface LiveStore {
   captureSnapshotIfNeeded: (state: VerifiedObjectState) => void;
   /** Appends a completed write to the active identity's write-log. */
   appendWriteLog: (entry: WriteLogEntry) => void;
+  /** The ONE call site TransformGizmo.tsx / TransformReadoutBar.tsx invoke
+   *  right after a successful writeTransform — derives a deltaLabel, coalesces
+   *  rapid in-drag ticks into the current row, and calls appendWriteLog (05-11
+   *  Task 1, Rule 2 — closes the "write log never populates" gap left by
+   *  05-10's direct useCommandWriter call bypassing liveStore entirely). */
+  recordWrite: (transform: Float32Array, scale: Float32Array) => void;
   /** Per-channel guard setter — transform/scale are independently settable. */
   setGuardState: (channel: 'transform' | 'scale', state: 'ok' | 'blocked') => void;
   /** Explicit GUARD_ADDR setter (called from useChannelReader's decode step). */
@@ -271,6 +380,7 @@ export const useLiveStore = create<LiveStore>((set, get) => ({
   disabledReason: null,
   verifiedState:  null,
   regionBytes:    null,
+  clientLabel:    null,
 
   identityCache:      new Map(),
   currentFocusToken:  null,
@@ -280,8 +390,8 @@ export const useLiveStore = create<LiveStore>((set, get) => ({
   lastDiscardedChange: null,
   guardAddr:          null,
 
-  beginAttach: (_clientExe: string) =>
-    set({ status: { kind: 'connecting' }, disabledReason: null }),
+  beginAttach: (clientExe: string) =>
+    set({ status: { kind: 'connecting' }, disabledReason: null, clientLabel: clientExe }),
 
   attachComplete: (pid: number, mappingName: string) =>
     set({ status: { kind: 'attached', pid, mappingName }, mode: 'live' }),
@@ -307,6 +417,7 @@ export const useLiveStore = create<LiveStore>((set, get) => ({
       verifiedState:  null,
       regionBytes:    null,
       disabledReason: null,
+      clientLabel:    null,
       // ROUND 5 — the per-identity cache is scoped to ONE attach session; a
       // fresh attach starts a brand-new cache, it does not persist identities
       // across detach/reattach cycles (matches D-03's model).
@@ -376,6 +487,42 @@ export const useLiveStore = create<LiveStore>((set, get) => ({
   appendWriteLog: (entry: WriteLogEntry) => {
     const newWriteLog = [...get().writeLog, entry];
     set(withActiveSlotUpdate(get, { writeLog: newWriteLog }));
+  },
+
+  recordWrite: (transform: Float32Array, scale: Float32Array) => {
+    const { status, writeLog, cowSnapshot } = get();
+    if (status.kind !== 'attached') return;
+
+    const nowMs = Date.now();
+    const last = writeLog.length > 0 ? writeLog[writeLog.length - 1]! : null;
+    const prevTransform = last ? last.resultingTransform : (cowSnapshot?.transform ?? null);
+    const prevScale = last ? last.resultingScale : (cowSnapshot?.scale ?? null);
+    const deltaLabel = computeDeltaLabel(prevTransform, transform, prevScale, scale);
+
+    if (last !== null && nowMs - last.atMs < WRITE_LOG_COALESCE_MS) {
+      // Coalesce rapid in-drag ticks (60fps onChange) into the CURRENT row
+      // rather than flooding the log with one entry per animation frame — the
+      // row keeps refreshing live and settles into a discrete entry once
+      // dragging pauses.
+      const updated: WriteLogEntry = {
+        ...last,
+        atMs: nowMs,
+        deltaLabel,
+        resultingTransform: transform.slice(),
+        resultingScale: scale.slice(),
+      };
+      const newLog = [...writeLog.slice(0, -1), updated];
+      set(withActiveSlotUpdate(get, { writeLog: newLog }));
+      return;
+    }
+
+    get().appendWriteLog({
+      id: nextWriteLogId++,
+      atMs: nowMs,
+      deltaLabel,
+      resultingTransform: transform.slice(),
+      resultingScale: scale.slice(),
+    });
   },
 
   setGuardState: (channel: 'transform' | 'scale', state: 'ok' | 'blocked') => {
