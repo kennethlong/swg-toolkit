@@ -20,6 +20,12 @@ export default defineConfig({
     ],
     environment: 'node',
     pool: 'forks',
+    // --expose-gc: the root runner globs packages/live-inject/test/soak.test.ts (05-12
+    // Task 1, LIVE-03 SC1), which hard-throws without a real global.gc rather than
+    // silently skipping. Mirror the package's own vitest config so the aggregate root
+    // run exercises the soak proof for real instead of failing. Harmless no-op for
+    // every other test file. (Vitest 4: execArgv is a top-level `test` option.)
+    execArgv: ['--expose-gc'],
     // Redirect toolkit data (studios/projects) into a per-run temp dir so tests that
     // create/open workspaces never pollute the user's real %LOCALAPPDATA%\swg-toolkit.
     setupFiles: ['./packages/renderer/test/setup-data-root.ts'],
