@@ -137,6 +137,14 @@ Napi::Value ParseEffect(const Napi::CallbackInfo& info);
 //   CQuat: swg-client-v2 CompressedQuaternion.cpp:82-122,156-228,370-419 (verbatim port)
 Napi::Value ParseAnimation(const Napi::CallbackInfo& info);
 
+// Phase 5 Plan 05-02 DTII datatable parser (implemented in dtii_binding.cpp):
+// Source: modules/core/formats/DataTable.h
+//   DataTable: swg-client-v2 DataTable.cpp:400-476,480-555 (_readCell, load_0000/load_0001)
+//              swg-client-v2 DataTableWriter.cpp:650-664,723-748,821-912 (_saveTableToIff, Comment-strip)
+//              swg-client-v2 DataTableColumnType.cpp:84-232 (type-spec dispatch)
+Napi::Value ParseDataTable(const Napi::CallbackInfo& info);
+Napi::Value SerializeDataTable(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -194,6 +202,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
     // Phase 2 Plan 02-04 animation parser (.ans CKAT-0001 + KFAT-0003):
     exports.Set("parseAnimation",           Napi::Function::New(env, ParseAnimation));
+
+    // Phase 5 Plan 05-02 DTII datatable parser + serializer (FORM DTII):
+    exports.Set("parseDataTable",           Napi::Function::New(env, ParseDataTable));
+    exports.Set("serializeDataTable",       Napi::Function::New(env, SerializeDataTable));
 
     // Phase 4 Plan 04.3-10 Pillar B: v6000 per-payload extract + SearchTOC mount:
     exports.Set("extractMountAt",         Napi::Function::New(env, ExtractMountAt));
