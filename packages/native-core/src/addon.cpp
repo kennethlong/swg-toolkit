@@ -145,6 +145,15 @@ Napi::Value ParseAnimation(const Napi::CallbackInfo& info);
 Napi::Value ParseDataTable(const Napi::CallbackInfo& info);
 Napi::Value SerializeDataTable(const Napi::CallbackInfo& info);
 
+// Phase 5 Plan 05-05 .stf localized string table (implemented in stf_binding.cpp):
+// Source: modules/core/formats/StringTable.h
+//   StringTable: swg-client-v2 LocalizedStringTable.cpp:72,77,227-308,368-405 (magic/version,
+//                load_0001, openLoadFile)
+//                LocalizedString.cpp:20-95,178-329 (per-string id/sourceCrc/buflen/text, CRC table)
+//                LocalizedStringTableReaderWriter.cpp:107-203 (str_write/write, both sections)
+Napi::Value ParseStf(const Napi::CallbackInfo& info);
+Napi::Value SerializeStf(const Napi::CallbackInfo& info);
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 0 exports
     exports.Set("hello",       Napi::Function::New(env, Hello));
@@ -206,6 +215,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Phase 5 Plan 05-02 DTII datatable parser + serializer (FORM DTII):
     exports.Set("parseDataTable",           Napi::Function::New(env, ParseDataTable));
     exports.Set("serializeDataTable",       Napi::Function::New(env, SerializeDataTable));
+
+    // Phase 5 Plan 05-05 .stf localized string table parser + serializer:
+    exports.Set("parseStf",                 Napi::Function::New(env, ParseStf));
+    exports.Set("serializeStf",             Napi::Function::New(env, SerializeStf));
 
     // Phase 4 Plan 04.3-10 Pillar B: v6000 per-payload extract + SearchTOC mount:
     exports.Set("extractMountAt",         Napi::Function::New(env, ExtractMountAt));
