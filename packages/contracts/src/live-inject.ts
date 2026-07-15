@@ -179,7 +179,17 @@ export const ENGINE_ENDPOINT_NAMES = {
 // Verified object state
 // ---------------------------------------------------------------------------
 
-/** Fully verified snapshot of one SWG object's live state. */
+/**
+ * Fully verified snapshot of one SWG object's live state.
+ *
+ * The five boolean/numeric fields below (hasTarget through focusToken) are ALL
+ * decoded from the SAME 400-byte read frame's LIVENESS (offset 316) and
+ * FOCUS_TOKEN (offset 320) fields — no new channel offset was added for
+ * hasTarget/targetUnavailableOnBuild/scaleUnavailableOnBuild (they are bits
+ * 2/3/4 of the pre-existing LIVENESS word); FOCUS_TOKEN is its own 4-byte
+ * field but rides the SAME seqlock as transform/networkId/templateName/
+ * liveness (05-01 ROUND 5).
+ */
 export interface VerifiedObjectState {
   /** uint64 from getNetworkId */
   networkId:    bigint;
@@ -189,4 +199,29 @@ export interface VerifiedObjectState {
   transform:    Float32Array;
   /** All 4 sentinels passed */
   playerAlive:  boolean;
+  /** LIVENESS bit2 — the agent resolved a real "focus" object this tick
+   *  (either build's targeting mechanism). False when nothing is targeted
+   *  (the player is shown as a fallback) OR when the mechanism itself is
+   *  unresolved on this build (see targetUnavailableOnBuild). */
+  hasTarget: boolean;
+  /** LIVENESS bit3 (REVIEWS.md ROUND 2 redefinition) — true when the
+   *  targeting-resolution MECHANISM itself is unresolved on this build,
+   *  never merely "nothing is currently targeted." True on EITHER build now,
+   *  not a legacy-vs-advertised split. */
+  targetUnavailableOnBuild: boolean;
+  /** LIVENESS bit4 (ROUND 2 NEW) — true when this is the advertised build AND
+   *  the setScale endpoint could not be resolved, meaning Scale writes are
+   *  guaranteed to be refused this session (distinct from a genuine
+   *  guard-tamper SCALE_REFUSED, which requires a resolved setter). */
+  scaleUnavailableOnBuild: boolean;
+  /** FOCUS_TOKEN (offset 320) — the agent's own truncated addrOf(focus)
+   *  pointer, published every tick as PART OF the seqlocked read frame
+   *  (05-01/05-03 ROUND 5, REVIEWS.md round-4 maintainer decision #1). This
+   *  is the LOAD-BEARING per-object identity signal liveStore's
+   *  captureSnapshotIfNeeded re-keys its per-identity cache on — NEVER
+   *  (networkId, templateName), which collapses to (0, templateName) on
+   *  legacy (networkId is always 0 there, Fix E). Distinct from `guardAddr`
+   *  (liveStore field, GUARD_ADDR offset 396), which only updates on a
+   *  guard-checked apply, not every tick. */
+  focusToken: number;
 }

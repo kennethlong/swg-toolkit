@@ -21,7 +21,7 @@ import React, { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 import { useLiveStore } from '../state/liveStore.ts';
 import HexInspector from './iff/HexInspector';
-import { launchAndInjectUI, attachToRunningUI } from '../hooks/useLiveService';
+import { launchAndInjectUI, attachToRunningUI, detachUI } from '../hooks/useLiveService';
 import { useChannelReader } from '../hooks/useChannelReader';
 
 // VerifiedObjectState is used for type guidance only (flows through liveStore).
@@ -140,6 +140,16 @@ export default function LiveInspectorPanel(_props: IDockviewPanelProps): React.R
             gap:           'var(--space-2)',
           }}
         >
+
+          {/* ── Detach control (D-04 item 2) — visible whenever attached ─── */}
+          {status.kind === 'attached' && (
+            <button
+              style={attachBtnStyle}
+              onClick={() => { void detachUI(); }}
+            >
+              Detach
+            </button>
+          )}
 
           {/* ── STATE 1: File-patch / idle / error / connecting ──────────── */}
           {(mode === 'file-patch' || status.kind === 'idle' || status.kind === 'error') && (
