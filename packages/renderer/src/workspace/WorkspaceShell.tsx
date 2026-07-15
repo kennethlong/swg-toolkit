@@ -68,6 +68,9 @@ import LogPanel           from '../panels/LogPanel';
 // STATIC_PANEL_IDS below (the generic "reopen closed panel" menu assumes a fixed id with no
 // required params, which per-file editor tabs do not have).
 import DatatableGridEditor from '../panels/editors/DatatableGridEditor';
+// 05-09: .stf strings editor — SAME dynamic per-file editor-tab shape as DatatableGridEditor
+// above (opened exclusively via editorTabs.openEditorTab; excluded from STATIC_PANEL_IDS).
+import StfStringsEditor from '../panels/editors/StfStringsEditor';
 
 // ─── Panel component registry ─────────────────────────────────────────────────
 //
@@ -96,6 +99,9 @@ const panelComponents: Record<string, React.FunctionComponent<IDockviewPanelProp
   // instances opened via editorTabs.openEditorTab(dockApi, { component: 'datatable-grid-editor', ... }).
   // Deliberately NOT added to STATIC_PANEL_IDS (see import comment above).
   'datatable-grid-editor': DatatableGridEditor,
+  // 05-09: dynamic per-file .stf editor tab component — same shape as 'datatable-grid-editor'.
+  // Deliberately NOT added to STATIC_PANEL_IDS.
+  'stf-strings-editor': StfStringsEditor,
 };
 
 /**

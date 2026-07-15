@@ -50,6 +50,7 @@ import { readVfsEntryBytes } from '../../services/readVfsEntryBytes';
 import type { DockviewApi } from 'dockview';
 import { openEditorTab } from '../../shell/editorTabs';
 import type { DatatableGridEditorParams } from '../editors/DatatableGridEditor';
+import type { StfStringsEditorParams } from '../editors/StfStringsEditor';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
 // Source: packages/renderer/src/shell/StatusBar.tsx:34-41.
@@ -88,6 +89,9 @@ const nativeCore = require('@swg/native-core') as {
   /** DTII datatable parser (05-02) — consumed by handleOpenEditor (05-08) to build the
    *  DatatableGridEditor tab's params when a double-clicked entry's FORM tag is DTII. */
   parseDataTable: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => DatatableGridEditorParams['table'];
+  /** `.stf` localized-string-table parser (05-05) — PARSER-NATIVE, no IFF tree. Consumed by
+   *  handleOpenEditor (05-09) to build the StfStringsEditor tab's params for `.stf` entries. */
+  parseStf: (bytes: ArrayBuffer | Uint8Array) => StfStringsEditorParams['stfResult'];
   /** Parse a .ans animation (CKAT/KFAT). Returns null/KFAT-0002-unsupported for legacy. */
   parseAnimation: (iff: unknown, bytes: ArrayBuffer | Uint8Array) => ViewportStore['parsedAnimation'];
   /** Substring/glob search across all VFS entries. Returns {entryIndex, archiveIndex} objects. */
@@ -434,14 +438,16 @@ export default function TreVfsBrowser({ dockApi }: TreVfsBrowserProps = {}): Rea
     }
   }, [store]);
 
-  // ── Open-editor handler (05-08 — DATA-01) ───────────────────────────────────
+  // ── Open-editor handler (05-08 DATA-01 / 05-09 DATA-02) ─────────────────────
   //
-  // Double-clicking a .iff entry whose FORM tag is DTII opens DatatableGridEditor as a
-  // main-editor-group dockview tab. FORM-tag detection reuses the SAME parseIff() call
-  // handleSelectEntry already makes for the IFF Structure panel (no second detection
-  // mechanism is introduced) — this handler simply re-derives bytes/roots for the double-
-  // clicked entry (a fresh read, since handleSelectEntry's parse result lives in iffStore
+  // Double-clicking a .iff entry whose FORM tag is DTII opens DatatableGridEditor; double-
+  // clicking a .stf entry opens StfStringsEditor. FORM-tag detection (DTII) reuses the SAME
+  // parseIff() call handleSelectEntry already makes for the IFF Structure panel (no second
+  // detection mechanism is introduced) — this handler simply re-derives bytes/roots for the
+  // double-clicked entry (a fresh read, since handleSelectEntry's parse result lives in iffStore
   // keyed by the currently-SELECTED entry, which may lag one click behind a fast double-click).
+  // `.stf` is PARSER-NATIVE (05-05 — no FORM/CHUNK tree), so it is detected by EXTENSION, not
+  // FORM tag, and skips the parseIff() step entirely.
 
   const handleOpenEditor = useCallback((entry: VfsEntry) => {
     if (!dockApi) return;
@@ -454,6 +460,29 @@ export default function TreVfsBrowser({ dockApi }: TreVfsBrowserProps = {}): Rea
       : null;
     const bytes = readVfsEntryBytes(entry, mountHandle, openDescriptor);
     if (!bytes) return;
+
+    // ── .stf (PARSER-NATIVE, not IFF) — DATA-02 (05-09) ──────────────────────────
+    if (entry.path.toLowerCase().endsWith('.stf')) {
+      let stfResult: StfStringsEditorParams['stfResult'];
+      try {
+        stfResult = nativeCore.parseStf(bytes);
+      } catch (err) {
+        console.error('[TreVfsBrowser] Open editor: parseStf failed:', err);
+        return;
+      }
+      // Locale is the path segment directly under 'string/' (e.g. string/en/foo.stf -> 'en').
+      const segments = entry.path.split('/');
+      const stringIdx = segments.indexOf('string');
+      const locale = stringIdx >= 0 && segments.length > stringIdx + 1 ? segments[stringIdx + 1]! : 'en';
+
+      openEditorTab<StfStringsEditorParams>(dockApi, {
+        id: `stf:${entry.path}`,
+        title: `${entry.name} — Strings`,
+        component: 'stf-strings-editor',
+        params: { stfResult, virtualPath: entry.path, locale },
+      });
+      return;
+    }
 
     let iffResult: { roots: IffNodeForOpen[] };
     try {
