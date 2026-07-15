@@ -62,3 +62,5 @@ packages/harness/fixtures-real/skeleton/*.skt
 packages/harness/fixtures-real/effect/*.eft
 # Real DTII datatable asset (05-02 — appearance_table.iff, local-only CORE-05 gate)
 packages/harness/fixtures-real/datatable/*.iff
+# Real .stf localized-string-table asset (05-05 — aprilfools.stf, local-only CORE-05 gate)
+packages/harness/fixtures-real/stf/*.stf
