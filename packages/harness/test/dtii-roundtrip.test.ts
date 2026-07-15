@@ -195,10 +195,10 @@ beforeAll(() => {
 
   // Task 4: real-asset fixture lane — additional entry when present, absent otherwise
   // (never fails the sweep when the machine has no installed client).
-  const realBytes = loadFixture('datatable/creature_species.iff');
+  const realBytes = loadFixture('datatable/appearance_table.iff');
   if (realBytes) {
     fixtures.push({
-      name: 'real-asset creature_species.iff',
+      name: 'real-asset appearance_table.iff',
       bytes: realBytes,
       loaderSource: 'swg-client-v2 DataTable.cpp:400-476 (real extracted FORM DTII asset)',
     });
@@ -290,10 +290,10 @@ describe('FORM DTII (.iff) — datatable parser', () => {
 
   // ─── Real-asset fixture lane (Task 4) — local/opt-in, skips cleanly when absent ──
   describe('real-asset fixture (gitignored, extracted from an installed client)', () => {
-    it('byte-exact round-trip — datatable/creature_species.iff (or first extracted DTII)', () => {
-      const bytes = loadFixture('datatable/creature_species.iff');
+    it('byte-exact round-trip — datatable/appearance_table.iff (extract-dtii-fixtures.cjs output)', () => {
+      const bytes = loadFixture('datatable/appearance_table.iff');
       if (!bytes) {
-        console.log('  SKIP: fixtures-real/datatable/creature_species.iff not present — run scripts/extract-dtii-fixtures.cjs');
+        console.log('  SKIP: fixtures-real/datatable/appearance_table.iff not present — run scripts/extract-dtii-fixtures.cjs');
         return;
       }
       assertRoundTrip(
