@@ -14,6 +14,27 @@
  *   D:/Code/Utinni/UtinniCore/swg/object/object.cpp:43-190
  *   D:/Code/Utinni/UtinniCore/swg/game/game.cpp:41-98
  *   D:/Code/Utinni/UtinniCore/swg/misc/network.cpp:30-58
+ *   D:/Code/swg-client-v2/.../engine_advertise.cpp:705-709 (cross-build target resolution, 05-03)
+ *
+ * 05-03 ADDITIONS (write-slot + cross-build target resolution):
+ *   setTransform_o2w / setScale — the guarded write endpoints (REVIEWS.md BLOCKER
+ *   fix A — setScale is seeded nullptr, NEVER a stale legacy literal on the
+ *   advertised build; agent_main.cpp's agent_init conditionally seeds it AFTER
+ *   confirming isAdvertisedClient()==false).
+ *   getPlayerCreatureObject / cachedNetworkIdGetObject — LEGACY-ONLY target
+ *   resolution (the +1432 lookAt-target chain), gated at every call site in
+ *   agent_main.cpp behind an explicit !isAdvertisedClient() check — never
+ *   bound in g_agentBindings[] (a legacy-literal-only pair).
+ *   getObjectByIdLegacy / getObjectByIdAdvertised — a cross-build generic
+ *   NetworkId->Object* resolver, bound on BOTH builds as a reusable primitive
+ *   (project's "SWGEmu never descoped" rule) but NOT on the active per-frame
+ *   focus-resolution path this phase (05-CONTEXT decision #1b).
+ *   cuiHudGetInstance / cuiHudGetTarget — the ADVERTISED build's real TWO-STEP
+ *   selected-object resolver (engine_advertise.cpp:706/:705), the ACTIVE
+ *   advertised-path focus-resolution mechanism.
+ *   No getScale/m_scale binding exists in this file — the scale-guard
+ *   comparand is a member-offset read owned entirely by agent_main.cpp
+ *   (Object::getScale() is inline with no standalone address, 2026-07-09).
  */
 
 #include "resolve.h"
@@ -36,6 +57,48 @@ typedef void*(__cdecl*          pGetPlayer)();
 typedef int(__cdecl*            pMainLoopCount)();
 // Advertised-only accessor for the "isOver" safety-flag (game.cpp:81-82, no SWGEmu RVA)
 typedef bool(__cdecl*           pIsOver)();
+
+// --- 05-03: write-slot typedefs ---
+// VERIFIED: object.cpp:148 (setTransform_o2w), object.cpp:155 (setScale) — both
+// __thiscall member fns, opaque Transform*/Vector* args (void*, mirrors the
+// existing pGetTransform_o2w opaque-pointer convention — no concrete struct dep).
+typedef void(__thiscall*        pSetTransform_o2w)(void*, const void*);
+typedef void(__thiscall*        pSetScale)(void*, const void*);
+
+// --- 05-03: legacy-only target-resolution typedefs (ROUND 2, UNCHANGED) ---
+// VERIFIED: game.cpp:74 — __cdecl free fn, returns Object* (opaque void*)
+typedef void*(__cdecl*          pGetPlayerCreatureObject)();
+// VERIFIED: network.cpp:35 typedef, :42 literal — __thiscall, pThis = the
+// CachedNetworkId pointer computed from the +1432 target-slot offset.
+typedef void*(__thiscall*       pCachedNetworkIdGetObject)(void*);
+
+// --- 05-03: cross-build getObjectById primitive typedefs (ROUND 2, reusable,
+//     NOT on the active focus-resolution path this phase) ---
+// VERIFIED: network.cpp:32 typedef, :39 literal — __cdecl static, const int64_t& id.
+typedef void*(__cdecl*          pIdManagerGetObjectById)(const int64_t& id);
+// CONFIRMED (2026-07-09 de-anchoring crew): engine_advertise.cpp:709,
+// "network::getObjectById" -> &NetworkIdManager::getObjectById,
+// static Object* NetworkIdManager::getObjectById(const NetworkId&), __cdecl.
+// NetworkId argument treated as an opaque pointer-sized value (no existing
+// NetworkId-shaped slot in this file to confirm a concrete representation
+// against) — never called this phase (advertised getObjectById-equivalent is
+// a reusable primitive, not the active resolver; see cuiHudGetTarget below).
+typedef void*(__cdecl*          pNetworkIdManagerGetObjectById)(const void* networkId);
+
+// --- 05-03: advertised TWO-STEP selected-object resolver typedefs (ROUND 2,
+//     CONFIRMED 2026-07-09 — the ACTIVE advertised-path focus mechanism) ---
+// CONFIRMED: engine_advertise.cpp:706, "cuiHud::g_instance" ->
+// &SwgCuiHudFactory::findMediatorForCurrentHud, a STATIC zero-arg accessor.
+// __cdecl per this file's established zero-arg-static-accessor convention
+// (config::loadOverrideConfig / the sibling cuiIo::g_instance row).
+typedef void*(__cdecl*          pCuiHudGetInstance)();
+// CONFIRMED: engine_advertise.cpp:705, "cuiHud::getTarget" (NAME-MISMATCHED in
+// the catalog — a getter, not a setter) -> &engine_hudGetLastSelectedObject, a
+// __fastcall(SwgCuiHud*, int) call-through thunk over
+// SwgCuiHud::getLastSelectedObject() const; the DLL source's own comment states
+// the consumer typedef explicitly as Object*(__thiscall*)(SwgCuiHud*) — use
+// __thiscall here, NOT __fastcall, matching that comment exactly.
+typedef void*(__thiscall*       pCuiHudGetTarget)(void*);
 
 namespace swg { namespace endpoints {
 
@@ -88,6 +151,75 @@ pIsOver g_runningFlags = nullptr;
 typedef void*(__thiscall* pGetNetworkId)(void*);
 pGetNetworkId getNetworkId = nullptr;
 
+// --- object::setTransform_o2w ---
+// VERIFIED: Utinni object.cpp:148 (RVA literal). CONFIRMED advertised
+// (engine_advertise.cpp:578/850) — safe to unconditionally seed with the
+// legacy RVA: resolve() overwrites it by name on the advertised path, and the
+// legacy literal is correct on the legacy path (no BLOCKER risk here, unlike
+// setScale below — this endpoint IS confirmed advertised).
+pSetTransform_o2w setTransform_o2w = (pSetTransform_o2w)0x00B22CC0;
+
+// --- object::setScale ---
+// VERIFIED: Utinni object.cpp:155 (RVA literal). BLOCKER FIX (REVIEWS.md Fix
+// A) — seeded nullptr, NEVER the legacy literal, at declare time. resolve()'s
+// graceful-degrade contract leaves an unresolved advertised slot UNTOUCHED, so
+// seeding this with the legacy RVA here would leave a stale, invalid absolute
+// address callable on the advertised build after a name-miss. The legacy RVA
+// is applied ONLY by agent_main.cpp's agent_init, AFTER resolveFromExe() has
+// confirmed isAdvertisedClient()==false (post-resolve conditional seed).
+// object::setScale is a KNOWN GAP on the advertised build until the maintainer
+// adds the upstream catalog row (user_setup, D-09) — until then this slot
+// stays nullptr on advertised, and applyWrite/agent_main.cpp never call an
+// unresolved setter.
+pSetScale setScale = nullptr;
+
+// --- 05-03 ROUND 2: legacy-only target-resolution slots (UNCHANGED from
+//     round 1) — LEGACY-ONLY literals, gated at every call site in
+//     agent_main.cpp behind an explicit !isAdvertisedClient() check; no
+//     binding-array row (no advertised catalog name exists for either). ---
+
+// VERIFIED: Utinni game.cpp:74 (RVA literal) — the CreatureObject wrapper the
+// +1432 target-slot offset is measured FROM. LEGACY-ONLY target resolution;
+// gate on !isAdvertisedClient() at the call site (agent_main.cpp).
+pGetPlayerCreatureObject getPlayerCreatureObject = (pGetPlayerCreatureObject)0x004251D0;
+
+// VERIFIED: Utinni network.cpp:35 (typedef), :42 (RVA literal) — resolves a
+// CachedNetworkId pointer to an Object*. LEGACY-ONLY; gate on
+// !isAdvertisedClient() at the call site (mirrors Utinni's own
+// Network::getCachedObjectById gate, network.cpp:74-85).
+// VALIDATE LIVE — the +1432 target-slot arithmetic feeding this call is
+// comment-backed (Utinni game.cpp:726-733), not independently source-proven;
+// confirm during the 05-12 UAT.
+pCachedNetworkIdGetObject cachedNetworkIdGetObject = (pCachedNetworkIdGetObject)0x00B30160;
+
+// --- 05-03 ROUND 2: cross-build getObjectById primitives (reusable, NOT on
+//     the active per-frame focus-resolution path this phase — see file
+//     header). ---
+
+// VERIFIED: Utinni network.cpp:32 (typedef), :39 (RVA literal). LEGACY-ONLY
+// literal — if ever called (not this phase), gate on !isAdvertisedClient() at
+// the call site, mirroring the other two legacy-only slots above. Bound per
+// the project's "SWGEmu never descoped" rule; the ACTIVE legacy focus path
+// uses the CachedNetworkId sibling 0x00B30160 (via the +1432 chain) instead —
+// Object::networkId (object.h:86) IS a real field, legacy is not incapable of
+// targeting; this is simply a reusable, more-generic primitive for a future
+// networkId-driven flow. No binding-array row (legacy literal only).
+pIdManagerGetObjectById getObjectByIdLegacy = (pIdManagerGetObjectById)0x00B380E0;
+
+// CONFIRMED 2026-07-09: engine_advertise.cpp:709, "network::getObjectById" ->
+// &NetworkIdManager::getObjectById. Null-safe (mirrors setScale's pattern) —
+// bound via g_agentBindings[] below; not on the active advertised
+// focus-resolution path (the two-step cuiHud resolver below is active).
+pNetworkIdManagerGetObjectById getObjectByIdAdvertised = nullptr;
+
+// --- 05-03 ROUND 2: advertised TWO-STEP selected-object resolver (CONFIRMED
+//     2026-07-09) — the ACTIVE advertised-path focus-resolution mechanism.
+//     Both slots null-safe (mirrors setScale's pattern); bound via
+//     g_agentBindings[] below. Call cuiHudGetInstance() FIRST, then
+//     cuiHudGetTarget(instance) SECOND, passing step 1's result. ---
+pCuiHudGetInstance cuiHudGetInstance = nullptr;
+pCuiHudGetTarget    cuiHudGetTarget   = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -102,6 +234,12 @@ Binding g_agentBindings[] = {
     {"game::g_mainLoopCounter",       (void**)&g_mainLoopCounter},
     {"game::g_runningFlags",          (void**)&g_runningFlags},
     {"object::getNetworkId",          (void**)&getNetworkId},
+    // --- 05-03: write-slot + cross-build target-resolution rows ---
+    {"object::setTransform_o2w",      (void**)&setTransform_o2w},
+    {"object::setScale",              (void**)&setScale},  // D-09 known gap — resolves once the upstream row exists
+    {"network::getObjectById",        (void**)&getObjectByIdAdvertised},  // reusable primitive, engine_advertise.cpp:709
+    {"cuiHud::g_instance",            (void**)&cuiHudGetInstance},        // engine_advertise.cpp:706
+    {"cuiHud::getTarget",             (void**)&cuiHudGetTarget},          // engine_advertise.cpp:705
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 

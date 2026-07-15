@@ -2,6 +2,8 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
+- **[2026-07-09-phase05-m-scale-offset-confirmation-request.md](2026-07-09-phase05-m-scale-offset-confirmation-request.md)** — NON-BLOCKING BACKUP CONFIRMATION, not the active workstream (see the round-6 handoff below for that). Cross-repo ask for `Object::m_scale`'s per-build byte offset: (1) Utinni/legacy session — confirm/correct the planner-computed `0x44` candidate against a live debugger read; (2) swg-client-v2/advertised session — report the compiled member's real byte offset. Both asks are explicitly non-blocking — 05-03's agent already unblocks itself via a live-validated member-offset read (legacy unconditional, advertised gated behind `s_advertisedScaleOffsetConfirmed`, degrading honestly via liveness bit5 until confirmed). Supersedes the never-created `2026-07-08-phase05-getscale-accessor-request.md` ask with a narrower, offset-only request.
+
 - **[2026-07-12-phase05-plan-review-round6.md](2026-07-12-phase05-plan-review-round6.md)** — ACTIVE. ← start here.
   Phase **05** round-6 replan (structural pointer-ABA close, option a) **done** + plan-checker **PASSED
   clean** (0 warnings) + LIGHT round-6 crew (Opus + Cursor) **done**. Verdict **LOW**: the reachable ABA
