@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseTypeSpec, bitVectorFlagToMask } from './dtiiTypeSpec';
+import { parseTypeSpec, bitVectorFlagToMask, physicalTypeForKind } from './dtiiTypeSpec';
 
 describe('parseTypeSpec — single-char physical types', () => {
   it("'i' -> int", () => {
@@ -98,5 +98,22 @@ describe('parseTypeSpec — bracket-suffix default marker', () => {
       expect(info.labels).toEqual({ a: 0, b: 1 });
     }
     expect((info as { defaultLabel?: string }).defaultLabel).toBe('a');
+  });
+});
+
+// 05-08: physicalTypeForKind moved here from DatatableGridEditor.tsx so SchemaRail.tsx's
+// storage-type label can consume the SAME dispatch (single source of truth).
+describe('physicalTypeForKind — DataTable.h physicalTypeForSpec basicType mirror', () => {
+  it('float -> float', () => {
+    expect(physicalTypeForKind('float')).toBe('float');
+  });
+  it('string and packedObjVars -> string', () => {
+    expect(physicalTypeForKind('string')).toBe('string');
+    expect(physicalTypeForKind('packedObjVars')).toBe('string');
+  });
+  it('everything else (int/hashstring/bool/enum/bitvector/enum-table/unknown) -> int', () => {
+    for (const kind of ['int', 'hashstring', 'bool', 'enum', 'bitvector', 'enum-table', 'unknown'] as const) {
+      expect(physicalTypeForKind(kind)).toBe('int');
+    }
   });
 });

@@ -91,6 +91,28 @@ export function bitVectorFlagToMask(bit: number): number {
   return 1 << (bit - 1);
 }
 
+// ─── Physical-type dispatch (DataTable.h physicalTypeForSpec basicType mirror) ─────────────────
+
+/**
+ * Physical storage type for a column's parsed type-spec — mirrors physicalTypeForSpec's
+ * basicType dispatch (DataTable.h): float->Float, string/packedObjVars->String, everything
+ * else (int/hashstring/bool/enum/bitvector/enum-table/unknown)->Int.
+ *
+ * Single source of truth for the UI's "storage type" concept — consumed by both
+ * DatatableGridEditor.tsx (cell coercion) and SchemaRail.tsx (`Schema · COLS/TYPE` storage
+ * label) so the two never drift out of sync (05-08).
+ */
+export function physicalTypeForKind(kind: TypeSpecInfo['kind']): 'int' | 'float' | 'string' {
+  switch (kind) {
+    case 'float': return 'float';
+    case 'string':
+    case 'packedObjVars':
+      return 'string';
+    default:
+      return 'int';
+  }
+}
+
 // ─── Main dispatch ──────────────────────────────────────────────────────────────
 
 export function parseTypeSpec(raw: string): TypeSpecInfo {
