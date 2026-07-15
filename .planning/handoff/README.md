@@ -2,7 +2,38 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-07-09-phase05-plan-review-round3.md](2026-07-09-phase05-plan-review-round3.md)** — ACTIVE. ← start here.
+- **[2026-07-12-phase05-plan-review-round6.md](2026-07-12-phase05-plan-review-round6.md)** — ACTIVE. ← start here.
+  Phase **05** round-6 replan (structural pointer-ABA close, option a) **done** + plan-checker **PASSED
+  clean** (0 warnings) + LIGHT round-6 crew (Opus + Cursor) **done**. Verdict **LOW**: the reachable ABA
+  paths are CLOSED both sides, layout byte-identical (no new bytes/reads), LRU can't evict the active slot.
+  Opus found ONE **MEDIUM correctness pin** to land before execute — the agent `templateName` cross-check
+  is type-ambiguous (`const char*`; a pointer compare would silently no-op the agent-side fix; the symbol
+  grep can't catch it) → specify content/hash compare + a behavioral test — plus 3 LOW nits. Opus: "once
+  item 1 is pinned, safe to execute." No HIGH. Everything **UNCOMMITTED**, HEAD `22ef1ac`, not pushed.
+  Trend HIGH→MEDIUM→LOW-MEDIUM→LOW is terminating. Supersedes the round-5 handoff below.
+
+- **[2026-07-12-phase05-plan-review-round5.md](2026-07-12-phase05-plan-review-round5.md)** — superseded by the round-6 handoff above.
+  Phase **05** round-5 `--reviews` replan (Path A, identity unification) **done** + plan-checker **PASSED**
+  + round-5 crew **done**. Verdict **round-4 MEDIUM → round-5 LOW-MEDIUM**: both round-4 MEDIUMs CLOSED
+  (tested), the 396→400 `FOCUS_TOKEN` layout is byte-consistent, overclaim/HUD honesty closed — but Opus
+  found the fix opened ONE narrower new fail-open (**pointer-ABA** on the never-invalidated identity cache,
+  MEDIUM). No HIGH. Everything **UNCOMMITTED**, HEAD `22ef1ac`, not pushed. Awaiting maintainer: close ABA
+  via **(a)** structural (template/networkId cross-check on cache hit + bounded LRU → round-6 replan) or
+  **(b)** documented accept-watch + UAT item. Opus: safe to execute with either. Supersedes the round-4
+  handoff below.
+
+- **[2026-07-12-phase05-plan-review-round4.md](2026-07-12-phase05-plan-review-round4.md)** — superseded by the round-5 handoff above.
+  Phase **05** round-4 `--reviews` replan **done** + plan-checker **PASSED** + round-4 crew **done**.
+  Verdict **round-3 HIGH → round-4 MEDIUM**: the two provable HIGHs are CLOSED (one grep-proven), but
+  the round-4 baseline-re-key fix left a **host/agent identity-key mismatch** — Opus (fails-open legacy
+  revert force-write) and Sonnet (name-only HUD false-reassurance) converged on the same root cause
+  (**template-name ≠ unique object identity**), plus a lossy focus-flip MEDIUM and a surviving overclaim.
+  No HIGH remains. Everything **UNCOMMITTED**, HEAD `22ef1ac`, not pushed. Awaiting maintainer decision:
+  **Path A** round-5 replan folding Opus rec #1 (unify identity) + minors, or **Path B** accept the two
+  legacy-revert MEDIUMs as documented limitations + cheap doc fixes → execute. Supersedes the round-3
+  handoff below.
+
+- **[2026-07-09-phase05-plan-review-round3.md](2026-07-09-phase05-plan-review-round3.md)** — superseded by the round-4 handoff above.
   Phase **05 (WYSIWYG Live-Sync & Typed Editors)** planning + **3 cross-AI review rounds done**. The round-3
   `--reviews` replan (folding the four round-2 decisions: targeting 1b, W2 bit4 scale-guard, revert coalesce,
   byte prose) is **UNCOMMITTED in the working tree** (7 plan files + STATE.md) — the round-3 review reviewed
