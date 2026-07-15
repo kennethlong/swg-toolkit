@@ -14,9 +14,9 @@ import { describe, it, expect } from 'vitest';
 // TypeScript port of agent/write.cpp checkWriteGuard (pure / Win32-free)
 // ---------------------------------------------------------------------------
 //
-// RED STUB — intentionally wrong (always reports "not implemented" via a
-// thrown error) so this file's tests fail before Task 2's implementation
-// step. Made GREEN in the same task's implementation commit.
+// Mirrors the C++ logic element-for-element: independent exact (not
+// tolerance) compare of transform (12 floats) and scale (3 floats); the
+// failReason names which channel(s) mismatched.
 
 interface GuardResult {
   transformPassed: boolean;
@@ -25,12 +25,33 @@ interface GuardResult {
 }
 
 function checkWriteGuard(
-  _live: Float32Array,
-  _expected: Float32Array,
-  _liveScale: Float32Array,
-  _expectedScale: Float32Array,
+  live: Float32Array,
+  expected: Float32Array,
+  liveScale: Float32Array,
+  expectedScale: Float32Array,
 ): GuardResult {
-  throw new Error('checkWriteGuard not implemented (RED stub)');
+  let transformPassed = true;
+  for (let i = 0; i < 12; i++) {
+    if (live[i] !== expected[i]) {
+      transformPassed = false;
+      break;
+    }
+  }
+
+  let scalePassed = true;
+  for (let i = 0; i < 3; i++) {
+    if (liveScale[i] !== expectedScale[i]) {
+      scalePassed = false;
+      break;
+    }
+  }
+
+  let failReason: string | null = null;
+  if (!transformPassed && !scalePassed) failReason = 'transform and scale mismatch';
+  else if (!transformPassed) failReason = 'transform mismatch';
+  else if (!scalePassed) failReason = 'scale mismatch';
+
+  return { transformPassed, scalePassed, failReason };
 }
 
 // ---------------------------------------------------------------------------
