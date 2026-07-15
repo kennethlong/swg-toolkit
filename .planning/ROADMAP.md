@@ -339,7 +339,7 @@ Plans:
 Plans:
 **Wave 1**
 - [x] 05-01-PLAN.md — Command-slot channel contract + native seqlock extension + pure read-verify guard (write.h/.cpp)
-- [ ] 05-02-PLAN.md — DTII native parser/serializer (DataTable.h/.cpp) + N-API binding + CORE-05 fixture
+- [x] 05-02-PLAN.md — DTII native parser/serializer (DataTable.h/.cpp) + N-API binding + CORE-05 fixture
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 05-03-PLAN.md — Agent integration: setTransform_o2w write-slot + setScale (D-09) + legacy 64-bit networkId + 60fps guarded poll loop + clean stop-signal

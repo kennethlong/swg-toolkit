@@ -61,7 +61,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 - [x] **LIVE-05**: The editor remains fully usable in file-patch mode when injection is unavailable.
 
 ### Typed Data Editors (DATA)
-- [ ] **DATA-01**: User can view and edit DTII datatables in a virtualized grid and save them back.
+- [x] **DATA-01**: User can view and edit DTII datatables in a virtualized grid and save them back.
 - [ ] **DATA-02**: User can view and edit `.stf` localized strings and save them back.
 
 ### Format Editors — leaves (FMT)
@@ -141,7 +141,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | PROJ-01 | Phase 4.1 | Complete |
 | CLIENT-02 | Phase 4.2 | Complete (04.3-13 UAT; detection now content-based, 2026-07-02) |
 | LIVE-03 | Phase 5 | Complete |
-| DATA-01 | Phase 5 | Pending |
+| DATA-01 | Phase 5 | Complete |
 | DATA-02 | Phase 5 | Pending |
 | BLND-01 | Phase 6 | Pending |
 | BLND-02 | Phase 6 | Pending |

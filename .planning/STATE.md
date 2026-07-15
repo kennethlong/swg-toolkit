@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-01-PLAN.md (channel layout + write guard comparator)
-last_updated: "2026-07-15T15:50:35.149Z"
+stopped_at: Completed 05-02-PLAN.md (DTII datatable native parser + serializer)
+last_updated: "2026-07-15T16:13:05.438Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
   completed_phases: 9
   total_plans: 85
-  completed_plans: 74
-  percent: 87
+  completed_plans: 75
+  percent: 88
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
         found+fixed a real resolver defect (bare legacy-global TrePath in config-local.lua,
         `d60b29f`) — T-04.4-21b materialized exactly as the checkpoint predicted.
@@ -44,7 +44,7 @@ Last activity: 2026-07-15
   captured from the UAT walk: post-create server-binding UX, VCS panel sketch (S3 still open),
   e2e temp-studio leak. Also landed fix(04.4-09) `2a751f1` — pnpm start define-collision regression.
 
-Progress: [█████████░] 87%
+Progress: [█████████░] 88%
 
 ### 02-03 key facts (crew-verified)
 
@@ -128,6 +128,7 @@ Progress: [█████████░] 87%
 | Phase 04.4-ux-polish-deploy-hardening P14 | 35min | 2 tasks | 2 files |
 | Phase 04.4-ux-polish-deploy-hardening P04 | 35min | 3 tasks | 5 files |
 | Phase 05 P01 | 20min | 2 tasks | 7 files |
+| Phase 05-wysiwyg-live-sync-typed-editors P02 | 25min | 4 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -284,6 +285,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05]: Command slot carries the full target state (transform + scale) every write, not a mode-tagged partial update
 - [Phase 05]: applyWrite is declared in write.h (forward-declaring LiveCommand) but left undefined in 05-01 -- 05-03 completes it with the resolved setter fn pointers
 - [Phase 05]: FOCUS_TOKEN inserted at offset 320 immediately after LIVENESS, inside the SAME seqlocked read-frame span as transform/networkId/templateName/liveness, shifting all command-region fields +4 bytes
+- [Phase 05-02]: String cells are NUL-terminated (Iff::read_string), NOT length-prefixed as the plan's Interfaces section claimed -- verified against swg-client-v2 Iff.cpp:1539-1564 and the codebase's own ChunkView::readString precedent.
+- [Phase 05-02]: Legacy FORM 0000's TYPE chunk is int32 DataType codes, a DIFFERENT wire shape than 0001's string TYPE chunk (DataTable.cpp:500-535) -- corrects the plan's 'same three-chunk shape' claim; serializeDataTable always emits canonical 0001.
+- [Phase 05-02]: Real-fixture extraction uses listMountEntries() (real paths) not searchMount() (archiveIndex/entryIndex only, no .path per T-01-06); version-gated to '0001' since the serializer only emits canonical 0001.
 
 ### Pending Todos
 
@@ -314,8 +318,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T15:50:35.131Z
-Stopped at: Completed 05-01-PLAN.md (channel layout + write guard comparator)
+Last session: 2026-07-15T16:13:05.419Z
+Stopped at: Completed 05-02-PLAN.md (DTII datatable native parser + serializer)
   camera-azimuth + OrbitControls framing fix shipped in-task); todo viewport-default-facing-axis
   closed. Only 04.4-15-PLAN.md (D-22 real-server round-trip checkpoint) remains to close Phase 04.4
   (14/15 plans complete).
@@ -327,4 +331,4 @@ Next session: resolve 04.4-15's D-22 human-verify checkpoint (real-server round-
   Worth a runtime sanity check: the 260703-bpu deploy/Undo rewiring is test-verified but has not
   yet been exercised in the live app — a quick deploy → Undo → redeploy in-client check on next
   run would confirm it end-to-end.
-Resume file: .planning/phases/05-wysiwyg-live-sync-typed-editors/05-02-PLAN.md
+Resume file: None
