@@ -55,6 +55,11 @@ interface VfsTreeProps {
   onSelect: (entry: VfsEntry, chain: ShadowChainDisplay | null) => void;
   /** Called when the user clicks "Extract to staging" on an entry row (plan 08). */
   onExtract?: (entry: VfsEntry) => void;
+  /** Called when the user double-clicks an entry row (05-08) — the caller (TreVfsBrowser)
+   *  resolves the entry's FORM tag and opens the matching typed editor tab (e.g. DTII ->
+   *  DatatableGridEditor) via editorTabs.ts's openEditorTab. A no-op for entries whose FORM
+   *  tag has no registered editor — the caller decides, this component just fires the event. */
+  onOpenEditor?: (entry: VfsEntry) => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -66,6 +71,7 @@ export default function VfsTree({
   selectedChain,
   onSelect,
   onExtract,
+  onOpenEditor,
 }: VfsTreeProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -194,6 +200,7 @@ export default function VfsTree({
                 isEncrypted={isEncrypted}
                 onSelect={onSelect}
                 onExtract={onExtract}
+                onOpenEditor={onOpenEditor}
               />
             );
           })}
@@ -260,6 +267,7 @@ function VfsRow({
   isEncrypted: _isEncrypted,
   onSelect,
   onExtract,
+  onOpenEditor,
 }: {
   entry: VfsEntry;
   isSelected: boolean;
@@ -269,6 +277,8 @@ function VfsRow({
   onSelect: (entry: VfsEntry, chain: ShadowChainDisplay | null) => void;
   /** Optional: called when the user triggers "Extract to staging" on this row. */
   onExtract?: (entry: VfsEntry) => void;
+  /** Optional: called when the user double-clicks this row (05-08 — open typed editor tab). */
+  onOpenEditor?: (entry: VfsEntry) => void;
 }): React.ReactElement {
   const [hovered, setHovered] = useState(false);
   // Already-staged check (UAT #3) — staging is keyed by virtualPath (= entry.path).
@@ -278,6 +288,10 @@ function VfsRow({
 
   const handleClick = () => {
     onSelect(entry, null); // chain is resolved natively in TreVfsBrowser.handleSelectEntry
+  };
+
+  const handleDoubleClick = () => {
+    onOpenEditor?.(entry);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -298,6 +312,7 @@ function VfsRow({
       aria-selected={isSelected}
       tabIndex={0}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}

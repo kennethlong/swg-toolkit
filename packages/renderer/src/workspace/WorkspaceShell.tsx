@@ -58,10 +58,16 @@ import LiveInspectorPanel from '../panels/LiveInspectorPanel';
 // until plan 10 (cleanup); they are simply de-registered here.
 import DeployPanel        from '../panels/deploy/DeployPanel';
 import VcsPanel           from '../panels/deploy/VcsPanel';
-// Plan 04.3-09 (S8): Datatable / Console / Log trio replaces single 'data' panel.
-import DatatablePanel     from '../panels/DatatablePanel';
+// Plan 04.3-09 (S8): Console / Log pair (was Datatable / Console / Log trio — the 'datatable'
+// placeholder is retired in 05-08; see DatatableGridEditor below).
 import ConsolePanel       from '../panels/ConsolePanel';
 import LogPanel           from '../panels/LogPanel';
+// 05-08: DTII grid editor — opens as a DYNAMIC per-file main-editor-group tab via
+// editorTabs.ts's openEditorTab (NOT a static singleton panel id like 'inspector'/'deploy'),
+// which is why it is deliberately excluded from PANEL_TITLES/PANEL_REOPEN_POSITIONS/
+// STATIC_PANEL_IDS below (the generic "reopen closed panel" menu assumes a fixed id with no
+// required params, which per-file editor tabs do not have).
+import DatatableGridEditor from '../panels/editors/DatatableGridEditor';
 
 // ─── Panel component registry ─────────────────────────────────────────────────
 //
@@ -82,11 +88,26 @@ const panelComponents: Record<string, React.FunctionComponent<IDockviewPanelProp
   // Plan 05: ONE combined deploy panel; vcs stays separate.
   deploy:           DeployPanel,
   vcs:              VcsPanel,
-  // Plan 09 (S8): Datatable / Console / Log trio (replaces single 'data' in new layouts)
-  datatable:        DatatablePanel,
+  // Plan 09 (S8): Console / Log pair (replaces single 'data' in new layouts; 'datatable'
+  // placeholder retired in 05-08 — see 'datatable-grid-editor' below).
   console:          ConsolePanel,
   log:              LogPanel,
+  // 05-08: dynamic per-file DTII editor tab component — registered so dockview can render
+  // instances opened via editorTabs.openEditorTab(dockApi, { component: 'datatable-grid-editor', ... }).
+  // Deliberately NOT added to STATIC_PANEL_IDS (see import comment above).
+  'datatable-grid-editor': DatatableGridEditor,
 };
+
+/**
+ * Static, reopenable SINGLETON panel ids — used by the "reopen closed panel" menu below.
+ * Deliberately EXCLUDES dynamic per-file editor tab components (e.g. 'datatable-grid-editor'),
+ * which are opened via editorTabs.ts's openEditorTab with a per-file id + required params, not
+ * through this generic menu (which assumes a fixed id and no required params — reopening
+ * 'datatable-grid-editor' with no params would crash the panel). 05-08.
+ */
+const STATIC_PANEL_IDS = [
+  'sidebar', 'viewport', 'inspector', 'data', 'live-inspector', 'deploy', 'vcs', 'console', 'log',
+] as const;
 
 // ─── Width constants for active-panel auto-widen (M3) ────────────────────────
 
@@ -104,8 +125,7 @@ const PANEL_TITLES: Record<string, string> = {
   'live-inspector': 'Live Inspector',
   deploy:           'Deploy',
   vcs:              'Version Control',
-  // Plan 09 (S8): bottom-pane trio
-  datatable:        'Datatable',
+  // Plan 09 (S8): bottom-pane pair ('datatable' placeholder retired in 05-08)
   console:          'Console',
   log:              'Log',
 };
@@ -122,10 +142,9 @@ const PANEL_REOPEN_POSITIONS: Record<string, { direction: string; referencePanel
   'live-inspector': { direction: 'within', referencePanel: 'inspector' },
   deploy:           { direction: 'within', referencePanel: 'inspector' },
   vcs:              { direction: 'within', referencePanel: 'inspector' },
-  // Plan 09 (S8): bottom-pane trio reopen positions
-  datatable:        { direction: 'below',  referencePanel: 'viewport' },
-  console:          { direction: 'within', referencePanel: 'datatable' },
-  log:              { direction: 'within', referencePanel: 'datatable' },
+  // Plan 09 (S8): bottom-pane pair reopen positions ('datatable' placeholder retired in 05-08)
+  console:          { direction: 'below',  referencePanel: 'viewport' },
+  log:              { direction: 'within', referencePanel: 'console' },
 };
 
 // ─── WorkspaceShell ───────────────────────────────────────────────────────────
@@ -252,7 +271,10 @@ export default function WorkspaceShell(): React.ReactElement {
     // Compute closed panel ids: registered ids not currently in api.panels
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const openIds = new Set((api as any).panels?.map((p: { id: string }) => p.id) ?? []);
-    const closed = Object.keys(panelComponents)
+    // 05-08: iterate the curated STATIC_PANEL_IDS list, NOT Object.keys(panelComponents) — the
+    // latter would include 'datatable-grid-editor' (a dynamic per-file template component with
+    // no fixed id/params), which would crash if "reopened" through this generic menu.
+    const closed = STATIC_PANEL_IDS
       .filter((id) => !openIds.has(id))
       .map((id) => ({ id, title: PANEL_TITLES[id] ?? id }));
     setClosedPanels(closed);

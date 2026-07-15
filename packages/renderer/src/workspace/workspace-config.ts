@@ -9,6 +9,9 @@
  * All component IDs are registered BEFORE fromJSON (RESEARCH Pitfall 5).
  *
  * LAYOUT_VERSION = 2 (plan 05): retired staging+changesets; added deploy.
+ * LAYOUT_VERSION = 4 (05-08): retired the bottom-pane 'datatable' placeholder panel —
+ *   DatatableGridEditor now opens as a dynamic main-editor-group tab via editorTabs.ts.
+ *   The 008-S8 bottom-pane trio becomes Console | Log only.
  */
 
 import { DockviewApi } from 'dockview';
@@ -32,8 +35,10 @@ export const THEME_STORAGE_KEY   = 'swg-active-theme' as const;
 // ---------------------------------------------------------------------------
 
 /** Bumped from 2 → 3: renamed 'Inspector'→'Inspect', replaced single 'data' with
- *  Datatable/Console/Log trio (plan 09 — sketch 008 S4 + S8). */
-export const LAYOUT_VERSION     = 3 as const;
+ *  Datatable/Console/Log trio (plan 09 — sketch 008 S4 + S8).
+ *  Bumped from 3 → 4 (05-08): retired the 'datatable' placeholder panel id — bottom pane is
+ *  now Console/Log only; DatatableGridEditor opens dynamically via editorTabs.ts instead. */
+export const LAYOUT_VERSION     = 4 as const;
 export const LAYOUT_VERSION_KEY = 'swg-workspace-layout-version' as const;
 
 // ---------------------------------------------------------------------------
@@ -96,30 +101,24 @@ export function buildInitialLayout(api: DockviewApi): void {
     initialWidth: 280,
   });
 
-  // S8 (sketch 008): bottom pane = Datatable / Console / Log tab trio
-  // Replaces single 'data' panel (retired — LAYOUT_VERSION 2→3 clears old saved layouts).
-  // 'datatable' is the first and default-active panel; Console/Log are stub panes.
-  const datatablePanel = api.addPanel({
-    id: 'datatable',
-    component: 'datatable',
-    title: 'Datatable',
-    position: { direction: 'below', referencePanel: 'viewport' },
-    initialHeight: 200,
-  });
-  api.addPanel({
+  // S8 (sketch 008): bottom pane = Console / Log pair (05-08: 'datatable' placeholder retired —
+  // DatatableGridEditor now opens as a dynamic main-editor-group tab via editorTabs.ts instead
+  // of this fixed bottom-pane slot; LAYOUT_VERSION 3→4 clears old saved layouts referencing it).
+  const consolePanel = api.addPanel({
     id: 'console',
     component: 'console',
     title: 'Console',
-    position: { direction: 'within', referencePanel: 'datatable' },
+    position: { direction: 'below', referencePanel: 'viewport' },
+    initialHeight: 200,
   });
   api.addPanel({
     id: 'log',
     component: 'log',
     title: 'Log',
-    position: { direction: 'within', referencePanel: 'datatable' },
+    position: { direction: 'within', referencePanel: 'console' },
   });
-  // Datatable is the default active tab in the bottom-pane group
-  datatablePanel?.api?.setActive?.();
+  // Console is the default active tab in the bottom-pane group
+  consolePanel?.api?.setActive?.();
 
   // Plan 05 (DEPLOY-05 / D-14): ONE combined 'deploy' tab replaces 'staging'+'changesets'.
   // 'vcs' stays as a separate tab in the same inspector group.

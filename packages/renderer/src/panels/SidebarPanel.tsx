@@ -112,7 +112,10 @@ export default function SidebarPanel(props: IDockviewPanelProps): React.ReactEle
       {/* Panel body (hidden when collapsed): Phase 1 TRE VFS Browser */}
       {!collapsed && (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <TreVfsBrowser />
+          {/* 05-08: SidebarPanel is itself a dockview panel, so props.containerApi is the SAME
+              DockviewApi instance WorkspaceShell holds — drilled down so a VfsTree double-click
+              can open a typed-editor tab in the main editor group via editorTabs.openEditorTab. */}
+          <TreVfsBrowser dockApi={props.containerApi} />
         </div>
       )}
     </div>

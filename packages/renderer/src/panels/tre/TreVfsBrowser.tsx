@@ -47,6 +47,9 @@ import { useStagingStore } from '../../state/stagingStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { isVirtualPathSafe } from '../../services/pathSafety';
 import { readVfsEntryBytes } from '../../services/readVfsEntryBytes';
+import type { DockviewApi } from 'dockview';
+import { openEditorTab } from '../../shell/editorTabs';
+import type { DatatableGridEditorParams } from '../editors/DatatableGridEditor';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
 // Source: packages/renderer/src/shell/StatusBar.tsx:34-41.
@@ -78,10 +81,13 @@ const nativeCore = require('@swg/native-core') as {
    */
   getMountEntriesColumnar: (handle: string) => ArrayBuffer;
   parseIff: (bytes: ArrayBuffer | Uint8Array) => {
-    roots: unknown[];
+    roots: IffNodeForOpen[];
     trailingBytes: { offset: number; count: number } | null;
     roundTrip: { passed: boolean; failOffset?: number };
   };
+  /** DTII datatable parser (05-02) — consumed by handleOpenEditor (05-08) to build the
+   *  DatatableGridEditor tab's params when a double-clicked entry's FORM tag is DTII. */
+  parseDataTable: (iffResult: unknown, srcBytes: ArrayBuffer | Uint8Array) => DatatableGridEditorParams['table'];
   /** Parse a .ans animation (CKAT/KFAT). Returns null/KFAT-0002-unsupported for legacy. */
   parseAnimation: (iff: unknown, bytes: ArrayBuffer | Uint8Array) => ViewportStore['parsedAnimation'];
   /** Substring/glob search across all VFS entries. Returns {entryIndex, archiveIndex} objects. */
@@ -103,7 +109,26 @@ const nodePath = require('path') as typeof import('path');
 /** File extensions that trigger the appearance resolver + viewport. */
 const MESH_EXTENSIONS = new Set(['msh', 'mgn', 'sat', 'apt']);
 
-export default function TreVfsBrowser(): React.ReactElement {
+/** Minimal structural mirror of parseIff()'s IffNode — only the fields handleOpenEditor's
+ *  FORM-tag detection (05-08) needs. Structurally compatible with DatatableGridEditorParams'
+ *  private IffNodeLike type, so it can be passed as `iffRoots` without a shared export. */
+interface IffNodeForOpen {
+  tag: string;
+  length: number;
+  byteOffset: number;
+  kind: 'form' | 'leaf';
+  subType?: string;
+  children?: IffNodeForOpen[];
+}
+
+export interface TreVfsBrowserProps {
+  /** The shared dockview API (05-08) — SidebarPanel drills its own `props.containerApi` down
+   *  here (SidebarPanel is itself a dockview panel, so containerApi IS the whole-layout API).
+   *  Undefined in contexts where TreVfsBrowser is rendered outside a dockview panel (tests). */
+  dockApi?: DockviewApi;
+}
+
+export default function TreVfsBrowser({ dockApi }: TreVfsBrowserProps = {}): React.ReactElement {
   const store = useTreStore();
   const iffStore = useIffStore();
   const viewportStore = useViewportStore();
@@ -409,6 +434,58 @@ export default function TreVfsBrowser(): React.ReactElement {
     }
   }, [store]);
 
+  // ── Open-editor handler (05-08 — DATA-01) ───────────────────────────────────
+  //
+  // Double-clicking a .iff entry whose FORM tag is DTII opens DatatableGridEditor as a
+  // main-editor-group dockview tab. FORM-tag detection reuses the SAME parseIff() call
+  // handleSelectEntry already makes for the IFF Structure panel (no second detection
+  // mechanism is introduced) — this handler simply re-derives bytes/roots for the double-
+  // clicked entry (a fresh read, since handleSelectEntry's parse result lives in iffStore
+  // keyed by the currently-SELECTED entry, which may lag one click behind a fast double-click).
+
+  const handleOpenEditor = useCallback((entry: VfsEntry) => {
+    if (!dockApi) return;
+    const { mountHandle, archives, tocIndex } = store;
+
+    const winnerArcForOpen = archives.find((a) => a.archiveIndex === entry.winnerArchiveIndex);
+    const isTocSourcedOpen = winnerArcForOpen ? winnerArcForOpen.entryCount === 0 : false;
+    const openDescriptor = (tocIndex && isTocSourcedOpen)
+      ? (tocIndex.resolveFull(entry.path) ?? null)
+      : null;
+    const bytes = readVfsEntryBytes(entry, mountHandle, openDescriptor);
+    if (!bytes) return;
+
+    let iffResult: { roots: IffNodeForOpen[] };
+    try {
+      iffResult = nativeCore.parseIff(bytes);
+    } catch {
+      return; // not a well-formed IFF — nothing to open
+    }
+
+    const root = iffResult.roots[0];
+    if (!root || root.kind !== 'form' || root.subType !== 'DTII') return; // no editor registered for this FORM tag
+
+    let table: DatatableGridEditorParams['table'];
+    try {
+      table = nativeCore.parseDataTable(iffResult, bytes);
+    } catch (err) {
+      console.error('[TreVfsBrowser] Open editor: parseDataTable failed:', err);
+      return;
+    }
+
+    openEditorTab<DatatableGridEditorParams>(dockApi, {
+      id: `dtii:${entry.path}`,
+      title: `${entry.name} — Datatable`,
+      component: 'datatable-grid-editor',
+      params: {
+        table,
+        virtualPath: entry.path,
+        sourceBytes: bytes,
+        iffRoots: iffResult.roots,
+      },
+    });
+  }, [dockApi, store]);
+
   // ── Splitter (archives region ↔ file list region) ──────────────────────────
 
   /**
@@ -713,6 +790,7 @@ export default function TreVfsBrowser(): React.ReactElement {
                 selectedChain={selectedChain}
                 onSelect={handleSelectEntry}
                 onExtract={handleExtract}
+                onOpenEditor={handleOpenEditor}
               />
             )}
           </div>

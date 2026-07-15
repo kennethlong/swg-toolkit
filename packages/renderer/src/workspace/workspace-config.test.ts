@@ -10,8 +10,10 @@
  *   5 — buildInitialLayout does NOT add a 'changesets' panel (retired id)
  *   6 — plan 09 (S4): LAYOUT_VERSION >= 3 after bottom-pane trio bump
  *   7 — plan 09 (S4): inspector panel title is 'Inspect' (not 'Inspector')
- *   8 — plan 09 (S8): 'datatable' panel present in bottom-pane group
- *   9 — plan 09 (S8): 'console' and 'log' panels present in bottom-pane group
+ *   8 — 05-08: 'datatable' panel NOT added by buildInitialLayout (retired placeholder —
+ *       DatatableGridEditor now opens dynamically via editorTabs.ts)
+ *   9 — plan 09 (S8) / 05-08: 'console' and 'log' panels present in the bottom-pane group,
+ *       'console' anchored directly below the viewport (was 'datatable')
  *  10 — plan 09 (S8): 'data' panel NOT added by buildInitialLayout (retired)
  *
  * RED phase (Task 1): tests fail because LAYOUT_VERSION/LAYOUT_VERSION_KEY are not
@@ -120,18 +122,15 @@ describe('workspace-config — plan 09: Inspect tab + Datatable/Console/Log trio
     expect((inspector as Record<string, unknown>)['title']).toBe('Inspect');
   });
 
-  it('Test 8 (S8): adds a "datatable" panel below the viewport', () => {
+  it('Test 8 (05-08): does NOT add a "datatable" panel (retired placeholder)', () => {
     const { mockApi, panels } = buildMockApi();
     buildInitialLayout(mockApi);
 
     const dt = panels.find((p) => p.id === 'datatable');
-    expect(dt).toBeDefined();
-    expect(
-      (dt as { position?: { direction?: string } } | undefined)?.position?.direction,
-    ).toBe('below');
+    expect(dt).toBeUndefined();
   });
 
-  it('Test 9 (S8): adds "console" and "log" panels within the datatable group', () => {
+  it('Test 9 (S8 / 05-08): adds "console" (below viewport) and "log" (within console) panels', () => {
     const { mockApi, panels } = buildMockApi();
     buildInitialLayout(mockApi);
 
@@ -140,14 +139,19 @@ describe('workspace-config — plan 09: Inspect tab + Datatable/Console/Log trio
     expect(consolePanel).toBeDefined();
     expect(logPanel).toBeDefined();
 
+    // 05-08: console is now the direct bottom-pane anchor (datatable retired).
     expect(
       (consolePanel as { position?: { direction?: string; referencePanel?: string } } | undefined)
         ?.position?.direction,
-    ).toBe('within');
+    ).toBe('below');
     expect(
       (logPanel as { position?: { direction?: string; referencePanel?: string } } | undefined)
         ?.position?.direction,
     ).toBe('within');
+    expect(
+      (logPanel as { position?: { direction?: string; referencePanel?: string } } | undefined)
+        ?.position?.referencePanel,
+    ).toBe('console');
   });
 
   it('Test 10 (S8): does NOT add a "data" panel (retired by trio)', () => {
