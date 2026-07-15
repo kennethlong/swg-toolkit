@@ -42,16 +42,40 @@ export type LiveIpcMessage =
 // ---------------------------------------------------------------------------
 
 /**
- * Byte layout for the named file-mapping channel (host read side).
+ * Byte layout for the named file-mapping channel.
  *
- * Layout (320 bytes total):
- *   [0..3]   SEQ_COUNTER   — seqlock LONG (4 bytes)
- *   [4..51]  TRANSFORM     — float[3][4] row-major, 12 floats / 48 bytes
- *                            NOTE: The IPC doc's "64-byte 4×4 matrix" is WRONG for SWG.
- *                            SWG Transform is 3×4 (float[3][4]) = 48 bytes.
- *   [52..59] NETWORK_ID    — uint64 (8 bytes)
- *   [60..315] TEMPLATE_NAME — null-terminated ASCII (256 bytes max)
- *   [316..319] LIVENESS    — player_non_null(1) | is_over(1) | padding(2)
+ * This ONE named file-mapping carries TWO independent seqlock regions — the
+ * pre-existing agent-to-host READ FRAME (offset 0-319, unchanged from Phase 3)
+ * and a new host-to-agent COMMAND region (offset 324+, Plan 05-01/D-02) — plus
+ * a small set of single-word agent-authoritative status fields. There is
+ * deliberately NO second `CreateFileMappingA` call anywhere in the codebase
+ * (see 05-RESEARCH.md "Anti-Patterns to Avoid"): one named mapping, one
+ * struct, two independently-seqlocked spans.
+ *
+ * Layout (400 bytes total):
+ *   [0..3]     SEQ_COUNTER        — read-frame seqlock LONG (4 bytes, agent-written)
+ *   [4..51]    TRANSFORM          — float[3][4] row-major, 12 floats / 48 bytes
+ *                                    NOTE: The IPC doc's "64-byte 4×4 matrix" is WRONG for SWG.
+ *                                    SWG Transform is 3×4 (float[3][4]) = 48 bytes.
+ *   [52..59]   NETWORK_ID         — uint64 (8 bytes)
+ *   [60..315]  TEMPLATE_NAME      — null-terminated ASCII (256 bytes max)
+ *   [316..319] LIVENESS           — player_non_null(1) | is_over(1) | padding(2)
+ *   [320..323] FOCUS_TOKEN        — agent's truncated addrOf(focus) pointer, published
+ *                                    into the SAME seqlocked read frame EVERY tick (ROUND 5,
+ *                                    REVIEWS.md round-4 maintainer decision #1 — the
+ *                                    load-bearing identity-unification fix both the agent's
+ *                                    own guard baseline (05-03) and the host's
+ *                                    cowSnapshot/writeLog re-key (05-07) key on)
+ *   [324..327] COMMAND_SEQ_COUNTER — command-region seqlock LONG (host-written)
+ *   [328..375] COMMAND_TRANSFORM  — float[3][4] row-major, target transform (48 bytes)
+ *   [376..387] COMMAND_SCALE      — float[3] x/y/z target scale (12 bytes)
+ *   [388..391] COMMAND_FLAGS      — LIVE_CMD_FLAGS bits (host-written)
+ *   [392..395] GUARD_STATUS       — LIVE_GUARD_FLAGS bits (agent-written, single word)
+ *   [396..399] GUARD_ADDR         — x86 pointer of the object last write-guard-checked
+ *                                    (agent-written, single word; 0 = none checked yet)
+ *
+ * LIVE_READFRAME_BYTES (the span channelWrite copies every tick) = 320 —
+ * transform + networkId + templateName + liveness + focusToken.
  */
 export const LIVE_CHANNEL_LAYOUT = {
   /** Seqlock counter (LONG = 4 bytes at offset 0). */
@@ -65,8 +89,72 @@ export const LIVE_CHANNEL_LAYOUT = {
   TEMPLATE_NAME: { offset: 60,  length: 256 },
   /** Liveness flags: player_non_null(1) | is_over(1) | padding(2). */
   LIVENESS:      { offset: 316, length: 4   },
+  /** Agent's truncated addrOf(focus) pointer — part of the SEQLOCKED READ FRAME,
+   *  published every tick (ROUND 5). Distinct from GUARD_ADDR: both are the SAME
+   *  truncation of the SAME resolved pointer, but update on different cadences
+   *  (every tick vs. only on a guard-checked command). */
+  FOCUS_TOKEN:   { offset: 320, length: 4   },
+  /** Command-region seqlock LONG (host-written). */
+  COMMAND_SEQ_COUNTER: { offset: 324, length: 4  },
+  /** Command target transform: 12 floats / 48 bytes (float[3][4], row-major) —
+   *  the command slot carries the FULL target state on every write, not a
+   *  mode-tagged partial update (planner's discretion per 05-CONTEXT.md). */
+  COMMAND_TRANSFORM:   { offset: 328, length: 48 },
+  /** Command target scale: float[3] x/y/z (12 bytes) — gated independently of
+   *  COMMAND_TRANSFORM by the write-guard (REVIEWS.md Fix B). */
+  COMMAND_SCALE:       { offset: 376, length: 12 },
+  /** Command flags — see LIVE_CMD_FLAGS. */
+  COMMAND_FLAGS:       { offset: 388, length: 4  },
+  /** Agent-published guard outcome — see LIVE_GUARD_FLAGS. Single aligned word,
+   *  no seqlock (a torn read of one stale-but-valid word is harmless). */
+  GUARD_STATUS:        { offset: 392, length: 4  },
+  /** Agent-published x86 pointer of the object last write-guard-checked
+   *  (REVIEWS.md Fix C — gives the locked guard-blocked banner a real address
+   *  to interpolate: "<addr>: expected <bytes>, read <bytes>"). 0 = none yet. */
+  GUARD_ADDR:          { offset: 396, length: 4  },
   /** Total byte size of one channel frame. */
-  TOTAL_SIZE:    { offset: 0,   length: 320 },
+  TOTAL_SIZE:    { offset: 0,   length: 400 },
+} as const;
+
+/** Span (bytes) of the read-frame that channelWrite copies every tick —
+ *  transform + networkId + templateName + liveness + focusToken. Named
+ *  constant (not struct-size arithmetic) so extending LiveState for the
+ *  command slot can never silently widen this write span (T-05-01). */
+export const LIVE_READFRAME_BYTES = 320;
+
+/**
+ * Host-to-agent command flags (COMMAND_FLAGS bits). Agent-observed, host-written.
+ */
+export const LIVE_CMD_FLAGS = {
+  /** D-04 clean agent stop-signal — the agent closes its channel handle and
+   *  sets GUARD_STATUS.STOPPING once it honors this. */
+  STOP_REQUESTED:   0x1,
+  /** REVIEWS.md Opus MEDIUM — an explicit "Revert ALL" asks the agent to
+   *  re-baseline its expected-bytes state to the CURRENT live bytes without
+   *  applying any transform this iteration; never accepts an arbitrary
+   *  forward-write target (T-05-26). */
+  REBASELINE_GUARD: 0x2,
+} as const;
+
+/**
+ * Agent-to-host guard status flags (GUARD_STATUS bits). Host-observed, agent-written.
+ */
+export const LIVE_GUARD_FLAGS = {
+  /** Renamed from the original single WRITE_REFUSED bit — same bit value, no
+   *  compat break. Set when the live transform bytes no longer match the
+   *  agent's locally-tracked expected transform. */
+  TRANSFORM_REFUSED: 0x1,
+  /** REVIEWS.md Fix B — scale is gated independently of transform; either bit
+   *  may be set alone. Set when the live scale bytes no longer match the
+   *  agent's locally-tracked expected scale. */
+  SCALE_REFUSED:     0x2,
+  /** REVIEWS.md round-3 maintainer decision #5 — dedicated, agent-published
+   *  sticky acknowledgement bit, distinct from the latest-wins command slot.
+   *  The agent sets this once, immediately before honoring STOP_REQUESTED and
+   *  closing its own channel handle, so a host-side detach retry-loop can
+   *  observe a genuine "the agent is stopping" signal that a later drag
+   *  command overwriting COMMAND_FLAGS on the SAME slot cannot silently erase. */
+  STOPPING:          0x4,
 } as const;
 
 // ---------------------------------------------------------------------------
