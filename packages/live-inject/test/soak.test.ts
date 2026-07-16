@@ -1,16 +1,16 @@
 // soak.test.ts — GC-pressure soak test for the command-slot channel binding
 // (05-12 Task 1, LIVE-03 SC1).
 //
-// Proves the Napi::Reference<Napi::ArrayBuffer> GC guard (channel_binding.cpp
-// OpenChannel/CloseChannel — refcount=1, Reset() in cleanupChannel, finalizer-
-// owns-view-lifetime, per the file's own header comment) keeps the mapped
-// view's ArrayBuffer alive across REPEATED forced V8 garbage collection while
-// C++ still holds the raw view pointer, and that readChannelView's
-// re-acquisition of that same buffer never returns a dangling reference.
+// Proves the command-slot channel binding (channel_binding.cpp) survives
+// REPEATED forced V8 garbage collection: the persistent V8-owned copy buffer
+// (Napi::Reference refcount=1) is not collected out from under readChannelView,
+// its seqlock-validated view->buffer copy keeps returning correct fresh data,
+// and the raw mapped view (owned by ChannelState, unmapped only in
+// cleanupChannel) is never dangled. Doubles as the regression guard for the
+// 05-13 copy-on-read fix (Electron 42 forbids the old external-buffer wrap).
 //
-// This exercises the REAL native addon (not a TS port) — the soak's entire
-// point is proving the actual Napi::Reference lifetime behavior, which a pure
-// TS simulation cannot exercise.
+// This exercises the REAL native addon (not a TS port) — the point is proving
+// the actual native buffer/view lifetime, which a TS simulation cannot exercise.
 //
 // Requires the vitest process to run with --expose-gc (wired via this
 // package's vitest.config.ts poolOptions.forks.execArgv) so global.gc() can
@@ -80,8 +80,8 @@ describe('GC-pressure soak — command-slot channel binding', () => {
 
         // Force a real, synchronous GC cycle — not incidental collection
         // timing. If the Napi::Reference guard (refcount=1, Reset() only in
-        // CloseChannel) were absent or broken, this is where the ArrayBuffer
-        // would be collected out from under the still-live C++ view pointer.
+        // CloseChannel) were absent or broken, this is where the owned copy
+        // buffer would be collected out from under the next readChannelView.
         global.gc!();
 
         const view = addon.readChannelView(CHANNEL_NAME);
@@ -92,8 +92,8 @@ describe('GC-pressure soak — command-slot channel binding', () => {
 
         // Confirm the command-region seqlock landed even (write complete, not
         // torn) and the just-written values read back out correctly at the
-        // COMMAND_TRANSFORM / COMMAND_SCALE offsets — proves this is a LIVE,
-        // freshly-mapped view, not a dangling/zeroed/stale one.
+        // COMMAND_TRANSFORM / COMMAND_SCALE offsets — proves readChannelView's
+        // copy reflects the live mapping, not a dangling/zeroed/stale buffer.
         const dv = new DataView(view!);
         const seq = dv.getInt32(LIVE_CHANNEL_LAYOUT.COMMAND_SEQ_COUNTER.offset, true);
         expect(seq % 2).toBe(0);
