@@ -38,6 +38,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useLiveStore } from '../state/liveStore';
+import { log } from '../services/logService';
 import { LIVE_CHANNEL_LAYOUT, LIVE_GUARD_FLAGS } from '@swg/contracts';
 import type { VerifiedObjectState } from '@swg/contracts';
 
@@ -45,6 +46,7 @@ import type { VerifiedObjectState } from '@swg/contracts';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const addon = require('@swg/live-inject') as {
   readChannelView: (name: string) => ArrayBuffer | null;
+  closeChannel: (name: string) => void;
 };
 
 // ─── Preallocated, process-lifetime buffers (never reallocated) ──────────────
@@ -100,6 +102,38 @@ export function decodeGuardFields(buf: ArrayBuffer): DecodedGuardFields {
     scaleBlocked: (guardStatus & LIVE_GUARD_FLAGS.SCALE_REFUSED) !== 0,
     guardAddr: guardAddrRaw === 0 ? null : guardAddrRaw,
   };
+}
+
+// ─── Liveness watchdog (client-exit detection) ───────────────────────────────
+
+/** How long SEQ_COUNTER may stay frozen before we treat the client as gone. The
+ *  agent bumps it every poll tick (~30-60fps) for as long as its thread lives; it
+ *  only stops when the target process exits. Generous vs. the tick rate so a heavy
+ *  zone-load hiccup can't false-trip it (the agent thread is independent of the
+ *  game thread anyway, so it keeps writing through loads). */
+export const STALE_DISCONNECT_MS = 2000;
+
+export interface SeqLiveness {
+  lastSeq: number;
+  lastChangeMs: number;
+}
+
+/**
+ * Advance the liveness tracker with the current SEQ_COUNTER and wall-clock time.
+ * Returns true once the counter has been frozen longer than `thresholdMs` — the
+ * agent stopped writing, i.e. the SWG client exited (its last frame is frozen in
+ * the host's surviving mapping view and would otherwise keep reading as "still in
+ * world"). Mutates `s` in place; seed `lastSeq` with -1 so the first tick arms it.
+ */
+export function stepSeqLiveness(
+  s: SeqLiveness, curSeq: number, nowMs: number, thresholdMs: number,
+): boolean {
+  if (s.lastSeq !== curSeq) {
+    s.lastSeq = curSeq;
+    s.lastChangeMs = nowMs;
+    return false;
+  }
+  return nowMs - s.lastChangeMs > thresholdMs;
 }
 
 // ─── Channel parser ────────────────────────────────────────────────────────────
@@ -183,9 +217,24 @@ export function useChannelReader(): void {
     if (status.kind !== 'attached') return;
     const mappingName = (status as { kind: 'attached'; mappingName: string }).mappingName;
 
+    // Per-session client-exit watchdog (see stepSeqLiveness). Fresh each attach.
+    const liveness: SeqLiveness = { lastSeq: -1, lastChangeMs: Date.now() };
+
     function poll() {
       const buf: ArrayBuffer | null = addon.readChannelView(mappingName);
       if (buf) {
+        // Client-exit detection: if SEQ_COUNTER has frozen, the agent is gone —
+        // end the session so the HUD stops showing the (now stale) last frame as
+        // if the player were still in-world. The host's mapping view survives the
+        // client's exit, so readChannelView keeps returning a frozen buffer.
+        const seq = new DataView(buf).getUint32(LIVE_CHANNEL_LAYOUT.SEQ_COUNTER.offset, true);
+        if (stepSeqLiveness(liveness, seq, Date.now(), STALE_DISCONNECT_MS)) {
+          try { addon.closeChannel(mappingName); } catch { /* mapping already gone */ }
+          log('warn', 'log', 'SWG client exited — live session ended (channel went stale).');
+          useLiveStore.getState().detach();
+          return; // stop polling; the effect re-runs on the status change and no-ops
+        }
+
         useLiveStore.getState().updateRegion(getRegionView(buf));
 
         const guard = decodeGuardFields(buf);

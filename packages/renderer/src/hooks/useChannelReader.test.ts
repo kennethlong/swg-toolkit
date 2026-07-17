@@ -19,7 +19,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { LIVE_CHANNEL_LAYOUT, LIVE_GUARD_FLAGS } from '@swg/contracts';
-import { parseChannelView, decodeGuardFields, getRegionView } from './useChannelReader';
+import { parseChannelView, decodeGuardFields, getRegionView, stepSeqLiveness, STALE_DISCONNECT_MS } from './useChannelReader';
 
 const L = LIVE_CHANNEL_LAYOUT;
 
@@ -162,5 +162,31 @@ describe('useChannelReader zero-allocation read path (05-07 Task 3)', () => {
     const liveness = 0x1 | 0x20; // bit5 set
     const state = parseChannelView(makeBuffer({ liveness })) as unknown as Record<string, unknown>;
     expect(state['scaleGuardUnavailableOnBuild']).toBeUndefined();
+  });
+});
+
+describe('stepSeqLiveness — client-exit watchdog (frozen SEQ_COUNTER)', () => {
+  it('is never stale while SEQ_COUNTER keeps advancing (clock resets each change)', () => {
+    const s = { lastSeq: -1, lastChangeMs: 0 };
+    expect(stepSeqLiveness(s, 10, 1000, STALE_DISCONNECT_MS)).toBe(false);          // seed
+    expect(stepSeqLiveness(s, 11, 1000 + STALE_DISCONNECT_MS * 5, STALE_DISCONNECT_MS)).toBe(false); // advanced → reset
+    expect(stepSeqLiveness(s, 12, 1000 + STALE_DISCONNECT_MS * 9, STALE_DISCONNECT_MS)).toBe(false);
+  });
+
+  it('goes stale once SEQ_COUNTER is frozen past the threshold', () => {
+    const s = { lastSeq: -1, lastChangeMs: 0 };
+    expect(stepSeqLiveness(s, 42, 1000, STALE_DISCONNECT_MS)).toBe(false);                       // seed @1000
+    expect(stepSeqLiveness(s, 42, 1000 + STALE_DISCONNECT_MS, STALE_DISCONNECT_MS)).toBe(false); // exactly at threshold: not yet
+    expect(stepSeqLiveness(s, 42, 1000 + STALE_DISCONNECT_MS + 1, STALE_DISCONNECT_MS)).toBe(true); // past → stale
+  });
+
+  it('a resumed advance after a partial freeze clears the clock (no false trip)', () => {
+    const s = { lastSeq: -1, lastChangeMs: 0 };
+    stepSeqLiveness(s, 1, 0, STALE_DISCONNECT_MS);                                    // seed @0
+    expect(stepSeqLiveness(s, 1, STALE_DISCONNECT_MS - 1, STALE_DISCONNECT_MS)).toBe(false); // frozen, under threshold
+    expect(stepSeqLiveness(s, 2, STALE_DISCONNECT_MS - 1, STALE_DISCONNECT_MS)).toBe(false); // advanced → clock resets to t=1999
+    // Must now re-accumulate a FULL threshold from the reset point (t=1999), not from 0.
+    expect(stepSeqLiveness(s, 2, (STALE_DISCONNECT_MS - 1) + STALE_DISCONNECT_MS, STALE_DISCONNECT_MS)).toBe(false);     // Δ=2000, not > → false
+    expect(stepSeqLiveness(s, 2, (STALE_DISCONNECT_MS - 1) + STALE_DISCONNECT_MS + 1, STALE_DISCONNECT_MS)).toBe(true);  // Δ=2001 → stale
   });
 });
