@@ -480,10 +480,22 @@ public:
             // ------------------------------------------------------------------
             STARTUPINFOA si = {};
             si.cb = sizeof(si);
+            // Launch with the client's OWN directory as the working directory. The SWG
+            // client reads client.cfg (and resolves TRE search paths) relative to its
+            // cwd; a nullptr lpCurrentDirectory inherits the TOOLKIT's cwd, so the client
+            // can't find client.cfg and boot stalls right after SetupSharedFoundation.
+            // Mirrors a normal double-click / .cmd launch (cwd = exe dir).
+            std::string clientDir = m_clientExe;
+            {
+                const size_t slash = clientDir.find_last_of("\\/");
+                if (slash != std::string::npos) clientDir.resize(slash);
+                else clientDir.clear();
+            }
+            const char* lpClientCwd = clientDir.empty() ? nullptr : clientDir.c_str();
             if (!CreateProcessA(m_clientExe.c_str(), nullptr, nullptr, nullptr,
                                 FALSE,
                                 CREATE_SUSPENDED | DETACHED_PROCESS,
-                                nullptr, nullptr, &si, &pi))
+                                nullptr, lpClientCwd, &si, &pi))
             {
                 SetError("CreateProcess failed (err=" + std::to_string(GetLastError()) + ")");
                 break;
