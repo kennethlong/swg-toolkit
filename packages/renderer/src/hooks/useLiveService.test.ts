@@ -16,6 +16,8 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { LIVE_CHANNEL_LAYOUT, LIVE_GUARD_FLAGS } from '@swg/contracts';
 
 vi.mock('./useCommandWriter', () => ({
@@ -35,12 +37,14 @@ addon.closeChannel = vi.fn();
 addon.openChannel = vi.fn();
 
 let detachUI: typeof import('./useLiveService').detachUI;
+let getAgentDllPath: typeof import('./useLiveService').getAgentDllPath;
 let useLiveStore: typeof import('../state/liveStore').useLiveStore;
 let writeStopMock: ReturnType<typeof vi.fn>;
 
 beforeAll(async () => {
   const mod = await import('./useLiveService');
   detachUI = mod.detachUI;
+  getAgentDllPath = mod.getAgentDllPath;
   const storeMod = await import('../state/liveStore');
   useLiveStore = storeMod.useLiveStore;
   const cwMod = await import('./useCommandWriter');
@@ -121,5 +125,35 @@ describe('detachUI stop-signal retry loop (05-07 Task 2, ROUND 4)', () => {
     // Resolved well before the ~750ms bounded timeout would have required ~23 retries.
     expect(writeStopMock.mock.calls.length).toBeLessThan(10);
     expect(addon.closeChannel).toHaveBeenCalledWith('Local\\SwgToolkitLive_detach3');
+  });
+});
+
+describe('getAgentDllPath — robust dev resolution (agent-inject NULL regression)', () => {
+  // In vitest, require('electron') yields a path string (not { app }), so
+  // getAgentDllPath's isPackaged probe throws → caught → dev branch. These tests
+  // pin the fix for the "LoadLibraryA returned NULL" inject failure: a bundler
+  // __dirname-depth shift made the old fixed ../../ path miss the real DLL.
+  const rel = path.join(
+    'packages', 'live-inject', 'agent', 'build-agent', 'Release', 'swg_toolkit_agent.dll',
+  );
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('returns the FIRST candidate that exists on disk, not a fixed traversal', () => {
+    // Only the __dirname/../../ candidate "exists" — must be chosen over cwd.
+    const secondCand = path.join(__dirname, '../../', rel);
+    vi.spyOn(fs, 'existsSync').mockImplementation((p) => p === secondCand);
+    expect(getAgentDllPath()).toBe(secondCand);
+  });
+
+  it('prefers the cwd (repo-root) anchor when it exists', () => {
+    const cwdCand = path.join(process.cwd(), rel);
+    vi.spyOn(fs, 'existsSync').mockImplementation((p) => p === cwdCand);
+    expect(getAgentDllPath()).toBe(cwdCand);
+  });
+
+  it('falls back to the cwd candidate when none exist (concrete path for the error)', () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+    expect(getAgentDllPath()).toBe(path.join(process.cwd(), rel));
   });
 });

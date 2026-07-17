@@ -142,10 +142,28 @@ export function getAgentDllPath(): string {
   if (isPackaged) {
     return path.join(process.resourcesPath, 'agent', 'swg_toolkit_agent.dll');
   }
-  return path.join(
-    __dirname,
-    '../../packages/live-inject/agent/build-agent/Release/swg_toolkit_agent.dll',
+
+  // Dev: resolve robustly. The old code used a single fixed `__dirname/../../`
+  // traversal, but the bundled renderer's __dirname depth is NOT stable across
+  // build-config changes — a Phase-4.4 vite rework shifted it, so the canonical
+  // path silently stopped resolving and inject failed with a bare "LoadLibraryA
+  // returned NULL" (the path handed to the target did not exist on disk). Try
+  // several stable anchors and return the FIRST that actually exists.
+  const rel = path.join(
+    'packages', 'live-inject', 'agent', 'build-agent', 'Release', 'swg_toolkit_agent.dll',
   );
+  const candidates = [
+    path.join(process.cwd(), rel),        // `pnpm start` runs from the repo root
+    path.join(__dirname, '../../', rel),  // legacy fixed traversal (bundler-depth dependent)
+    path.join(__dirname, '../../../', rel),
+    path.join(__dirname, '../../../../', rel),
+  ];
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c; } catch { /* try next anchor */ }
+  }
+  // None found — return the cwd candidate so the caller's existence guard names a
+  // concrete path instead of the opaque remote LoadLibraryA NULL.
+  return candidates[0];
 }
 
 /**
@@ -166,6 +184,17 @@ export function getAgentDllPath(): string {
  */
 export function prepareAgentDllForInject(): string {
   const canonical = getAgentDllPath();
+  // Fail LOUD if the agent DLL isn't where we resolved it. Otherwise a missing or
+  // mis-resolved build silently falls through to LoadLibraryA(non-existent path) →
+  // NULL, whose "DLL not loaded" error gives no hint the DLL is simply absent.
+  if (!fs.existsSync(canonical)) {
+    throw new Error(
+      'agent DLL not found at ' + canonical +
+      ' — build it: cd packages/live-inject/agent && ' +
+      'cmake -B build-agent -A Win32 -G "Visual Studio 17 2022" && ' +
+      'cmake --build build-agent --config Release',
+    );
+  }
   const dir = path.join(os.tmpdir(), 'swg-toolkit-agent');
   try {
     fs.mkdirSync(dir, { recursive: true });
