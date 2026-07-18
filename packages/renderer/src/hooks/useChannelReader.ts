@@ -106,34 +106,34 @@ export function decodeGuardFields(buf: ArrayBuffer): DecodedGuardFields {
 
 // ─── Liveness watchdog (client-exit detection) ───────────────────────────────
 
-/** How long SEQ_COUNTER may stay frozen before we treat the client as gone. The
- *  agent bumps it every poll tick (~30-60fps) for as long as its thread lives; it
- *  only stops when the target process exits. Generous vs. the tick rate so a heavy
- *  zone-load hiccup can't false-trip it (the agent thread is independent of the
- *  game thread anyway, so it keeps writing through loads). */
-export const STALE_DISCONNECT_MS = 2000;
+/** How often to check the target process is still alive (ms). */
+export const LIVENESS_CHECK_MS = 1000;
 
-export interface SeqLiveness {
-  lastSeq: number;
-  lastChangeMs: number;
-}
+/** Channel poll cadence (ms). ~30fps when the toolkit is foreground; Chromium
+ *  throttles background timers to ~1/s but — unlike requestAnimationFrame — does
+ *  NOT pause them, so the HUD keeps updating and the liveness check keeps running
+ *  while the SWG client holds the foreground (fullscreen). */
+export const POLL_INTERVAL_MS = 33;
 
 /**
- * Advance the liveness tracker with the current SEQ_COUNTER and wall-clock time.
- * Returns true once the counter has been frozen longer than `thresholdMs` — the
- * agent stopped writing, i.e. the SWG client exited (its last frame is frozen in
- * the host's surviving mapping view and would otherwise keep reading as "still in
- * world"). Mutates `s` in place; seed `lastSeq` with -1 so the first tick arms it.
+ * True if the target process is still running. Probes existence via
+ * process.kill(pid, 0), which sends NO signal — not throwing = alive; ESRCH =
+ * gone; EPERM = alive but access-limited.
+ *
+ * This is the correct client-exit signal. Channel/SEQ_COUNTER staleness is NOT:
+ * the agent skips channelWrite (and so never bumps the counter) whenever the
+ * player is null — loading, login, char-select, zoning — so a perfectly-alive
+ * client looks "frozen" (agent_main.cpp: `if (!player) { Sleep(100); continue; }`).
+ * A seqlock-staleness watchdog therefore false-positives ~2s into every launch,
+ * before the world even loads.
  */
-export function stepSeqLiveness(
-  s: SeqLiveness, curSeq: number, nowMs: number, thresholdMs: number,
-): boolean {
-  if (s.lastSeq !== curSeq) {
-    s.lastSeq = curSeq;
-    s.lastChangeMs = nowMs;
-    return false;
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
   }
-  return nowMs - s.lastChangeMs > thresholdMs;
 }
 
 // ─── Channel parser ────────────────────────────────────────────────────────────
@@ -201,40 +201,50 @@ export function parseChannelView(buf: ArrayBuffer): VerifiedObjectState | null {
 // ─── React hook ───────────────────────────────────────────────────────────────
 
 /**
- * Activates a requestAnimationFrame poll loop when live-inject status is
- * 'attached'. No-ops when idle, connecting, or in error state.
+ * Activates a setTimeout poll loop when live-inject status is 'attached'.
+ * No-ops when idle, connecting, or in error state. setTimeout (not rAF) so the
+ * loop keeps running — throttled, not paused — while the SWG client holds the
+ * foreground and the toolkit window is occluded.
  *
- * On each poll frame (if buf is non-null):
+ * On each poll tick (if buf is non-null):
  *   - updateRegion(getRegionView(buf)) — feeds raw bytes to HexInspector (D-07)
  *   - setGuardState/setGuardAddr       — agent-published guard observability (05-07)
  *   - updateState(parsed)              — updates verified state (STATE 2)
+ *
+ * Client-exit detection is by process liveness (isPidAlive), throttled to
+ * LIVENESS_CHECK_MS — NOT channel staleness (the agent stops writing when the
+ * player is null, so a live-but-loading client would false-disconnect).
  */
 export function useChannelReader(): void {
   const status = useLiveStore((s) => s.status);
-  const rafRef = useRef<number>(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     if (status.kind !== 'attached') return;
-    const mappingName = (status as { kind: 'attached'; mappingName: string }).mappingName;
+    const { pid, mappingName } =
+      status as { kind: 'attached'; pid: number; mappingName: string };
 
-    // Per-session client-exit watchdog (see stepSeqLiveness). Fresh each attach.
-    const liveness: SeqLiveness = { lastSeq: -1, lastChangeMs: Date.now() };
+    let stopped = false;
+    let lastLiveCheck = Date.now(); // first liveness check ~LIVENESS_CHECK_MS after attach
 
     function poll() {
-      const buf: ArrayBuffer | null = addon.readChannelView(mappingName);
-      if (buf) {
-        // Client-exit detection: if SEQ_COUNTER has frozen, the agent is gone —
-        // end the session so the HUD stops showing the (now stale) last frame as
-        // if the player were still in-world. The host's mapping view survives the
-        // client's exit, so readChannelView keeps returning a frozen buffer.
-        const seq = new DataView(buf).getUint32(LIVE_CHANNEL_LAYOUT.SEQ_COUNTER.offset, true);
-        if (stepSeqLiveness(liveness, seq, Date.now(), STALE_DISCONNECT_MS)) {
+      if (stopped) return;
+
+      // Client-exit detection (throttled) — is the target process still alive?
+      const now = Date.now();
+      if (now - lastLiveCheck >= LIVENESS_CHECK_MS) {
+        lastLiveCheck = now;
+        if (!isPidAlive(pid)) {
+          stopped = true;
           try { addon.closeChannel(mappingName); } catch { /* mapping already gone */ }
-          log('warn', 'log', 'SWG client exited — live session ended (channel went stale).');
+          log('warn', 'log', 'SWG client exited — live session ended.');
           useLiveStore.getState().detach();
           return; // stop polling; the effect re-runs on the status change and no-ops
         }
+      }
 
+      const buf: ArrayBuffer | null = addon.readChannelView(mappingName);
+      if (buf) {
         useLiveStore.getState().updateRegion(getRegionView(buf));
 
         const guard = decodeGuardFields(buf);
@@ -245,11 +255,11 @@ export function useChannelReader(): void {
         const state = parseChannelView(buf);
         if (state !== null) useLiveStore.getState().updateState(state);
       }
-      rafRef.current = requestAnimationFrame(poll);
+      timerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
     }
 
-    rafRef.current = requestAnimationFrame(poll);
-    return () => { cancelAnimationFrame(rafRef.current); };
+    timerRef.current = setTimeout(poll, 0);
+    return () => { stopped = true; if (timerRef.current !== undefined) clearTimeout(timerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status.kind === 'attached' ? (status as any).mappingName : null]); // eslint-disable-line @typescript-eslint/no-explicit-any
 }
