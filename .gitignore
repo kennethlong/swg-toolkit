@@ -64,3 +64,10 @@ packages/harness/fixtures-real/effect/*.eft
 packages/harness/fixtures-real/datatable/*.iff
 # Real .stf localized-string-table asset (05-05 — aprilfools.stf, local-only CORE-05 gate)
 packages/harness/fixtures-real/stf/*.stf
+
+# SWG client crash dumps + boot trace — the client writes these into its working
+# directory (which launch-and-inject pointed at the toolkit dir before the 05 cwd
+# fix). They are client artifacts, never toolkit files.
+SwgClient_r.exe-*.mdmp
+SwgClient_r.exe-*.txt
+swgclient-boot-trace.log

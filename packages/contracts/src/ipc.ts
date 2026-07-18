@@ -92,6 +92,8 @@ export interface IpcChannels {
   'workspace:pick-file': string[];
   /** OS multi-file picker for mounting .tre archives — returns selected paths or [] if cancelled. */
   'tre:pick-archives':   string[];
+  /** OS file picker for the SWG client executable — returns selected path (length 1) or [] if cancelled. */
+  'client:pick-exe':     string[];
 }
 
 /**

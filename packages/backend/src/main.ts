@@ -337,6 +337,26 @@ app.whenReady().then(() => {
     return result.canceled ? [] : result.filePaths;
   });
 
+  // ── IPC: OS file picker for the SWG client executable (Live Inspector) ────
+  // LiveInspectorPanel.tsx "Browse…" invokes this to pick the client .exe for
+  // Launch & Inject instead of hand-typing the path. Filtered to .exe.
+  ipcMain.handle('client:pick-exe', async (): Promise<IpcChannels['client:pick-exe']> => {
+    if (SWG_TEST_MODE && testStubPaths.has('client:pick-exe')) {
+      return testStubPaths.get('client:pick-exe')!;
+    }
+    sendMainLog('info', 'client:pick-exe invoked');
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Select SWG Client Executable…',
+      filters: [
+        { name: 'SWG Client', extensions: ['exe'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (result.canceled) sendMainLog('warn', 'client:pick-exe cancelled');
+    return result.canceled ? [] : result.filePaths;
+  });
+
   // ── STEP 3: loadURL LAST ──────────────────────────────────────────────────
   // RESEARCH Pitfall 1: loadURL must be the LAST step so that:
   //   1. onHeadersReceived is already registered when the browser fetches the page.

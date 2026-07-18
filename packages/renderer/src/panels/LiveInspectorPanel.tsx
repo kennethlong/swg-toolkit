@@ -25,7 +25,7 @@ import { launchAndInjectUI, attachToRunningUI, detachUI } from '../hooks/useLive
 import { useChannelReader } from '../hooks/useChannelReader';
 
 // VerifiedObjectState is used for type guidance only (flows through liveStore).
-import type { VerifiedObjectState } from '@swg/contracts';
+import type { VerifiedObjectState, TypedIpcRenderer } from '@swg/contracts';
 
 // Satisfy the import so TypeScript doesn't prune it — the type is referenced
 // in the helper below to keep field access explicit.
@@ -37,6 +37,16 @@ export default function LiveInspectorPanel(_props: IDockviewPanelProps): React.R
   const [hoveredByte,  setHoveredByte] = useState<number | null>(null);
   const [clientExe,    setClientExe]   = useState('');
   const [attachPid,    setAttachPid]   = useState('');
+
+  // "Browse…" — native OS file picker for the client exe (main-process dialog via
+  // IPC; `dialog` is not available in the renderer). Mirrors DeployDialog's pattern.
+  const handleBrowseExe = React.useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
+    void ipcRenderer.invoke('client:pick-exe').then((paths) => {
+      if (paths.length > 0) setClientExe(paths[0]);
+    });
+  }, []);
 
   const status        = useLiveStore((s) => s.status);
   const mode          = useLiveStore((s) => s.mode);
@@ -216,13 +226,25 @@ export default function LiveInspectorPanel(_props: IDockviewPanelProps): React.R
                   <label style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>
                     Client executable
                   </label>
-                  <input
-                    type="text"
-                    value={clientExe}
-                    onChange={(e) => setClientExe(e.target.value)}
-                    placeholder="C:\path\to\SwgClient_r.exe"
-                    style={attachInputStyle}
-                  />
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', width: '100%' }}>
+                    <input
+                      type="text"
+                      value={clientExe}
+                      onChange={(e) => setClientExe(e.target.value)}
+                      placeholder="C:\path\to\SwgClient_r.exe"
+                      style={{ ...attachInputStyle, flex: 1, minWidth: 0 }}
+                    />
+                    <button
+                      type="button"
+                      style={browseBtnStyle}
+                      disabled={isConnecting}
+                      onClick={handleBrowseExe}
+                      aria-label="Browse for the SWG client executable"
+                      title="Browse for the SWG client executable"
+                    >
+                      Browse…
+                    </button>
+                  </div>
                   <button
                     style={attachBtnStyle}
                     disabled={isConnecting || !clientExe.trim()}
@@ -414,6 +436,19 @@ const attachBtnStyle: React.CSSProperties = {
 };
 
 /** Text input style for clientExe and PID fields. */
+const browseBtnStyle: React.CSSProperties = {
+  background:    'transparent',
+  border:        '1px solid var(--color-border)',
+  borderRadius:  'var(--radius-sm)',
+  color:         'var(--color-text)',
+  cursor:        'pointer',
+  fontSize:      'var(--text-xs)',
+  fontFamily:    'var(--font-sans)',
+  padding:       'var(--space-1) var(--space-2)',
+  whiteSpace:    'nowrap',
+  flexShrink:    0,
+  transition:    'background 0.12s ease, color 0.12s ease',
+};
 const attachInputStyle: React.CSSProperties = {
   width:        '100%',
   fontSize:     'var(--text-xs)',
