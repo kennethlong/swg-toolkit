@@ -56,6 +56,7 @@
 #include "sentinels.h"
 #include "channel.h"
 #include "write.h"
+#include "overlay.h"
 
 // ---------------------------------------------------------------------------
 // Forward declarations for rva_table.cpp fn-pointer slots.
@@ -222,6 +223,12 @@ DWORD WINAPI agent_init(LPVOID lpReadyEventName) {
     if (!channelOk) {
         return 2;  // channel unavailable — cannot report state
     }
+
+    // --- Slice-0 step 2: spin up the in-game render overlay (advertised gl11 client). ---
+    // Fire-and-forget: an acquisition thread polls gl11_r.dll!GetHookPoints() until the
+    // swapchain is live, installs the DXGI Present detour, then the game render thread
+    // owns the per-frame overlay. No-op on a non-D3D11 client (gl11 absent → never latches).
+    overlay::start();
 
     // --- Step 7: Read-verify-write poll loop (60fps, 05-03) ---
     int prevLoopCounter = 0;

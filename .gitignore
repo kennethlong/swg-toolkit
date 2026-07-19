@@ -17,6 +17,11 @@ packages/native-core/build/
 packages/native-core/prebuilds/
 packages/live-inject/build/
 packages/live-inject/agent/build-agent/
+# vcpkg output for the agent's render-overlay deps (imgui/imguizmo, Slice-0).
+# The manifest (vcpkg.json / vcpkg-configuration.json) is tracked; the built
+# libs and install log are regenerated from it.
+packages/live-inject/agent/vcpkg_installed/
+packages/live-inject/agent/vcpkg-install.log
 *.node
 *.dll
 

@@ -220,6 +220,21 @@ pNetworkIdManagerGetObjectById getObjectByIdAdvertised = nullptr;
 pCuiHudGetInstance cuiHudGetInstance = nullptr;
 pCuiHudGetTarget    cuiHudGetTarget   = nullptr;
 
+// --- Slice-0 step 4: advertised live-camera matrix accessors (Goal B Wave-3
+//     rider 4C, engine_advertise.cpp:462-493). Copy-out primitives feeding the
+//     in-game ImGuizmo overlay its view + projection. int(float*) -> 1 ok / 0 no
+//     current camera (or null arg). Layouts (ground truth, verified 2026-07-19):
+//       getTransformO2W(out12): row-major 3x4, columns = local frame i/j/k,
+//                               column 3 = position (== Transform's own layout).
+//       getProjectionMatrix(out16): the engine GlMatrix4x4 verbatim, row-major 4x4.
+//     ADVERTISED-ONLY: no legacy SWGEmu RVA (Utinni's legacy path reads the
+//     GroundScene camera raw, NGE-unsafe); slots start null and resolve by name.
+//     overlay.cpp branches on null (the gizmo stays dark rather than reading a
+//     raw/mis-offset layout). ---
+typedef int(__cdecl* pCameraGetMatrix)(float*);
+pCameraGetMatrix cameraGetTransformO2W     = nullptr;
+pCameraGetMatrix cameraGetProjectionMatrix = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -240,6 +255,9 @@ Binding g_agentBindings[] = {
     {"network::getObjectById",        (void**)&getObjectByIdAdvertised},  // reusable primitive, engine_advertise.cpp:709
     {"cuiHud::g_instance",            (void**)&cuiHudGetInstance},        // engine_advertise.cpp:706
     {"cuiHud::getTarget",             (void**)&cuiHudGetTarget},          // engine_advertise.cpp:705
+    // --- Slice-0 step 4: live-camera matrix accessors (advertised-only) ---
+    {"camera::getTransformO2W",       (void**)&cameraGetTransformO2W},    // engine_advertise.cpp:795
+    {"camera::getProjectionMatrix",   (void**)&cameraGetProjectionMatrix},// engine_advertise.cpp:794
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 

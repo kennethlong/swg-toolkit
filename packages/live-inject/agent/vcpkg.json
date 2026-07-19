@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "swg-toolkit-agent",
+  "version-string": "0.0.1",
+  "description": "In-game render-overlay deps for the SWG-Toolkit x86 injection agent (Slice-0 spike). Built with the x86-windows-static triplet (/MT) to keep the injected DLL self-contained (KERNEL32-only runtime dep). Version pair mirrors Utinni's proven manifest.",
+  "supports": "windows & x86",
+  "dependencies": [
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "dx9-binding",
+        "dx11-binding",
+        "win32-binding"
+      ],
+      "version>=": "1.92.6"
+    },
+    {
+      "name": "imguizmo",
+      "version>=": "1.10"
+    }
+  ]
+}
