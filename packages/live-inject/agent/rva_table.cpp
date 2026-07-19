@@ -264,6 +264,17 @@ pWsSaveSnapshot   wsSaveSnapshot   = nullptr;
 pWsGetSavePath    wsGetSavePath    = nullptr;
 pWsUnloadSnapshot wsUnloadSnapshot = nullptr;
 
+// --- Ray-pick (advertised v20, provider handback 2026-07-19). Copy-out cursor
+//     ray-cast from the current camera through client-window pixel (x,y):
+//     returns 1=hit / 0=miss; outPoint3 = world x,y,z of the nearest hit;
+//     outHitObjectId = the hit object's NetworkId (0 for a terrain hit — STILL a
+//     valid hit; walks up Object::getParent() to the nearest NETWORKED ancestor
+//     for non-networked child parts). objectsOnly: 1 = client objects only,
+//     0 = include terrain/geometry (use 0 for placement). ADVERTISED-ONLY,
+//     game-thread-only, per-frame-safe. ---
+typedef int(__cdecl* pCollideScreenRay)(int screenX, int screenY, int objectsOnly, int64_t* outHitObjectId, float* outPoint3);
+pCollideScreenRay collideScreenRay = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -295,6 +306,8 @@ Binding g_agentBindings[] = {
     {"worldSnapshot::wsSaveSnapshot",   (void**)&wsSaveSnapshot},   // engine_advertise.cpp:780
     {"worldSnapshot::wsGetSavePath",    (void**)&wsGetSavePath},    // engine_advertise.cpp:781
     {"worldSnapshot::wsUnloadSnapshot", (void**)&wsUnloadSnapshot}, // engine_advertise.cpp:782
+    // --- Ray-pick (advertised v20 handback 2026-07-19) ---
+    {"clientWorld::collideScreenRay",   (void**)&collideScreenRay},
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 

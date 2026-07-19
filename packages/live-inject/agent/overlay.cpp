@@ -44,6 +44,8 @@ namespace swg { namespace endpoints {
     typedef int64_t(__cdecl*  pWsAddObject)(const char* tmpl, const float* transform12, int64_t containedById);
     typedef int(__cdecl*      pWsSaveSnapshot)();
     typedef int(__cdecl*      pWsGetSavePath)(char* buf, int cap);
+    typedef int(__cdecl*      pCollideScreenRay)(int, int, int, int64_t*, float*);
+    typedef void*(__cdecl*    pGetObjectById)(const void* networkId);
     extern pGetPlayer         getPlayer;
     extern pGetTransform_o2w  getTransform_o2w;
     extern pSetTransform_o2w  setTransform_o2w;
@@ -56,6 +58,8 @@ namespace swg { namespace endpoints {
     extern pWsAddObject       wsAddObject;
     extern pWsSaveSnapshot    wsSaveSnapshot;
     extern pWsGetSavePath     wsGetSavePath;
+    extern pCollideScreenRay  collideScreenRay;
+    extern pGetObjectById     getObjectByIdAdvertised;
     bool isAdvertisedClient();
 }}
 
@@ -206,10 +210,23 @@ bool  g_gizmoWasUsing = false;
 float g_gizmoOriginal34[12] = {};
 bool  g_allowTargetAnything = false;   // let the reticle lock onto any object
 
-// Resolve the object the gizmo edits: the current in-game target if any, else the
+// --- Ray-pick state. g_pickedId is a NetworkId VALUE (re-resolved to an Object*
+//     every frame via getObjectById — ABA-safe, never a cached raw pointer).
+//     g_pickPoint is the last world hit point (for cursor placement). ---
+int64_t g_pickedId = 0;
+bool    g_havePickPoint = false;
+float   g_pickPoint[3] = {};
+
+// Resolve the object the gizmo edits: a ray-picked object (re-resolved from its
+// id each frame) takes precedence, else the current in-game target, else the
 // player. Runs on the render/game thread (safe to touch engine objects here).
 void* resolveFocusObject() {
     void* focus = nullptr;
+    // Ray-picked selection wins — re-resolve the id to a live Object* (ABA-safe).
+    if (g_pickedId != 0 && swg::endpoints::getObjectByIdAdvertised) {
+        void* picked = swg::endpoints::getObjectByIdAdvertised(&g_pickedId);
+        if (picked) return picked;
+    }
     if (swg::endpoints::isAdvertisedClient() &&
         swg::endpoints::cuiHudGetInstance && swg::endpoints::cuiHudGetTarget) {
         void* hud = swg::endpoints::cuiHudGetInstance();
@@ -386,8 +403,32 @@ void renderFrame() {
                 }
             }
         }
+        if (g_havePickPoint) {
+            ImGui::SameLine();
+            if (ImGui::Button("Insert at cursor") && s_insertTemplate[0] != '\0') {
+                float t12[12];
+                void* player = swg::endpoints::getPlayer ? swg::endpoints::getPlayer() : nullptr;
+                void* pxf = (player && swg::endpoints::getTransform_o2w) ? swg::endpoints::getTransform_o2w(player) : nullptr;
+                if (pxf) std::memcpy(t12, pxf, sizeof(t12));   // player facing
+                else { std::memset(t12, 0, sizeof(t12)); t12[0] = t12[5] = t12[10] = 1.0f; }
+                t12[3] = g_pickPoint[0]; t12[7] = g_pickPoint[1]; t12[11] = g_pickPoint[2];  // col3 = position
+                if (swg::endpoints::wsAddObject)
+                    s_lastInsertId = static_cast<long long>(swg::endpoints::wsAddObject(s_insertTemplate, t12, 0));
+            }
+        }
         if (!haveInsert) { ImGui::EndDisabled(); ImGui::SameLine(); ImGui::TextDisabled("(unresolved)"); }
         if (s_lastInsertId != 0) ImGui::Text("Inserted node id: %lld", s_lastInsertId);
+
+        // Ray-pick status + selection control.
+        if (g_havePickPoint)
+            ImGui::Text("Pick point: %.1f, %.1f, %.1f", g_pickPoint[0], g_pickPoint[1], g_pickPoint[2]);
+        if (g_pickedId != 0) {
+            ImGui::Text("Picked selection id: %lld", static_cast<long long>(g_pickedId));
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear")) g_pickedId = 0;
+        } else {
+            ImGui::TextDisabled("Left-click an object in-world to select it");
+        }
 
         // Persist the authored snapshot to its .ws on disk.
         if (swg::endpoints::wsSaveSnapshot) {
@@ -398,12 +439,39 @@ void renderFrame() {
                 const char* m = (s_lastSaveResult >= 0 && s_lastSaveResult <= 6) ? kSave[s_lastSaveResult] : "?";
                 ImGui::SameLine(); ImGui::Text("[%d %s]", s_lastSaveResult, m);
             }
+            // Show the resolved save root so you can find the .ws (and see up front
+            // whether a writable loose SearchPath even exists — 0 = save will fail).
+            if (swg::endpoints::wsGetSavePath) {
+                char pathBuf[512] = {};
+                const int n = swg::endpoints::wsGetSavePath(pathBuf, sizeof(pathBuf));
+                if (n > 0 && pathBuf[0] != '\0') ImGui::TextWrapped("Save path: %s", pathBuf);
+                else ImGui::TextDisabled("Save path: none (no loose SearchPath — save fails with 2)");
+            }
         }
         ImGui::Separator();
 
         ImGui::TextDisabled("DXGI Present hook · advertised gl11 · input live");
     }
     ImGui::End();
+
+    // --- World ray-pick: a left-click NOT over the overlay casts a ray from the
+    //     cursor. objectsOnly=0 so we always get the ground/surface point (for
+    //     placement); if an object is hit its id also becomes the gizmo selection.
+    //     Game-thread call (Present hook). Skipped while ImGui wants the mouse. ---
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        if (swg::endpoints::collideScreenRay && !io.WantCaptureMouse &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            int64_t hitId = 0;
+            float pt[3] = {};
+            if (swg::endpoints::collideScreenRay(static_cast<int>(io.MousePos.x),
+                                                 static_cast<int>(io.MousePos.y), 0, &hitId, pt)) {
+                g_pickPoint[0] = pt[0]; g_pickPoint[1] = pt[1]; g_pickPoint[2] = pt[2];
+                g_havePickPoint = true;
+                if (hitId != 0) g_pickedId = hitId;   // object hit → select it (terrain id 0 leaves selection)
+            }
+        }
+    }
 
     // ImGuizmo must draw within the active ImGui frame (after NewFrame, before Render).
     if (g_gizmoEnabled) drawGizmo();
