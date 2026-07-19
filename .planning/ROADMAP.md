@@ -359,7 +359,7 @@ Plans:
 - [x] 05-11-PLAN.md — LiveSyncClientCard (full B2 safety states) + TransformReadoutBar + StatusBar mirror + corner-gizmo/vp-stats + final Viewport wiring
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 05-12-PLAN.md — GC-pressure soak test + maintainer in-world UAT checkpoint (both targets, incl. Scale) [autonomous: false] — Task 1 (soak test) DONE; Task 2 (checkpoint:human-verify, gate=blocking) PENDING, see 05-12-SUMMARY.md
+- [x] 05-12-PLAN.md — GC-pressure soak test + maintainer in-world UAT checkpoint (both targets, incl. Scale) [autonomous: false] — Task 1 (soak test) DONE; Task 2 (checkpoint:human-verify, gate=blocking) PENDING, see 05-12-SUMMARY.md
 **UI hint**: yes
 
 ### Phase 6: Blender Bridge

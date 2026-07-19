@@ -37,20 +37,20 @@ key-decisions:
   - "500 iterations (plan's stated 500-1000 range, lower bound) — sufficient to prove the guard holds under repeated forced collection while keeping the soak's own runtime bounded (~1-2s observed); each iteration varies the transform/scale payload so a stale-but-non-null read cannot be mistaken for a valid one"
   - "The soak requires the REAL @swg/live-inject addon (`require('../index.js')`), not a mock — this is the one test in the package's suite that intentionally exercises production C++ lifetime behavior rather than a TS port, matching the plan's own read_first pointer to channel_binding.cpp's GC-guard comment block"
 
-requirements-completed: []  # LIVE-03 remains OPEN — Task 2 (maintainer in-world UAT) is a blocking checkpoint, not yet approved. Do not mark LIVE-03 complete until that checkpoint returns "approved".
+requirements-completed: [LIVE-03]  # ACCEPTED 2026-07-19: the thin-slice live path (viewport gizmo → transform-nudge the targeted object over the channel) satisfies LIVE-03's literal wording and was exercised live end-to-end during the post-Phase-5 debugging (inject → boot into world → stream position/liveness → move a targeted object → clean detach). The maintainer accepted the slice in lieu of the full 9-step UAT because the in-game gizmo (a different, in-process render architecture) supersedes this live path and is deferred to a NEW milestone (see below).
 
 # Metrics
-duration: ~7min (Task 1 only; Task 2 checkpoint pending)
-completed: PENDING (Task 2 checkpoint not yet resolved)
+duration: ~7min (Task 1 only; Task 2 accepted without the full 9-step UAT)
+completed: 2026-07-19 (Task 1 automated; Task 2 checkpoint accepted by maintainer)
 ---
 
-# Phase 05 Plan 12: GC-Pressure Soak Test + Maintainer In-World UAT (PARTIAL — checkpoint pending)
+# Phase 05 Plan 12: GC-Pressure Soak Test + Maintainer In-World UAT (COMPLETE — checkpoint accepted)
 
-**Automated GC-pressure soak test proves the command-slot channel's Napi::Reference GC guard survives 500 forced-collection cycles without dangling the native pointer; the plan's second half — a maintainer-driven in-world UAT against real running SWG clients — is a blocking `checkpoint:human-verify` that cannot be automated and has NOT been executed or approved.**
+**Automated GC-pressure soak test proves the command-slot channel's Napi::Reference GC guard survives 500 forced-collection cycles without dangling the native pointer. Task 2's in-world UAT was ACCEPTED by the maintainer against the thin-slice live path (verified working end-to-end during post-Phase-5 debugging) rather than run in full, because the in-game gizmo / world-editor supersedes this approach and moves to a new milestone.**
 
 ## Status
 
-**Task 1 (automated): COMPLETE.** Task 2 (`checkpoint:human-verify`, gate="blocking"): **PENDING** — awaiting the maintainer's manual in-world verification per the plan's `how-to-verify` steps 1-8. This SUMMARY is written now (per the plan's `<output>` convention) to record Task 1's completed, committed work; it will need a follow-up note (or a fresh continuation-agent update) once the maintainer's approval/rejection response is received — LIVE-03 does not close until then.
+**Task 1 (automated): COMPLETE.** Task 2 (`checkpoint:human-verify`): **ACCEPTED (2026-07-19).** The maintainer accepted the thin-slice live capability without walking the full 9-step UAT. Rationale: during the post-Phase-5 live-debugging arc the whole pipeline was exercised in-client end-to-end — inject → cwd fix → boot into world → stream real position/`playerActive` → move a targeted object via the write path → process-liveness detach — closing five real bugs (Electron-42 external-buffer channel, agent-DLL path, launch cwd, seq-vs-process liveness, poll-loop). A Utinni ground-truth spike (`.planning/research/SPIKE-utinni-world-editor-gaps.md`) + a 5-consultant crew synthesis (`.planning/research/CONSULT-UTINNI-SYNTHESIS.md`) then established that the *real* target (an in-GAME-WINDOW gizmo with relative object placement, select-anything, insertion, `.ws` snapshot editing) is a fundamentally different, in-process render architecture — new-milestone scope, not a Phase-5 tweak. So the viewport-gizmo transform-nudge is accepted as Phase 5's honest slice (and survives as the OFFLINE asset gizmo); the in-game gizmo is the next milestone.
 
 ## Performance
 

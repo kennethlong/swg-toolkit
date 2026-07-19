@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: paused
+status: ready_to_plan
 stopped_at: "05-12 Task 1 (GC-pressure soak test) complete and committed (d141373). Task 2 checkpoint:human-verify (gate=blocking, maintainer in-world UAT) PENDING -- not yet run. Phase 05 (12/12 plans) does NOT close until Task 2 is approved."
 last_updated: "2026-07-15T19:55:58.708Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 13
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 85
   completed_plans: 84
-  percent: 99
+  percent: 77
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 05 (wysiwyg-live-sync-typed-editors) — EXECUTING
-Plan: 12 of 12
-Status: PAUSED -- 05-12 Task 2 checkpoint:human-verify (gate=blocking) pending; maintainer in-world UAT required before Phase 05 (12/12) closes. Task 1 (GC-pressure soak test) done and committed.
+Phase: 6
+Plan: Not started
+Status: Ready to plan
         05-08 completed the DTII grid editor end-to-end: SchemaRail (Schema·COLS/TYPE,
         Selected row, Round-trip gate), the real Hex view (byte-accurate highlight sourced
         directly from 05-02's per-cell offsets, no re-derivation), Save·run gate/＋Stage
@@ -38,7 +38,7 @@ Status: PAUSED -- 05-12 Task 2 checkpoint:human-verify (gate=blocking) pending; 
 Next: 05-09 (.stf strings editor — reuses editorTabs.openEditorTab + GateBar/FailBanner
       unchanged per this plan's readiness notes), then 05-10/11/12 (viewport gizmo +
       live-sync HUD, LIVE-03).
-Last activity: 2026-07-15
+Last activity: 2026-07-19
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
@@ -60,7 +60,7 @@ Progress: [██████████] 99%
 
 **Velocity:**
 
-- Total plans completed: 23
+- Total plans completed: 35
 - Average duration: — min
 - Total execution time: 0 hours
 
@@ -71,6 +71,7 @@ Progress: [██████████] 99%
 | 00 | 4 | - | - |
 | 01 | 4 | - | - |
 | 04.4 | 15 | - | - |
+| 05 | 12 | - | - |
 
 **Recent Trend:**
 

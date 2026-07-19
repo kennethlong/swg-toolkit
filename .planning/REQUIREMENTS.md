@@ -56,7 +56,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 ### Live In-Game Sync (LIVE) — *Windows-only differentiator*
 - [x] **LIVE-01**: User can attach the toolkit to a running SWG client process on Windows.
 - [x] **LIVE-02**: System read-verifies an object's live memory state before writing to it.
-- [ ] **LIVE-03**: User can drag a viewport gizmo and see the object move in the running client in real time (zero restart). *(Build-and-guard verification closes in 05-12; a prior plan's summary prematurely marked this complete before the maintainer's in-world UAT — checkpoint pending, see 05-12-SUMMARY.md)*
+- [x] **LIVE-03**: User can drag a viewport gizmo and see the object move in the running client in real time (zero restart). *(Build-and-guard verification closes in 05-12; a prior plan's summary prematurely marked this complete before the maintainer's in-world UAT — checkpoint pending, see 05-12-SUMMARY.md)*
 - [x] **LIVE-04**: System provides a live memory/packet inspector HUD.
 - [x] **LIVE-05**: The editor remains fully usable in file-patch mode when injection is unavailable.
 
