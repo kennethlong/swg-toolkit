@@ -235,6 +235,35 @@ typedef int(__cdecl* pCameraGetMatrix)(float*);
 pCameraGetMatrix cameraGetTransformO2W     = nullptr;
 pCameraGetMatrix cameraGetProjectionMatrix = nullptr;
 
+// --- AllowTargetAnything: the advertised NGE targeting-filter gate (rider 4B,
+//     Utinni cui_hud.cpp:297 / engine_advertise.cpp:789). setAllowTargetAnything(true)
+//     lets the targeting reticle lock onto ANY object (static scenery, props,
+//     structures) — not just creatures/NPCs — so the gizmo can edit anything the
+//     focus resolver picks up. ADVERTISED-ONLY: the legacy path is a byte-patch at
+//     0x00BD3FA3 that corrupts relocated NGE CUI code (NEVER used here). Slots start
+//     null and resolve by name; both static (__cdecl). ---
+typedef void(__cdecl* pSetAllowTargetAnything)(bool);
+typedef bool(__cdecl* pGetAllowTargetAnything)();
+pSetAllowTargetAnything setAllowTargetAnything = nullptr;
+pGetAllowTargetAnything getAllowTargetAnything = nullptr;
+
+// --- Object insertion + .ws persistence: the advertised worldSnapshot editor
+//     (Goal B Waves 1-3, frozen 2026-07-18; engine_advertise.cpp:769-782).
+//     Primitives-only / ABI-safe, ADVERTISED-ONLY, game-thread-only. transform12 is
+//     the row-major 3x4 (cols i/j/k, col3 position) — the SAME format getTransform_o2w
+//     returns and setTransform_o2w takes. wsAddObject spawns immediately and returns
+//     the new node id (0 = fail-closed). wsSaveSnapshot returns a typed result
+//     (0 ok, 1 no-snapshot, 2 no-loose-search-path, 3 destination-shadowed,
+//     4 id-int32-overflow, 5 buildout-set-integrity, 6 write-failure). ---
+typedef int64_t(__cdecl* pWsAddObject)(const char* tmpl, const float* transform12, int64_t containedById);
+typedef int(__cdecl*     pWsSaveSnapshot)();
+typedef int(__cdecl*     pWsGetSavePath)(char* buf, int cap);
+typedef void(__cdecl*    pWsUnloadSnapshot)();
+pWsAddObject      wsAddObject      = nullptr;
+pWsSaveSnapshot   wsSaveSnapshot   = nullptr;
+pWsGetSavePath    wsGetSavePath    = nullptr;
+pWsUnloadSnapshot wsUnloadSnapshot = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -258,6 +287,14 @@ Binding g_agentBindings[] = {
     // --- Slice-0 step 4: live-camera matrix accessors (advertised-only) ---
     {"camera::getTransformO2W",       (void**)&cameraGetTransformO2W},    // engine_advertise.cpp:795
     {"camera::getProjectionMatrix",   (void**)&cameraGetProjectionMatrix},// engine_advertise.cpp:794
+    // --- AllowTargetAnything: select any in-world object (advertised-only) ---
+    {"cuiPreferences::setAllowTargetAnything", (void**)&setAllowTargetAnything}, // engine_advertise.cpp:789
+    {"cuiPreferences::getAllowTargetAnything", (void**)&getAllowTargetAnything}, // engine_advertise.cpp:790
+    // --- Object insertion + .ws persistence (advertised worldSnapshot editor) ---
+    {"worldSnapshot::wsAddObject",      (void**)&wsAddObject},      // engine_advertise.cpp:769
+    {"worldSnapshot::wsSaveSnapshot",   (void**)&wsSaveSnapshot},   // engine_advertise.cpp:780
+    {"worldSnapshot::wsGetSavePath",    (void**)&wsGetSavePath},    // engine_advertise.cpp:781
+    {"worldSnapshot::wsUnloadSnapshot", (void**)&wsUnloadSnapshot}, // engine_advertise.cpp:782
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 

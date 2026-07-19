@@ -39,6 +39,11 @@ namespace swg { namespace endpoints {
     typedef void*(__cdecl*    pCuiHudGetInstance)();
     typedef void*(__thiscall* pCuiHudGetTarget)(void*);
     typedef int(__cdecl*      pCameraGetMatrix)(float*);
+    typedef void(__cdecl*     pSetAllowTargetAnything)(bool);
+    typedef const char*(__thiscall* pGetTemplateFilename)(void*);
+    typedef int64_t(__cdecl*  pWsAddObject)(const char* tmpl, const float* transform12, int64_t containedById);
+    typedef int(__cdecl*      pWsSaveSnapshot)();
+    typedef int(__cdecl*      pWsGetSavePath)(char* buf, int cap);
     extern pGetPlayer         getPlayer;
     extern pGetTransform_o2w  getTransform_o2w;
     extern pSetTransform_o2w  setTransform_o2w;
@@ -46,6 +51,11 @@ namespace swg { namespace endpoints {
     extern pCuiHudGetTarget   cuiHudGetTarget;
     extern pCameraGetMatrix   cameraGetTransformO2W;
     extern pCameraGetMatrix   cameraGetProjectionMatrix;
+    extern pSetAllowTargetAnything setAllowTargetAnything;
+    extern pGetTemplateFilename getTemplateFilename;
+    extern pWsAddObject       wsAddObject;
+    extern pWsSaveSnapshot    wsSaveSnapshot;
+    extern pWsGetSavePath     wsGetSavePath;
     bool isAdvertisedClient();
 }}
 
@@ -194,6 +204,7 @@ int   g_gizmoOp      = 0;   // 0=translate 1=rotate 2=scale
 int   g_gizmoMode    = 1;   // 0=world 1=local (default local: handles align to the object)
 bool  g_gizmoWasUsing = false;
 float g_gizmoOriginal34[12] = {};
+bool  g_allowTargetAnything = false;   // let the reticle lock onto any object
 
 // Resolve the object the gizmo edits: the current in-game target if any, else the
 // player. Runs on the render/game thread (safe to touch engine objects here).
@@ -311,6 +322,23 @@ void renderFrame() {
                     io.WantCaptureMouse ? 1 : 0, io.WantCaptureKeyboard ? 1 : 0);
         ImGui::Separator();
 
+        // --- Selection: let the reticle target ANY object, not just creatures/NPCs.
+        //     Advertised-only engine call; runs here on the game thread. ---
+        static bool s_allowAnyPrev = false;
+        const bool haveAllowAny = (swg::endpoints::setAllowTargetAnything != nullptr);
+        if (!haveAllowAny) ImGui::BeginDisabled();
+        ImGui::Checkbox("Allow target anything (select any object)", &g_allowTargetAnything);
+        if (!haveAllowAny) {
+            ImGui::EndDisabled();
+            ImGui::SameLine(); ImGui::TextDisabled("(unresolved)");
+        }
+        if (g_allowTargetAnything != s_allowAnyPrev) {
+            s_allowAnyPrev = g_allowTargetAnything;
+            if (swg::endpoints::setAllowTargetAnything)
+                swg::endpoints::setAllowTargetAnything(g_allowTargetAnything);
+        }
+        ImGui::Separator();
+
         // --- Gizmo controls (step 4). Edits the current target, else the player. ---
         ImGui::Checkbox("Enable transform gizmo", &g_gizmoEnabled);
         if (g_gizmoEnabled) {
@@ -322,6 +350,56 @@ void renderFrame() {
             ImGui::RadioButton("Local", &g_gizmoMode, 1);
             ImGui::TextDisabled("Esc while dragging = revert");
         }
+        ImGui::Separator();
+
+        // --- World edit: insert an object at the player, then save to .ws (advertised
+        //     worldSnapshot editor). All calls run HERE on the game thread. ---
+        ImGui::TextDisabled("World edit (advertised snapshot)");
+        static char s_insertTemplate[256] = "";
+        static long long s_lastInsertId = 0;
+        static int s_lastSaveResult = -1;
+
+        const bool haveInsert = (swg::endpoints::wsAddObject != nullptr);
+        if (!haveInsert) ImGui::BeginDisabled();
+
+        // Grab the current selection's template so Insert spawns a known-valid copy.
+        if (ImGui::Button("Copy template from selection")) {
+            void* sel = resolveFocusObject();
+            if (sel && swg::endpoints::getTemplateFilename) {
+                const char* tn = swg::endpoints::getTemplateFilename(sel);
+                if (tn) {
+                    std::strncpy(s_insertTemplate, tn, sizeof(s_insertTemplate) - 1);
+                    s_insertTemplate[sizeof(s_insertTemplate) - 1] = '\0';
+                }
+            }
+        }
+        ImGui::InputText("Template", s_insertTemplate, sizeof(s_insertTemplate));
+        if (ImGui::Button("Insert at player") && s_insertTemplate[0] != '\0') {
+            void* player = swg::endpoints::getPlayer ? swg::endpoints::getPlayer() : nullptr;
+            if (player && swg::endpoints::getTransform_o2w && swg::endpoints::wsAddObject) {
+                void* xf = swg::endpoints::getTransform_o2w(player);
+                if (xf) {
+                    float t12[12];
+                    std::memcpy(t12, xf, sizeof(t12));            // player o2w = row-major 3x4
+                    s_lastInsertId = static_cast<long long>(
+                        swg::endpoints::wsAddObject(s_insertTemplate, t12, 0));  // containedById 0 = world
+                }
+            }
+        }
+        if (!haveInsert) { ImGui::EndDisabled(); ImGui::SameLine(); ImGui::TextDisabled("(unresolved)"); }
+        if (s_lastInsertId != 0) ImGui::Text("Inserted node id: %lld", s_lastInsertId);
+
+        // Persist the authored snapshot to its .ws on disk.
+        if (swg::endpoints::wsSaveSnapshot) {
+            if (ImGui::Button("Save .ws")) s_lastSaveResult = swg::endpoints::wsSaveSnapshot();
+            if (s_lastSaveResult >= 0) {
+                static const char* kSave[] = { "ok", "no-snapshot", "no-loose-search-path",
+                    "destination-shadowed", "id-int32-overflow", "buildout-set-integrity", "write-failure" };
+                const char* m = (s_lastSaveResult >= 0 && s_lastSaveResult <= 6) ? kSave[s_lastSaveResult] : "?";
+                ImGui::SameLine(); ImGui::Text("[%d %s]", s_lastSaveResult, m);
+            }
+        }
+        ImGui::Separator();
 
         ImGui::TextDisabled("DXGI Present hook · advertised gl11 · input live");
     }
