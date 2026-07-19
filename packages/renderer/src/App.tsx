@@ -25,6 +25,8 @@ import StatusBar      from './shell/StatusBar';
 import WorkspaceShell from './workspace/WorkspaceShell';
 import ProjectListDialog from './panels/deploy/ProjectListDialog';
 import DeleteUndoToast from './panels/deploy/DeleteUndoToast';
+import SnapshotImportToast from './panels/deploy/SnapshotImportToast';
+import SnapshotWatchController from './panels/deploy/SnapshotWatchController';
 import { useDeleteUndoStore } from './state/deleteUndoStore';
 
 function getInitialTheme(): ThemeName {
@@ -101,6 +103,10 @@ export default function App(): React.ReactElement {
           a single sibling mount point, reacts to useDeleteUndoStore.pending regardless of which
           row surface (WorkspaceEntry recents or ProjectListDialog) triggered the delete/restore. */}
       <DeleteUndoToast />
+      {/* Live World Editor: watch the active client's override dir for in-game `.ws` saves
+          and prompt to import them into Working changes ("auto-detect and confirm"). */}
+      <SnapshotWatchController />
+      <SnapshotImportToast />
       {/* 04.4-01 Task 3: non-blocking banner for UNMARKED (crash-mid-park) trash entries found
           on startup. A plain conditional <div> — does NOT import a toast component from
           04.4-10 (that plan depends on THIS one, not the reverse). */}

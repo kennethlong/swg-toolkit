@@ -46,6 +46,9 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pWsGetSavePath)(char* buf, int cap);
     typedef int(__cdecl*      pCollideScreenRay)(int, int, int, int64_t*, float*);
     typedef void*(__cdecl*    pGetObjectById)(const void* networkId);
+    typedef void(__cdecl*     pWsLoad)(const char* sceneName);
+    typedef void(__cdecl*     pWsVoid)();
+    typedef int(__cdecl*      pGetSceneId)(char* buf, int cap);
     extern pGetPlayer         getPlayer;
     extern pGetTransform_o2w  getTransform_o2w;
     extern pSetTransform_o2w  setTransform_o2w;
@@ -60,6 +63,9 @@ namespace swg { namespace endpoints {
     extern pWsGetSavePath     wsGetSavePath;
     extern pCollideScreenRay  collideScreenRay;
     extern pGetObjectById     getObjectByIdAdvertised;
+    extern pWsLoad            wsLoad;
+    extern pWsVoid            wsUnloadSnapshot;
+    extern pGetSceneId        getSceneId;
     bool isAdvertisedClient();
 }}
 
@@ -446,6 +452,31 @@ void renderFrame() {
                 const int n = swg::endpoints::wsGetSavePath(pathBuf, sizeof(pathBuf));
                 if (n > 0 && pathBuf[0] != '\0') ImGui::TextWrapped("Save path: %s", pathBuf);
                 else ImGui::TextDisabled("Save path: none (no loose SearchPath — save fails with 2)");
+            }
+        }
+
+        // Reload the CURRENT scene (one-click, v21 getSceneId) to see just-saved .ws edits.
+        // Unload first to clear the sticky ms_sceneName, else load(currentScene) early-outs.
+        if (swg::endpoints::wsLoad) {
+            char scene[128] = {};
+            const bool haveScene =
+                swg::endpoints::getSceneId && swg::endpoints::getSceneId(scene, sizeof(scene)) > 0 && scene[0] != '\0';
+            if (!haveScene) ImGui::BeginDisabled();
+            if (ImGui::Button("Reload current scene")) {
+                if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
+                swg::endpoints::wsLoad(scene);
+            }
+            if (!haveScene) ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled(haveScene ? scene : "(no scene loaded)");
+
+            // Manual: load a DIFFERENT scene by id (advanced).
+            static char s_sceneName[128] = "";
+            ImGui::InputText("Scene id", s_sceneName, sizeof(s_sceneName));
+            ImGui::SameLine();
+            if (ImGui::Button("Load##scene") && s_sceneName[0] != '\0') {
+                if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
+                swg::endpoints::wsLoad(s_sceneName);
             }
         }
         ImGui::Separator();

@@ -48,6 +48,8 @@ import { openStagedEntry }    from '../../services/openInViewer';
 
 import { sealVersion } from '../../services/changesetService';
 import { isVirtualPathSafe } from '../../services/pathSafety';
+import { stageSnapshot, snapshotVirtualPath } from '../../services/stageSnapshot';
+import { useSnapshotWatchStore } from '../../state/snapshotWatchStore';
 
 import type { StagingEntry, TypedIpcRenderer } from '@swg/contracts';
 
@@ -266,6 +268,10 @@ export default function StagingPanelBody({
   const [savingOpen, setSavingOpen] = useState(false);
   const changesetCount = useChangesetStore((s) => s.manifest?.changesets.length ?? 0);
 
+  // Opt-in auto-detect of in-game .ws saves (default OFF — loose-coupling preference).
+  const autoDetect = useSnapshotWatchStore((s) => s.enabled);
+  const setAutoDetect = useSnapshotWatchStore((s) => s.setEnabled);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleAdd = useCallback(() => {
@@ -283,6 +289,32 @@ export default function StagingPanelBody({
         setPendingFile({ filePath, defaultVp: path.basename(filePath) });
       } catch (err) {
         console.error('[StagingPanelBody] handleAdd error:', err);
+      }
+    })();
+  }, []);
+
+  // Import a `.ws` the in-game editor saved (from anywhere — the client's loose dir, a
+  // stashed copy, even a Utinni-saved one) directly into Working changes. Unlike Add…,
+  // the virtual path is derived automatically as snapshot/<scene>.ws (the filename IS the
+  // scene), so no prompt — it routes through the same stageSnapshot as auto-detect.
+  const handleImportWs = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ipcRenderer } = require('electron') as { ipcRenderer: TypedIpcRenderer };
+
+    void (async () => {
+      try {
+        const filePaths = await ipcRenderer.invoke('workspace:pick-file');
+        if (filePaths.length === 0 || !filePaths[0]) return;
+        const filePath = filePaths[0];
+        if (!isReplacementPathAbsolute(filePath)) return;
+        if (!filePath.toLowerCase().endsWith('.ws')) {
+          window.alert('Pick a .ws world snapshot file.');
+          return;
+        }
+        const sceneId = path.basename(filePath, path.extname(filePath));
+        stageSnapshot({ wsFilePath: filePath, virtualPath: snapshotVirtualPath(sceneId) });
+      } catch (err) {
+        console.error('[StagingPanelBody] handleImportWs error:', err);
       }
     })();
   }, []);
@@ -384,6 +416,16 @@ export default function StagingPanelBody({
           Add…
         </button>
 
+        {/* Import .ws — a saved in-game world snapshot into Working changes */}
+        <button
+          style={secondaryBtnStyle}
+          onClick={handleImportWs}
+          aria-label="Import a .ws world snapshot into staging"
+          title="Import an in-game-saved .ws world snapshot (auto-named snapshot/<scene>.ws)"
+        >
+          Import .ws
+        </button>
+
         {/* Save version button */}
         <button
           style={primaryBtnStyle(saveDisabled)}
@@ -395,6 +437,29 @@ export default function StagingPanelBody({
         >
           Save version
         </button>
+
+        {/* Auto-detect toggle — opt-in watch of the client override dir for in-game saves */}
+        <label
+          style={{
+            marginLeft:  'auto',
+            display:     'flex',
+            alignItems:  'center',
+            gap:         'var(--space-1)',
+            fontSize:    'var(--text-xs)',
+            color:       'var(--color-text-faint)',
+            cursor:      'pointer',
+            userSelect:  'none',
+          }}
+          title="Watch this client's override dir and prompt to import in-game .ws saves"
+        >
+          <input
+            type="checkbox"
+            checked={autoDetect}
+            onChange={(e) => setAutoDetect(e.target.checked)}
+            aria-label="Auto-detect in-game world edits"
+          />
+          Auto-detect in-game edits
+        </label>
       </div>
 
       {/* Body: empty state or virtualized list with working-vs-saved split */}
