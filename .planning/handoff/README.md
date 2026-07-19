@@ -2,6 +2,19 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
+- **[2026-07-19-phase05-closed-pivot-to-live-world-editor.md](2026-07-19-phase05-closed-pivot-to-live-world-editor.md)** — ACTIVE. ← start here.
+  Phase 05 **CLOSED** (12/12, LIVE-03 done; Task-2 checkpoint accepted at the thin slice). The live loop works
+  end-to-end after fixing **5 real in-app bugs** (Electron-42 external-buffer channel `70a5dd3`, agent-DLL path
+  `5ca53d5`, launch cwd `b9d63fd`, process-liveness detach `86a8593`, + Browse button `a11ff97`). In-app UAT
+  revealed the real requirement is an **in-GAME gizmo** (relative object placement in the live scene) — a Utinni
+  spike + **5-consultant crew** established this is a different **in-process + in-render** architecture. Decision:
+  **build it.** Locked plan (crew synthesis): vendor ONLY the render overlay (Present hook + ImGui/ImGuizmo) into
+  the x86 agent, reach select/insert/snapshot via the **shared `engine_hookpoints.h` contract** (extend
+  `rva_table.cpp`, don't fork editing source), **standalone game window**, **game-thread command queue**, editing
+  model in Electron. **Next work = the Slice-0 spike** (go/no-go gate) — start at step 1 (vendor imgui/imguizmo/
+  DetourXS into the `/MT` x86 agent, verify it still injects). Read: `.planning/research/{SPIKE-utinni-world-editor-gaps,
+  CONSULT-UTINNI-SYNTHESIS,SLICE-0-SPIKE-PLAN}.md`. HEAD `63d4113`, clean, not pushed. Supersedes all Phase-05 handoffs below.
+
 - **[2026-07-09-phase05-m-scale-offset-confirmation-request.md](2026-07-09-phase05-m-scale-offset-confirmation-request.md)** — NON-BLOCKING BACKUP CONFIRMATION, not the active workstream (see the round-6 handoff below for that). Cross-repo ask for `Object::m_scale`'s per-build byte offset: (1) Utinni/legacy session — confirm/correct the planner-computed `0x44` candidate against a live debugger read; (2) swg-client-v2/advertised session — report the compiled member's real byte offset. Both asks are explicitly non-blocking — 05-03's agent already unblocks itself via a live-validated member-offset read (legacy unconditional, advertised gated behind `s_advertisedScaleOffsetConfirmed`, degrading honestly via liveness bit5 until confirmed). Supersedes the never-created `2026-07-08-phase05-getscale-accessor-request.md` ask with a narrower, offset-only request.
 
 - **[2026-07-12-phase05-plan-review-round6.md](2026-07-12-phase05-plan-review-round6.md)** — ACTIVE. ← start here.
