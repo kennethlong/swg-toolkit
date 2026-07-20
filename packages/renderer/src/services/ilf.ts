@@ -131,6 +131,41 @@ export function serializeIlf(nodes: IlfNode[]): Buffer {
 // ── Edit helper ───────────────────────────────────────────────────────────────
 
 /**
+ * Resolve which `.ilf` node spawned a picked decoration — by matching its cell + template +
+ * ORIGINAL o2p transform (captured at pick time, BEFORE any gizmo move). Returns the node's
+ * within-cell row index (position among ALL nodes in that cell, file order — the identity
+ * editNodeTransform keys on), or null if there's no confident match.
+ *
+ * This is the consumer-side answer to CONSULT-70 P3 (the pick→(cell,rowIndex) resolver): the
+ * spawned decoration carries the exact transform of the node it came from, so cell+template+
+ * transform disambiguates it without a provider row (unless two identical props overlap — then
+ * fall back to the provider's file-order rank read).
+ */
+export function resolveRowIndex(
+  nodes: IlfNode[],
+  cellName: string,
+  objectTemplateName: string,
+  transformO2p: number[],
+  epsilon = 1e-3,
+): number | null {
+  let indexInCell = -1;
+  let best: number | null = null;
+  let bestDist = Infinity;
+  for (const n of nodes) {
+    if (n.cellName !== cellName) continue;
+    indexInCell++;
+    if (n.objectTemplateName !== objectTemplateName) continue;
+    let d = 0;
+    for (let i = 0; i < 12; i++) {
+      const dx = n.transform[i] - transformO2p[i];
+      d += dx * dx;
+    }
+    if (d < bestDist) { bestDist = d; best = indexInCell; }
+  }
+  return best !== null && Math.sqrt(bestDist) <= epsilon ? best : null;
+}
+
+/**
  * Replace the o2p transform of the `rowIndex`-th node in `cellName` (0-based, in file order —
  * the within-cell identity). Returns a NEW array (does not mutate the input). Throws if the
  * (cellName, rowIndex) doesn't resolve — fail closed rather than edit the wrong object.

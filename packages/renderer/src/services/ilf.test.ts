@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseIlf, serializeIlf, editNodeTransform, type IlfNode } from './ilf';
+import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex, type IlfNode } from './ilf';
 
 const identity: number[] = [1, 0, 0, 10, 0, 1, 0, 20, 0, 0, 1, 30]; // rot=I, pos=(10,20,30)
 
@@ -76,6 +76,30 @@ describe('editNodeTransform', () => {
   it('throws when (cell, rowIndex) does not resolve', () => {
     expect(() => editNodeTransform(sample, 'cell1', 5, moved)).toThrow();
     expect(() => editNodeTransform(sample, 'nope', 0, moved)).toThrow();
+  });
+});
+
+describe('resolveRowIndex (pick → cell/rowIndex)', () => {
+  // cell1 has two nodes (table @row0, chair @row1); cell2 has the lamp @row0.
+  it('matches by cell + template + original o2p, returning the within-cell row index', () => {
+    // chair is index 1 within cell1
+    expect(resolveRowIndex(sample, 'cell1', sample[1].objectTemplateName, sample[1].transform)).toBe(1);
+    // table is index 0 within cell1
+    expect(resolveRowIndex(sample, 'cell1', sample[0].objectTemplateName, sample[0].transform)).toBe(0);
+    // lamp is index 0 within cell2
+    expect(resolveRowIndex(sample, 'cell2', sample[2].objectTemplateName, sample[2].transform)).toBe(0);
+  });
+
+  it('tolerates tiny float drift within epsilon', () => {
+    const nudged = sample[1].transform.map((v, i) => (i === 3 ? v + 5e-4 : v)); // 0.5mm off in x
+    expect(resolveRowIndex(sample, 'cell1', sample[1].objectTemplateName, nudged)).toBe(1);
+  });
+
+  it('returns null on no template match, wrong cell, or a far transform', () => {
+    expect(resolveRowIndex(sample, 'cell1', 'object/tangible/nope.iff', sample[1].transform)).toBeNull();
+    expect(resolveRowIndex(sample, 'cell9', sample[0].objectTemplateName, sample[0].transform)).toBeNull();
+    const far = sample[0].transform.map((v, i) => (i === 3 ? v + 100 : v));
+    expect(resolveRowIndex(sample, 'cell1', sample[0].objectTemplateName, far)).toBeNull();
   });
 });
 
