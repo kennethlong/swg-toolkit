@@ -29,13 +29,79 @@ export type LiveReadRequest    = { type: 'live-read';         id: number };
 /** Host addon returns the latest verified state from the channel. */
 export type LiveStateUpdate    = { type: 'live-state';        id: number; state: VerifiedObjectState | null };
 
+// --- Live World Editor: interior-decoration persist round trip (model D) ------
+// The agent captures a moved .ilf decoration; the toolkit assembles the two loose
+// override files (edited .ilf + derived building template) and, ONLY THEN, tells the
+// agent to rebind the .ws node in place (wsSetNodeTemplateName + wsSaveSnapshot — the
+// v23 fail-closed ordering: the derived template must exist on disk before the rebind).
+// Three hops, all carried by the single named mapping (see LIVE_DECORATION_LAYOUT):
+//   agent → host  CAPTURE  → host surfaces 'live-decoration-captured' to renderer
+//   renderer → host 'live-decoration-rebind' → host writes REBIND → agent applies
+//   agent → host  RESULT   → host surfaces 'live-decoration-result' to renderer
+
+/** Host → renderer: a decoration move the agent captured in-game (a new CAPTURE_EPOCH).
+ *  The renderer feeds this straight into assembleDecorationEdit (DecorationEdit shape). */
+export type LiveDecorationCaptured = {
+  type: 'live-decoration-captured';
+  id: number;
+  epoch: number;
+  capture: DecorationCapture;
+};
+
+/** Renderer → host: after assembleDecorationEdit + staging, the derived template name for
+ *  the agent to rebind onto the building node. `abort:true` cancels the pending capture
+ *  (e.g. assembly failed — resolveNode couldn't pin the row) so the agent stops waiting. */
+export type LiveDecorationRebind = {
+  type: 'live-decoration-rebind';
+  id: number;
+  epoch: number;                  // echoes the captured epoch this answers
+  buildingInstanceId: string;     // decimal u64 — cross-checked against the capture
+  derivedTemplateVfsPath?: string; // required unless abort
+  abort?: boolean;
+};
+
+/** Host → renderer: the agent's rebind outcome (a matching RESULT_EPOCH). `code` is a
+ *  LIVE_DECORATION_RESULT value. */
+export type LiveDecorationResult = {
+  type: 'live-decoration-result';
+  id: number;
+  epoch: number;
+  code: number;
+};
+
 /** Discriminated union of all live-injection IPC message types. */
 export type LiveIpcMessage =
   | LiveAttachRequest
   | LiveAttachResponse
   | LiveAttachError
   | LiveReadRequest
-  | LiveStateUpdate;
+  | LiveStateUpdate
+  | LiveDecorationCaptured
+  | LiveDecorationRebind
+  | LiveDecorationResult;
+
+/**
+ * The captured in-game decoration move, decoded from the channel CAPTURE region. Maps 1:1
+ * onto DecorationEdit (decorationPersist.ts) minus cellName (which the toolkit DERIVES via
+ * resolveNode — the agent can't cheaply read it; CellProperty::getCellName is inline).
+ *
+ * How each field is captured agent-side, all on the CURRENT advertised contract (no new row):
+ *   buildingInstanceId     collideScreenRay outHitObjectId (the networked building .ws node)
+ *   buildingTemplateVfsPath getObjectById(buildingId) → getObjectTemplateName
+ *   decorationTemplateName  getTemplateFilename(latched decoration)
+ *   originalO2p             getObjectTransformO2P(decoration) at latch (before the move)
+ *   newO2p                  getObjectTransformO2P(decoration) at persist (after the move)
+ */
+export interface DecorationCapture {
+  /** decimal u64 — the building's .ws node id (names the derived template 1:1). */
+  buildingInstanceId: string;
+  buildingTemplateVfsPath: string;
+  decorationTemplateName: string;
+  /** 12 floats, row-major o2p 3×4, at pick time. */
+  originalO2p: number[];
+  /** 12 floats, row-major o2p 3×4, after the gizmo move. */
+  newO2p: number[];
+}
 
 // ---------------------------------------------------------------------------
 // Channel byte-layout constants
@@ -155,6 +221,95 @@ export const LIVE_GUARD_FLAGS = {
    *  observe a genuine "the agent is stopping" signal that a later drag
    *  command overwriting COMMAND_FLAGS on the SAME slot cannot silently erase. */
   STOPPING:          0x4,
+} as const;
+
+// ---------------------------------------------------------------------------
+// Live World Editor: decoration-persist channel region (model D)
+// ---------------------------------------------------------------------------
+
+/**
+ * The interior-decoration persist round trip rides the SAME single named mapping (still no
+ * second CreateFileMappingA — the mapping simply GROWS from 400 to LIVE_CHANNEL_TOTAL_SIZE
+ * bytes; both C++ sides bump CHANNEL_BYTE_SIZE / the LiveState struct + add offset
+ * static_asserts, exactly as they mirror LIVE_CHANNEL_LAYOUT today).
+ *
+ * This is a DISCRETE request/response, not per-tick state, so it's driven by monotonic
+ * EPOCH counters rather than the read-frame cadence:
+ *   - Agent bumps CAPTURE_EPOCH once per "Persist" click, after writing the payload under
+ *     CAPTURE_SEQ. Host processes each epoch exactly once (tracks last-seen).
+ *   - Host writes the REBIND payload + REBIND_EPOCH = the captured epoch, under REBIND_SEQ.
+ *     Agent applies each new REBIND_EPOCH once (wsSetNodeTemplateName + wsSaveSnapshot), or
+ *     skips it if REBIND_FLAGS has ABORT.
+ *   - Agent writes RESULT_CODE then publishes RESULT_EPOCH (code-before-epoch ordering, same
+ *     single-word no-seqlock discipline as GUARD_STATUS: host reads CODE only once EPOCH
+ *     matches the epoch it awaits). Host surfaces it as 'live-decoration-result'.
+ *
+ * String slots are fixed 256-byte null-terminated ASCII (VFS paths are ~40-60 chars; 256 is
+ * the same headroom TEMPLATE_NAME uses). Transforms are float[3][4] row-major o2p, 48 bytes.
+ */
+export const LIVE_DECORATION_LAYOUT = {
+  // --- CAPTURE region (agent → host), seqlocked by CAPTURE_SEQ_COUNTER ---
+  CAPTURE_SEQ_COUNTER:       { offset: 400,  length: 4   },
+  /** Monotonic; bumped once per captured edit. 0 = nothing captured yet. */
+  CAPTURE_EPOCH:             { offset: 404,  length: 4   },
+  /** u64 building .ws node id (collideScreenRay outHitObjectId). */
+  CAPTURE_BUILDING_ID:       { offset: 408,  length: 8   },
+  /** o2p at pick time — feeds resolveNode. */
+  CAPTURE_ORIGINAL_O2P:      { offset: 416,  length: 48  },
+  /** o2p after the move — written into the edited .ilf. */
+  CAPTURE_NEW_O2P:           { offset: 464,  length: 48  },
+  /** asciiz decoration object template. */
+  CAPTURE_DECORATION_TEMPLATE: { offset: 512, length: 256 },
+  /** asciiz stock building template VFS path. */
+  CAPTURE_BUILDING_TEMPLATE: { offset: 768,  length: 256 },
+
+  // --- REBIND region (host → agent), seqlocked by REBIND_SEQ_COUNTER ---
+  REBIND_SEQ_COUNTER:        { offset: 1024, length: 4   },
+  /** Echoes the CAPTURE_EPOCH being answered. */
+  REBIND_EPOCH:              { offset: 1028, length: 4   },
+  /** LIVE_DECORATION_REBIND_FLAGS. */
+  REBIND_FLAGS:              { offset: 1032, length: 4   },
+  /** u64 — must equal the captured building id (agent cross-checks; refuses on mismatch). */
+  REBIND_BUILDING_ID:        { offset: 1036, length: 8   },
+  /** asciiz derived building template VFS path (the wsSetNodeTemplateName arg). */
+  REBIND_DERIVED_TEMPLATE:   { offset: 1044, length: 256 },
+
+  // --- RESULT (agent → host), single aligned words, no seqlock (GUARD_STATUS discipline) ---
+  /** LIVE_DECORATION_RESULT code. Written BEFORE RESULT_EPOCH. */
+  RESULT_CODE:               { offset: 1300, length: 4   },
+  /** Echoes the epoch the agent applied. Published LAST. 0 = no result yet. */
+  RESULT_EPOCH:              { offset: 1304, length: 4   },
+} as const;
+
+/** Total mapping size once the decoration region is included (was 400; padded to 8). */
+export const LIVE_CHANNEL_TOTAL_SIZE = 1312;
+
+/** Host → agent rebind flags (REBIND_FLAGS bits). */
+export const LIVE_DECORATION_REBIND_FLAGS = {
+  /** Apply the rebind: wsSetNodeTemplateName(buildingId, derivedTemplate) + wsSaveSnapshot. */
+  APPLY: 0x1,
+  /** Cancel the pending capture (assembly failed / user backed out) — agent clears its
+   *  pending state and writes RESULT_CODE = ABORTED without touching the snapshot. */
+  ABORT: 0x2,
+} as const;
+
+/** Agent → host rebind outcome (RESULT_CODE). Extends the wsSaveSnapshot result space so a
+ *  save failure surfaces its specific reason; the negative codes are decoration-specific
+ *  pre-save refusals. */
+export const LIVE_DECORATION_RESULT = {
+  OK:                 0,   // rebound + saved
+  // 1..6 mirror wsSaveSnapshot's typed result enum (no-snapshot, no-loose-path, shadowed, …)
+  SAVE_NO_SNAPSHOT:   1,
+  SAVE_NO_LOOSE_PATH: 2,
+  SAVE_SHADOWED:      3,
+  SAVE_ID_OVERFLOW:   4,
+  SAVE_INTEGRITY:     5,
+  SAVE_WRITE_FAILURE: 6,
+  // decoration-specific refusals (fail-closed, nothing mutated)
+  NODE_NOT_FOUND:     -1,  // wsSetNodeTemplateName couldn't resolve buildingInstanceId
+  BUILDING_ID_MISMATCH: -2, // REBIND_BUILDING_ID != the captured id
+  ABORTED:            -3,  // host sent ABORT
+  NOT_A_WS_NODE:      -4,  // building is server-streamed / buildout, not a client .ws node (invariant 2)
 } as const;
 
 // ---------------------------------------------------------------------------
