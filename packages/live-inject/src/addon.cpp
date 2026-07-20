@@ -48,6 +48,7 @@ Napi::Value OpenChannel(const Napi::CallbackInfo& info);
 Napi::Value CloseChannel(const Napi::CallbackInfo& info);
 Napi::Value ReadChannelView(const Napi::CallbackInfo& info);
 Napi::Value WriteCommand(const Napi::CallbackInfo& info);
+Napi::Value WriteRebind(const Napi::CallbackInfo& info);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Inject/attach/detach + PID discovery
@@ -74,6 +75,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("closeChannel",    Napi::Function::New(env, CloseChannel));
     exports.Set("readChannelView", Napi::Function::New(env, ReadChannelView));
     exports.Set("writeCommand",    Napi::Function::New(env, WriteCommand));
+    exports.Set("writeRebind",     Napi::Function::New(env, WriteRebind));
 
     return exports;
 }

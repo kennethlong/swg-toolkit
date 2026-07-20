@@ -47,6 +47,7 @@
 #include <string>
 #include <unordered_map>
 #include <cstring>
+#include <cstdlib>   // _strtoui64 (decimal u64 building id)
 
 // Channel byte size — matches LIVE_CHANNEL_TOTAL_SIZE (@swg/contracts) AND the agent's
 // sizeof(LiveState). Grown from the original 400-byte frame to 1308 to append the
@@ -344,6 +345,58 @@ Napi::Value WriteCommand(const Napi::CallbackInfo& info) {
     std::memcpy(view + 376, scaleData, 12);               // COMMAND_SCALE
     std::memcpy(view + 388, &flags, 4);                    // COMMAND_FLAGS
     InterlockedIncrement(cmdSeq);                       // seq → even: write complete
+
+    return env.Undefined();
+}
+
+// ---------------------------------------------------------------------------
+// writeRebind(name, epoch, buildingId, derivedTemplate, flags) → undefined
+//   Host → agent decoration REBIND (model D). Seqlock write of the REBIND region
+//   (offsets 1024-1299), the answer to a CAPTURE the agent published. buildingId is a
+//   DECIMAL u64 STRING (JS numbers can't hold a full 64-bit id losslessly). The agent
+//   applies each new epoch once (wsSetNodeTemplateName + wsSaveSnapshot).
+// ---------------------------------------------------------------------------
+Napi::Value WriteRebind(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 5 || !info[0].IsString() || !info[1].IsNumber() ||
+        !info[2].IsString() || !info[3].IsString() || !info[4].IsNumber()) {
+        Napi::TypeError::New(env,
+            "writeRebind: (name: string, epoch: number, buildingId: string, "
+            "derivedTemplate: string, flags: number) required")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::string name    = info[0].As<Napi::String>().Utf8Value();
+    const uint32_t    epoch   = info[1].As<Napi::Number>().Uint32Value();
+    const std::string idStr   = info[2].As<Napi::String>().Utf8Value();
+    const std::string tmpl    = info[3].As<Napi::String>().Utf8Value();
+    const uint32_t    flags   = info[4].As<Napi::Number>().Uint32Value();
+
+    const uint64_t buildingId = _strtoui64(idStr.c_str(), nullptr, 10);  // 0 on garbage → agent refuses
+
+    auto it = s_channels.find(name);
+    if (it == s_channels.end() || it->second.view == nullptr) {
+        Napi::Error::New(env, "writeRebind: channel not open — call openChannel first")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    char* view = static_cast<char*>(it->second.view);
+
+    // Seqlock write at offset 1024 — spans the REBIND region (1024-1299). RESULT (1300-1307)
+    // is agent-authoritative and never touched here.
+    volatile LONG* rebindSeq = reinterpret_cast<volatile LONG*>(view + 1024);
+
+    InterlockedIncrement(rebindSeq);                    // seq → odd: write in progress
+    std::memcpy(view + 1028, &epoch, 4);                 // REBIND_EPOCH
+    std::memcpy(view + 1032, &flags, 4);                 // REBIND_FLAGS
+    std::memcpy(view + 1036, &buildingId, 8);            // REBIND_BUILDING_ID
+    // REBIND_DERIVED_TEMPLATE (1044, 256 bytes) — zero-fill then copy (guaranteed NUL-terminated).
+    std::memset(view + 1044, 0, 256);
+    std::memcpy(view + 1044, tmpl.c_str(), tmpl.size() < 255 ? tmpl.size() : 255);
+    InterlockedIncrement(rebindSeq);                    // seq → even: write complete
 
     return env.Undefined();
 }
