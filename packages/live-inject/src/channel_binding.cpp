@@ -48,9 +48,13 @@
 #include <unordered_map>
 #include <cstring>
 
-// Channel byte size — matches LIVE_CHANNEL_LAYOUT.TOTAL_SIZE (400 bytes, 05-01 ROUND 5:
-// read frame + FOCUS_TOKEN + command region + GUARD_STATUS + GUARD_ADDR).
-static constexpr size_t CHANNEL_BYTE_SIZE = 400;
+// Channel byte size — matches LIVE_CHANNEL_TOTAL_SIZE (@swg/contracts) AND the agent's
+// sizeof(LiveState). Grown from the original 400-byte frame to 1308 to append the
+// decoration-persist region (CAPTURE @400 + REBIND @1024 + RESULT @1300 — model D). The
+// CAPTURE + RESULT spans ride along in readChannelView's whole-view copy, so the renderer
+// parses them with the same seqlock idiom it uses for the read frame; only the host->agent
+// REBIND write needs its own N-API method (writeRebind, added with the host wiring step).
+static constexpr size_t CHANNEL_BYTE_SIZE = 1308;
 
 // ---------------------------------------------------------------------------
 // Per-channel state.

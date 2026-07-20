@@ -281,8 +281,11 @@ export const LIVE_DECORATION_LAYOUT = {
   RESULT_EPOCH:              { offset: 1304, length: 4   },
 } as const;
 
-/** Total mapping size once the decoration region is included (was 400; padded to 8). */
-export const LIVE_CHANNEL_TOTAL_SIZE = 1312;
+/** Total mapping size once the decoration region is included (was 400). Exactly
+ *  sizeof(LiveState) under #pragma pack(4): the last field RESULT_EPOCH ends at 1308 and
+ *  the struct is already 4-aligned, so no trailing pad. Host CHANNEL_BYTE_SIZE + agent
+ *  LIVE_STATE_BYTE_SIZE both equal this. */
+export const LIVE_CHANNEL_TOTAL_SIZE = 1308;
 
 /** Host → agent rebind flags (REBIND_FLAGS bits). */
 export const LIVE_DECORATION_REBIND_FLAGS = {

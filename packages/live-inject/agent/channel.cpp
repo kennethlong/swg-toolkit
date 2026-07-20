@@ -22,8 +22,8 @@
 #include <cstring>
 
 // Layout verification — keep these in the .cpp to catch packing regressions early.
-static_assert(sizeof(LiveState) == 400,
-    "LiveState must match LIVE_CHANNEL_LAYOUT.TOTAL_SIZE (400 bytes)");
+static_assert(sizeof(LiveState) == 1308,
+    "LiveState must match LIVE_CHANNEL_TOTAL_SIZE (1308 bytes — 400-byte frame + decoration region)");
 static_assert(offsetof(LiveState, transform) == 4,
     "transform offset must be 4 to match LIVE_CHANNEL_LAYOUT.TRANSFORM.offset");
 static_assert(offsetof(LiveState, networkId) == 52,
@@ -46,6 +46,21 @@ static_assert(offsetof(LiveState, guardStatus) == 392,
     "guardStatus offset must be 392 to match LIVE_CHANNEL_LAYOUT.GUARD_STATUS.offset");
 static_assert(offsetof(LiveState, guardAddr) == 396,
     "guardAddr offset must be 396 to match LIVE_CHANNEL_LAYOUT.GUARD_ADDR.offset");
+// Decoration region — mirror LIVE_DECORATION_LAYOUT in @swg/contracts/live-inject.ts.
+static_assert(offsetof(LiveState, captureSeqCounter)         == 400,  "captureSeqCounter @ 400");
+static_assert(offsetof(LiveState, captureEpoch)             == 404,  "captureEpoch @ 404");
+static_assert(offsetof(LiveState, captureBuildingId)        == 408,  "captureBuildingId @ 408");
+static_assert(offsetof(LiveState, captureOriginalO2p)       == 416,  "captureOriginalO2p @ 416");
+static_assert(offsetof(LiveState, captureNewO2p)            == 464,  "captureNewO2p @ 464");
+static_assert(offsetof(LiveState, captureDecorationTemplate) == 512, "captureDecorationTemplate @ 512");
+static_assert(offsetof(LiveState, captureBuildingTemplate)  == 768,  "captureBuildingTemplate @ 768");
+static_assert(offsetof(LiveState, rebindSeqCounter)         == 1024, "rebindSeqCounter @ 1024");
+static_assert(offsetof(LiveState, rebindEpoch)             == 1028, "rebindEpoch @ 1028");
+static_assert(offsetof(LiveState, rebindFlags)            == 1032, "rebindFlags @ 1032");
+static_assert(offsetof(LiveState, rebindBuildingId)       == 1036, "rebindBuildingId @ 1036");
+static_assert(offsetof(LiveState, rebindDerivedTemplate)  == 1044, "rebindDerivedTemplate @ 1044");
+static_assert(offsetof(LiveState, resultCode)             == 1300, "resultCode @ 1300");
+static_assert(offsetof(LiveState, resultEpoch)            == 1304, "resultEpoch @ 1304");
 
 // ---------------------------------------------------------------------------
 // Module-global file-mapping handles (one channel per agent instance)
@@ -154,6 +169,78 @@ void channelWriteGuardStatus(uint32_t flags, uint32_t addr) {
     // no seqlock needed (a torn read of one stale-but-valid word is harmless).
     InterlockedExchange(guardStatusPtr, static_cast<LONG>(flags));
     InterlockedExchange(guardAddrPtr, static_cast<LONG>(addr));
+}
+
+// ---------------------------------------------------------------------------
+// channelWriteCapture — seqlock write of one captured decoration move
+// ---------------------------------------------------------------------------
+
+void channelWriteCapture(const DecorationCapture* cap, uint32_t epoch) {
+    if (!s_view || !cap) return;
+
+    volatile LONG* seq = reinterpret_cast<volatile LONG*>(
+        static_cast<char*>(s_view) + offsetof(LiveState, captureSeqCounter));
+
+    // seq → odd: write in progress; host reader must retry.
+    InterlockedIncrement(seq);
+
+    LiveState* ls = static_cast<LiveState*>(s_view);
+    ls->captureEpoch      = epoch;                 // published inside the seqlock span
+    ls->captureBuildingId = cap->buildingId;
+    std::memcpy(ls->captureOriginalO2p, cap->originalO2p, sizeof(ls->captureOriginalO2p));
+    std::memcpy(ls->captureNewO2p,      cap->newO2p,      sizeof(ls->captureNewO2p));
+    // strncpy-with-guaranteed-NUL into the fixed 256-byte slots.
+    std::memcpy(ls->captureDecorationTemplate, cap->decorationTemplate, sizeof(ls->captureDecorationTemplate));
+    ls->captureDecorationTemplate[sizeof(ls->captureDecorationTemplate) - 1] = '\0';
+    std::memcpy(ls->captureBuildingTemplate, cap->buildingTemplate, sizeof(ls->captureBuildingTemplate));
+    ls->captureBuildingTemplate[sizeof(ls->captureBuildingTemplate) - 1] = '\0';
+
+    // seq → even: write complete; host reader may proceed.
+    InterlockedIncrement(seq);
+}
+
+// ---------------------------------------------------------------------------
+// channelReadRebind — agent-side seqlock retry-read of the REBIND region
+// ---------------------------------------------------------------------------
+
+bool channelReadRebind(DecorationRebind* out) {
+    if (!s_view || !out) return false;
+
+    volatile LONG* seq = reinterpret_cast<volatile LONG*>(
+        static_cast<char*>(s_view) + offsetof(LiveState, rebindSeqCounter));
+
+    // Step 1 — odd seq means the host is mid-write; skip this read.
+    LONG seq1 = *seq;
+    if ((seq1 & 1) != 0) return false;
+
+    const LiveState* ls = static_cast<const LiveState*>(s_view);
+    out->epoch      = ls->rebindEpoch;
+    out->flags      = ls->rebindFlags;
+    out->buildingId = ls->rebindBuildingId;
+    std::memcpy(out->derivedTemplate, ls->rebindDerivedTemplate, sizeof(out->derivedTemplate));
+    out->derivedTemplate[sizeof(out->derivedTemplate) - 1] = '\0';
+
+    // Step 2 — torn-read check; reject if seq changed during our read.
+    LONG seq2 = *seq;
+    return seq1 == seq2;
+}
+
+// ---------------------------------------------------------------------------
+// channelWriteResult — agent publishes the rebind outcome (single words)
+// ---------------------------------------------------------------------------
+
+void channelWriteResult(int32_t code, uint32_t epoch) {
+    if (!s_view) return;
+
+    volatile LONG* codePtr = reinterpret_cast<volatile LONG*>(
+        static_cast<char*>(s_view) + offsetof(LiveState, resultCode));
+    volatile LONG* epochPtr = reinterpret_cast<volatile LONG*>(
+        static_cast<char*>(s_view) + offsetof(LiveState, resultEpoch));
+
+    // code BEFORE epoch: the host reads code only once epoch matches the epoch it awaits,
+    // so publishing epoch last guarantees a matching-epoch host read sees this code.
+    InterlockedExchange(codePtr, static_cast<LONG>(code));
+    InterlockedExchange(epochPtr, static_cast<LONG>(epoch));
 }
 
 // ---------------------------------------------------------------------------

@@ -70,6 +70,28 @@ struct LiveState {
     // --- Agent-authoritative single-word status (no seqlock needed) ---
     uint32_t  guardStatus;       // offset 392  — LIVE_GUARD_FLAGS bits
     uint32_t  guardAddr;         // offset 396  — x86 ptr of last write-guard-checked object
+
+    // --- Decoration-persist CAPTURE region (agent -> host), seqlocked by captureSeqCounter.
+    //     Discrete-event (Live World Editor model D): the agent bumps captureEpoch once per
+    //     "Persist" click. Mirrors LIVE_DECORATION_LAYOUT in @swg/contracts/live-inject.ts. ---
+    LONG      captureSeqCounter;         // offset  400
+    uint32_t  captureEpoch;              // offset  404  — monotonic; 0 = nothing captured
+    uint64_t  captureBuildingId;         // offset  408  — .ws node id (collideScreenRay hit)
+    float     captureOriginalO2p[3][4];  // offset  416  — o2p at pick time
+    float     captureNewO2p[3][4];       // offset  464  — o2p after the move
+    char      captureDecorationTemplate[256]; // offset 512
+    char      captureBuildingTemplate[256];   // offset 768
+
+    // --- Decoration-persist REBIND region (host -> agent), seqlocked by rebindSeqCounter ---
+    LONG      rebindSeqCounter;          // offset 1024
+    uint32_t  rebindEpoch;               // offset 1028  — echoes captureEpoch being answered
+    uint32_t  rebindFlags;               // offset 1032  — LIVE_DECORATION_REBIND_FLAGS bits
+    uint64_t  rebindBuildingId;          // offset 1036  — cross-check vs captureBuildingId
+    char      rebindDerivedTemplate[256];// offset 1044  — wsSetNodeTemplateName arg
+
+    // --- Decoration-persist RESULT (agent -> host), single aligned words (no seqlock) ---
+    uint32_t  resultCode;                // offset 1300  — LIVE_DECORATION_RESULT; written FIRST
+    uint32_t  resultEpoch;               // offset 1304  — echoes applied epoch; published LAST
 };
 #pragma pack(pop)
 
@@ -91,6 +113,23 @@ static constexpr uint32_t GUARD_FLAG_TRANSFORM_REFUSED = 0x1;
 static constexpr uint32_t GUARD_FLAG_SCALE_REFUSED      = 0x2;
 static constexpr uint32_t GUARD_FLAG_STOPPING           = 0x4;
 
+// Decoration-persist rebind flags / result codes (mirror LIVE_DECORATION_REBIND_FLAGS /
+// LIVE_DECORATION_RESULT in @swg/contracts/live-inject.ts exactly).
+static constexpr uint32_t DECO_REBIND_FLAG_APPLY = 0x1;
+static constexpr uint32_t DECO_REBIND_FLAG_ABORT = 0x2;
+
+static constexpr int32_t DECO_RESULT_OK                   = 0;
+static constexpr int32_t DECO_RESULT_SAVE_NO_SNAPSHOT     = 1;
+static constexpr int32_t DECO_RESULT_SAVE_NO_LOOSE_PATH   = 2;
+static constexpr int32_t DECO_RESULT_SAVE_SHADOWED        = 3;
+static constexpr int32_t DECO_RESULT_SAVE_ID_OVERFLOW     = 4;
+static constexpr int32_t DECO_RESULT_SAVE_INTEGRITY       = 5;
+static constexpr int32_t DECO_RESULT_SAVE_WRITE_FAILURE   = 6;
+static constexpr int32_t DECO_RESULT_NODE_NOT_FOUND       = -1;
+static constexpr int32_t DECO_RESULT_BUILDING_ID_MISMATCH = -2;
+static constexpr int32_t DECO_RESULT_ABORTED              = -3;
+static constexpr int32_t DECO_RESULT_NOT_A_WS_NODE        = -4;
+
 // ---------------------------------------------------------------------------
 // LiveCommand — plain-data snapshot of one command-region read
 // ---------------------------------------------------------------------------
@@ -99,6 +138,27 @@ struct LiveCommand {
     float    transform[3][4];
     float    scale[3];
     uint32_t flags;
+};
+
+// ---------------------------------------------------------------------------
+// Decoration-persist plain-data snapshots (model D round trip)
+// ---------------------------------------------------------------------------
+
+/** One captured decoration move the agent publishes to the CAPTURE region. */
+struct DecorationCapture {
+    uint64_t buildingId;
+    float    originalO2p[3][4];
+    float    newO2p[3][4];
+    char     decorationTemplate[256];
+    char     buildingTemplate[256];
+};
+
+/** One rebind directive the agent reads from the REBIND region. */
+struct DecorationRebind {
+    uint32_t epoch;
+    uint32_t flags;              // DECO_REBIND_FLAG_*
+    uint64_t buildingId;
+    char     derivedTemplate[256];
 };
 
 // ---------------------------------------------------------------------------
@@ -143,6 +203,29 @@ bool channelReadCommand(LiveCommand* out, uint32_t* outCmdSeq);
  * guardStatus without a seqlock per the original plan).
  */
 void channelWriteGuardStatus(uint32_t flags, uint32_t addr);
+
+/**
+ * channelWriteCapture — seqlock write of one captured decoration move into the CAPTURE
+ * region, then publish `epoch` (inside the same seqlock span) so the host processes each
+ * capture exactly once. Sequence: captureSeq→odd → write epoch+payload → captureSeq→even.
+ * The agent calls this once per "Persist" click with a monotonically increasing epoch.
+ */
+void channelWriteCapture(const DecorationCapture* cap, uint32_t epoch);
+
+/**
+ * channelReadRebind — agent-side seqlock retry-read of the REBIND region (same idiom as
+ * channelReadCommand). Returns false on a torn/mid-write read (out left untouched — retry
+ * next poll). The caller applies each NEW out->epoch once (compare to last-applied).
+ */
+bool channelReadRebind(DecorationRebind* out);
+
+/**
+ * channelWriteResult — agent publishes the rebind outcome. resultCode is written FIRST,
+ * resultEpoch LAST (code-before-epoch: the host reads code only once epoch matches the epoch
+ * it awaits). Single aligned words via InterlockedExchange — no seqlock (GUARD_STATUS
+ * discipline: a torn read of one stale-but-valid word is harmless).
+ */
+void channelWriteResult(int32_t code, uint32_t epoch);
 
 /**
  * channelClose — unmap the view and release the file-mapping handle.
