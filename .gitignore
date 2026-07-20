@@ -76,3 +76,6 @@ packages/harness/fixtures-real/stf/*.stf
 SwgClient_r.exe-*.mdmp
 SwgClient_r.exe-*.txt
 swgclient-boot-trace.log
+
+# Codex consult raw session logs (transient; findings live in CONSULT-*-SYNTHESIS.md)
+.planning/research/*.rawout
