@@ -166,6 +166,41 @@ export function resolveRowIndex(
 }
 
 /**
+ * Resolve a picked decoration to its `.ilf` node WITHOUT knowing the cell up front — by matching
+ * template + ORIGINAL o2p across EVERY cell, returning the matched node's `{cellName, rowIndex}`
+ * (rowIndex = within-cell file-order index) or null.
+ *
+ * Why this exists: `CellProperty::getCellName()` is inline (un-advertisable), so the agent can't
+ * cheaply report the cell. But each `.ilf` node stores its transform as o2p relative to ITS OWN
+ * cell, so the object's read-back o2p equals its node's stored transform regardless of which cell
+ * that is — template + o2p is a global key. Two identical props at the identical o2p in two
+ * different cells is the only ambiguity (astronomically unlikely; then pass a cell hint to
+ * resolveRowIndex). This removes the last provider dependency from the capture path.
+ */
+export function resolveNode(
+  nodes: IlfNode[],
+  objectTemplateName: string,
+  transformO2p: number[],
+  epsilon = 1e-3,
+): { cellName: string; rowIndex: number } | null {
+  const perCellCount = new Map<string, number>();
+  let best: { cellName: string; rowIndex: number } | null = null;
+  let bestDist = Infinity;
+  for (const n of nodes) {
+    const idxInCell = perCellCount.get(n.cellName) ?? 0;
+    perCellCount.set(n.cellName, idxInCell + 1);
+    if (n.objectTemplateName !== objectTemplateName) continue;
+    let d = 0;
+    for (let i = 0; i < 12; i++) {
+      const dx = n.transform[i] - transformO2p[i];
+      d += dx * dx;
+    }
+    if (d < bestDist) { bestDist = d; best = { cellName: n.cellName, rowIndex: idxInCell }; }
+  }
+  return best !== null && Math.sqrt(bestDist) <= epsilon ? best : null;
+}
+
+/**
  * Replace the o2p transform of the `rowIndex`-th node in `cellName` (0-based, in file order —
  * the within-cell identity). Returns a NEW array (does not mutate the input). Throws if the
  * (cellName, rowIndex) doesn't resolve — fail closed rather than edit the wrong object.

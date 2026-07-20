@@ -91,6 +91,25 @@ describe('assembleDecorationEdit', () => {
     expect(readInteriorLayoutFileName(derived)).toBe('interiorlayout/toolkit/edit_1082878.ilf');
   });
 
+  it('derives cellName from template + originalO2p when the agent omits it', () => {
+    const { deps, written } = makeDeps();
+    const { cellName, ...noCell } = baseEdit; // agent has no cheap getCellName → omit it
+    void cellName;
+    const r = assembleDecorationEdit(noCell, deps);
+
+    expect(r.rowIndex).toBe(0);
+    const editedIlf = parseIlf(written.get(r.editedIlfFilePath.replace(/\\/g, '/'))!);
+    expect(editedIlf[0].transform).toEqual(newTable); // resolved & moved the right node
+    expect(editedIlf[1].transform).toEqual(origChair);
+  });
+
+  it('fails closed (derive path) when no cell contains the picked decoration', () => {
+    const { deps } = makeDeps();
+    const { cellName, ...noCell } = baseEdit;
+    void cellName;
+    expect(() => assembleDecorationEdit({ ...noCell, decorationTemplateName: 'object/tangible/nope.iff' }, deps)).toThrow();
+  });
+
   it('fails closed when the picked decoration cannot be resolved', () => {
     const { deps } = makeDeps();
     expect(() => assembleDecorationEdit({ ...baseEdit, cellName: 'nope' }, deps)).toThrow();

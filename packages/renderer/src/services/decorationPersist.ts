@@ -19,7 +19,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex } from './ilf';
+import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex, resolveNode } from './ilf';
 import { deriveBuildingTemplate, readInteriorLayoutFileName } from './buildingTemplate';
 
 export interface DecorationEdit {
@@ -27,8 +27,13 @@ export interface DecorationEdit {
   buildingInstanceId: string;
   /** VFS path of the stock building template, e.g. object/building/tatooine/shared_cantina_tatooine.iff. */
   buildingTemplateVfsPath: string;
-  /** Cell the decoration lives in (matches a POB portal cell + the `.ilf` cellName). */
-  cellName: string;
+  /**
+   * Cell the decoration lives in (`.ilf` cellName). Optional: the agent usually can't read it
+   * (`CellProperty::getCellName` is inline / un-advertised), so when omitted it's DERIVED by
+   * matching template + originalO2p across all cells (resolveNode). Pass it only as a
+   * disambiguation hint for the rare identical-prop-in-two-cells case.
+   */
+  cellName?: string;
   /** The moved decoration's object template name. */
   decorationTemplateName: string;
   /** The decoration's o2p at PICK time (before the move) — used to resolve its `.ilf` row. */
@@ -98,14 +103,29 @@ export function assembleDecorationEdit(edit: DecorationEdit, deps: DecorationPer
   }
   const nodes = parseIlf(baseIlf);
 
-  const rowIndex = resolveRowIndex(nodes, edit.cellName, edit.decorationTemplateName, edit.originalO2p);
-  if (rowIndex === null) {
-    throw new Error(
-      `decorationPersist: could not resolve picked ${edit.decorationTemplateName} in cell ${edit.cellName}`,
-    );
+  // Derive (cellName, rowIndex) from template + original o2p unless the caller pinned the cell.
+  let cellName: string;
+  let rowIndex: number;
+  if (edit.cellName !== undefined) {
+    const r = resolveRowIndex(nodes, edit.cellName, edit.decorationTemplateName, edit.originalO2p);
+    if (r === null) {
+      throw new Error(
+        `decorationPersist: could not resolve picked ${edit.decorationTemplateName} in cell ${edit.cellName}`,
+      );
+    }
+    cellName = edit.cellName;
+    rowIndex = r;
+  } else {
+    const r = resolveNode(nodes, edit.decorationTemplateName, edit.originalO2p);
+    if (r === null) {
+      throw new Error(
+        `decorationPersist: could not resolve picked ${edit.decorationTemplateName} in any cell`,
+      );
+    }
+    ({ cellName, rowIndex } = r);
   }
 
-  const editedIlf = serializeIlf(editNodeTransform(nodes, edit.cellName, rowIndex, edit.newO2p));
+  const editedIlf = serializeIlf(editNodeTransform(nodes, cellName, rowIndex, edit.newO2p));
   const derivedTemplate = deriveBuildingTemplate(stockIff, editedIlfVfsPath);
 
   const editedIlfFilePath = path.join(deps.overrideDir, editedIlfVfsPath);

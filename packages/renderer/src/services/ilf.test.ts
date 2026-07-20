@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex, type IlfNode } from './ilf';
+import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex, resolveNode, type IlfNode } from './ilf';
 
 const identity: number[] = [1, 0, 0, 10, 0, 1, 0, 20, 0, 0, 1, 30]; // rot=I, pos=(10,20,30)
 
@@ -100,6 +100,38 @@ describe('resolveRowIndex (pick → cell/rowIndex)', () => {
     expect(resolveRowIndex(sample, 'cell9', sample[0].objectTemplateName, sample[0].transform)).toBeNull();
     const far = sample[0].transform.map((v, i) => (i === 3 ? v + 100 : v));
     expect(resolveRowIndex(sample, 'cell1', sample[0].objectTemplateName, far)).toBeNull();
+  });
+});
+
+describe('resolveNode (pick → cellName + rowIndex, cell UNKNOWN)', () => {
+  it('finds the node across cells and returns its cellName + within-cell rowIndex', () => {
+    // chair: cell1, row 1
+    expect(resolveNode(sample, sample[1].objectTemplateName, sample[1].transform))
+      .toEqual({ cellName: 'cell1', rowIndex: 1 });
+    // lamp: cell2, row 0
+    expect(resolveNode(sample, sample[2].objectTemplateName, sample[2].transform))
+      .toEqual({ cellName: 'cell2', rowIndex: 0 });
+  });
+
+  it('tolerates tiny float drift within epsilon', () => {
+    const nudged = sample[2].transform.map((v, i) => (i === 7 ? v + 5e-4 : v));
+    expect(resolveNode(sample, sample[2].objectTemplateName, nudged))
+      .toEqual({ cellName: 'cell2', rowIndex: 0 });
+  });
+
+  it('returns null on no template match or a far transform', () => {
+    expect(resolveNode(sample, 'object/tangible/nope.iff', sample[1].transform)).toBeNull();
+    const far = sample[0].transform.map((v, i) => (i === 3 ? v + 100 : v));
+    expect(resolveNode(sample, sample[0].objectTemplateName, far)).toBeNull();
+  });
+
+  it('disambiguates same template in different cells by o2p', () => {
+    const twoCells: IlfNode[] = [
+      { objectTemplateName: 'object/tangible/pot.iff', cellName: 'cellA', transform: [1, 0, 0, 1, 0, 1, 0, 2, 0, 0, 1, 3] },
+      { objectTemplateName: 'object/tangible/pot.iff', cellName: 'cellB', transform: [1, 0, 0, 9, 0, 1, 0, 8, 0, 0, 1, 7] },
+    ];
+    expect(resolveNode(twoCells, 'object/tangible/pot.iff', twoCells[1].transform))
+      .toEqual({ cellName: 'cellB', rowIndex: 0 });
   });
 });
 
