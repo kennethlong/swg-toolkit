@@ -223,11 +223,34 @@ int64_t g_pickedId = 0;
 bool    g_havePickPoint = false;
 float   g_pickPoint[3] = {};
 
+// --- CONSULT-69 decisive experiment: can the hover pointer reach an id-less .ilf
+//     decoration and can the gizmo move it? g_lastHoverObj tracks the most recent
+//     non-null hud hover pick (cuiHud::getTarget, which selects id-less objects too
+//     under allowTargetAnything); g_latchedFocus freezes one so the gizmo drives it
+//     even after the cursor leaves the object. Raw Object* by necessity (no id);
+//     SEH in the Present hook covers a despawn (building-unload only, per the synthesis). ---
+void* g_lastHoverObj = nullptr;
+void* g_latchedFocus = nullptr;
+bool  g_followHover  = true;   // once latched, hovering another decoration switches to it
+
 // Resolve the object the gizmo edits: a ray-picked object (re-resolved from its
 // id each frame) takes precedence, else the current in-game target, else the
 // player. Runs on the render/game thread (safe to touch engine objects here).
+// The current hud hover pick (cuiHud::getTarget). Selects id-less .ilf decorations too
+// under allowTargetAnything (CONSULT-69). Null when nothing is hovered / cursor off-world.
+void* resolveHoverPick() {
+    if (swg::endpoints::isAdvertisedClient() &&
+        swg::endpoints::cuiHudGetInstance && swg::endpoints::cuiHudGetTarget) {
+        void* hud = swg::endpoints::cuiHudGetInstance();
+        if (hud) return swg::endpoints::cuiHudGetTarget(hud);
+    }
+    return nullptr;
+}
+
 void* resolveFocusObject() {
     void* focus = nullptr;
+    // CONSULT-69: a latched hover pointer (id-less decoration) wins — the gizmo drives it.
+    if (g_latchedFocus != nullptr) return g_latchedFocus;
     // Ray-picked selection wins — re-resolve the id to a live Object* (ABA-safe).
     if (g_pickedId != 0 && swg::endpoints::getObjectByIdAdvertised) {
         void* picked = swg::endpoints::getObjectByIdAdvertised(&g_pickedId);
@@ -323,9 +346,24 @@ void renderFrame() {
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
+    // CONSULT-69: track the last non-null hud hover pick every frame so a decoration
+    // hovered in the world can still be latched after the cursor moves to the panel.
+    // Follow-hover: ONCE a decoration is latched (opted into decoration mode), hovering
+    // another one switches the latch to it — so you don't Clear+re-Latch per chair. A
+    // drag locks the current one (g_gizmoWasUsing); Clear latch exits back to normal.
+    // Gated on g_latchedFocus != null so it never hijacks normal ray-pick/target editing.
+    {
+        void* h = resolveHoverPick();
+        if (h != nullptr) g_lastHoverObj = h;
+        if (g_followHover && g_latchedFocus != nullptr && !g_gizmoWasUsing && g_lastHoverObj != nullptr) {
+            g_latchedFocus = g_lastHoverObj;
+        }
+    }
+
     // --- STATIC overlay (step 2): proof-of-life only, no engine interaction. ---
     ImGui::SetNextWindowPos(ImVec2(24, 24), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.75f);   // ~25% see-through onto the live scene
     if (ImGui::Begin("SWG Toolkit — Live World Editor (Slice-0)")) {
         const ImGuiIO& io = ImGui::GetIO();
         ImGui::Text("In-game overlay is ALIVE.");
@@ -372,6 +410,36 @@ void renderFrame() {
             ImGui::RadioButton("World", &g_gizmoMode, 0);   ImGui::SameLine();
             ImGui::RadioButton("Local", &g_gizmoMode, 1);
             ImGui::TextDisabled("Esc while dragging = revert");
+        }
+        ImGui::Separator();
+
+        // --- CONSULT-69 decisive experiment: can we select + move an id-less .ilf
+        //     interior decoration via the pointer-keyed hover pick (no NetworkId)? ---
+        if (ImGui::CollapsingHeader("In-cell decoration test (CONSULT-69)")) {
+            const ImGuiIO& io = ImGui::GetIO();
+            void* hoverNow = resolveHoverPick();
+            // The ray walks up to the networked BUILDING; the hud hover pick keeps the
+            // DECORATION. hover != ray-resolved building ⇒ the pointer reached an id-less object.
+            int64_t rayId = 0; float rpt[3] = {}; void* rayObj = nullptr;
+            if (swg::endpoints::collideScreenRay &&
+                swg::endpoints::collideScreenRay(static_cast<int>(io.MousePos.x), static_cast<int>(io.MousePos.y),
+                                                 0, &rayId, rpt) &&
+                rayId != 0 && swg::endpoints::getObjectByIdAdvertised) {
+                rayObj = swg::endpoints::getObjectByIdAdvertised(&rayId);
+            }
+            const bool diverge = (g_lastHoverObj != nullptr && g_lastHoverObj != rayObj);
+            ImGui::Text("hover now:    %p", hoverNow);
+            ImGui::Text("last hovered: %p", g_lastHoverObj);
+            ImGui::Text("ray id: %lld  ray->obj: %p", static_cast<long long>(rayId), rayObj);
+            ImGui::Text("diverge (decoration != building): %s", diverge ? "YES" : "no");
+            if (ImGui::Button("Latch last hovered")) g_latchedFocus = g_lastHoverObj;
+            ImGui::SameLine();
+            if (ImGui::Button("Clear latch")) g_latchedFocus = nullptr;
+            ImGui::SameLine();
+            ImGui::Checkbox("Follow hover", &g_followHover);
+            ImGui::Text("latched: %p  (gizmo edits this when set)", g_latchedFocus);
+            ImGui::TextDisabled("allowTargetAnything on → hover a POB decoration → Latch → gizmo it");
+            ImGui::TextDisabled("Follow hover on: hover another decoration to switch; drag locks; Clear exits");
         }
         ImGui::Separator();
 
@@ -506,6 +574,12 @@ void renderFrame() {
 
     // ImGuizmo must draw within the active ImGui frame (after NewFrame, before Render).
     if (g_gizmoEnabled) drawGizmo();
+
+    // Cursor: SWG hides/manages the OS cursor via DirectInput, so over our panel the OS
+    // cursor flickers/vanishes. Draw ImGui's own SOFTWARE cursor whenever ImGui wants the
+    // mouse (i.e. over the overlay) so it's always visible; hand the cursor back to the game
+    // otherwise. (We don't suspend DirectInput on the advertised client, so this is the fix.)
+    ImGui::GetIO().MouseDrawCursor = ImGui::GetIO().WantCaptureMouse;
 
     ImGui::Render();
 
