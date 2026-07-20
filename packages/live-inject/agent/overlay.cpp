@@ -46,6 +46,7 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pWsGetSavePath)(char* buf, int cap);
     typedef int(__cdecl*      pCollideScreenRay)(int, int, int, int64_t*, float*);
     typedef void*(__cdecl*    pCollideScreenRayObject)(int, int, int);
+    typedef int(__cdecl*      pGetObjectTransformO2P)(void* object, float* out12);
     typedef void*(__cdecl*    pGetObjectById)(const void* networkId);
     typedef void(__cdecl*     pWsLoad)(const char* sceneName);
     typedef void(__cdecl*     pWsVoid)();
@@ -64,6 +65,7 @@ namespace swg { namespace endpoints {
     extern pWsGetSavePath     wsGetSavePath;
     extern pCollideScreenRay  collideScreenRay;
     extern pCollideScreenRayObject collideScreenRayObject;
+    extern pGetObjectTransformO2P getObjectTransformO2P;
     extern pGetObjectById     getObjectByIdAdvertised;
     extern pWsLoad            wsLoad;
     extern pWsVoid            wsUnloadSnapshot;
@@ -490,6 +492,26 @@ void renderFrame() {
             if (ImGui::Button("Clear latch")) g_latchedFocus = nullptr;
             ImGui::Checkbox("Follow hover", &g_followHover);
             ImGui::Text("latched: %p  (gizmo edits this when set)", g_latchedFocus);
+            ImGui::Separator();
+            // --- v24: object o2p read (the .ilf transform of the focus object). Live, so a
+            //     gizmo-move shows the CELL-space delta (smoke step 2), and it's what
+            //     resolveRowIndex/editNodeTransform consume at persist time. ---
+            if (swg::endpoints::getObjectTransformO2P == nullptr) {
+                ImGui::TextDisabled("object::getTransformO2P: not advertised by this client");
+            } else {
+                void* focus = resolveFocusObject();
+                float o2p[12] = {0};
+                const int ok = focus ? swg::endpoints::getObjectTransformO2P(focus, o2p) : 0;
+                if (ok) {
+                    ImGui::Text("o2p (cell-space, row-major 3x4):");
+                    ImGui::Text("  i: % .3f % .3f % .3f", o2p[0], o2p[4], o2p[8]);   // frame i (col 0)
+                    ImGui::Text("  j: % .3f % .3f % .3f", o2p[1], o2p[5], o2p[9]);   // frame j (col 1)
+                    ImGui::Text("  k: % .3f % .3f % .3f", o2p[2], o2p[6], o2p[10]);  // frame k (col 2)
+                    ImGui::Text("  pos: % .3f % .3f % .3f", o2p[3], o2p[7], o2p[11]); // col 3
+                } else {
+                    ImGui::TextDisabled("o2p: no focus object (latch a decoration first)");
+                }
+            }
         }
         ImGui::Separator();
 

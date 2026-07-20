@@ -288,6 +288,16 @@ pCollideScreenRay collideScreenRay = nullptr;
 typedef void*(__cdecl* pCollideScreenRayObject)(int screenX, int screenY, int objectsOnly);
 pCollideScreenRayObject collideScreenRayObject = nullptr;
 
+// --- Object o2p read (advertised v24, provider handback 2026-07-19). Copy-out of
+//     Object::getTransform_o2p() (inline / const Transform& -> shim mandatory) as a
+//     row-major 3x4 (cols i/j/k, col3 position) -- byte-for-byte camera::getTransformO2W's
+//     layout and the .ilf transform convention. 1 ok / 0 null-object-or-arg. The Object* is
+//     the BORROWED pointer from collideScreenRayObject; same lifetime discipline (clear on
+//     cell/zone change, never cache across a zone). Feeds resolveRowIndex at pick time and
+//     editNodeTransform at persist time -- the last accessor of the model-D loop. ---
+typedef int(__cdecl* pGetObjectTransformO2P)(void* object, float* out12);
+pGetObjectTransformO2P getObjectTransformO2P = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -325,6 +335,7 @@ Binding g_agentBindings[] = {
     // --- Ray-pick (advertised v20 handback 2026-07-19) ---
     {"clientWorld::collideScreenRay",       (void**)&collideScreenRay},
     {"clientWorld::collideScreenRayObject", (void**)&collideScreenRayObject}, // v22: borrowed Object* pick
+    {"object::getTransformO2P",             (void**)&getObjectTransformO2P},   // v24: copy-out o2p (last model-D accessor)
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 
