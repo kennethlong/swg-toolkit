@@ -41,6 +41,8 @@ import { useLiveStore } from '../state/liveStore';
 import { log } from '../services/logService';
 import { LIVE_CHANNEL_LAYOUT, LIVE_GUARD_FLAGS } from '@swg/contracts';
 import type { VerifiedObjectState } from '@swg/contracts';
+import { parseDecorationCapture, readDecorationResult, decorationResultLabel } from '../services/decorationChannel';
+import { handleDecorationCapture } from '../services/decorationPersistOrchestrator';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -226,6 +228,11 @@ export function useChannelReader(): void {
 
     let stopped = false;
     let lastLiveCheck = Date.now(); // first liveness check ~LIVENESS_CHECK_MS after attach
+    // Decoration-persist round trip (model D): process each new CAPTURE / RESULT epoch once.
+    // The mapping is zeroed at openChannel, so both start at 0 and the first real edit (epoch 1)
+    // is strictly greater. Local to this effect → reset cleanly on re-attach.
+    let lastCaptureEpoch = 0;
+    let lastResultEpoch = 0;
 
     function poll() {
       if (stopped) return;
@@ -254,6 +261,23 @@ export function useChannelReader(): void {
 
         const state = parseChannelView(buf);
         if (state !== null) useLiveStore.getState().updateState(state);
+
+        // Decoration persist (model D): a new CAPTURE epoch → assemble + rebind; a new RESULT
+        // epoch → surface the outcome. One-shot per epoch (guarded by the last-seen counters).
+        const cap = parseDecorationCapture(buf);
+        if (cap !== null && cap.epoch > lastCaptureEpoch) {
+          lastCaptureEpoch = cap.epoch;
+          handleDecorationCapture(cap.epoch, cap.capture, {
+            mappingName,
+            clientExe: useLiveStore.getState().clientLabel,
+          });
+        }
+        const res = readDecorationResult(buf);
+        if (res.epoch > lastResultEpoch) {
+          lastResultEpoch = res.epoch;
+          const level = res.code === 0 ? 'info' : 'warn';
+          log(level, 'log', `Decoration rebind #${res.epoch}: ${decorationResultLabel(res.code)}.`);
+        }
       }
       timerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
     }
