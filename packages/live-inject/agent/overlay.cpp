@@ -380,7 +380,14 @@ const char* armDecorationEdit() {
     if (deco == nullptr) return "no ray object under cursor (hover the decoration first)";
     if (!swg::endpoints::getObjectTransformO2P) return "object::getTransformO2P unresolved";
     if (!swg::endpoints::getTemplateFilename)   return "getObjectTemplateName unresolved";
-    if (g_lastRayId == 0)                        return "ray hit no networked building (id 0)";
+
+    // Building id: an id-less .ilf decoration reports ray id 0 BY DESIGN (collideScreenRay's
+    // getParent walk is m_childObject-gated so a cell-contained decoration never dissolves into
+    // the building id — engine_advertise.cpp:521-525). So fall back to the current left-click
+    // SELECTION: clicking a POB wall/floor (objectsOnly=0 pick) walks up to the building's
+    // NetworkId == its .ws node id. Workflow: left-click the building wall/floor, then Arm.
+    const int64_t bldgId = (g_lastRayId != 0) ? g_lastRayId : g_pickedId;
+    if (bldgId == 0) return "no building id — left-click the building's wall/floor to select it, then Arm";
 
     // Pre-move o2p of the decoration.
     if (!swg::endpoints::getObjectTransformO2P(deco, g_capOriginalO2p)) return "getTransformO2P returned 0";
@@ -391,8 +398,8 @@ const char* armDecorationEdit() {
     std::strncpy(g_capDecorationTemplate, dt, sizeof(g_capDecorationTemplate) - 1);
     g_capDecorationTemplate[sizeof(g_capDecorationTemplate) - 1] = '\0';
 
-    // Building: the networked ancestor the ray resolved. Its template = the stock .iff.
-    g_capBuildingId = g_lastRayId;
+    // Building template = the stock .iff of the selected building.
+    g_capBuildingId = bldgId;
     g_capBuildingTemplate[0] = '\0';
     if (swg::endpoints::getObjectByIdAdvertised) {
         void* bldg = swg::endpoints::getObjectByIdAdvertised(&g_capBuildingId);
@@ -638,6 +645,10 @@ void renderFrame() {
             static const char* s_decoMsg = nullptr;
             const bool haveRebind = (swg::endpoints::wsSetNodeTemplateName != nullptr);
             ImGui::TextDisabled("Persist decoration (edit → .ilf + derived template → .ws rebind)");
+            ImGui::TextDisabled("1) left-click the building WALL/FLOOR to select it (id below)");
+            ImGui::Text("   building selection id: %lld%s", static_cast<long long>(g_pickedId),
+                        g_pickedId == 0 ? "  (click a wall/floor)" : "");
+            ImGui::TextDisabled("2) hover the decoration  3) Arm  4) move  5) Persist");
             if (ImGui::Button("Arm edit from ray object")) s_decoMsg = armDecorationEdit();
             if (g_capArmed) {
                 ImGui::SameLine();
