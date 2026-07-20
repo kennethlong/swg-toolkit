@@ -259,12 +259,14 @@ typedef int64_t(__cdecl* pWsAddObject)(const char* tmpl, const float* transform1
 typedef int(__cdecl*     pWsSaveSnapshot)();
 typedef int(__cdecl*     pWsGetSavePath)(char* buf, int cap);
 typedef void(__cdecl*    pWsUnloadSnapshot)();
+typedef int(__cdecl*     pWsSetNodeTemplateName)(int64_t id, const char* name); // v23: in-place .ws node template re-point (model-D lossless rebind)
 typedef void(__cdecl*    pWsLoad)(const char* sceneName);   // static WorldSnapshot::load(char const*)
 typedef int(__cdecl*     pGetSceneId)(char* buf, int cap);  // game::getSceneId (v21 copy-out, size-first)
 pWsAddObject      wsAddObject      = nullptr;
 pWsSaveSnapshot   wsSaveSnapshot   = nullptr;
 pWsGetSavePath    wsGetSavePath    = nullptr;
 pWsUnloadSnapshot wsUnloadSnapshot = nullptr;
+pWsSetNodeTemplateName wsSetNodeTemplateName = nullptr;
 pWsLoad           wsLoad           = nullptr;
 pGetSceneId       getSceneId       = nullptr;
 
@@ -317,6 +319,7 @@ Binding g_agentBindings[] = {
     {"worldSnapshot::wsSaveSnapshot",   (void**)&wsSaveSnapshot},   // engine_advertise.cpp:780
     {"worldSnapshot::wsGetSavePath",    (void**)&wsGetSavePath},    // engine_advertise.cpp:781
     {"worldSnapshot::wsUnloadSnapshot", (void**)&wsUnloadSnapshot}, // engine_advertise.cpp:782
+    {"worldSnapshot::wsSetNodeTemplateName", (void**)&wsSetNodeTemplateName}, // v23 handback (model-D lossless rebind)
     {"worldSnapshot::load",             (void**)&wsLoad},           // engine_advertise.cpp:726 (load/reload a scene)
     {"game::getSceneId",                (void**)&getSceneId},       // v21 handback (one-click reload / .ws auto-name)
     // --- Ray-pick (advertised v20 handback 2026-07-19) ---
