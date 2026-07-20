@@ -45,6 +45,7 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pWsSaveSnapshot)();
     typedef int(__cdecl*      pWsGetSavePath)(char* buf, int cap);
     typedef int(__cdecl*      pCollideScreenRay)(int, int, int, int64_t*, float*);
+    typedef void*(__cdecl*    pCollideScreenRayObject)(int, int, int);
     typedef void*(__cdecl*    pGetObjectById)(const void* networkId);
     typedef void(__cdecl*     pWsLoad)(const char* sceneName);
     typedef void(__cdecl*     pWsVoid)();
@@ -62,6 +63,7 @@ namespace swg { namespace endpoints {
     extern pWsSaveSnapshot    wsSaveSnapshot;
     extern pWsGetSavePath     wsGetSavePath;
     extern pCollideScreenRay  collideScreenRay;
+    extern pCollideScreenRayObject collideScreenRayObject;
     extern pGetObjectById     getObjectByIdAdvertised;
     extern pWsLoad            wsLoad;
     extern pWsVoid            wsUnloadSnapshot;
@@ -243,6 +245,10 @@ int64_t g_lastHoverNet = 0;
 bool    g_lastRayHit = false;
 int64_t g_lastRayId = 0;
 float   g_lastRayPt[3] = {};
+// v22 borrowed-Object* pick (the .ilf-decoration path): the raw Object* the ray struck
+// + its template — the template settles whether the ray hit the TABLE or the floor (§2.1).
+void*   g_lastRayObj = nullptr;
+char    g_lastRayObjTmpl[256] = {};
 
 // Resolve the object the gizmo edits: a ray-picked object (re-resolved from its
 // id each frame) takes precedence, else the current in-game target, else the
@@ -389,6 +395,20 @@ void renderFrame() {
                                                                static_cast<int>(io.MousePos.y), 0, &rid, rp) != 0;
                 if (g_lastRayHit) { g_lastRayId = rid; g_lastRayPt[0] = rp[0]; g_lastRayPt[1] = rp[1]; g_lastRayPt[2] = rp[2]; }
             }
+            // v22 borrowed-Object* pick — the raw hit Object* + its template name. The
+            // template is the §2.1 tiebreak: does the ray strike the TABLE or the floor?
+            if (swg::endpoints::collideScreenRayObject) {
+                void* ro = swg::endpoints::collideScreenRayObject(static_cast<int>(io.MousePos.x),
+                                                                  static_cast<int>(io.MousePos.y), 0);
+                g_lastRayObj = ro;
+                if (ro != nullptr && swg::endpoints::getTemplateFilename) {
+                    const char* t = swg::endpoints::getTemplateFilename(ro);
+                    if (t) { std::strncpy(g_lastRayObjTmpl, t, sizeof(g_lastRayObjTmpl) - 1); g_lastRayObjTmpl[sizeof(g_lastRayObjTmpl) - 1] = '\0'; }
+                    else g_lastRayObjTmpl[0] = '\0';
+                } else {
+                    g_lastRayObjTmpl[0] = '\0';
+                }
+            }
         }
         if (g_followHover && g_latchedFocus != nullptr && !g_gizmoWasUsing && g_lastHoverObj != nullptr) {
             g_latchedFocus = g_lastHoverObj;
@@ -459,15 +479,15 @@ void renderFrame() {
             ImGui::Text("last world ray: hit=%d id=%lld @(%.1f %.1f %.1f)",
                         g_lastRayHit ? 1 : 0, static_cast<long long>(g_lastRayId),
                         g_lastRayPt[0], g_lastRayPt[1], g_lastRayPt[2]);
+            ImGui::Text("ray Object* (v22): %p", g_lastRayObj);
+            ImGui::Text("  template: %s", g_lastRayObjTmpl[0] != '\0' ? g_lastRayObjTmpl : "(null / no hit)");
+            ImGui::TextDisabled("§2.1: is that template the TABLE (good) or floor/terrain (need extent-pick)?");
             ImGui::Separator();
-            ImGui::TextDisabled("Sittable chair: HUD pick non-null (+ template, maybe networkId) -> latchable.");
-            ImGui::TextDisabled("Pure decoration (table): ray hit=1 id=0 but HUD pick stays NULL -> not latchable.");
-            ImGui::TextDisabled("If tables read that way, the fix is a provider collideScreenRayObject row.");
-            ImGui::Separator();
-            if (ImGui::Button("Latch last hovered")) g_latchedFocus = g_lastHoverObj;
+            if (ImGui::Button("Latch last hovered")) g_latchedFocus = g_lastHoverObj;   // hud pick (chairs/tangibles)
+            ImGui::SameLine();
+            if (ImGui::Button("Latch ray object")) g_latchedFocus = g_lastRayObj;        // raw ray hit (.ilf decorations)
             ImGui::SameLine();
             if (ImGui::Button("Clear latch")) g_latchedFocus = nullptr;
-            ImGui::SameLine();
             ImGui::Checkbox("Follow hover", &g_followHover);
             ImGui::Text("latched: %p  (gizmo edits this when set)", g_latchedFocus);
         }

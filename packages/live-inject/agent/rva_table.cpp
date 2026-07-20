@@ -279,6 +279,13 @@ pGetSceneId       getSceneId       = nullptr;
 typedef int(__cdecl* pCollideScreenRay)(int screenX, int screenY, int objectsOnly, int64_t* outHitObjectId, float* outPoint3);
 pCollideScreenRay collideScreenRay = nullptr;
 
+// --- Borrowed-Object* pick (advertised v22, provider handback 2026-07-19). Same ray
+//     as collideScreenRay but returns the RAW nearest-hit Object* (no ancestor walk, no
+//     id resolution) — the ONLY way to reach a pure id-less .ilf decoration. Null = miss.
+//     BORROWED, game-thread-only; clear on cell/zone change, never cache across a zone. ---
+typedef void*(__cdecl* pCollideScreenRayObject)(int screenX, int screenY, int objectsOnly);
+pCollideScreenRayObject collideScreenRayObject = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -313,7 +320,8 @@ Binding g_agentBindings[] = {
     {"worldSnapshot::load",             (void**)&wsLoad},           // engine_advertise.cpp:726 (load/reload a scene)
     {"game::getSceneId",                (void**)&getSceneId},       // v21 handback (one-click reload / .ws auto-name)
     // --- Ray-pick (advertised v20 handback 2026-07-19) ---
-    {"clientWorld::collideScreenRay",   (void**)&collideScreenRay},
+    {"clientWorld::collideScreenRay",       (void**)&collideScreenRay},
+    {"clientWorld::collideScreenRayObject", (void**)&collideScreenRayObject}, // v22: borrowed Object* pick
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 
