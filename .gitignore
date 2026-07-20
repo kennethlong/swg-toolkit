@@ -79,3 +79,6 @@ swgclient-boot-trace.log
 
 # Codex consult raw session logs (transient; findings live in CONSULT-*-SYNTHESIS.md)
 .planning/research/*.rawout
+
+# Real SWG client assets used as optional test fixtures (licensing — never committed)
+packages/renderer/src/services/__fixtures__/*.iff
