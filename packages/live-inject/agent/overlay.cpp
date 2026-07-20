@@ -66,6 +66,8 @@ namespace swg { namespace endpoints {
     extern pWsLoad            wsLoad;
     extern pWsVoid            wsUnloadSnapshot;
     extern pGetSceneId        getSceneId;
+    typedef void*(__thiscall* pGetNetworkId)(void*);
+    extern pGetNetworkId      getNetworkId;
     bool isAdvertisedClient();
 }}
 
@@ -232,6 +234,15 @@ float   g_pickPoint[3] = {};
 void* g_lastHoverObj = nullptr;
 void* g_latchedFocus = nullptr;
 bool  g_followHover  = true;   // once latched, hovering another decoration switches to it
+// Probe capture (last WORLD-cursor sample) — distinguishes a tangible/pointer-pickable
+// object (HUD pick non-null, has a template/networkId) from a pure id-less .ilf decoration
+// (HUD pick null, but the ray still reaches it with id 0 + a point).
+void*   g_probeHoverPtr = nullptr;   // CURRENT world-cursor hud pick (null if none — e.g. a table)
+char    g_lastHoverTmpl[256] = {};
+int64_t g_lastHoverNet = 0;
+bool    g_lastRayHit = false;
+int64_t g_lastRayId = 0;
+float   g_lastRayPt[3] = {};
 
 // Resolve the object the gizmo edits: a ray-picked object (re-resolved from its
 // id each frame) takes precedence, else the current in-game target, else the
@@ -353,8 +364,32 @@ void renderFrame() {
     // drag locks the current one (g_gizmoWasUsing); Clear latch exits back to normal.
     // Gated on g_latchedFocus != null so it never hijacks normal ray-pick/target editing.
     {
-        void* h = resolveHoverPick();
-        if (h != nullptr) g_lastHoverObj = h;
+        ImGuiIO& io = ImGui::GetIO();
+        // Only sample when the cursor is over the WORLD (not our panel), so the probe
+        // reflects what's under the cursor in-game, not the overlay.
+        if (!io.WantCaptureMouse) {
+            void* h = resolveHoverPick();
+            g_probeHoverPtr = h;   // current sample (may be null — e.g. hovering a pure decoration)
+            if (h != nullptr) {
+                g_lastHoverObj = h;   // sticky non-null, used for latching
+                if (swg::endpoints::getTemplateFilename) {
+                    const char* t = swg::endpoints::getTemplateFilename(h);
+                    if (t) { std::strncpy(g_lastHoverTmpl, t, sizeof(g_lastHoverTmpl) - 1); g_lastHoverTmpl[sizeof(g_lastHoverTmpl) - 1] = '\0'; }
+                    else g_lastHoverTmpl[0] = '\0';
+                }
+                g_lastHoverNet = swg::endpoints::getNetworkId
+                    ? static_cast<int64_t>(reinterpret_cast<intptr_t>(swg::endpoints::getNetworkId(h))) : 0;
+            } else {
+                g_lastHoverTmpl[0] = '\0';   // no current pick — the table case
+                g_lastHoverNet = 0;
+            }
+            if (swg::endpoints::collideScreenRay) {
+                int64_t rid = 0; float rp[3] = {};
+                g_lastRayHit = swg::endpoints::collideScreenRay(static_cast<int>(io.MousePos.x),
+                                                               static_cast<int>(io.MousePos.y), 0, &rid, rp) != 0;
+                if (g_lastRayHit) { g_lastRayId = rid; g_lastRayPt[0] = rp[0]; g_lastRayPt[1] = rp[1]; g_lastRayPt[2] = rp[2]; }
+            }
+        }
         if (g_followHover && g_latchedFocus != nullptr && !g_gizmoWasUsing && g_lastHoverObj != nullptr) {
             g_latchedFocus = g_lastHoverObj;
         }
@@ -415,31 +450,26 @@ void renderFrame() {
 
         // --- CONSULT-69 decisive experiment: can we select + move an id-less .ilf
         //     interior decoration via the pointer-keyed hover pick (no NetworkId)? ---
-        if (ImGui::CollapsingHeader("In-cell decoration test (CONSULT-69)")) {
-            const ImGuiIO& io = ImGui::GetIO();
-            void* hoverNow = resolveHoverPick();
-            // The ray walks up to the networked BUILDING; the hud hover pick keeps the
-            // DECORATION. hover != ray-resolved building ⇒ the pointer reached an id-less object.
-            int64_t rayId = 0; float rpt[3] = {}; void* rayObj = nullptr;
-            if (swg::endpoints::collideScreenRay &&
-                swg::endpoints::collideScreenRay(static_cast<int>(io.MousePos.x), static_cast<int>(io.MousePos.y),
-                                                 0, &rayId, rpt) &&
-                rayId != 0 && swg::endpoints::getObjectByIdAdvertised) {
-                rayObj = swg::endpoints::getObjectByIdAdvertised(&rayId);
-            }
-            const bool diverge = (g_lastHoverObj != nullptr && g_lastHoverObj != rayObj);
-            ImGui::Text("hover now:    %p", hoverNow);
-            ImGui::Text("last hovered: %p", g_lastHoverObj);
-            ImGui::Text("ray id: %lld  ray->obj: %p", static_cast<long long>(rayId), rayObj);
-            ImGui::Text("diverge (decoration != building): %s", diverge ? "YES" : "no");
+        if (ImGui::CollapsingHeader("In-cell decoration probe (CONSULT-69)")) {
+            ImGui::TextDisabled("Hover an object IN-WORLD (cursor OFF this panel) to sample it.");
+            ImGui::Text("HUD pick (cuiHud::getTarget): %p", g_probeHoverPtr);
+            ImGui::Text("  template : %s", g_lastHoverTmpl[0] != '\0' ? g_lastHoverTmpl : "(null pick — not pointer-selectable)");
+            ImGui::Text("  networkId: %lld", static_cast<long long>(g_lastHoverNet));
+            ImGui::Separator();
+            ImGui::Text("last world ray: hit=%d id=%lld @(%.1f %.1f %.1f)",
+                        g_lastRayHit ? 1 : 0, static_cast<long long>(g_lastRayId),
+                        g_lastRayPt[0], g_lastRayPt[1], g_lastRayPt[2]);
+            ImGui::Separator();
+            ImGui::TextDisabled("Sittable chair: HUD pick non-null (+ template, maybe networkId) -> latchable.");
+            ImGui::TextDisabled("Pure decoration (table): ray hit=1 id=0 but HUD pick stays NULL -> not latchable.");
+            ImGui::TextDisabled("If tables read that way, the fix is a provider collideScreenRayObject row.");
+            ImGui::Separator();
             if (ImGui::Button("Latch last hovered")) g_latchedFocus = g_lastHoverObj;
             ImGui::SameLine();
             if (ImGui::Button("Clear latch")) g_latchedFocus = nullptr;
             ImGui::SameLine();
             ImGui::Checkbox("Follow hover", &g_followHover);
             ImGui::Text("latched: %p  (gizmo edits this when set)", g_latchedFocus);
-            ImGui::TextDisabled("allowTargetAnything on → hover a POB decoration → Latch → gizmo it");
-            ImGui::TextDisabled("Follow hover on: hover another decoration to switch; drag locks; Clear exits");
         }
         ImGui::Separator();
 
