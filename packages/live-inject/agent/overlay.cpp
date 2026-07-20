@@ -27,6 +27,7 @@
 
 #include "detourxs.h"
 #include "overlay.h"
+#include "channel.h"   // decoration-persist round trip (DecorationCapture/Rebind + channel fns)
 
 // --- Engine endpoints consumed by the gizmo (step 4). Slots are defined in
 //     rva_table.cpp (same DLL); on the advertised client resolve() overwrites them
@@ -49,6 +50,7 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pGetObjectTransformO2P)(void* object, float* out12);
     typedef void*(__cdecl*    pGetObjectById)(const void* networkId);
     typedef void(__cdecl*     pWsLoad)(const char* sceneName);
+    typedef int(__cdecl*      pWsSetNodeTemplateName)(int64_t id, const char* name); // v23 model-D rebind
     typedef void(__cdecl*     pWsVoid)();
     typedef int(__cdecl*      pGetSceneId)(char* buf, int cap);
     extern pGetPlayer         getPlayer;
@@ -62,6 +64,7 @@ namespace swg { namespace endpoints {
     extern pGetTemplateFilename getTemplateFilename;
     extern pWsAddObject       wsAddObject;
     extern pWsSaveSnapshot    wsSaveSnapshot;
+    extern pWsSetNodeTemplateName wsSetNodeTemplateName;
     extern pWsGetSavePath     wsGetSavePath;
     extern pCollideScreenRay  collideScreenRay;
     extern pCollideScreenRayObject collideScreenRayObject;
@@ -252,6 +255,21 @@ float   g_lastRayPt[3] = {};
 void*   g_lastRayObj = nullptr;
 char    g_lastRayObjTmpl[256] = {};
 
+// --- Decoration persist (model D) capture baseline + round-trip state. Armed BEFORE the
+//     move (the pre-move o2p, decoration + building template, building .ws node id), then
+//     shipped on Persist. The building id is g_lastRayId — collideScreenRay walks the ray to
+//     the networked BUILDING, whose id == the snapshot .ws node id (P2 smoke confirms). ---
+bool     g_capArmed = false;              // a decoration edit is armed (baseline captured)
+void*    g_capFocus = nullptr;            // the latched decoration this arm belongs to
+int64_t  g_capBuildingId = 0;
+float    g_capOriginalO2p[12] = {};
+char     g_capDecorationTemplate[256] = {};
+char     g_capBuildingTemplate[256] = {};
+uint32_t g_captureEpoch = 0;             // monotonic; bumped once per Persist click
+uint32_t g_lastAppliedRebindEpoch = 0;   // agent applies each new REBIND epoch once
+int32_t  g_lastDecoResult = 0x7fffffff;  // last rebind outcome (sentinel = none yet)
+uint32_t g_lastDecoResultEpoch = 0;
+
 // Resolve the object the gizmo edits: a ray-picked object (re-resolved from its
 // id each frame) takes precedence, else the current in-game target, else the
 // player. Runs on the render/game thread (safe to touch engine objects here).
@@ -354,6 +372,102 @@ void drawGizmo() {
 
 // The actual per-frame draw. Split out of the hook so hkSwapChainPresent's own frame has
 // no C++ unwinding objects and can host a __try/__except (SEH) guard (MSVC C2712).
+// --- Decoration persist (model D): arm the edit from the current ray object. Snapshots the
+//     pre-move baseline the toolkit needs to resolve the .ilf row + derive the template.
+//     Returns a human reason on failure (shown in the probe), nullptr on success. ---
+const char* armDecorationEdit() {
+    void* deco = g_lastRayObj;
+    if (deco == nullptr) return "no ray object under cursor (hover the decoration first)";
+    if (!swg::endpoints::getObjectTransformO2P) return "object::getTransformO2P unresolved";
+    if (!swg::endpoints::getTemplateFilename)   return "getObjectTemplateName unresolved";
+    if (g_lastRayId == 0)                        return "ray hit no networked building (id 0)";
+
+    // Pre-move o2p of the decoration.
+    if (!swg::endpoints::getObjectTransformO2P(deco, g_capOriginalO2p)) return "getTransformO2P returned 0";
+
+    // Decoration template.
+    const char* dt = swg::endpoints::getTemplateFilename(deco);
+    if (!dt || dt[0] == '\0') return "decoration has no template name";
+    std::strncpy(g_capDecorationTemplate, dt, sizeof(g_capDecorationTemplate) - 1);
+    g_capDecorationTemplate[sizeof(g_capDecorationTemplate) - 1] = '\0';
+
+    // Building: the networked ancestor the ray resolved. Its template = the stock .iff.
+    g_capBuildingId = g_lastRayId;
+    g_capBuildingTemplate[0] = '\0';
+    if (swg::endpoints::getObjectByIdAdvertised) {
+        void* bldg = swg::endpoints::getObjectByIdAdvertised(&g_capBuildingId);
+        if (bldg) {
+            const char* bt = swg::endpoints::getTemplateFilename(bldg);
+            if (bt && bt[0] != '\0') {
+                std::strncpy(g_capBuildingTemplate, bt, sizeof(g_capBuildingTemplate) - 1);
+                g_capBuildingTemplate[sizeof(g_capBuildingTemplate) - 1] = '\0';
+            }
+        }
+    }
+    if (g_capBuildingTemplate[0] == '\0') return "could not resolve building template from id";
+
+    g_latchedFocus = deco;   // drive the gizmo against this decoration
+    g_capFocus     = deco;
+    g_capArmed     = true;
+    return nullptr;
+}
+
+// Ship the armed edit: snapshot the POST-move o2p and write it to the CAPTURE region with a
+// fresh epoch. The toolkit answers via the REBIND region (applyPendingRebind consumes it).
+const char* persistDecorationEdit() {
+    if (!g_capArmed) return "no armed edit (arm one first)";
+    if (g_capFocus == nullptr || !swg::endpoints::getObjectTransformO2P) return "focus/o2p unavailable";
+
+    DecorationCapture cap = {};
+    cap.buildingId = static_cast<uint64_t>(g_capBuildingId);
+    std::memcpy(cap.originalO2p, g_capOriginalO2p, sizeof(cap.originalO2p));
+    if (!swg::endpoints::getObjectTransformO2P(g_capFocus, &cap.newO2p[0][0])) return "getTransformO2P (new) returned 0";
+    std::strncpy(cap.decorationTemplate, g_capDecorationTemplate, sizeof(cap.decorationTemplate) - 1);
+    std::strncpy(cap.buildingTemplate,   g_capBuildingTemplate,   sizeof(cap.buildingTemplate) - 1);
+
+    channelWriteCapture(&cap, ++g_captureEpoch);
+    return nullptr;
+}
+
+// Per-frame (game thread): consume a REBIND directive the toolkit published. Applies each new
+// epoch once — APPLY → wsSetNodeTemplateName + wsSaveSnapshot; ABORT → just report. Publishes
+// the outcome to the RESULT region. Ordering (v23): the toolkit writes the loose files BEFORE
+// sending APPLY, so by the time we rebind the derived template already resolves via TreeFile.
+void applyPendingRebind() {
+    DecorationRebind rb = {};
+    if (!channelReadRebind(&rb)) return;                 // torn read or channel closed
+    if (rb.epoch == 0 || rb.epoch == g_lastAppliedRebindEpoch) return;  // nothing new
+    g_lastAppliedRebindEpoch = rb.epoch;
+
+    // Apply the REBIND's OWN payload — it is self-contained (the toolkit derived the template
+    // FOR rb.buildingId and echoes it) and epoch-gated, so it need not match the currently-armed
+    // edit (the user may have armed another since). rb.buildingId==0 is a malformed directive.
+    int32_t code;
+    if ((rb.flags & DECO_REBIND_FLAG_ABORT) || !(rb.flags & DECO_REBIND_FLAG_APPLY)) {
+        code = DECO_RESULT_ABORTED;
+    } else if (rb.buildingId == 0) {
+        code = DECO_RESULT_BUILDING_ID_MISMATCH;         // no valid target id
+    } else if (!swg::endpoints::wsSetNodeTemplateName) {
+        code = DECO_RESULT_NODE_NOT_FOUND;               // endpoint unresolved on this client
+    } else {
+        const int reb = swg::endpoints::wsSetNodeTemplateName(
+            static_cast<int64_t>(rb.buildingId), rb.derivedTemplate);
+        if (reb == 0) {
+            code = DECO_RESULT_NODE_NOT_FOUND;           // node id didn't resolve (server-streamed / bad id)
+        } else if (swg::endpoints::wsSaveSnapshot) {
+            code = static_cast<int32_t>(swg::endpoints::wsSaveSnapshot());  // 0 ok / 1..6 save reason
+        } else {
+            code = DECO_RESULT_SAVE_NO_SNAPSHOT;
+        }
+    }
+
+    g_lastDecoResult = code;
+    g_lastDecoResultEpoch = rb.epoch;
+    channelWriteResult(code, rb.epoch);
+    // Disarm only when the commit matches the edit currently armed (multi-arm safe).
+    if (code == DECO_RESULT_OK && rb.buildingId == static_cast<uint64_t>(g_capBuildingId)) g_capArmed = false;
+}
+
 void renderFrame() {
     ensureImguiInit();
     if (!g_imguiInit) return;
@@ -364,6 +478,10 @@ void renderFrame() {
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+
+    // Decoration persist (model D): consume any REBIND the toolkit published (game thread,
+    // un-gated by the panel/header — must run every frame the overlay renders).
+    applyPendingRebind();
 
     // CONSULT-69: track the last non-null hud hover pick every frame so a decoration
     // hovered in the world can still be latched after the cursor moves to the panel.
@@ -511,6 +629,31 @@ void renderFrame() {
                 } else {
                     ImGui::TextDisabled("o2p: no focus object (latch a decoration first)");
                 }
+            }
+            ImGui::Separator();
+
+            // --- Decoration persist (model D) round trip. Arm (snapshot pre-move baseline)
+            //     → move with the gizmo → Persist (ships new o2p) → toolkit assembles the loose
+            //     files → the agent rebinds the .ws node + saves. ---
+            static const char* s_decoMsg = nullptr;
+            const bool haveRebind = (swg::endpoints::wsSetNodeTemplateName != nullptr);
+            ImGui::TextDisabled("Persist decoration (edit → .ilf + derived template → .ws rebind)");
+            if (ImGui::Button("Arm edit from ray object")) s_decoMsg = armDecorationEdit();
+            if (g_capArmed) {
+                ImGui::SameLine();
+                if (ImGui::Button("Persist")) s_decoMsg = persistDecorationEdit();
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel")) { g_capArmed = false; s_decoMsg = "cancelled"; }
+                ImGui::Text("armed: bldg id %lld · %s", static_cast<long long>(g_capBuildingId), g_capDecorationTemplate);
+                ImGui::TextDisabled("building: %s", g_capBuildingTemplate);
+            } else {
+                ImGui::TextDisabled("not armed — hover a decoration, then Arm");
+            }
+            if (!haveRebind) ImGui::TextDisabled("(wsSetNodeTemplateName unresolved — rebind will report node-not-found)");
+            if (s_decoMsg) ImGui::TextWrapped("edit: %s", s_decoMsg);
+            if (g_lastDecoResultEpoch != 0) {
+                ImGui::Text("last rebind (epoch %u): code %d %s", g_lastDecoResultEpoch, g_lastDecoResult,
+                            g_lastDecoResult == DECO_RESULT_OK ? "(ok — saved)" : "(see LIVE_DECORATION_RESULT)");
             }
         }
         ImGui::Separator();
