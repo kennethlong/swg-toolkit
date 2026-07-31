@@ -100,6 +100,20 @@ export function writeWorkspaceJson(studioDir: string, meta: WorkspaceBindingMeta
   fs.renameSync(tmp, filePath);  // atomic on same-volume rename
 }
 
+/**
+ * Read-modify-write a partial update into .studio/workspace.json (atomic via
+ * writeWorkspaceJson). For incidental per-project fields (e.g. liveClientExe) that
+ * callers set outside the initProject flow. Never throws — a failed persist of a
+ * convenience default must not break the caller's action.
+ */
+export function updateWorkspaceMeta(studioDir: string, patch: Partial<WorkspaceBindingMeta>): void {
+  try {
+    writeWorkspaceJson(studioDir, { ...readWorkspaceJson(studioDir), ...patch });
+  } catch {
+    // best-effort persist only
+  }
+}
+
 // ─── initProject ─────────────────────────────────────────────────────────────
 
 // ─── InitProjectOptions ───────────────────────────────────────────────────────

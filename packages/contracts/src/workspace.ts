@@ -99,4 +99,8 @@ export interface WorkspaceBindingMeta {
   pattern?: string;
   /** Local-server association — see WorkspaceInfo.serverConfig. */
   serverConfig?: WorkspaceInfo['serverConfig'];
+  /** Live Inspector: last client executable launched for THIS project (defaults the
+   *  Launch & Inject field when the project opens; more specific than clientPath —
+   *  a full exe path, e.g. a decoupled stage build's SwgClient_r.exe). */
+  liveClientExe?: string;
 }

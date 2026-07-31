@@ -20,6 +20,8 @@
 import React, { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 import { useLiveStore } from '../state/liveStore.ts';
+import { useWorkspaceStore } from '../state/workspaceStore';
+import { readWorkspaceJson, updateWorkspaceMeta } from '../services/projectBinding';
 import HexInspector from './iff/HexInspector';
 import { launchAndInjectUI, attachToRunningUI, detachUI } from '../hooks/useLiveService';
 import { useChannelReader } from '../hooks/useChannelReader';
@@ -31,12 +33,30 @@ import type { VerifiedObjectState, TypedIpcRenderer } from '@swg/contracts';
 // in the helper below to keep field access explicit.
 void (0 as unknown as VerifiedObjectState);
 
+/** localStorage key for the last successfully-launched client exe (same raw-localStorage
+ *  pattern as App.tsx THEME_STORAGE_KEY / WorkspaceShell LAYOUT_STORAGE_KEY). */
+const LIVE_CLIENT_EXE_KEY = 'swg-toolkit.live.lastClientExe';
+
 export default function LiveInspectorPanel(_props: IDockviewPanelProps): React.ReactElement {
   const [collapsed,    setCollapsed]   = useState(false);
   const [hexExpanded,  setHexExpanded] = useState(false);
   const [hoveredByte,  setHoveredByte] = useState<number | null>(null);
-  const [clientExe,    setClientExe]   = useState('');
+  // Default to the last-launched exe so a restart doesn't force re-browsing to the client.
+  const [clientExe,    setClientExe]   = useState(() => {
+    try { return localStorage.getItem(LIVE_CLIENT_EXE_KEY) ?? ''; } catch { return ''; }
+  });
   const [attachPid,    setAttachPid]   = useState('');
+
+  // Project default wins over the global fallback: when a project opens (or switches),
+  // adopt its persisted liveClientExe. Manual edits after that stand until the next switch.
+  const studioDir = useWorkspaceStore((s) => s.studioDir);
+  React.useEffect(() => {
+    if (!studioDir) return;
+    try {
+      const exe = readWorkspaceJson(studioDir).liveClientExe;
+      if (exe) setClientExe(exe);
+    } catch { /* meta unreadable — keep the current value */ }
+  }, [studioDir]);
 
   // "Browse…" — native OS file picker for the client exe (main-process dialog via
   // IPC; `dialog` is not available in the renderer). Mirrors DeployDialog's pattern.
@@ -248,7 +268,12 @@ export default function LiveInspectorPanel(_props: IDockviewPanelProps): React.R
                   <button
                     style={attachBtnStyle}
                     disabled={isConnecting || !clientExe.trim()}
-                    onClick={() => { void launchAndInjectUI(clientExe.trim()); }}
+                    onClick={() => {
+                      const exe = clientExe.trim();
+                      try { localStorage.setItem(LIVE_CLIENT_EXE_KEY, exe); } catch { /* unavailable */ }
+                      if (studioDir) updateWorkspaceMeta(studioDir, { liveClientExe: exe });
+                      void launchAndInjectUI(exe);
+                    }}
                   >
                     Launch &amp; Inject (read-verify)
                   </button>
