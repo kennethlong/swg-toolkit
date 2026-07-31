@@ -47,8 +47,12 @@ const overrideDirCache = new Map<string, string | null>();
 
 // Debug trace — the orchestrator runs inside the poll loop and its logStore/console output is
 // trapped in renderer memory; append key steps to a file so failures are inspectable off-app.
+// Model-D signed off 2026-07-31 → gated OFF by default; set SWG_TOOLKIT_DECO_TRACE=1 to re-arm.
+// (Failures still surface in the app via logService regardless of the gate.)
 const DEBUG_LOG = path.join(os.tmpdir(), 'swg-toolkit-decoration-debug.log');
+const TRACE_ENABLED = process.env.SWG_TOOLKIT_DECO_TRACE === '1';
 function dbg(line: string): void {
+  if (!TRACE_ENABLED) return;
   try { fs.appendFileSync(DEBUG_LOG, `${new Date().toISOString()}  ${line}\n`); } catch { /* ignore */ }
 }
 
