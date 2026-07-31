@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 019 · World Editor Panel</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--color-bg); color: var(--color-text);
+    font-family: var(--font-sans); font-size: var(--text-base);
+    padding-top: 46px; overflow-x: hidden;
+  }
+
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+    padding: 8px 14px; display: flex; gap: 8px; align-items: center;
+  }
+  #variant-nav .ttl { font-size: var(--text-xs); color: var(--color-text-faint); margin-right: 8px; font-family: var(--font-mono); }
+  .variant-tab {
+    background: var(--color-widget); color: var(--color-text-muted);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    font: 600 var(--text-sm)/1 var(--font-sans); padding: 6px 12px; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .variant-tab:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .variant { display: none; }
+  .variant.active { display: block; }
+
+  .stage { display: flex; justify-content: center; gap: 18px; padding: 26px 18px 90px; }
+  .pane-label {
+    font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px 2px;
+  }
+
+  /* ── shared panel chrome (dockview mock) ─────────────────────────── */
+  .panel {
+    width: 440px; background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-panel); overflow: hidden;
+    display: flex; flex-direction: column; min-height: 640px;
+  }
+  .tabstrip {
+    display: flex; align-items: stretch; background: var(--color-header-2);
+    border-bottom: 1px solid var(--color-border); height: 30px; font-size: var(--text-sm); flex: none;
+  }
+  .tabstrip .tab {
+    display: flex; align-items: center; gap: 7px; padding: 0 14px;
+    border-right: 1px solid var(--color-border); color: var(--color-text-muted); cursor: pointer;
+  }
+  .tabstrip .tab.on {
+    background: var(--color-surface); color: var(--color-text);
+    box-shadow: inset 0 2px 0 var(--color-accent);
+  }
+
+  /* live strip */
+  .live-strip {
+    display: flex; align-items: center; gap: 8px; padding: 7px 12px; flex: none;
+    background: var(--color-surface-2); border-bottom: 1px solid var(--color-border-soft);
+    font-size: var(--text-sm);
+  }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 6px var(--color-accent); }
+  .live-dot.off { background: var(--color-text-faint); box-shadow: none; }
+  .live-strip .exe { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .chip {
+    font: 600 var(--text-xs)/1 var(--font-sans); padding: 3px 8px; border-radius: var(--radius-full);
+    background: var(--color-widget); color: var(--color-text-muted); border: 1px solid var(--color-border-soft);
+  }
+  .chip.scene { color: var(--color-info); border-color: rgba(74,140,255,.4); background: rgba(74,140,255,.12); }
+
+  /* section headers (Blender accordion style) */
+  .sect {
+    display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer;
+    background: var(--color-header); border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border); font: 600 var(--text-sm)/1 var(--font-sans);
+    user-select: none;
+  }
+  .sect .tri { font-size: 9px; color: var(--color-text-faint); transition: transform .15s ease; }
+  .sect.open .tri { transform: rotate(90deg); }
+  .sect .cnt { margin-left: auto; }
+  .sect-body { overflow: hidden; }
+  .sect-body.closed { display: none; }
+
+  /* rows */
+  .row {
+    display: flex; align-items: center; gap: 9px; padding: 7px 12px;
+    border-bottom: 1px solid var(--color-border-soft); cursor: pointer; transition: background .12s ease;
+    font-size: var(--text-sm);
+  }
+  .row:hover { background: var(--color-surface-2); }
+  .row.sel { background: var(--color-accent-dim); box-shadow: inset 2px 0 0 var(--color-accent); }
+  .row .ico { width: 16px; text-align: center; color: var(--color-text-faint); flex: none; }
+  .row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .sub { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-faint); }
+  .row .spacer { flex: 1; }
+  .badge {
+    font: 600 10px/1 var(--font-sans); padding: 3px 7px; border-radius: var(--radius-full); flex: none;
+  }
+  .badge.ok    { background: var(--color-accent-dim); color: var(--color-accent); }
+  .badge.pend  { background: rgba(224,161,58,.15); color: var(--color-warn); }
+  .badge.orph  { background: rgba(224,88,79,.15); color: var(--color-danger); }
+  .badge.mirror{ background: rgba(74,140,255,.13); color: var(--color-info); }
+
+  .indent { padding-left: 30px; }
+
+  /* detail card */
+  .detail {
+    margin: 10px 12px; background: var(--color-surface-2); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-md); padding: 10px 12px; font-size: var(--text-sm);
+  }
+  .detail .kv { display: flex; gap: 8px; margin-bottom: 5px; }
+  .detail .k { width: 92px; color: var(--color-text-faint); flex: none; }
+  .detail .v { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); overflow-wrap: anywhere; }
+
+  /* buttons + toggles */
+  .btn {
+    background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); font: 600 var(--text-sm)/1 var(--font-sans);
+    padding: 6px 12px; cursor: pointer; transition: all .15s ease;
+  }
+  .btn:hover { background: var(--color-widget-hover); }
+  .btn.primary { background: var(--color-accent); color: var(--color-accent-text); border-color: transparent; }
+  .btn.primary:hover { background: var(--color-accent-hover); }
+  .btn.sm { padding: 4px 9px; font-size: var(--text-xs); }
+  .btn.ghost { background: transparent; }
+
+  .switch { position: relative; width: 30px; height: 16px; background: var(--color-widget); border: 1px solid var(--color-border-soft); border-radius: var(--radius-full); cursor: pointer; transition: background .15s ease; flex: none; }
+  .switch::after { content: ''; position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; border-radius: 50%; background: var(--color-text-muted); transition: all .15s ease; }
+  .switch.on { background: var(--color-accent); border-color: transparent; }
+  .switch.on::after { left: 15px; background: var(--color-accent-text); }
+
+  /* status feed line */
+  .status-line {
+    display: flex; gap: 8px; align-items: flex-start; padding: 6px 12px;
+    border-bottom: 1px solid var(--color-border-soft); font-size: var(--text-xs);
+  }
+  .status-line .t { font-family: var(--font-mono); color: var(--color-text-faint); flex: none; }
+  .status-line .ok  { color: var(--color-accent); }
+  .status-line .err { color: var(--color-danger); }
+  .status-line .wrn { color: var(--color-warn); }
+
+  /* footer toolbar */
+  .foot {
+    margin-top: auto; display: flex; gap: 8px; padding: 10px 12px; flex: none;
+    background: var(--color-header); border-top: 1px solid var(--color-border);
+  }
+
+  /* mirror scope row */
+  .mirror-row {
+    display: flex; align-items: center; gap: 9px; padding: 8px 12px; font-size: var(--text-sm);
+    background: rgba(74,140,255,.06); border-bottom: 1px solid var(--color-border-soft);
+  }
+  .mirror-row .hint { font-size: var(--text-xs); color: var(--color-text-faint); }
+
+  /* timeline (variant B) */
+  .tl-day { font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint); padding: 8px 12px 4px; text-transform: uppercase; letter-spacing: .06em; }
+  .tl-item { display: flex; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--color-border-soft); font-size: var(--text-sm); cursor: pointer; }
+  .tl-item:hover { background: var(--color-surface-2); }
+  .tl-rail { display: flex; flex-direction: column; align-items: center; flex: none; width: 12px; }
+  .tl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); margin-top: 4px; }
+  .tl-dot.err { background: var(--color-danger); }
+  .tl-line { flex: 1; width: 1px; background: var(--color-border-soft); }
+
+  /* scene tools */
+  .scene-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px; }
+  .bookmark {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: var(--text-sm);
+    background: var(--color-surface-2); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); cursor: pointer; transition: all .12s ease;
+  }
+  .bookmark:hover { border-color: var(--color-accent-line); }
+  .bookmark .co { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); }
+
+  /* toast */
+  #toast {
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--color-header-2); border: 1px solid var(--color-accent-line);
+    color: var(--color-text); border-radius: var(--radius-md); padding: 9px 16px;
+    font-size: var(--text-sm); opacity: 0; transition: all .25s ease; z-index: 9999; pointer-events: none;
+    box-shadow: var(--shadow-pop);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  #sketch-tools {
+    position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 8px;
+    opacity: 0.4; transition: opacity 0.2s; display: flex; gap: 8px; align-items: center;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select { background: #222; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 2px 6px; }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="ttl">SKETCH 019 · WORLD EDITOR PANEL</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Building Tree ★ Selected</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Session Timeline</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Live / Persisted Split</button>
+  <span style="margin-left:auto;font-size:11px;color:var(--color-text-faint)">dockview tab: <b>Inspect | Deploy | World</b> · ~440px</span>
+</div>
+
+<!-- ═══════════════ VARIANT A: Building-first tree ═══════════════ -->
+<div id="variant-a" class="variant active">
+  <div class="stage">
+    <div>
+      <div class="pane-label">Variant A — buildings own the hierarchy; edits live under their building</div>
+      <div class="panel">
+        <div class="tabstrip">
+          <div class="tab">Inspect</div><div class="tab">Deploy</div><div class="tab on">World</div>
+        </div>
+        <div class="live-strip">
+          <div class="live-dot" id="a-dot"></div>
+          <span class="exe" id="a-exe">SwgClient_r.exe · pid 41288</span>
+          <span class="chip scene" id="a-scene">tatooine</span>
+          <button class="btn sm ghost" onclick="cycleLive('a')" title="sketch: cycle live state">⟳</button>
+        </div>
+        <div class="mirror-row">
+          <div class="switch on" onclick="this.classList.toggle('on'); toast(this.classList.contains('on') ? 'Mirror ON — edits also shadow the stock layout (every instance of this template shows them)' : 'Mirror OFF — edits are per-instance only (visible in editor scenes, not on live servers)')"></div>
+          <div>
+            <div>Mirror to stock layout</div>
+            <div class="hint">per-template: all cantinas with this layout show the edit</div>
+          </div>
+          <span class="badge mirror" style="margin-left:auto">PER-TEMPLATE</span>
+        </div>
+
+        <div class="sect open" onclick="toggleSect(this)">
+          <span class="tri">▶</span> Edited buildings <span class="chip cnt">2</span>
+        </div>
+        <div class="sect-body">
+          <div class="row" onclick="selRow(this)">
+            <span class="ico">⌂</span>
+            <div>
+              <div class="nm">Cantina — Mos Eisley</div>
+              <div class="sub">shared_cantina_tatooine.iff · node 1082874</div>
+            </div>
+            <span class="spacer"></span>
+            <span class="badge ok">3 SAVED</span>
+          </div>
+          <div class="row indent sel" onclick="selRow(this)">
+            <span class="ico">▦</span>
+            <div>
+              <div class="nm">Cantina Table</div>
+              <div class="sub">alcove1 · row 3</div>
+            </div>
+            <span class="spacer"></span>
+            <span class="badge ok">SAVED</span>
+          </div>
+          <div class="row indent" onclick="selRow(this)">
+            <span class="ico">▦</span>
+            <div>
+              <div class="nm">Small Cantina Seat</div>
+              <div class="sub">alcove1 · row 7</div>
+            </div>
+            <span class="spacer"></span>
+            <span class="badge pend">ARMED</span>
+          </div>
+          <div class="row" onclick="selRow(this)">
+            <span class="ico">⌂</span>
+            <div>
+              <div class="nm">Guild Hall — Anchorhead</div>
+              <div class="sub">shared_guild_theater.iff · node 1084112</div>
+            </div>
+            <span class="spacer"></span>
+            <span class="badge orph">1 UNAPPLIED</span>
+          </div>
+        </div>
+
+        <div class="detail">
+          <div class="kv"><span class="k">Decoration</span><span class="v">shared_frn_tatt_table_cantina_table_3.iff</span></div>
+          <div class="kv"><span class="k">Cell / row</span><span class="v">alcove1 · row 3</span></div>
+          <div class="kv"><span class="k">Position</span><span class="v">15.96, −0.90, −14.33 <span style="color:var(--color-text-faint)">(cell)</span></span></div>
+          <div class="kv"><span class="k">Last persist</span><span class="v" style="color:var(--color-accent)">✓ Rebound + saved — 21:07:44</span></div>
+          <div class="kv"><span class="k">Files</span><span class="v">edit_1082874.ilf · edit_1082874.iff · mirror</span></div>
+          <div style="display:flex; gap:8px; margin-top:9px">
+            <button class="btn sm" onclick="toast('Teleporting to alcove1 …')">Go to</button>
+            <button class="btn sm" onclick="toast('Reverting row 3 to stock transform…')">Revert</button>
+            <button class="btn sm ghost" onclick="toast('Row pinned to overlay gizmo')">Edit in game</button>
+          </div>
+        </div>
+
+        <div class="sect" onclick="toggleSect(this)">
+          <span class="tri">▶</span> Activity <span class="chip cnt">6</span>
+        </div>
+        <div class="sect-body closed">
+          <div class="status-line"><span class="t">21:07</span><span class="ok">✓ Cantina Table saved — rebind OK, snapshot written</span></div>
+          <div class="status-line"><span class="t">20:48</span><span class="err">✗ Rebind failed — building not in the loaded snapshot (engine erased it; provider fix shipped)</span></div>
+          <div class="status-line"><span class="t">20:30</span><span class="wrn">△ Couldn't match the picked table — recovered against the stock layout</span></div>
+        </div>
+
+        <div class="sect" onclick="toggleSect(this)">
+          <span class="tri">▶</span> Scene <span class="chip cnt">editor</span>
+        </div>
+        <div class="sect-body closed">
+          <div class="scene-grid">
+            <button class="btn" onclick="toast('Loading offline editor scene: tatooine …')">Editor scene ▸ tatooine</button>
+            <button class="btn" onclick="toast('Reload current scene')">Reload scene</button>
+            <div class="bookmark" onclick="toast('Teleport: Mos Eisley cantina')"><span>◎</span> Mos Eisley cantina <span class="co">3428, −4788</span></div>
+            <div class="bookmark" onclick="toast('Teleport: Anchorhead')"><span>◎</span> Anchorhead <span class="co">62, −5340</span></div>
+          </div>
+        </div>
+
+        <div class="foot">
+          <button class="btn primary" onclick="toast('Template browser… (sketch 021)')">+ Add decoration…</button>
+          <span style="flex:1"></span>
+          <button class="btn" onclick="toast('2 files staged to project')">Stage to project</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ VARIANT B: Session timeline ═══════════════ -->
+<div id="variant-b" class="variant">
+  <div class="stage">
+    <div>
+      <div class="pane-label">Variant B — the persist history is the spine; buildings are chips on events</div>
+      <div class="panel">
+        <div class="tabstrip">
+          <div class="tab">Inspect</div><div class="tab">Deploy</div><div class="tab on">World</div>
+        </div>
+        <div class="live-strip">
+          <div class="live-dot"></div>
+          <span class="exe">SwgClient_r.exe · pid 41288</span>
+          <span class="chip scene">tatooine</span>
+        </div>
+
+        <div style="display:flex; gap:8px; padding:9px 12px; border-bottom:1px solid var(--color-border-soft)">
+          <button class="btn sm" style="background:var(--color-accent-dim); color:var(--color-accent); border-color:var(--color-accent-line)">All</button>
+          <button class="btn sm">Saved</button>
+          <button class="btn sm">Pending</button>
+          <button class="btn sm">Failed</button>
+          <span style="flex:1"></span>
+          <div class="switch on" onclick="this.classList.toggle('on')" title="Mirror to stock layout"></div>
+          <span style="font-size:var(--text-xs); color:var(--color-text-faint); align-self:center">mirror</span>
+        </div>
+
+        <div class="tl-day">Today · editor scene + live session</div>
+        <div class="tl-item" onclick="selRow(this)">
+          <div class="tl-rail"><div class="tl-dot"></div><div class="tl-line"></div></div>
+          <div style="flex:1">
+            <div><b>Moved</b> Cantina Table <span class="chip">Cantina · Mos Eisley</span></div>
+            <div class="sub" style="margin-top:3px">21:07 · alcove1 row 3 · ✓ rebound + saved · mirrored to stock</div>
+          </div>
+          <span class="badge ok">SAVED</span>
+        </div>
+        <div class="tl-item" onclick="selRow(this)">
+          <div class="tl-rail"><div class="tl-dot"></div><div class="tl-line"></div></div>
+          <div style="flex:1">
+            <div><b>Moved</b> Cantina Table <span style="color:var(--color-text-faint)">(stacked ×3)</span> <span class="chip">Cantina · Mos Eisley</span></div>
+            <div class="sub" style="margin-top:3px">21:12–21:19 · accumulated onto the same row</div>
+          </div>
+          <span class="badge ok">SAVED</span>
+        </div>
+        <div class="tl-item" onclick="selRow(this)">
+          <div class="tl-rail"><div class="tl-dot err"></div><div class="tl-line"></div></div>
+          <div style="flex:1">
+            <div><b>Rebind failed</b> Cantina Table <span class="chip">Cantina · Mos Eisley</span></div>
+            <div class="sub" style="margin-top:3px">20:48 · the building wasn't in the loaded snapshot — <span style="color:var(--color-info)">provider fix shipped, retry succeeded ↑</span></div>
+          </div>
+          <span class="badge orph">FAILED</span>
+        </div>
+        <div class="tl-item" onclick="selRow(this)">
+          <div class="tl-rail"><div class="tl-dot"></div></div>
+          <div style="flex:1">
+            <div><b>Armed</b> Small Cantina Seat <span class="chip">Cantina · Mos Eisley</span></div>
+            <div class="sub" style="margin-top:3px">now · waiting for gizmo move + Persist in game</div>
+          </div>
+          <span class="badge pend">ARMED</span>
+        </div>
+
+        <div class="sect open" onclick="toggleSect(this)">
+          <span class="tri">▶</span> Selected event
+        </div>
+        <div class="sect-body">
+          <div class="detail" style="margin-top:8px">
+            <div class="kv"><span class="k">Decoration</span><span class="v">shared_frn_tatt_table_cantina_table_3.iff</span></div>
+            <div class="kv"><span class="k">Building</span><span class="v">shared_cantina_tatooine.iff · node 1082874</span></div>
+            <div class="kv"><span class="k">Moved</span><span class="v">16.82, −0.90, −14.96 → 15.96, −0.90, −14.33</span></div>
+            <div style="display:flex; gap:8px; margin-top:9px">
+              <button class="btn sm" onclick="toast('Teleporting…')">Go to</button>
+              <button class="btn sm" onclick="toast('Reverting…')">Revert</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="foot">
+          <button class="btn primary" onclick="toast('Template browser… (sketch 021)')">+ Add decoration…</button>
+          <span style="flex:1"></span>
+          <button class="btn" onclick="toast('Editor scene: tatooine…')">Editor scene</button>
+          <button class="btn" onclick="toast('Teleport bookmarks…')">◎</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ VARIANT C: Live / persisted split ═══════════════ -->
+<div id="variant-c" class="variant">
+  <div class="stage">
+    <div>
+      <div class="pane-label">Variant C — live session on top (mirrors the overlay), persisted edits below</div>
+      <div class="panel">
+        <div class="tabstrip">
+          <div class="tab">Inspect</div><div class="tab">Deploy</div><div class="tab on">World</div>
+        </div>
+
+        <div class="sect open" style="border-top:none" onclick="toggleSect(this)">
+          <span class="tri">▶</span> Live session
+        </div>
+        <div class="sect-body">
+          <div class="live-strip" style="border-bottom:none">
+            <div class="live-dot"></div>
+            <span class="exe">SwgClient_r.exe · pid 41288</span>
+            <span class="chip scene">tatooine</span>
+          </div>
+          <div class="detail" style="margin-top:4px">
+            <div class="kv"><span class="k">Hovering</span><span class="v">Cantina Table — alcove1, Cantina (Mos Eisley)</span></div>
+            <div class="kv"><span class="k">State</span><span class="v" style="color:var(--color-warn)">ARMED — move with the gizmo, then Persist</span></div>
+            <div class="kv"><span class="k">Delta</span><span class="v">Δ −0.87, 0.00, +0.63 (cell)</span></div>
+            <div style="display:flex; gap:8px; margin-top:9px">
+              <button class="btn sm primary" onclick="persistFlow(this)">Persist now</button>
+              <button class="btn sm" onclick="toast('Edit cancelled — gizmo released')">Cancel</button>
+              <span style="flex:1"></span>
+              <button class="btn sm ghost" onclick="toast('Editor scene: tatooine…')">Editor scene</button>
+              <button class="btn sm ghost" onclick="toast('Teleport…')">◎</button>
+            </div>
+          </div>
+          <div class="mirror-row" style="border-top:1px solid var(--color-border-soft)">
+            <div class="switch on" onclick="this.classList.toggle('on')"></div>
+            <div>
+              <div>Mirror to stock layout</div>
+              <div class="hint">off = per-instance only (editor scene / future server parity)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sect open" onclick="toggleSect(this)">
+          <span class="tri">▶</span> Persisted edits <span class="chip cnt">4</span>
+        </div>
+        <div class="sect-body">
+          <div class="row" onclick="selRow(this)">
+            <span class="ico">▦</span>
+            <div>
+              <div class="nm">Cantina Table <span class="sub">— Cantina, Mos Eisley</span></div>
+              <div class="sub">alcove1 row 3 · moved ×4 (accumulated)</div>
+            </div>
+            <span class="spacer"></span>
+            <span class="badge ok">SAVED</span>
+          </div>
+          <div class="row" onclick="selRow(this)">
+            <span class="ico">▦</span>
+            <div>
+              <div class="nm">Small Cantina Seat <span class="sub">— Cantina, Mos Eisley</span></div>
+              <div class="sub">alcove1 row 7</div>
+            </div>
+            <span class="spacer"></span>
+            <span class="badge pend">ARMED</span>
+          </div>
+          <div class="row" onclick="selRow(this)">
+            <span class="ico">▦</span>
+            <div>
+              <div class="nm">Wall Sconce <span class="sub">— Guild Hall, Anchorhead</span></div>
+              <div class="sub">mainroom row 12 · rebind refused: derived template missing</div>
+            </div>
+            <span class="spacer"></span>
+            <span class="badge orph">FAILED</span>
+          </div>
+        </div>
+
+        <div class="sect" onclick="toggleSect(this)">
+          <span class="tri">▶</span> Activity <span class="chip cnt">6</span>
+        </div>
+        <div class="sect-body closed">
+          <div class="status-line"><span class="t">21:07</span><span class="ok">✓ Cantina Table — rebound + saved</span></div>
+          <div class="status-line"><span class="t">20:48</span><span class="err">✗ Rebind failed — building not in loaded snapshot</span></div>
+        </div>
+
+        <div class="foot">
+          <button class="btn primary" onclick="toast('Template browser… (sketch 021)')">+ Add decoration…</button>
+          <span style="flex:1"></span>
+          <button class="btn" onclick="toast('2 files staged to project')">Stage to project</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="sketch-tools">
+  <span>theme</span>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'">
+    <option value="cyan" selected>cyan</option>
+    <option value="default">green</option>
+    <option value="amber">amber</option>
+    <option value="blue">blue</option>
+    <option value="high-contrast">high-contrast</option>
+  </select>
+</div>
+
+<script>
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+function toggleSect(el) {
+  el.classList.toggle('open');
+  const body = el.nextElementSibling;
+  if (body && body.classList.contains('sect-body')) body.classList.toggle('closed');
+}
+function selRow(el) {
+  el.closest('.variant').querySelectorAll('.row.sel, .tl-item.sel').forEach(r => r.classList.remove('sel'));
+  el.classList.add('sel');
+}
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function persistFlow(btn) {
+  btn.textContent = 'Persisting…'; btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = 'Persist now'; btn.disabled = false;
+    toast('✓ Rebound + saved — snapshot written, mirror updated');
+  }, 900);
+}
+const liveStates = { a: 0 };
+function cycleLive(v) {
+  const states = [
+    { dot: true,  exe: 'SwgClient_r.exe · pid 41288', scene: 'tatooine' },
+    { dot: true,  exe: 'SwgClient_r.exe · pid 41288 · EDITOR SCENE', scene: 'tatooine (offline)' },
+    { dot: false, exe: 'no client attached — Launch & Inject from Live Inspector', scene: '—' },
+  ];
+  liveStates[v] = (liveStates[v] + 1) % states.length;
+  const s = states[liveStates[v]];
+  document.getElementById(v + '-dot').classList.toggle('off', !s.dot);
+  document.getElementById(v + '-exe').textContent = s.exe;
+  document.getElementById(v + '-scene').textContent = s.scene;
+}
+</script>
+</body>
+</html>

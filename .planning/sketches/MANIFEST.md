@@ -42,6 +42,9 @@ hardcoded brand color.** Exposed via an in-app titlebar picker.
 | 018 | stf-strings-editor | How does .stf localized-strings editing read — key/CRC/value shape, search, add-key, modified state, save-back, locale-sibling awareness? | **A · Flat key/value grid (014 sibling; CRC read-only)** | stf, strings, localization, editor, typed-editors, round-trip-gate, phase-5 |
 | 016 | new-object-from-template | How to create a new object — pick item **type** (fixed engine set) → **derive** from a base/existing template (`@base`) → name/path → scaffold client+server (Core3) sides → open in IFF editor? (types are engine-defined; you derive instances, never author types) | **A · Type-grid wizard modal (type → derive → name/path → client+server → open in 009)** | object-templates, creation, derivation, item-types, core3, phase-4, phase-8 |
 | 017 | delete-project-flow | How does destructive project-delete read — row affordance (Welcome recents + Open Project dialog), the descriptive "here's what will happen" confirm, and session-undo (toast + trash section)? | **B · Kebab menu + inline dimmed recoverable rows** | delete, project-lifecycle, destructive-action, undo, confirm, trash, phase-4.4 |
+| 019 | world-editor-panel | How does the World Editor app panel compose — the "rows/fields/text" surface over the proven model-D pipeline (edited-decoration list, persist history, mirror toggle, human-readable status, editor-scene/teleport)? | **A · Building Tree** (buildings own the hierarchy; detail card; Activity/Scene accordions) | world-editor, live-editor, decoration-persist, panel, composition, model-d |
+| 020 | overlay-decoration-hud | What is the productized in-game overlay — thin pick+gizmo+persist ImGui HUD replacing the CONSULT-69 debug probe ("point at the world" half of the boundary rule)? | **A · Status Strip** (one thin top-center strip; hotkey-driven F/G/R; failures punt detail to the World panel) | overlay, imgui, live-editor, hud, in-game, model-d |
+| 021 | spawn-decoration-flow | How does adding a NEW decoration flow across surfaces — app template browser → overlay ghost placement → persisted .ilf row? (⚠ leads the plumbing: .ilf-append persist not built yet) | **A · Wizard Modal** (016-style picker → "Place in game" ghost → two-surface confirm) | world-editor, spawn, wsAddObject, template-browser, cross-surface, leads-plumbing |
 
 ## Layout decision (from 002–006) — FINAL
 
@@ -52,6 +55,14 @@ The Phase-4 deploy UI lives **inside the Inspect panel as a tabbed group** (`Ins
 > into 3 tabs because the SPEC said "register Staging + Timeline as tabs" (plural) — that wording is
 > BANNED. VCS (Git/LFS) stays its own separate tab; only Staging + Version-graph compose into the Deploy
 > panel. See memory `feedback-spec-internal-consistency-and-review-intent`.
+
+## World Editor boundary rule (019–021) — SETTLED (maintainer, 2026-07-31)
+
+**"If you can do it by pointing at the world, it belongs in the in-game overlay; the moment it's
+rows, fields, or text, it belongs in the app."** The overlay stays deliberately thin (pick + gizmo +
+Arm/Persist + status words); the World panel (dockview tab `Inspect | Deploy | World`) owns lists,
+history, toggles, template browsing, and all structured editing — sibling to the 014/018 typed
+editors. Result feedback is always human-readable words, never raw result codes.
 
 ## Proposed follow-ups
 
