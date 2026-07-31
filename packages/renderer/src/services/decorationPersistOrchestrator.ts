@@ -161,7 +161,15 @@ export function handleDecorationCapture(
       // cellName omitted — derived by resolveNode from template + originalO2p.
     };
 
-    const result = assembleDecorationEdit(edit, { readVfs: makeReadVfs(overrideDir), overrideDir });
+    const result = assembleDecorationEdit(edit, {
+      readVfs: makeReadVfs(overrideDir),
+      overrideDir,
+      log: (m) => dbg(`capture #${epoch}: ${m}`),
+      // Per-template visibility (maintainer, 2026-07-31): hybrid servers re-stream static POBs from
+      // the stock template, hiding the instance-scoped rebind — mirror the edited .ilf onto the stock
+      // path so edits are visible in-game. Surface as a UI toggle when the editor panel grows one.
+      mirrorToStockIlf: true,
+    });
     stageDurable(result.stagedEntries);
     addon.writeRebind(ctx.mappingName, epoch, capture.buildingInstanceId, result.derivedTemplateVfsPath, F.APPLY);
     dbg(`capture #${epoch}: OK — row ${result.rowIndex}, derived ${result.derivedTemplateVfsPath}, APPLY sent`);

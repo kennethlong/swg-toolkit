@@ -116,6 +116,33 @@ describe('assembleDecorationEdit', () => {
     expect(() => assembleDecorationEdit({ ...baseEdit, originalO2p: origTable.map((v, i) => (i === 3 ? v + 999 : v)) }, deps)).toThrow();
   });
 
+  it('recovers from an orphaned edited .ilf (prior rebind failed): re-resolves against stock', () => {
+    // A prior persist wrote the edited .ilf but its wsSetNodeTemplateName never landed, so the
+    // live world still spawns from STOCK — the next Arm captures the stock o2p, which is absent
+    // from the accumulated copy. The assembler must fall back to stock, not fail closed.
+    const { deps, written } = makeDeps();
+    assembleDecorationEdit(baseEdit, deps); // orphan: table row now newTable in the accumulated copy
+    const { cellName, ...noCell } = baseEdit;
+    void cellName;
+    // Live capture: table still at its STOCK position (the failed rebind never changed the world).
+    const r = assembleDecorationEdit({ ...noCell, originalO2p: origTable, newO2p: newTable }, deps);
+    expect(r.rowIndex).toBe(0);
+    const editedIlf = parseIlf(written.get(r.editedIlfFilePath.replace(/\\/g, '/'))!);
+    expect(editedIlf[0].transform).toEqual(newTable); // re-based on stock + this edit
+    expect(editedIlf[1].transform).toEqual(origChair);
+  });
+
+  it('mirrorToStockIlf: also writes the edited .ilf at the STOCK path as a modify entry', () => {
+    const { deps, written } = makeDeps();
+    const r = assembleDecorationEdit(baseEdit, { ...deps, mirrorToStockIlf: true });
+
+    const mirrorAbs = `/override/${STOCK_ILF_VFS}`;
+    const mirrored = parseIlf(written.get(mirrorAbs)!);
+    expect(mirrored[0].transform).toEqual(newTable); // same edited content at the stock path
+    expect(r.stagedEntries).toContainEqual({ virtualPath: STOCK_ILF_VFS, filePath: expect.stringContaining(STOCK_ILF_VFS.split('/').pop()!), action: 'modify' });
+    expect(r.stagedEntries).toHaveLength(3);
+  });
+
   it('accumulates a second edit (of the chair) on top of the first (of the table)', () => {
     const { deps, written } = makeDeps();
     assembleDecorationEdit(baseEdit, deps); // move the table
