@@ -48,6 +48,7 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pCollideScreenRay)(int, int, int, int64_t*, float*);
     typedef void*(__cdecl*    pCollideScreenRayObject)(int, int, int);
     typedef int(__cdecl*      pGetObjectTransformO2P)(void* object, float* out12);
+    typedef int64_t(__cdecl*  pGetContainingBuildingId)(void* object);
     typedef void*(__cdecl*    pGetObjectById)(const void* networkId);
     typedef void(__cdecl*     pWsLoad)(const char* sceneName);
     typedef int(__cdecl*      pWsSetNodeTemplateName)(int64_t id, const char* name); // v23 model-D rebind
@@ -69,6 +70,7 @@ namespace swg { namespace endpoints {
     extern pCollideScreenRay  collideScreenRay;
     extern pCollideScreenRayObject collideScreenRayObject;
     extern pGetObjectTransformO2P getObjectTransformO2P;
+    extern pGetContainingBuildingId getContainingBuildingId;
     extern pGetObjectById     getObjectByIdAdvertised;
     extern pWsLoad            wsLoad;
     extern pWsVoid            wsUnloadSnapshot;
@@ -381,13 +383,17 @@ const char* armDecorationEdit() {
     if (!swg::endpoints::getObjectTransformO2P) return "object::getTransformO2P unresolved";
     if (!swg::endpoints::getTemplateFilename)   return "getObjectTemplateName unresolved";
 
-    // Building id: an id-less .ilf decoration reports ray id 0 BY DESIGN (collideScreenRay's
-    // getParent walk is m_childObject-gated so a cell-contained decoration never dissolves into
-    // the building id — engine_advertise.cpp:521-525). So fall back to the current left-click
-    // SELECTION: clicking a POB wall/floor (objectsOnly=0 pick) walks up to the building's
-    // NetworkId == its .ws node id. Workflow: left-click the building wall/floor, then Arm.
-    const int64_t bldgId = (g_lastRayId != 0) ? g_lastRayId : g_pickedId;
-    if (bldgId == 0) return "no building id — left-click the building's wall/floor to select it, then Arm";
+    // Building id: prefer the advertised cell→building resolver on the decoration itself
+    // (getContainingBuildingId walks getParentCell→portal→owner→building). An id-less .ilf
+    // decoration reports ray id 0 by design, and a wall/floor click resolves to the CELL
+    // (object/cell/shared_cell.iff, no interiorLayoutFileName) not the building — so the resolver
+    // is the correct source. Until the provider ships it (REQUEST 2026-07-30) the slot is null;
+    // fall back to the current left-click selection (which for now resolves the cell, not the
+    // building — hence the "no interiorLayoutFileName" abort you'll see without the shim).
+    int64_t bldgId = 0;
+    if (swg::endpoints::getContainingBuildingId) bldgId = swg::endpoints::getContainingBuildingId(deco);
+    if (bldgId == 0) bldgId = (g_lastRayId != 0) ? g_lastRayId : g_pickedId;
+    if (bldgId == 0) return "no building id — hover a decoration (or click the building), then Arm";
 
     // Pre-move o2p of the decoration.
     if (!swg::endpoints::getObjectTransformO2P(deco, g_capOriginalO2p)) return "getTransformO2P returned 0";
@@ -649,10 +655,13 @@ void renderFrame() {
             static const char* s_decoMsg = nullptr;
             const bool haveRebind = (swg::endpoints::wsSetNodeTemplateName != nullptr);
             ImGui::TextDisabled("Persist decoration (edit → .ilf + derived template → .ws rebind)");
-            ImGui::TextDisabled("1) left-click the building WALL/FLOOR to select it (id below)");
-            ImGui::Text("   building selection id: %lld%s", static_cast<long long>(g_pickedId),
-                        g_pickedId == 0 ? "  (click a wall/floor)" : "");
-            ImGui::TextDisabled("2) hover the decoration  3) Arm  4) move  5) Persist");
+            if (swg::endpoints::getContainingBuildingId) {
+                ImGui::TextDisabled("hover the decoration → Arm → move → Persist");
+            } else {
+                ImGui::TextDisabled("getContainingBuildingId unresolved — a wall click resolves the CELL,");
+                ImGui::TextDisabled("not the building (abort: no interiorLayoutFileName). Needs the shim.");
+                ImGui::Text("   click-selection id: %lld", static_cast<long long>(g_pickedId));
+            }
             if (ImGui::Button("Arm edit from ray object")) s_decoMsg = armDecorationEdit();
             if (g_capArmed) {
                 ImGui::SameLine();

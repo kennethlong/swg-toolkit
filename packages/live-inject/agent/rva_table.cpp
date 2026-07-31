@@ -298,6 +298,16 @@ pCollideScreenRayObject collideScreenRayObject = nullptr;
 typedef int(__cdecl* pGetObjectTransformO2P)(void* object, float* out12);
 pGetObjectTransformO2P getObjectTransformO2P = nullptr;
 
+// --- Containing-building resolver (advertised REQUEST 2026-07-30, pending). Given any
+//     cell-contained object (an id-less .ilf decoration), returns the POB building's NetworkId
+//     (== its .ws node id) via getParentCell()->getPortalProperty()->getOwner()->getNetworkId().
+//     collideScreenRay returns 0 for a decoration and the CELL id for a wall click (neither is
+//     the building), and object::getParent is not advertised, so this is the only path to the
+//     building the wsSetNodeTemplateName rebind + derived template need. 0 = not in a POB.
+//     Slot stays null until the provider ships the row; overlay falls back to the click pick. ---
+typedef int64_t(__cdecl* pGetContainingBuildingId)(void* object);
+pGetContainingBuildingId getContainingBuildingId = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -336,6 +346,7 @@ Binding g_agentBindings[] = {
     {"clientWorld::collideScreenRay",       (void**)&collideScreenRay},
     {"clientWorld::collideScreenRayObject", (void**)&collideScreenRayObject}, // v22: borrowed Object* pick
     {"object::getTransformO2P",             (void**)&getObjectTransformO2P},   // v24: copy-out o2p (last model-D accessor)
+    {"object::getContainingBuildingId",     (void**)&getContainingBuildingId}, // REQUEST 2026-07-30: cell→building (pending)
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 
