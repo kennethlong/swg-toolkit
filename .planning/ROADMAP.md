@@ -22,6 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4.3: Versioning Model & SearchTOC Mount Completion** *(INSERTED)* - Crew UI-vs-sketch gap review first; then rework the deploy/version model (live client mirrors the SELECTED version; per-version deploy flag; reconcile-to-version forward-apply/backward-revert; visual branch-tree history per sketches 002/005) and complete the searchTOC/v6000 master-index mount (read swg-client-v2's full base; v6000 per-payload zlib) ✓ 2026-07-03 (combined UAT approved)
 - [ ] **Phase 4.4: UX Polish & Deploy Hardening** *(INSERTED)* - Knock out the 6 UI-related pending todos: delete-project-with-restore + e2e deploy-flow Playwright coverage (the two high-severity items), plus console/log tabs, statusbar mesh name, VFS override dim, viewport default facing
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
+- [ ] **Phase 5.1: Live World Editor Productization** *(INSERTED)* - Productize the proven model-D decoration-persist pipeline: World panel building tree (019-A), in-game status-strip HUD replacing the CONSULT-69 debug probe (020-A), add/remove decorations incl. the new `.ilf` row-append path (021-A), mirror-mode toggle, rotation persist, human-readable failure surface
 - [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
 - [ ] **Phase 7: Format Editors** - Terrain, world snapshots, flora, collision/portals, UI, audio/FX — parallelizable leaves on the IFF root
 - [ ] **Phase 8: Parity, Navmesh, MCP & AI** - Core3 dual-track parity, navmesh, MCP server, and advisory AI assists (independent islands)
@@ -360,6 +361,32 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [x] 05-12-PLAN.md — GC-pressure soak test + maintainer in-world UAT checkpoint (both targets, incl. Scale) [autonomous: false] — Task 1 (soak test) DONE; Task 2 (checkpoint:human-verify, gate=blocking) PENDING, see 05-12-SUMMARY.md
+**UI hint**: yes
+
+### Phase 5.1: Live World Editor Productization (INSERTED)
+
+**Goal:** Turn the proven model-D interior-decoration persistence pipeline (closed end-to-end 2026-07-31; handoff `2026-07-30-live-world-editor-decoration-persist.md`) from a debug probe into the product surface. Sketch-first per AGENTS.md — three approved sketches are the UI contract, and plans MUST enumerate their distinct elements as `must_haves`:
+- **World panel (sketch 019, winner A — Building Tree):** a real dockview `World` tab owning everything rows/fields/text about in-world editing. Buildings own the hierarchy; decorations nest under their building with human-readable persist status; selection detail card; persist history + Scene as collapsed accordions; mirror-mode toggle with per-template/per-instance scope hint; human-readable rebind/save feedback (never raw codes); editor-scene launcher + teleport bookmarks; live-session strip; `+ Add decoration…` entry.
+- **In-game HUD (sketch 020, winner A — Status Strip):** replace the CONSULT-69 debug probe with one thin hotkey-driven top-center strip (F arm, G/R move/rotate) with idle/hover/armed/saved/failed states; failures punt detail to the World panel — raw result codes never surface in-game.
+- **Spawn flow (sketch 021, winner A — Wizard Modal):** `+ Add decoration…` opens a 016-style picker modal (search + thumbnail grid) → "Place in game" hands a placement ghost to the overlay → click places → two-surface confirm (overlay toast + new row in the World list). **UI leads the plumbing:** the `.ilf` new-row append + row identity for a new node is NOT built yet (today's pipeline edits existing rows only; `wsAddObject` live spawn is proven). Decoration REMOVE rides the same new plumbing (row delete + despawn).
+
+Engineering ride-alongs owed by the pivot (handoff "Remaining follow-ups"):
+- **Agent result-mapping fix:** `overlay.cpp:468-471` — explicit `reb == -1` refused branch so a provider "refused" can never fall through to a false save-result; split "endpoint unresolved" from NODE_NOT_FOUND (needs agent rebuild).
+- **Rotation-persist confirm** — move is proven live; rotation persistence not yet explicitly confirmed.
+- **Mirror-mode UI** — surface `mirrorToStockIlf` (orchestrator default ON, currently no UI) as the World-panel toggle with its scope hint.
+- **Editor-scene verify pass** — the provider's §4 canonical visible-verify context (`game::loadScene`); hybrid reload already verified.
+
+**Mode:** mvp
+**Requirements**: pivot-driven (model-D productization; extends LIVE-03's WYSIWYG loop; no new parent reqs)
+**Depends on:** Phase 5 (viewport gizmo, live-sync channel, overlay foundation), the off-roadmap model-D decoration-persist pipeline (closed 2026-07-31)
+**Success Criteria** (what must be TRUE):
+  1. A user can hover a decoration in-game, arm/move/rotate/persist it entirely from the productized status-strip HUD (CONSULT-69 debug probe retired), and every failure reads as words with detail routed to the World panel — raw result codes never surface in either UI.
+  2. The World panel matches sketch 019-A element-for-element (building tree with nested decorations + persist status, detail card, persist-history + Scene accordions, live-session strip, editor-scene launcher/bookmarks), verified by an observed/missing diff against the sketch.
+  3. The mirror-mode toggle controls `mirrorToStockIlf` per persist with a clear per-template vs per-instance scope hint, and the persist path honors it.
+  4. A user can ADD a new decoration end-to-end (021-A wizard pick → overlay ghost placement → persisted `.ilf` gains a new row that survives scene reload) and REMOVE a decoration with the same persistence guarantee.
+  5. Rotation edits persist and reload correctly, and the agent `-1`-refused mapping fix ships (a refused rebind can never report a save-result).
+
+**Plans:** TBD
 **UI hint**: yes
 
 ### Phase 6: Blender Bridge
