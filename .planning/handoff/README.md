@@ -2,7 +2,17 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-07-19-phase05-closed-pivot-to-live-world-editor.md](2026-07-19-phase05-closed-pivot-to-live-world-editor.md)** — ACTIVE. ← start here.
+- **[2026-07-30-live-world-editor-decoration-persist.md](2026-07-30-live-world-editor-decoration-persist.md)** — ACTIVE. ← start here.
+  Model-D interior-decoration persistence **built, wired, and proven LIVE end-to-end** except ONE blocker: the
+  in-game **building `.ws` node id** can't be resolved (`collideScreenRay`→0 for decorations, CELL id for wall
+  clicks; `getParent` not advertised). Fix = one provider shim **`object::getContainingBuildingId`** — request
+  filed to the provider inbox (maintainer relays) + consumer **PRE-WIRED** (`826b8ed`, lights up on exe restage,
+  no toolkit rebuild). Full round trip proven: capture → orchestrator assembles edited `.ilf` + derived template
+  → `writeRebind` → agent `wsSetNodeTemplateName`+`wsSaveSnapshot` → RESULT. Override-dir resolution fixed via
+  `detectClients()`. Resume steps + build cmds + debug-trace path in the handoff. HEAD `826b8ed`, pushed.
+  Supersedes the pivot handoff below.
+
+- **[2026-07-19-phase05-closed-pivot-to-live-world-editor.md](2026-07-19-phase05-closed-pivot-to-live-world-editor.md)** — superseded by the decoration-persist handoff above.
   Phase 05 **CLOSED** (12/12, LIVE-03 done; Task-2 checkpoint accepted at the thin slice). The live loop works
   end-to-end after fixing **5 real in-app bugs** (Electron-42 external-buffer channel `70a5dd3`, agent-DLL path
   `5ca53d5`, launch cwd `b9d63fd`, process-liveness detach `86a8593`, + Browse button `a11ff97`). In-app UAT
