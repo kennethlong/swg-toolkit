@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 021 · Spawn Decoration Flow</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--color-bg); color: var(--color-text);
+    font-family: var(--font-sans); font-size: var(--text-base);
+    padding-top: 46px; overflow-x: hidden;
+  }
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+    padding: 8px 14px; display: flex; gap: 8px; align-items: center;
+  }
+  #variant-nav .ttl { font-size: var(--text-xs); color: var(--color-text-faint); margin-right: 8px; font-family: var(--font-mono); }
+  .variant-tab {
+    background: var(--color-widget); color: var(--color-text-muted);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    font: 600 var(--text-sm)/1 var(--font-sans); padding: 6px 12px; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .variant-tab:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .variant { display: none; }
+  .variant.active { display: block; }
+
+  .plumb-banner {
+    max-width: 980px; margin: 14px auto 0; padding: 8px 14px; font-size: var(--text-sm);
+    background: rgba(224,161,58,.1); border: 1px solid rgba(224,161,58,.4); border-radius: var(--radius-md);
+    color: var(--color-warn); display: flex; gap: 8px; align-items: center;
+  }
+
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px 18px 90px; }
+  .pane-label {
+    font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  /* stepper */
+  .steps { display: flex; gap: 6px; align-items: center; }
+  .step-pill {
+    display: flex; gap: 7px; align-items: center; padding: 6px 12px; cursor: pointer;
+    background: var(--color-widget); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-full); font: 600 var(--text-xs)/1 var(--font-sans); color: var(--color-text-muted);
+    transition: all .15s ease;
+  }
+  .step-pill.on { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .step-pill .n { width: 16px; height: 16px; border-radius: 50%; background: var(--color-header-2); display: flex; align-items: center; justify-content: center; font-size: 10px; }
+  .step-pill.on .n { background: var(--color-accent); color: var(--color-accent-text); }
+  .step-arrow { color: var(--color-text-faint); }
+
+  .frame { display: none; }
+  .frame.on { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .frame-cap { max-width: 720px; font-size: var(--text-sm); color: var(--color-text-muted); text-align: center; }
+
+  /* app modal mock */
+  .modal {
+    width: 560px; background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); overflow: hidden;
+  }
+  .modal-head { background: var(--color-header); padding: 10px 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .modal-body { padding: 14px; }
+  .search {
+    width: 100%; background: var(--color-widget); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); color: var(--color-text); padding: 7px 10px; font-size: var(--text-sm);
+  }
+  .tpl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .tpl {
+    background: var(--color-surface-2); border: 1px solid var(--color-border-soft); border-radius: var(--radius-md);
+    padding: 10px; cursor: pointer; transition: all .12s ease; text-align: center;
+  }
+  .tpl:hover { border-color: var(--color-accent-line); }
+  .tpl.sel { background: var(--color-accent-dim); border-color: var(--color-accent-line); }
+  .tpl .thumb { height: 52px; display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--color-text-faint); }
+  .tpl .nm { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tpl .pth { font-family: var(--font-mono); font-size: 9px; color: var(--color-text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal-foot { display: flex; gap: 8px; padding: 12px 14px; background: var(--color-header); }
+  .btn {
+    background: var(--color-widget); color: var(--color-text); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); font: 600 var(--text-sm)/1 var(--font-sans);
+    padding: 7px 13px; cursor: pointer; transition: all .15s ease;
+  }
+  .btn:hover { background: var(--color-widget-hover); }
+  .btn.primary { background: var(--color-accent); color: var(--color-accent-text); border-color: transparent; }
+  .btn.primary:hover { background: var(--color-accent-hover); }
+
+  /* game mock (shared with 020's look) */
+  .game {
+    position: relative; width: 820px; height: 430px; overflow: hidden;
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    background:
+      radial-gradient(ellipse 800px 260px at 50% 108%, #3a3226 0%, transparent 60%),
+      linear-gradient(180deg, #171310 0%, #221c15 46%, #2b241a 74%, #352c1f 100%);
+    box-shadow: var(--shadow-panel); cursor: crosshair;
+  }
+  .im { font-family: var(--font-mono); font-size: 12px; color: #dfe6e8; }
+  .im-panel {
+    background: rgba(16, 20, 22, 0.88); border: 1px solid rgba(120, 140, 145, 0.35);
+    border-radius: 3px; box-shadow: 0 4px 14px rgba(0,0,0,.5);
+  }
+  .im-btn {
+    display: inline-block; background: rgba(56,190,201,.18); border: 1px solid rgba(56,190,201,.5);
+    color: #9be8ee; padding: 3px 10px; border-radius: 2px; cursor: pointer; font: 700 11px var(--font-mono);
+  }
+  .im-dim { color: #7d9095; }
+  .ghost-item {
+    position: absolute; left: 380px; top: 250px; width: 120px; height: 52px;
+    background: rgba(56,190,201,.18); border: 1px dashed rgba(56,190,201,.8); border-radius: 50% / 42%;
+  }
+  .reticle { position: absolute; left: 434px; top: 270px; color: rgba(56,190,201,.9); font-size: 18px; }
+  .place-strip { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 5px 12px; display: flex; gap: 10px; align-items: center; }
+
+  /* palette dock (variant B) */
+  .panel-mini {
+    width: 300px; background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-panel); overflow: hidden;
+  }
+  .panel-mini .head { background: var(--color-header); padding: 8px 12px; font: 600 var(--text-sm)/1 var(--font-sans); }
+  .pal-row { display: flex; gap: 8px; align-items: center; padding: 7px 10px; border-bottom: 1px solid var(--color-border-soft); font-size: var(--text-sm); cursor: grab; }
+  .pal-row:hover { background: var(--color-surface-2); }
+  .pal-row .send { margin-left: auto; }
+
+  #toast {
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--color-header-2); border: 1px solid var(--color-accent-line);
+    color: var(--color-text); border-radius: var(--radius-md); padding: 9px 16px;
+    font-size: var(--text-sm); opacity: 0; transition: all .25s ease; z-index: 9999; pointer-events: none;
+    box-shadow: var(--shadow-pop);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  #sketch-tools {
+    position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 8px;
+    opacity: 0.4; transition: opacity 0.2s; display: flex; gap: 8px; align-items: center;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select { background: #222; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 2px 6px; }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="ttl">SKETCH 021 · SPAWN DECORATION FLOW (app browses → overlay places)</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Wizard Modal ★ Selected</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Palette Dock</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Overlay Quick-Add</button>
+</div>
+
+<div class="plumb-banner">⚠ UI leads the plumbing here: the “append a NEW row to the .ilf” persist path is not built yet — today’s pipeline edits existing rows. This sketch is the contract for that work.</div>
+
+<!-- ═══════ VARIANT A: 016-style wizard modal ═══════ -->
+<div id="variant-a" class="variant active">
+  <div class="stage">
+    <div class="pane-label">Variant A — “+ Add decoration…” opens a 016-style modal; placement hands off to the game</div>
+    <div class="steps">
+      <div class="step-pill on" onclick="showFrame('a', 1, this)"><span class="n">1</span> Browse (app)</div>
+      <span class="step-arrow">→</span>
+      <div class="step-pill" onclick="showFrame('a', 2, this)"><span class="n">2</span> Place (game)</div>
+      <span class="step-arrow">→</span>
+      <div class="step-pill" onclick="showFrame('a', 3, this)"><span class="n">3</span> Persisted (both)</div>
+    </div>
+
+    <div class="frame on" id="a-f1">
+      <div class="modal">
+        <div class="modal-head">＋ Add decoration <span style="margin-left:auto; color:var(--color-text-faint); font-size:var(--text-xs)">to Cantina — Mos Eisley (alcove1)</span></div>
+        <div class="modal-body">
+          <input class="search" placeholder="Search furniture templates…  (frn_tatt)" value="frn_tatt">
+          <div class="tpl-grid">
+            <div class="tpl sel" onclick="selTpl(this)"><div class="thumb">▦</div><div class="nm">Cantina Table 3</div><div class="pth">frn_tatt_table_cantina_table_3</div></div>
+            <div class="tpl" onclick="selTpl(this)"><div class="thumb">▤</div><div class="nm">Cantina Chair</div><div class="pth">frn_tatt_chair_cantina_s1</div></div>
+            <div class="tpl" onclick="selTpl(this)"><div class="thumb">◫</div><div class="nm">Small Cantina Seat</div><div class="pth">frn_tatt_seat_cantina_sm</div></div>
+            <div class="tpl" onclick="selTpl(this)"><div class="thumb">▥</div><div class="nm">Bar Section</div><div class="pth">frn_tatt_bar_straight</div></div>
+            <div class="tpl" onclick="selTpl(this)"><div class="thumb">◍</div><div class="nm">Light Fixture</div><div class="pth">frn_tatt_light_wall_s2</div></div>
+            <div class="tpl" onclick="selTpl(this)"><div class="thumb">▣</div><div class="nm">Crate</div><div class="pth">frn_crate_metal_lg</div></div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <span style="flex:1; align-self:center; font-size:var(--text-xs); color:var(--color-text-faint)">preview loads from the mounted TRE (mesh viewport)</span>
+          <button class="btn" onclick="toast('Cancelled')">Cancel</button>
+          <button class="btn primary" onclick="showFrame('a', 2)">Place in game ▸</button>
+        </div>
+      </div>
+      <div class="frame-cap">Reuses 016's template-picker language (type grid → derive) but scoped to decorations; the target cell is inferred from where you're standing / last pick.</div>
+    </div>
+
+    <div class="frame" id="a-f2">
+      <div class="game" onclick="toast('(sketch) click = commit placement → ghost becomes real + armed')">
+        <div class="ghost-item"></div>
+        <div class="reticle">⌖</div>
+        <div class="place-strip im im-panel">
+          <span><b>Placing:</b> Cantina Table 3</span>
+          <span class="im-dim">click floor = place · <span style="color:#9be8ee">R</span> rotate · Esc cancel</span>
+          <span class="im-btn" onclick="showFrame('a', 3)">Place here</span>
+        </div>
+      </div>
+      <div class="frame-cap">The overlay shows a ghost at the cursor's floor hit (collideScreenRay). Click commits: wsAddObject spawns it live, and the toolkit appends the row to the edited .ilf (the unplumbed part).</div>
+    </div>
+
+    <div class="frame" id="a-f3">
+      <div style="display:flex; gap:16px; align-items:flex-start">
+        <div class="game" style="width:520px; height:300px">
+          <div class="prop" style="position:absolute; left:230px; top:170px; width:120px; height:52px; background:radial-gradient(ellipse at 50% 32%, #6d6154 0%, #4a4038 58%, #332b23 100%); border-radius:50%/42%"></div>
+          <div class="place-strip im im-panel"><span style="color:#7ee0a3">✓ placed + saved</span> <span class="im-dim">Cantina Table 3 → alcove1 row 21 (new)</span></div>
+        </div>
+        <div class="panel-mini">
+          <div class="head">World · Cantina — Mos Eisley</div>
+          <div class="pal-row"><span>▦</span> Cantina Table <span class="send" style="font-size:10px; color:var(--color-accent)">SAVED</span></div>
+          <div class="pal-row" style="background:var(--color-accent-dim)"><span>▦</span> Cantina Table 3 <b style="font-size:10px">(NEW)</b> <span class="send" style="font-size:10px; color:var(--color-accent)">SAVED</span></div>
+        </div>
+      </div>
+      <div class="frame-cap">Both surfaces confirm: the overlay toasts, the World panel shows the new row (row 21, appended) in the building's list.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ VARIANT B: palette dock ═══════ -->
+<div id="variant-b" class="variant">
+  <div class="stage">
+    <div class="pane-label">Variant B — a persistent palette section in the World panel; send-to-game per row</div>
+    <div style="display:flex; gap:16px; align-items:flex-start">
+      <div class="panel-mini" style="width:320px">
+        <div class="head">Palette <span style="float:right; color:var(--color-text-faint); font-weight:400; font-size:var(--text-xs)">World panel section</span></div>
+        <div style="padding:8px 10px"><input class="search" placeholder="Search templates…"></div>
+        <div class="pal-row"><span>▦</span> Cantina Table 3 <button class="btn send" style="padding:3px 8px; font-size:10px" onclick="toast('Sent to game — ghost follows your cursor')">Place ▸</button></div>
+        <div class="pal-row"><span>▤</span> Cantina Chair <button class="btn send" style="padding:3px 8px; font-size:10px" onclick="toast('Sent to game')">Place ▸</button></div>
+        <div class="pal-row"><span>◍</span> Light Fixture <button class="btn send" style="padding:3px 8px; font-size:10px" onclick="toast('Sent to game')">Place ▸</button></div>
+        <div style="padding:8px 10px; font-size:var(--text-xs); color:var(--color-text-faint)">Recent: Cantina Table 3 · Crate · Light Fixture</div>
+      </div>
+      <div class="game" style="width:560px; height:330px">
+        <div class="ghost-item" style="left:250px; top:190px"></div>
+        <div class="reticle" style="left:300px; top:208px">⌖</div>
+        <div class="place-strip im im-panel"><span><b>Placing:</b> Cantina Table 3</span><span class="im-dim">click = place · Esc = cancel</span></div>
+      </div>
+    </div>
+    <div class="frame-cap">Palette lives permanently in the World panel — no modal. Faster for repeat placement (decorating a whole room), heavier panel. Placement UX in-game is identical to A.</div>
+  </div>
+</div>
+
+<!-- ═══════ VARIANT C: overlay quick-add ═══════ -->
+<div id="variant-c" class="variant">
+  <div class="stage">
+    <div class="pane-label">Variant C — recents-only quick-add inside the overlay; the app is just the record</div>
+    <div class="game">
+      <div class="place-strip im im-panel" style="top:auto; bottom:12px; flex-direction:column; align-items:stretch; gap:4px; padding:8px 10px">
+        <div style="display:flex; gap:10px; align-items:center"><b>Quick add</b> <span class="im-dim">recent templates · full browser in the World panel</span></div>
+        <div style="display:flex; gap:6px">
+          <span class="im-btn" onclick="toast('Ghost follows cursor — click to place')">▦ Cantina Table 3</span>
+          <span class="im-btn" onclick="toast('Ghost follows cursor — click to place')">▤ Chair</span>
+          <span class="im-btn" onclick="toast('Ghost follows cursor — click to place')">◍ Light</span>
+          <span class="im-btn" style="background:transparent; border-color:rgba(120,140,145,.35); color:#9fb3b8" onclick="toast('Opens the World panel browser (app)')">more…</span>
+        </div>
+      </div>
+    </div>
+    <div class="frame-cap">Lightest app involvement: the overlay carries 3–5 recents; anything else routes to the app browser. Risk: template discovery in-game is poor, and "more…" context-switches anyway.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="sketch-tools">
+  <span>theme</span>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'">
+    <option value="cyan" selected>cyan</option>
+    <option value="default">green</option>
+    <option value="amber">amber</option>
+    <option value="blue">blue</option>
+    <option value="high-contrast">high-contrast</option>
+  </select>
+</div>
+
+<script>
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+function showFrame(v, n, pill) {
+  document.querySelectorAll('#variant-' + v + ' .frame').forEach(f => f.classList.remove('on'));
+  document.getElementById(v + '-f' + n).classList.add('on');
+  const pills = document.querySelectorAll('#variant-' + v + ' .step-pill');
+  pills.forEach((p, i) => p.classList.toggle('on', i === n - 1));
+}
+function selTpl(el) {
+  el.closest('.tpl-grid').querySelectorAll('.tpl').forEach(t => t.classList.remove('sel'));
+  el.classList.add('sel');
+}
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+</script>
+</body>
+</html>
