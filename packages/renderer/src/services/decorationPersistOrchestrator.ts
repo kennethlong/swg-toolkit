@@ -26,10 +26,11 @@ import { createHash } from 'crypto';
 import { LIVE_DECORATION_REBIND_FLAGS } from '@swg/contracts';
 import type { DecorationCapture } from '@swg/contracts';
 
+import type { DetectedClient } from '@swg/contracts';
 import { assembleDecorationEdit, type DecorationEdit } from './decorationPersist';
 import { readVfsEntryBytes } from './readVfsEntryBytes';
 import { resolveOverrideDir } from './looseOverrideDeploy';
-import { scanForClients, addManualClient } from './clientLocator';
+import { detectClients } from './clientLocator';
 import { useTreStore } from '../state/treStore';
 import { useStagingStore } from '../state/stagingStore';
 import { log } from './logService';
@@ -44,33 +45,43 @@ const addon = require('@swg/live-inject') as {
 
 const overrideDirCache = new Map<string, string | null>();
 
+// Debug trace — the orchestrator runs inside the poll loop and its logStore/console output is
+// trapped in renderer memory; append key steps to a file so failures are inspectable off-app.
+const DEBUG_LOG = path.join(os.tmpdir(), 'swg-toolkit-decoration-debug.log');
+function dbg(line: string): void {
+  try { fs.appendFileSync(DEBUG_LOG, `${new Date().toISOString()}  ${line}\n`); } catch { /* ignore */ }
+}
+
 /**
- * Resolve the loose override dir of the client the exe belongs to. Tries a cheap walk up from the
- * exe directory (addManualClient finds a cfg beside the archives — standard installs), then falls
- * back to scanForClients() and an installPath-prefix match (decoupled dev clients, e.g. the
- * swg-client-v2 stage dirs). Cached — the drive scan must never run per-frame.
+ * Resolve the loose override dir of the client the exe belongs to. Uses detectClients() — the SAME
+ * detector the DeployDialog uses — which handles decoupled dev clients (swg-client-v2 stage builds:
+ * client.cfg + external TRE, no local .tre, so a bare resolveLayout walk misses them), then matches
+ * the running exe by longest installPath prefix. Cached — the scan must never run per-frame.
  */
 export function resolveRunningClientOverrideDir(clientExe: string): string | null {
   const cached = overrideDirCache.get(clientExe);
   if (cached !== undefined) return cached;
 
   let dir: string | null = null;
-  let d = path.dirname(clientExe);
-  for (let i = 0; i < 4 && dir === null; i++) {
-    const c = addManualClient(d);
-    if (c) dir = resolveOverrideDir(c.cfgRootPath, c.installPath);
-    d = path.dirname(d);
-  }
-  if (dir === null) {
-    const exeNorm = clientExe.replace(/\\/g, '/').toLowerCase();
-    try {
-      for (const c of scanForClients()) {
-        if (exeNorm.startsWith(c.installPath.replace(/\\/g, '/').toLowerCase())) {
-          dir = resolveOverrideDir(c.cfgRootPath, c.installPath);
-          break;
-        }
+  const exeNorm = clientExe.replace(/\\/g, '/').toLowerCase();
+  try {
+    const clients = detectClients();
+    dbg(`detectClients → ${clients.map((c) => c.installPath).join(' | ') || '(none)'}`);
+    let best: { c: DetectedClient; len: number } | null = null;
+    for (const c of clients) {
+      const inst = c.installPath.replace(/\\/g, '/').toLowerCase();
+      if ((exeNorm === inst || exeNorm.startsWith(`${inst}/`)) && (!best || inst.length > best.len)) {
+        best = { c, len: inst.length };
       }
-    } catch { /* scan failure → unresolved */ }
+    }
+    if (best) {
+      dir = resolveOverrideDir(best.c.cfgRootPath, best.c.installPath);
+      dbg(`matched ${best.c.installPath} (cfg ${best.c.cfgRootPath}) → overrideDir=${dir ?? 'null'}`);
+    } else {
+      dbg(`no client installPath is a prefix of exe ${exeNorm}`);
+    }
+  } catch (e) {
+    dbg(`resolveRunningClientOverrideDir threw: ${(e as Error).message}`);
   }
 
   overrideDirCache.set(clientExe, dir);
@@ -134,6 +145,8 @@ export function handleDecorationCapture(
   ctx: { mappingName: string; clientExe: string | null },
 ): void {
   const F = LIVE_DECORATION_REBIND_FLAGS;
+  dbg(`capture #${epoch}: clientExe=${ctx.clientExe ?? 'null'} bldg=${capture.buildingInstanceId} ` +
+      `bldgTmpl=${capture.buildingTemplateVfsPath} deco=${capture.decorationTemplateName}`);
   try {
     if (!ctx.clientExe) throw new Error('no client exe on the live session');
     const overrideDir = resolveRunningClientOverrideDir(ctx.clientExe);
@@ -151,8 +164,10 @@ export function handleDecorationCapture(
     const result = assembleDecorationEdit(edit, { readVfs: makeReadVfs(overrideDir), overrideDir });
     stageDurable(result.stagedEntries);
     addon.writeRebind(ctx.mappingName, epoch, capture.buildingInstanceId, result.derivedTemplateVfsPath, F.APPLY);
+    dbg(`capture #${epoch}: OK — row ${result.rowIndex}, derived ${result.derivedTemplateVfsPath}, APPLY sent`);
     log('info', 'log', `Decoration edit #${epoch}: assembled + rebind sent (row ${result.rowIndex}, ${result.derivedTemplateVfsPath}).`);
   } catch (e) {
+    dbg(`capture #${epoch}: ABORT — ${(e as Error).message}`);
     log('error', 'log', `Decoration edit #${epoch} failed: ${(e as Error).message}`);
     try { addon.writeRebind(ctx.mappingName, epoch, capture.buildingInstanceId, '', F.ABORT); } catch { /* channel gone */ }
   }
