@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 020 · In-Game Decoration HUD</title>
+<link rel="stylesheet" href="../themes/cyan.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--color-bg); color: var(--color-text);
+    font-family: var(--font-sans); font-size: var(--text-base);
+    padding-top: 46px; overflow-x: hidden;
+  }
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: var(--color-header); border-bottom: 1px solid var(--color-border);
+    padding: 8px 14px; display: flex; gap: 8px; align-items: center;
+  }
+  #variant-nav .ttl { font-size: var(--text-xs); color: var(--color-text-faint); margin-right: 8px; font-family: var(--font-mono); }
+  .variant-tab {
+    background: var(--color-widget); color: var(--color-text-muted);
+    border: 1px solid var(--color-border-soft); border-radius: var(--radius-sm);
+    font: 600 var(--text-sm)/1 var(--font-sans); padding: 6px 12px; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .variant-tab:hover { background: var(--color-widget-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+  .variant { display: none; }
+  .variant.active { display: block; }
+
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px 18px 90px; }
+  .pane-label {
+    font: 600 var(--text-xs)/1 var(--font-mono); color: var(--color-text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  /* ── fake in-game scene ─────────────────────────────────────────── */
+  .game {
+    position: relative; width: 960px; height: 560px; overflow: hidden;
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    background:
+      radial-gradient(ellipse 900px 300px at 50% 108%, #3a3226 0%, transparent 60%),
+      linear-gradient(180deg, #171310 0%, #221c15 46%, #2b241a 74%, #352c1f 100%);
+    box-shadow: var(--shadow-panel);
+    cursor: crosshair;
+  }
+  /* crude cantina props */
+  .prop { position: absolute; }
+  .table {
+    left: 430px; top: 300px; width: 150px; height: 64px;
+    background: radial-gradient(ellipse at 50% 32%, #6d6154 0%, #4a4038 58%, #332b23 100%);
+    border-radius: 50% / 42%; box-shadow: 0 18px 22px rgba(0,0,0,.45);
+  }
+  .seat { width: 62px; height: 100px; background: linear-gradient(180deg, #4b3d30 0%, #33291f 100%); border-radius: 6px 6px 3px 3px; box-shadow: 0 12px 16px rgba(0,0,0,.4); }
+  .seat.s1 { left: 300px; top: 260px; }
+  .seat.s2 { left: 640px; top: 268px; transform: scaleX(-1); }
+  .wall-band { position: absolute; left: 0; right: 0; top: 0; height: 180px; background: linear-gradient(180deg, rgba(70,58,44,.55), transparent); }
+
+  /* picked outline + gizmo */
+  .pick-ring {
+    position: absolute; left: 418px; top: 288px; width: 174px; height: 88px;
+    border: 1px solid rgba(56,190,201,.85); border-radius: 50% / 42%;
+    box-shadow: 0 0 12px rgba(56,190,201,.35), inset 0 0 12px rgba(56,190,201,.15);
+    pointer-events: none;
+  }
+  .gizmo { position: absolute; left: 505px; top: 330px; pointer-events: none; }
+  .gizmo .ax { position: absolute; width: 74px; height: 2px; transform-origin: 0 50%; }
+  .gizmo .ax.x { background: #e0584f; }
+  .gizmo .ax.y { background: #7ec94e; transform: rotate(-90deg); }
+  .gizmo .ax.z { background: #4a8cff; transform: rotate(150deg); }
+  .gizmo .ax::after { content: ''; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left-width: 9px; }
+  .gizmo .ax.x::after { border-left-color: #e0584f; }
+  .gizmo .ax.y::after { border-left-color: #7ec94e; }
+  .gizmo .ax.z::after { border-left-color: #4a8cff; }
+
+  /* ── ImGui-style chrome (in-game, not app-themed) ───────────────── */
+  .im { font-family: var(--font-mono); font-size: 12px; color: #dfe6e8; }
+  .im-panel {
+    background: rgba(16, 20, 22, 0.88); border: 1px solid rgba(120, 140, 145, 0.35);
+    border-radius: 3px; box-shadow: 0 4px 14px rgba(0,0,0,.5);
+  }
+  .im-title {
+    background: rgba(38, 66, 71, 0.9); padding: 4px 8px; font-weight: 700; font-size: 11px;
+    letter-spacing: .04em; display: flex; align-items: center; gap: 6px;
+  }
+  .im-btn {
+    display: inline-block; background: rgba(56,190,201,.18); border: 1px solid rgba(56,190,201,.5);
+    color: #9be8ee; padding: 3px 10px; border-radius: 2px; cursor: pointer; font: 700 11px var(--font-mono);
+    transition: background .12s ease;
+  }
+  .im-btn:hover { background: rgba(56,190,201,.32); }
+  .im-btn.warn { background: rgba(224,161,58,.15); border-color: rgba(224,161,58,.5); color: #f0c987; }
+  .im-btn.ghost { background: transparent; border-color: rgba(120,140,145,.35); color: #9fb3b8; }
+  .im-key { background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.18); border-radius: 2px; padding: 0 5px; font-size: 10px; color: #b9c6c9; }
+  .im-status-ok { color: #7ee0a3; }
+  .im-status-warn { color: #f0c987; }
+  .im-status-err { color: #f0938b; }
+  .im-dim { color: #7d9095; }
+
+  /* A: status strip */
+  .strip {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 12px; padding: 5px 12px;
+  }
+
+  /* B: compact card */
+  .card { position: absolute; top: 60px; right: 14px; width: 252px; }
+  .card .body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .card .kv { display: flex; justify-content: space-between; gap: 8px; }
+
+  /* C: contextual callout */
+  .callout { position: absolute; left: 600px; top: 232px; }
+  .callout .stem { position: absolute; left: -14px; top: 34px; width: 14px; height: 1px; background: rgba(56,190,201,.7); }
+  .co-toast { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); padding: 5px 12px; }
+
+  #toast {
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--color-header-2); border: 1px solid var(--color-accent-line);
+    color: var(--color-text); border-radius: var(--radius-md); padding: 9px 16px;
+    font-size: var(--text-sm); opacity: 0; transition: all .25s ease; z-index: 9999; pointer-events: none;
+    box-shadow: var(--shadow-pop);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  #sketch-tools {
+    position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui; font-size: 12px;
+    background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 8px;
+    opacity: 0.4; transition: opacity 0.2s; display: flex; gap: 8px; align-items: center;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select { background: #222; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 2px 6px; }
+  .state-cycle { display: flex; gap: 8px; }
+  .state-cycle .btn {
+    background: var(--color-widget); color: var(--color-text-muted); border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-sm); font: 600 var(--text-xs)/1 var(--font-sans); padding: 5px 10px; cursor: pointer;
+  }
+  .state-cycle .btn.on { background: var(--color-accent-dim); color: var(--color-accent); border-color: var(--color-accent-line); }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="ttl">SKETCH 020 · IN-GAME DECORATION HUD (replaces the CONSULT-69 probe)</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Status Strip ★ Selected</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Compact Card</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Contextual Callout</button>
+  <span style="margin-left:auto;font-size:11px;color:var(--color-text-faint)">ImGui in-game · deliberately thin — pick + gizmo + persist only</span>
+</div>
+
+<!-- ═══════ VARIANT A ═══════ -->
+<div id="variant-a" class="variant active">
+  <div class="stage">
+    <div class="pane-label">Variant A — one thin strip, top-center · everything else is hotkeys + gizmo</div>
+    <div class="game" onclick="toast('(sketch) hover-pick follows the cursor in the real overlay')">
+      <div class="wall-band"></div>
+      <div class="prop seat s1"></div><div class="prop seat s2"></div><div class="prop table"></div>
+      <div class="pick-ring"></div>
+      <div class="gizmo"><div class="ax x"></div><div class="ax y"></div><div class="ax z"></div></div>
+
+      <div class="strip im im-panel" id="a-strip">
+        <span id="a-obj"><b>Cantina Table</b> <span class="im-dim">· alcove1 · Cantina (Mos Eisley)</span></span>
+        <span id="a-state" class="im-status-warn">ARMED Δ −0.87, 0.00, +0.63</span>
+        <span class="im-btn" onclick="persistA(this)">Persist</span>
+        <span class="im-btn ghost" onclick="setStateA('hover')">Esc</span>
+        <span class="im-dim"><span class="im-key">F</span> arm · <span class="im-key">G/R</span> move/rotate</span>
+      </div>
+    </div>
+    <div class="state-cycle">
+      <span style="font-size:11px;color:var(--color-text-faint);align-self:center">states:</span>
+      <button class="btn" onclick="setStateA('idle')">idle</button>
+      <button class="btn" onclick="setStateA('hover')">hover</button>
+      <button class="btn on" onclick="setStateA('armed')">armed</button>
+      <button class="btn" onclick="setStateA('saved')">saved</button>
+      <button class="btn" onclick="setStateA('failed')">failed</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ VARIANT B ═══════ -->
+<div id="variant-b" class="variant">
+  <div class="stage">
+    <div class="pane-label">Variant B — compact card, right edge · collapsible to a title bar</div>
+    <div class="game">
+      <div class="wall-band"></div>
+      <div class="prop seat s1"></div><div class="prop seat s2"></div><div class="prop table"></div>
+      <div class="pick-ring"></div>
+      <div class="gizmo"><div class="ax x"></div><div class="ax y"></div><div class="ax z"></div></div>
+
+      <div class="card im im-panel" id="b-card">
+        <div class="im-title" onclick="document.getElementById('b-body').style.display = document.getElementById('b-body').style.display === 'none' ? '' : 'none'">
+          ◈ WORLD EDIT <span class="im-dim" style="margin-left:auto">▾</span>
+        </div>
+        <div class="body" id="b-body">
+          <div class="kv"><span class="im-dim">pick</span><span><b>Cantina Table</b></span></div>
+          <div class="kv"><span class="im-dim">cell</span><span>alcove1 · row 3</span></div>
+          <div class="kv"><span class="im-dim">building</span><span>Cantina (Mos Eisley)</span></div>
+          <div class="kv"><span class="im-dim">state</span><span class="im-status-warn" id="b-state">ARMED</span></div>
+          <div class="kv"><span class="im-dim">Δ cell</span><span id="b-delta">−0.87, 0.00, +0.63</span></div>
+          <div style="display:flex; gap:6px; margin-top:2px">
+            <span class="im-btn" style="flex:1; text-align:center" onclick="persistB(this)">Persist</span>
+            <span class="im-btn ghost" onclick="toast('Cancelled — gizmo released')">Cancel</span>
+          </div>
+          <div class="im-dim" id="b-status" style="min-height:14px">mirror: per-template · toolkit connected</div>
+        </div>
+      </div>
+    </div>
+    <div class="pane-label" style="max-width:700px; text-transform:none; letter-spacing:0">
+      The title bar stays put when collapsed — the card only expands while a pick/arm is active. Status
+      line carries the toolkit-side result verdict in words ("saved", "derived template missing"), never codes.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ VARIANT C ═══════ -->
+<div id="variant-c" class="variant">
+  <div class="stage">
+    <div class="pane-label">Variant C — label anchored to the picked object; results as a bottom toast</div>
+    <div class="game">
+      <div class="wall-band"></div>
+      <div class="prop seat s1"></div><div class="prop seat s2"></div><div class="prop table"></div>
+      <div class="pick-ring"></div>
+      <div class="gizmo"><div class="ax x"></div><div class="ax y"></div><div class="ax z"></div></div>
+
+      <div class="callout im im-panel">
+        <div class="stem"></div>
+        <div style="padding:6px 9px">
+          <div><b>Cantina Table</b> <span class="im-dim">alcove1 · row 3</span></div>
+          <div style="display:flex; gap:6px; margin-top:6px">
+            <span class="im-btn" onclick="persistC(this)">Persist</span>
+            <span class="im-btn warn" onclick="toast('Armed — move it with the gizmo')">Arm</span>
+            <span class="im-btn ghost" onclick="toast('Released')">✕</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="co-toast im im-panel" id="c-toast">
+        <span class="im-status-ok">✓ saved</span> <span class="im-dim">Cantina Table — snapshot written · mirror updated</span>
+      </div>
+    </div>
+    <div class="pane-label" style="max-width:700px; text-transform:none; letter-spacing:0">
+      Zero fixed chrome: the callout exists only while something is picked; persist results appear as a
+      transient bottom toast. Closest to "the world is the UI" — but nothing persists on screen to glance at.
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="sketch-tools">
+  <span>theme</span>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'">
+    <option value="cyan" selected>cyan</option>
+    <option value="default">green</option>
+    <option value="amber">amber</option>
+    <option value="blue">blue</option>
+    <option value="high-contrast">high-contrast</option>
+  </select>
+</div>
+
+<script>
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function setStateA(s) {
+  const obj = document.getElementById('a-obj'), st = document.getElementById('a-state');
+  document.querySelectorAll('#variant-a .state-cycle .btn').forEach(b => b.classList.toggle('on', b.textContent === s));
+  if (s === 'idle')  { obj.innerHTML = '<span class="im-dim">hover a decoration to pick it</span>'; st.textContent = ''; }
+  if (s === 'hover') { obj.innerHTML = '<b>Cantina Table</b> <span class="im-dim">· alcove1 · Cantina (Mos Eisley)</span>'; st.innerHTML = '<span class="im-dim">press <span class="im-key">F</span> to arm</span>'; }
+  if (s === 'armed') { obj.innerHTML = '<b>Cantina Table</b> <span class="im-dim">· alcove1 · Cantina (Mos Eisley)</span>'; st.innerHTML = '<span class="im-status-warn">ARMED Δ −0.87, 0.00, +0.63</span>'; }
+  if (s === 'saved') { st.innerHTML = '<span class="im-status-ok">✓ saved — snapshot written · mirror updated</span>'; }
+  if (s === 'failed'){ st.innerHTML = '<span class="im-status-err">✗ rebind refused — derived template missing (see World panel)</span>'; }
+}
+function persistA(btn) { flashPersist(btn, () => setStateA('saved')); }
+function persistB(btn) {
+  flashPersist(btn, () => {
+    document.getElementById('b-state').innerHTML = '<span class="im-status-ok">SAVED</span>';
+    document.getElementById('b-status').innerHTML = '<span class="im-status-ok">✓ snapshot written · mirror updated</span>';
+  });
+}
+function persistC(btn) {
+  flashPersist(btn, () => {
+    const t = document.getElementById('c-toast');
+    t.style.transition = 'opacity .2s'; t.style.opacity = '1';
+    setTimeout(() => t.style.opacity = '0.25', 2600);
+  });
+}
+function flashPersist(btn, done) {
+  const prev = btn.textContent; btn.textContent = '…';
+  setTimeout(() => { btn.textContent = prev; done(); }, 700);
+}
+</script>
+</body>
+</html>
