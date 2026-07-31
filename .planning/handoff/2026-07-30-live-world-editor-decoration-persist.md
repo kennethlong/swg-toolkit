@@ -1,18 +1,58 @@
-# Live World Editor — model-D interior-decoration persistence (built + proven live; 1 provider blocker)
+# Live World Editor — model-D interior-decoration persistence ✅ DONE — proven end-to-end live 2026-07-30
 
-**Date:** 2026-07-30 · **Workstream:** Live World Editor, decoration-persist round trip. **Branch:** `main`,
-all pushed, HEAD `826b8ed`. Supersedes `2026-07-19-phase05-closed-pivot-to-live-world-editor.md`.
+**Date:** 2026-07-30 (closed same night ~21:07) · **Workstream:** Live World Editor, decoration-persist
+round trip. **Branch:** `main`. Supersedes `2026-07-19-phase05-closed-pivot-to-live-world-editor.md`.
 
-## TL;DR
+## TL;DR — CLOSED
 
-The **entire model-D interior-decoration persistence pipeline is BUILT, WIRED, and PROVEN LIVE end-to-end**,
-blocked on **ONE** thing: resolving the containing **building's `.ws` node id** in-game. Request filed +
-consumer **pre-wired** — it lights up on the next provider exe restage with **no toolkit rebuild**.
+**The full model-D loop WORKS, verified at every layer** (2026-07-31T02:07Z): hover cantina table → Arm
+(v25 `getContainingBuildingId` → 1082874) → gizmo move → Persist → assembly (edited `.ilf` alcove1[3] +
+derived `object/building/toolkit/edit_1082874.iff`) → rebind **code 0**
+(`[editor.ws] wsSetNodeTemplateName OK: stock -> derived`) → `wsSaveSnapshot` OK → saved `.ws`
+byte-verified (derived name interned, building's 16 id refs survived) → **scene reload: table visibly
+holds its moved position**. Three provider ships in one night: v25 shim → self-test/crash triage →
+the authored-row erase fix (below — a real engine bug our byte-evidence convicted).
+
+## The night's three root-causes (for the record)
+
+1. **Stale override snapshot** — `stage/override/snapshot/tatooine.ws` from the 7/19 tombstone experiment
+   (cantina subtree absent) shadowed stock at top priority; renamed aside, then **resurrected by the
+   provider's `wsSelfTestSaveOnLoad=1` cfg key** (armed since 7/19, wrote override on EVERY load — now
+   disarmed provider-side; drifted copy deleted, stock baseline restored).
+2. **Orphaned accumulated `.ilf`** — a failed rebind left `interiorlayout/toolkit/edit_1082874.ilf` whose
+   rows no longer matched the live (stock) world → assembler now **falls back to stock** + full tracing
+   (`decorationPersist.ts`, regression-tested).
+3. **The real engine bug** (provider HANDBACK `wsSetNodeTemplateName-authored-fix`): `GroundScene`'s
+   SceneCreateObject server-replacement path called `WorldSnapshot::removeObject` when the server streamed
+   a POB the snapshot had spawned — **erasing the authored row mid-session on every hybrid session**
+   (also: saves silently dropped that building; id allocator saw the id as free). Fixed via new
+   `suppressObject` (sphere-handle only, authored data survives). No contract change (v25/147).
 
 Model D = edit an in-cell `.ilf` decoration live, persist it as pure data: write an edited `.ilf` + a derived
 building template (copy of the stock building `.iff` with only `interiorLayoutFileName` re-pointed) into the
 client's loose override dir, then `wsSetNodeTemplateName(buildingId, derivedTemplate)` + `wsSaveSnapshot` so
 that ONE building instance loads the edited interior. See [[reference-model-d-building-id-resolution]].
+
+## Remaining follow-ups (non-blocking)
+
+- **Agent result-mapping fix (owed):** `overlay.cpp:468-471` — provider return `-1` ("refused":
+  template-missing / buildout node) falls through into the `wsSaveSnapshot` path → can report a FALSE
+  save-result (even 0). Add an explicit `reb == -1` → refused branch; also split "endpoint unresolved"
+  from NODE_NOT_FOUND (both map to -1 today). Needs agent rebuild.
+- ~~**P1 probe:** same-session double-edit accumulation~~ **PROVEN LIVE 2026-07-31** — maintainer stacked
+  several moves on the same table; accumulation + the stock-path mirror held across all of them.
+- **Per-template mirror shipped 2026-07-31** (`mirrorToStockIlf`, orchestrator default ON): edited `.ilf`
+  also shadows the STOCK ilf path → edits visible in-game on hybrid server sessions (server re-streams
+  stock template; client reads the layout locally). Scope: per-TEMPLATE (all instances of that layout).
+  Staged as `'modify'`. Future: UI toggle + per-instance parity via server-side template repoint.
+- **Editor-scene verify:** hybrid reload already showed the edit visibly, but the provider's §4 canonical
+  visible-verify context is an editor scene (`game::loadScene`) — worth one pass.
+- Debug trace (`%TEMP%\swg-toolkit-decoration-debug.log` + new assembly tracing) — keep while iterating,
+  gate before sign-off. Provider open item: per-save-cycle `.ws` size drift (~20KB).
+- Uncommitted toolkit changes this session: stock-fallback + logging in `decorationPersist.ts`,
+  orchestrator log wiring, regression test. Commit when the maintainer says.
+
+## ── Historical (the resolved blocker, kept for context) ──
 
 ## The blocker (the only thing left)
 
