@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: ready_to_plan
-stopped_at: "05-12 Task 1 (GC-pressure soak test) complete and committed (d141373). Task 2 checkpoint:human-verify (gate=blocking, maintainer in-world UAT) PENDING -- not yet run. Phase 05 (12/12 plans) does NOT close until Task 2 is approved."
-last_updated: "2026-07-15T19:55:58.708Z"
-last_activity: 2026-07-15
+stopped_at: "Phase 05 CLOSED 2026-07-19 (see handoff 2026-07-19-phase05-closed-pivot-to-live-world-editor). Off-roadmap live-world-editor pivot (model-D interior-decoration persistence) CLOSED end-to-end 2026-07-31 (handoff 2026-07-30-live-world-editor-decoration-persist, HEAD 2023fbc). Current focus: productize the live world editor (sketch-first), then roadmap Phase 6 (Blender Bridge)."
+last_updated: "2026-07-31T18:30:00.000Z"
+last_activity: 2026-07-31
 progress:
   total_phases: 13
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 85
-  completed_plans: 84
-  percent: 77
+  completed_plans: 85
+  percent: 85
 ---
 
 # Project State
@@ -21,24 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Phase 05 — wysiwyg-live-sync-typed-editors
+**Current focus:** Productize the live world editor (off-roadmap continuation of the model-D pivot), then Phase 6 — Blender Bridge.
 
 ## Current Position
 
-Phase: 6
+Phase: 6 (roadmap) — deferred behind the live-world-editor productize pass
 Plan: Not started
 Status: Ready to plan
-        05-08 completed the DTII grid editor end-to-end: SchemaRail (Schema·COLS/TYPE,
-        Selected row, Round-trip gate), the real Hex view (byte-accurate highlight sourced
-        directly from 05-02's per-cell offsets, no re-derivation), Save·run gate/＋Stage
-        wired to the actual native round-trip (pass stages, fail never does, T-05-21), and
-        editorTabs.openEditorTab opening the editor as a real main-editor-group dockview
-        tab from a VfsTree double-click. DatatablePanel.tsx placeholder retired
-        (LAYOUT_VERSION 3→4). DATA-01 requirement complete.
-Next: 05-09 (.stf strings editor — reuses editorTabs.openEditorTab + GateBar/FailBanner
-      unchanged per this plan's readiness notes), then 05-10/11/12 (viewport gizmo +
-      live-sync HUD, LIVE-03).
-Last activity: 2026-07-19
+        Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
+        off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
+        verified live 2026-07-30/31: hover-pick → Arm → gizmo move → Persist → .ilf edit +
+        derived building template → wsSetNodeTemplateName rebind (code 0) → wsSaveSnapshot
+        → byte-verified .ws → visible in-game (stock-path mirror on hybrid sessions) and in
+        the offline editor scene (per-instance path). Three provider ships in one night
+        (v25 getContainingBuildingId; save-on-load disarm; GroundScene authored-row-erase
+        fix). Full story: .planning/handoff/2026-07-30-live-world-editor-decoration-persist.md.
+Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decoration-editor
+      panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
+      decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
+      (Blender Bridge).
+Last activity: 2026-07-31
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
