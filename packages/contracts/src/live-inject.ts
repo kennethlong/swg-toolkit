@@ -313,6 +313,7 @@ export const LIVE_DECORATION_RESULT = {
   BUILDING_ID_MISMATCH: -2, // REBIND_BUILDING_ID != the captured id
   ABORTED:            -3,  // host sent ABORT
   NOT_A_WS_NODE:      -4,  // building is server-streamed / buildout, not a client .ws node (invariant 2)
+  REBIND_REFUSED:     -5,  // wsSetNodeTemplateName returned -1 (empty name / buildout node / template unresolvable) — save NOT attempted
 } as const;
 
 // ---------------------------------------------------------------------------

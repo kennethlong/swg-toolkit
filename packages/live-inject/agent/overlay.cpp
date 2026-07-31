@@ -49,6 +49,7 @@ namespace swg { namespace endpoints {
     typedef void*(__cdecl*    pCollideScreenRayObject)(int, int, int);
     typedef int(__cdecl*      pGetObjectTransformO2P)(void* object, float* out12);
     typedef int64_t(__cdecl*  pGetContainingBuildingId)(void* object);
+    typedef void(__cdecl*     pGameLoadScene)(const char* terrainFilename, const char* playerFilename);
     typedef void*(__cdecl*    pGetObjectById)(const void* networkId);
     typedef void(__cdecl*     pWsLoad)(const char* sceneName);
     typedef int(__cdecl*      pWsSetNodeTemplateName)(int64_t id, const char* name); // v23 model-D rebind
@@ -71,6 +72,7 @@ namespace swg { namespace endpoints {
     extern pCollideScreenRayObject collideScreenRayObject;
     extern pGetObjectTransformO2P getObjectTransformO2P;
     extern pGetContainingBuildingId getContainingBuildingId;
+    extern pGameLoadScene     gameLoadScene;
     extern pGetObjectById     getObjectByIdAdvertised;
     extern pWsLoad            wsLoad;
     extern pWsVoid            wsUnloadSnapshot;
@@ -467,6 +469,11 @@ void applyPendingRebind() {
             static_cast<int64_t>(rb.buildingId), rb.derivedTemplate);
         if (reb == 0) {
             code = DECO_RESULT_NODE_NOT_FOUND;           // node id didn't resolve (server-streamed / bad id)
+        } else if (reb < 0) {
+            // Provider -1 = refused (empty name / buildout-provenance node / template unresolvable).
+            // MUST NOT fall through to the save path: nothing was rebound, and a save result here
+            // would masquerade as the rebind outcome (even a false OK).
+            code = DECO_RESULT_REBIND_REFUSED;
         } else if (swg::endpoints::wsSaveSnapshot) {
             code = static_cast<int32_t>(swg::endpoints::wsSaveSnapshot());  // 0 ok / 1..6 save reason
         } else {
@@ -784,6 +791,43 @@ void renderFrame() {
             if (ImGui::Button("Load##scene") && s_sceneName[0] != '\0') {
                 if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
                 swg::endpoints::wsLoad(s_sceneName);
+            }
+        }
+
+        // --- Editor scene (offline, single-player): game::loadScene builds a FULL scene via the
+        //     SceneCreator lifecycle with no server session, so the snapshot layer spawns every
+        //     building itself — the canonical context to SEE a model-D rebind (derived template +
+        //     edited .ilf) in-world, free of the hybrid server-stream replacement (§4). ---
+        if (swg::endpoints::gameLoadScene) {
+            ImGui::Separator();
+            ImGui::TextDisabled("Editor scene (OFFLINE single-player — replaces any live session!)");
+            static char s_edTerrain[128] = "terrain/tatooine.trn";
+            static char s_edPlayer[160]  = "object/creature/player/shared_human_male.iff";
+            ImGui::InputText("Terrain##edscene", s_edTerrain, sizeof(s_edTerrain));
+            ImGui::InputText("Avatar##edscene",  s_edPlayer,  sizeof(s_edPlayer));
+            if (ImGui::Button("Load editor scene") && s_edTerrain[0] != '\0' && s_edPlayer[0] != '\0') {
+                swg::endpoints::gameLoadScene(s_edTerrain, s_edPlayer);
+            }
+        }
+
+        // --- Teleport player (identity rotation, world coords). The offline editor scene drops the
+        //     avatar at the engine default; this jumps straight to the verify site. Same 12-float
+        //     row-major 3x4 write the gizmo uses. Default = Mos Eisley cantina front door (approx;
+        //     tweak Y if you land under/over terrain). ---
+        if (swg::endpoints::getPlayer && swg::endpoints::setTransform_o2w) {
+            static float s_tpPos[3] = { 3428.0f, 8.0f, -4788.0f };
+            ImGui::InputFloat3("Teleport x/y/z", s_tpPos, "%.1f");
+            ImGui::SameLine();
+            if (ImGui::Button("Go##teleport")) {
+                void* player = swg::endpoints::getPlayer();
+                if (player) {
+                    const float t[12] = {
+                        1.0f, 0.0f, 0.0f, s_tpPos[0],
+                        0.0f, 1.0f, 0.0f, s_tpPos[1],
+                        0.0f, 0.0f, 1.0f, s_tpPos[2],
+                    };
+                    swg::endpoints::setTransform_o2w(player, t);
+                }
             }
         }
         ImGui::Separator();

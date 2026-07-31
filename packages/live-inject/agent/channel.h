@@ -129,6 +129,7 @@ static constexpr int32_t DECO_RESULT_NODE_NOT_FOUND       = -1;
 static constexpr int32_t DECO_RESULT_BUILDING_ID_MISMATCH = -2;
 static constexpr int32_t DECO_RESULT_ABORTED              = -3;
 static constexpr int32_t DECO_RESULT_NOT_A_WS_NODE        = -4;
+static constexpr int32_t DECO_RESULT_REBIND_REFUSED       = -5;  // provider -1: empty name / buildout node / template unresolvable
 
 // ---------------------------------------------------------------------------
 // LiveCommand — plain-data snapshot of one command-region read

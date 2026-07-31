@@ -308,6 +308,16 @@ pGetObjectTransformO2P getObjectTransformO2P = nullptr;
 typedef int64_t(__cdecl* pGetContainingBuildingId)(void* object);
 pGetContainingBuildingId getContainingBuildingId = nullptr;
 
+// --- Editor scene load (advertised 2026-06-25, engine_advertise.cpp:321). FULL offline
+//     scene-load via the SceneCreator lifecycle: sets Game::setSinglePlayer(true) then
+//     Game::setScene(true, terrain, player, nullptr). No server session -> the snapshot layer
+//     spawns every building itself (no SceneCreateObject replacement), which is the canonical
+//     context to SEE a model-D rebind (derived template + edited .ilf) in-world.
+//     ⚠ Swaps the scene: never call while a live server session should be preserved.
+//     playerFilename must be a loadable object template or GroundScene::ctor FATALs. ---
+typedef void(__cdecl* pGameLoadScene)(const char* terrainFilename, const char* playerFilename);
+pGameLoadScene gameLoadScene = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -346,7 +356,8 @@ Binding g_agentBindings[] = {
     {"clientWorld::collideScreenRay",       (void**)&collideScreenRay},
     {"clientWorld::collideScreenRayObject", (void**)&collideScreenRayObject}, // v22: borrowed Object* pick
     {"object::getTransformO2P",             (void**)&getObjectTransformO2P},   // v24: copy-out o2p (last model-D accessor)
-    {"object::getContainingBuildingId",     (void**)&getContainingBuildingId}, // REQUEST 2026-07-30: cell→building (pending)
+    {"object::getContainingBuildingId",     (void**)&getContainingBuildingId}, // v25 handback 2026-07-30: cell→building (proven live)
+    {"game::loadScene",                     (void**)&gameLoadScene},           // offline editor scene (single-player; model-D visible-verify context)
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 
