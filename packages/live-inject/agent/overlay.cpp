@@ -537,7 +537,11 @@ void renderFrame() {
                 }
             }
         }
-        if (g_followHover && g_latchedFocus != nullptr && !g_gizmoWasUsing && g_lastHoverObj != nullptr) {
+        // NOT while a decoration edit is armed — the armed decoration (a ray-object latch) is the
+        // deliberate target; follow-hover keys on the HUD pick (g_lastHoverObj), which for an
+        // id-less .ilf decoration is the last TANGIBLE hovered (a chair), and would yank the gizmo
+        // off the armed table back onto that chair every frame.
+        if (g_followHover && !g_capArmed && g_latchedFocus != nullptr && !g_gizmoWasUsing && g_lastHoverObj != nullptr) {
             g_latchedFocus = g_lastHoverObj;
         }
     }
