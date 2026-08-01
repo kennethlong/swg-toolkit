@@ -393,9 +393,9 @@ Plans:
 - [ ] 05.1-02-PLAN.md — Per-project settings: WorkspaceBindingMeta mirrorToStockIlf + worldEditorBookmarks, projectBinding helpers
 - [ ] 05.1-03-PLAN.md — Channel contract extension: CAPTURE kind/cellName (ADD identity) + new unified LIVE_HOST_CMD region (scene actions, placement start/cancel, despawn)
 - [ ] 05.1-04-PLAN.md — worldEditorScan.ts (disk-scan-as-truth building tree) + worldEditorStore.ts (session overlay + history + badge)
-- [ ] 05.1-05-PLAN.md — Agent HUD rewrite (020-A Status Strip): retire CONSULT-69, F/G/R hotkey capture, verify-wire shipped REBIND_REFUSED/editor-scene ride-alongs [autonomous: false]
 
 **Wave 1** *(blocked on Wave 0)*
+- [ ] 05.1-05-PLAN.md — Agent HUD rewrite (020-A Status Strip): retire CONSULT-69, F/G/R hotkey capture, verify-wire shipped REBIND_REFUSED/editor-scene ride-alongs [autonomous: false]
 - [ ] 05.1-06-PLAN.md — Orchestrator: thread mirrorToStockIlf + reconcileMirrorMode (D-09) + capture.kind=add branch
 - [ ] 05.1-07-PLAN.md — Native HOST_CMD channel: agent read+ack (channel.cpp) + host N-API write export (channel_binding.cpp/addon.cpp)
 
