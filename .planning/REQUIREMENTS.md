@@ -79,9 +79,14 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 ### Server Parity (SRV)
 - [ ] **SRV-01**: User can sync client datatable changes to Core3/SWGEmu Lua templates with a parity audit reporting zero drift.
 
+### Guided Workflows (WF) — *maintainer-originated: AI-driven mod wizards*
+- [ ] **WF-01**: Guided workflows for the top mod archetypes (texture reskin, mod packaging + per-server policy check, …), fully operable **without AI** (tier A). Includes the keystone **asset-discovery resolver** (template → appearance chain → `.sht` → `.dds`) every wizard reuses, and per-server legality as a first-class concept.
+- [ ] **WF-02**: Workflows exposed through the MCP server so an external agent the user already owns (Claude Code/Cursor/Copilot) can drive a wizard — with **human-custody confirmation** (the agent's `workflow.confirm` *requests*; the grant comes from the user in the toolkit; no self-approval past a deploy/live-write boundary).
+
 ### AI & MCP (AI)
-- [ ] **AI-01**: The toolkit exposes its capabilities as an MCP server (read-only resources + confirmation-gated write tools).
+- [ ] **AI-01**: The toolkit exposes its capabilities as an MCP server (read-only resources + confirmation-gated write tools). *(The `workflow.*` slice + tiers B/C land earlier in Phase 5.2 per WF-02/AI-03; AI-01 here broadens the surface to the full backend service set.)*
 - [ ] **AI-02**: AI assists where it adds value (e.g. natural-language datatable queries, mocap→`.ans`, format reverse-engineering aid) — advisory, with diff/preview before any write.
+- [ ] **AI-03**: An optional embedded agent with user-supplied credentials (BYO key / Claude subscription) can drive any workflow, stopping at every confirmation boundary; everything still works with AI absent. *(Tier-C SDK/OAuth specifics verified against the current Claude API reference at build time.)*
 
 ---
 
@@ -106,7 +111,7 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 
 ## Traceability
 
-*Every v1 requirement maps to exactly one phase. Coverage: 44/44 (100%).*
+*Every v1 requirement maps to exactly one phase. Coverage: 47/47 (100%).*
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
@@ -151,6 +156,9 @@ Derived from `PROJECT.md`, the `docs/` design library, and `.planning/research/`
 | FMT-04 | Phase 7 | Pending |
 | FMT-05 | Phase 7 | Pending |
 | FMT-06 | Phase 7 | Pending |
+| WF-01 | Phase 5.2 | Pending |
+| WF-02 | Phase 5.2 | Pending |
+| AI-03 | Phase 5.2 | Pending |
 | SRV-01 | Phase 8 | Pending |
 | AI-01 | Phase 8 | Pending |
 | AI-02 | Phase 8 | Pending |

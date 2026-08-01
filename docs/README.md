@@ -5,6 +5,8 @@ A modern, open-source, all-in-one modding suite for **Star Wars Galaxies (SWG)**
 This `docs/` tree is the **AI-readable specification and reference** for planning and building the toolkit. It was distilled and reorganized from a large stream-of-consciousness research session (`SWG assets editor research.txt`) into structured, code-preserving reference documents.
 
 > ⚠️ **Read [`00-overview/source-provenance.md`](00-overview/source-provenance.md) first.** The source material is AI-generated (Gemini). Code samples and especially **binary format/struct layouts are AI-proposed designs**, not verified ground truth. Validate every format detail against the real `swg-client-v2`, `swg-main`, `Core3`, and existing community tools before implementing.
+>
+> ✅ **Exception — the one ground-truth-verified reference:** [`02-formats/asset-format-census-and-editing-guide.md`](02-formats/asset-format-census-and-editing-guide.md) is loader-by-loader verified against real `swg-client-v2` engine source (file:line citations) plus a full client-TOC census. Trust it over the Gemini docs where they disagree; its §12 collects corrections to older docs in this tree. Companion: [`09-ai-mcp/guided-workflows-and-ai-layer.md`](09-ai-mcp/guided-workflows-and-ai-layer.md) (guided-wizard design proposal).
 
 ---
 
