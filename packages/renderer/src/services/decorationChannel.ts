@@ -84,6 +84,7 @@ export function decorationResultLabel(code: number): string {
     case LIVE_DECORATION_RESULT.BUILDING_ID_MISMATCH: return 'rebind refused: building id mismatch';
     case LIVE_DECORATION_RESULT.ABORTED: return 'aborted';
     case LIVE_DECORATION_RESULT.NOT_A_WS_NODE: return 'rebind refused: not a client .ws node';
+    case LIVE_DECORATION_RESULT.REBIND_REFUSED: return 'rebind refused: template unresolvable or buildout-provenance node';
     default: return `unknown result (${code})`;
   }
 }
