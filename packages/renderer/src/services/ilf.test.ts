@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex, resolveNode, type IlfNode } from './ilf';
+import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex, resolveNode, addNode, removeNode, type IlfNode } from './ilf';
 
 const identity: number[] = [1, 0, 0, 10, 0, 1, 0, 20, 0, 0, 1, 30]; // rot=I, pos=(10,20,30)
 
@@ -138,5 +138,90 @@ describe('resolveNode (pick → cellName + rowIndex, cell UNKNOWN)', () => {
 describe('parseIlf validation', () => {
   it('rejects a non-INLY buffer', () => {
     expect(() => parseIlf(Buffer.from('not an ilf at all!!'))).toThrow();
+  });
+});
+
+describe('addNode', () => {
+  const newNode: IlfNode = {
+    objectTemplateName: 'object/tangible/furniture/shared_frn_stool.iff',
+    cellName: 'cell1',
+    transform: [1, 0, 0, 11, 0, 1, 0, 22, 0, 0, 1, 33],
+  };
+
+  it('appends a new node at the end, returns a NEW array, does not mutate input', () => {
+    const out = addNode(sample, newNode);
+    expect(out).not.toBe(sample);
+    expect(out.length).toBe(sample.length + 1);
+    expect(out[out.length - 1]).toEqual(newNode);
+    expect(out[out.length - 1]).not.toBe(newNode); // cloned, not aliased
+    expect(sample.length).toBe(3); // input not mutated
+  });
+
+  it('never mutates newNode.transform', () => {
+    const transformCopy = [...newNode.transform];
+    addNode(sample, newNode);
+    expect(newNode.transform).toEqual(transformCopy);
+  });
+
+  it("appended node's within-cell rowIndex is the count of prior nodes sharing its cellName", () => {
+    // cell1 already has 2 nodes (table@0, chair@1) — appended node should resolve to rowIndex 2.
+    const out = addNode(sample, newNode);
+    expect(resolveRowIndex(out, 'cell1', newNode.objectTemplateName, newNode.transform)).toBe(2);
+    expect(resolveNode(out, newNode.objectTemplateName, newNode.transform)).toEqual({ cellName: 'cell1', rowIndex: 2 });
+  });
+
+  it('appending into a brand-new cell resolves to rowIndex 0', () => {
+    const brandNew: IlfNode = { objectTemplateName: 'object/tangible/furniture/shared_frn_rug.iff', cellName: 'cell3', transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] };
+    const out = addNode(sample, brandNew);
+    expect(resolveRowIndex(out, 'cell3', brandNew.objectTemplateName, brandNew.transform)).toBe(0);
+  });
+
+  it('never throws (append is always valid)', () => {
+    expect(() => addNode([], newNode)).not.toThrow();
+    expect(() => addNode(sample, newNode)).not.toThrow();
+  });
+
+  it('serializeIlf(addNode(...)) round-trips byte-stable through parseIlf -> serializeIlf', () => {
+    const added = addNode(sample, newNode);
+    const buf1 = serializeIlf(added);
+    const buf2 = serializeIlf(parseIlf(buf1));
+    expect(buf2.equals(buf1)).toBe(true);
+    // and recovers the appended node at the correct rowIndex after a round-trip
+    const reparsed = parseIlf(buf1);
+    expect(resolveRowIndex(reparsed, 'cell1', newNode.objectTemplateName, newNode.transform)).toBe(2);
+  });
+});
+
+describe('removeNode', () => {
+  it('removes exactly the target (cellName, rowIndex) node, leaves siblings unchanged', () => {
+    // remove the chair (cell1, rowIndex 1)
+    const out = removeNode(sample, 'cell1', 1);
+    expect(out.length).toBe(sample.length - 1);
+    expect(out).not.toBe(sample);
+    expect(out.map((n) => n.objectTemplateName)).toEqual([sample[0].objectTemplateName, sample[2].objectTemplateName]);
+    expect(out[0]).toEqual(sample[0]); // table untouched
+    expect(out[1]).toEqual(sample[2]); // lamp untouched
+    expect(sample.length).toBe(3); // input not mutated
+  });
+
+  it("shifts LATER same-cell nodes' effective rowIndex down by one", () => {
+    // cell1: table@0, chair@1 -- remove table@0, chair should now resolve at rowIndex 0
+    const out = removeNode(sample, 'cell1', 0);
+    expect(resolveRowIndex(out, 'cell1', sample[1].objectTemplateName, sample[1].transform)).toBe(0);
+  });
+
+  it('throws `ilf: no node at (cell="...", rowIndex=...)` on a missing target', () => {
+    expect(() => removeNode(sample, 'cell1', 5)).toThrow(/ilf: no node at \(cell="cell1", rowIndex=5\)/);
+    expect(() => removeNode(sample, 'nope', 0)).toThrow(/ilf: no node at \(cell="nope", rowIndex=0\)/);
+  });
+
+  it('serializeIlf(removeNode(...)) round-trips byte-stable and drops only the target row', () => {
+    const removed = removeNode(sample, 'cell2', 0); // the lamp, only node in cell2
+    const buf1 = serializeIlf(removed);
+    const buf2 = serializeIlf(parseIlf(buf1));
+    expect(buf2.equals(buf1)).toBe(true);
+    const reparsed = parseIlf(buf1);
+    expect(reparsed.length).toBe(2);
+    expect(reparsed.some((n) => n.cellName === 'cell2')).toBe(false);
   });
 });
