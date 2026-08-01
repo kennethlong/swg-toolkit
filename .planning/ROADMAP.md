@@ -386,7 +386,36 @@ Engineering ride-alongs owed by the pivot (handoff "Remaining follow-ups"):
   4. A user can ADD a new decoration end-to-end (021-A wizard pick → overlay ghost placement → persisted `.ilf` gains a new row that survives scene reload) and REMOVE a decoration with the same persistence guarantee.
   5. Rotation edits persist and reload correctly, and the agent `-1`-refused mapping fix ships (a refused rebind can never report a save-result).
 
-**Plans:** TBD
+**Plans:** 15 plans
+Plans:
+**Wave 0** *(parallel — no cross-plan dependencies)*
+- [ ] 05.1-01-PLAN.md — Wave-0 gates: REBIND_REFUSED label fix, .ilf addNode/removeNode, decorationPersist kind=edit|add|remove + byte-exact round-trip tests
+- [ ] 05.1-02-PLAN.md — Per-project settings: WorkspaceBindingMeta mirrorToStockIlf + worldEditorBookmarks, projectBinding helpers
+- [ ] 05.1-03-PLAN.md — Channel contract extension: CAPTURE kind/cellName (ADD identity) + new unified LIVE_HOST_CMD region (scene actions, placement start/cancel, despawn)
+- [ ] 05.1-04-PLAN.md — worldEditorScan.ts (disk-scan-as-truth building tree) + worldEditorStore.ts (session overlay + history + badge)
+- [ ] 05.1-05-PLAN.md — Agent HUD rewrite (020-A Status Strip): retire CONSULT-69, F/G/R hotkey capture, verify-wire shipped REBIND_REFUSED/editor-scene ride-alongs [autonomous: false]
+
+**Wave 1** *(blocked on Wave 0)*
+- [ ] 05.1-06-PLAN.md — Orchestrator: thread mirrorToStockIlf + reconcileMirrorMode (D-09) + capture.kind=add branch
+- [ ] 05.1-07-PLAN.md — Native HOST_CMD channel: agent read+ack (channel.cpp) + host N-API write export (channel_binding.cpp/addon.cpp)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 05.1-08-PLAN.md — Renderer hostCommand.ts send* wrappers + useChannelReader.ts result polling
+- [ ] 05.1-09-PLAN.md — Agent consumes HOST_CMD (reload/editor-scene/teleport/despawn) + binds wsRemoveNode [autonomous: false]
+- [ ] 05.1-10-PLAN.md — World panel shell: dockview registration + tree/mirror-toggle/live-strip/detail-card (019-A core)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 05.1-11-PLAN.md — World panel: Activity + Scene accordions, teleport bookmarks, footer
+- [ ] 05.1-12-PLAN.md — Agent placement-mode: ghost/reticle/click-spawn/auto-arm + post-save temp-node despawn (021-A frame 2) [autonomous: false]
+
+**Wave 4** *(blocked on Wave 3)*
+- [ ] 05.1-13-PLAN.md — World panel Remove row action: removeUndoStore + RemoveUndoToast + data-only/live-despawn remove (D-02/D-03/D-04)
+
+**Wave 5** *(blocked on Wave 4)*
+- [ ] 05.1-14-PLAN.md — AddDecorationModal.tsx (021-A wizard) + World panel wiring, honest cell-name-gap degrade (D-04)
+
+**Wave 6** *(blocked on Wave 5)*
+- [ ] 05.1-15-PLAN.md — Cell-name change-request handoff + phase sign-off checkpoint (SC1-SC5 observed/missing diff) [autonomous: false]
 **UI hint**: yes
 
 ### Phase 6: Blender Bridge
