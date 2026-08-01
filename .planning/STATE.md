@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
+status: executing
 stopped_at: Phase 05.1 context gathered
-last_updated: "2026-08-01T01:35:45.214Z"
-last_activity: 2026-07-31
+last_updated: "2026-08-01T03:14:04.711Z"
+last_activity: 2026-08-01 -- Phase 05.1 planning complete
 progress:
   total_phases: 14
   completed_phases: 10
-  total_plans: 85
+  total_plans: 100
   completed_plans: 85
-  percent: 100
+  percent: 85
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 Phase: 6 (roadmap) — deferred behind the live-world-editor productize pass
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
         verified live 2026-07-30/31: hover-pick → Arm → gizmo move → Persist → .ilf edit +
@@ -40,7 +40,7 @@ Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decorat
       panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
       decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
       (Blender Bridge).
-Last activity: 2026-07-31
+Last activity: 2026-08-01 -- Phase 05.1 planning complete
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
