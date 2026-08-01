@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: "Phase 05 CLOSED 2026-07-19 (see handoff 2026-07-19-phase05-closed-pivot-to-live-world-editor). Off-roadmap live-world-editor pivot (model-D interior-decoration persistence) CLOSED end-to-end 2026-07-31 (handoff 2026-07-30-live-world-editor-decoration-persist, HEAD 2023fbc). Current focus: productize the live world editor (sketch-first), then roadmap Phase 6 (Blender Bridge)."
-last_updated: "2026-07-31T18:30:00.000Z"
+status: planning
+stopped_at: Phase 05.1 context gathered
+last_updated: "2026-08-01T01:35:45.214Z"
 last_activity: 2026-07-31
 progress:
-  total_phases: 13
-  completed_phases: 11
+  total_phases: 14
+  completed_phases: 10
   total_plans: 85
   completed_plans: 85
-  percent: 85
+  percent: 100
 ---
 
 # Project State
@@ -359,12 +359,12 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T19:53:31.031Z
-Stopped at: 05-12 Task 1 (GC-pressure soak test) complete and committed (d141373). Task 2 checkpoint:human-verify (gate=blocking, maintainer in-world UAT) PENDING -- not yet run. Phase 05 (12/12 plans) does NOT close until Task 2 is approved.
+Last session: 2026-08-01T01:35:45.176Z
+Stopped at: Phase 05.1 context gathered
   Full renderer suite (59 files / 453 tests) green post-commit; tsc --noEmit clean. Two commits:
   83012d7 (SchemaRail + real Hex view + gate wiring), 0523aef (editorTabs.ts + VfsTree/
   TreVfsBrowser wiring + DatatablePanel retirement, LAYOUT_VERSION 3→4).
 Next session: pick up 05-09 (.stf strings editor, DATA-02, sketch 018-A) — reuses
   editorTabs.openEditorTab and the shared GateBar/FailBanner unchanged per 05-08's readiness
   notes. Then 05-10/11/12 (viewport gizmo + live-sync HUD, LIVE-03).
-Resume file: None
+Resume file: .planning/phases/05.1-live-world-editor-productization/05.1-CONTEXT.md
