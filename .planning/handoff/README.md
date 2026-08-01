@@ -2,7 +2,18 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-07-30-live-world-editor-decoration-persist.md](2026-07-30-live-world-editor-decoration-persist.md)** — ACTIVE. ← start here.
+- **[2026-08-01-phase05.1-CONVERGED-ready-to-execute.md](2026-08-01-phase05.1-CONVERGED-ready-to-execute.md)** — ACTIVE. ← start here.
+  Phase **05.1 plan set CONVERGED** after a 13-round cross-AI review loop (unanimous 5/5, 0 findings;
+  HIGH trajectory 7→7→6→2→1→0). **Ready to execute: `/clear` → `/gsd:execute-phase 05.1`** (15 plans,
+  6 waves, 6 human-verify checkpoints at 01/05/09/11/12/15). Two proven pillars — reset-before-render
+  (Plan 04) and the HOST_CMD ack protocol as a total state × event table (Plan 08, the one canonical
+  spec others cite) — are SETTLED. Live injection in play (Windows, gate on confirm); native C++
+  rebuilds needed for agent/channel/overlay plans (rebuild + verify in real Electron, not just Node).
+  05.1-15 emits a cross-repo cell-name change-request + does the SC1–SC5 sketch diff. Also this session:
+  Phase 5.2 (Guided Workflows) scoped+inserted; 2 provider docs adopted into `docs/`. HEAD `1fb4dcd`,
+  clean, not pushed. Supersedes the decoration-persist handoff below (which built the pipeline 05.1 productizes).
+
+- **[2026-07-30-live-world-editor-decoration-persist.md](2026-07-30-live-world-editor-decoration-persist.md)** — superseded by the 05.1-CONVERGED handoff above (05.1 productizes this pipeline). Historical build record.
   Model-D interior-decoration persistence **built, wired, and proven LIVE end-to-end** except ONE blocker: the
   in-game **building `.ws` node id** can't be resolved (`collideScreenRay`→0 for decorations, CELL id for wall
   clicks; `getParent` not advertised). Fix = one provider shim **`object::getContainingBuildingId`** — request
