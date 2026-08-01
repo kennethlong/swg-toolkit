@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { assembleDecorationEdit, type DecorationEdit } from './decorationPersist';
+import { assembleDecorationEdit, sanitizeId, type DecorationEdit } from './decorationPersist';
 import { serializeIffTree, type IffChunk } from './iffTree';
 import { serializeIlf, parseIlf, type IlfNode } from './ilf';
 import { readInteriorLayoutFileName } from './buildingTemplate';
@@ -77,6 +77,7 @@ describe('assembleDecorationEdit', () => {
     const r = assembleDecorationEdit(baseEdit, deps);
 
     expect(r.rowIndex).toBe(0); // table is index 0 in cell1
+    expect(r.cellName).toBe(CELL);
     expect(r.editedIlfVfsPath).toBe('interiorlayout/toolkit/edit_1082878.ilf');
     expect(r.derivedTemplateVfsPath).toBe('object/building/toolkit/edit_1082878.iff');
     expect(r.stagedEntries.map((e) => e.action)).toEqual(['add', 'add']);
@@ -154,5 +155,114 @@ describe('assembleDecorationEdit', () => {
     const editedIlf = parseIlf(written.get(r2.editedIlfFilePath.replace(/\\/g, '/'))!);
     expect(editedIlf[0].transform).toEqual(newTable); // first edit preserved
     expect(editedIlf[1].transform).toEqual(newChair); // second edit applied
+  });
+});
+
+describe('sanitizeId', () => {
+  it('is exported and sanitizes ids the same way filenames already depend on', () => {
+    expect(sanitizeId('1082878')).toBe('1082878');
+    expect(sanitizeId('Some-Weird/ID!')).toBe('some_weird_id_');
+  });
+});
+
+const RUG = 'object/tangible/furniture/shared_frn_rug.iff';
+const newRug = [1, 0, 0, 15, 0, 1, 0, 16, 0, 0, 1, 17];
+
+describe('assembleDecorationEdit (kind=add)', () => {
+  it('requires edit.cellName — throws a descriptive error when absent', () => {
+    const { deps } = makeDeps();
+    expect(() =>
+      assembleDecorationEdit(
+        { ...baseEdit, kind: 'add', decorationTemplateName: RUG, newO2p: newRug, cellName: undefined },
+        deps,
+      ),
+    ).toThrow(/cellName/i);
+  });
+
+  it('appends a new node built from decorationTemplateName + newO2p (no resolveNode call — no prior row to match)', () => {
+    const { deps, written } = makeDeps();
+    const r = assembleDecorationEdit({ ...baseEdit, kind: 'add', decorationTemplateName: RUG, newO2p: newRug }, deps);
+
+    // cell1 already had table@0, chair@1 — the appended rug should land at rowIndex 2.
+    expect(r.rowIndex).toBe(2);
+    expect(r.cellName).toBe(CELL);
+
+    const editedIlf = parseIlf(written.get(r.editedIlfFilePath.replace(/\\/g, '/'))!);
+    expect(editedIlf.length).toBe(3);
+    expect(editedIlf[0].transform).toEqual(origTable); // untouched
+    expect(editedIlf[1].transform).toEqual(origChair); // untouched
+    expect(editedIlf[2]).toEqual({ objectTemplateName: RUG, cellName: CELL, transform: newRug });
+  });
+
+  it('mirrorToStockIlf=true produces a stock-path modify staged entry for add, matching the edit path shape', () => {
+    const { deps, written } = makeDeps();
+    const r = assembleDecorationEdit(
+      { ...baseEdit, kind: 'add', decorationTemplateName: RUG, newO2p: newRug },
+      { ...deps, mirrorToStockIlf: true },
+    );
+    const mirrorAbs = `/override/${STOCK_ILF_VFS}`;
+    const mirrored = parseIlf(written.get(mirrorAbs)!);
+    expect(mirrored[2]).toEqual({ objectTemplateName: RUG, cellName: CELL, transform: newRug });
+    expect(r.stagedEntries).toContainEqual({ virtualPath: STOCK_ILF_VFS, filePath: expect.stringContaining(STOCK_ILF_VFS.split('/').pop()!), action: 'modify' });
+  });
+
+  it('returns the SAME DecorationPersistResult shape as edit (rowIndex, cellName, VFS paths, stagedEntries)', () => {
+    const { deps } = makeDeps();
+    const r = assembleDecorationEdit({ ...baseEdit, kind: 'add', decorationTemplateName: RUG, newO2p: newRug }, deps);
+    expect(r).toEqual(
+      expect.objectContaining({
+        rowIndex: expect.any(Number),
+        cellName: expect.any(String),
+        derivedTemplateVfsPath: 'object/building/toolkit/edit_1082878.iff',
+        editedIlfVfsPath: 'interiorlayout/toolkit/edit_1082878.ilf',
+        stagedEntries: expect.any(Array),
+      }),
+    );
+  });
+});
+
+describe('assembleDecorationEdit (kind=remove)', () => {
+  it('resolves the target row the same way edit does, removes it via removeNode', () => {
+    const { deps, written } = makeDeps();
+    const r = assembleDecorationEdit({ ...baseEdit, kind: 'remove' }, deps); // remove the table (cell1, row0)
+
+    expect(r.cellName).toBe(CELL);
+    const editedIlf = parseIlf(written.get(r.editedIlfFilePath.replace(/\\/g, '/'))!);
+    expect(editedIlf.length).toBe(1);
+    expect(editedIlf[0].transform).toEqual(origChair); // chair remains, table gone
+    expect(editedIlf.some((n) => n.objectTemplateName === TABLE)).toBe(false);
+  });
+
+  it('derives cellName from template + originalO2p when the agent omits it (same resolver as edit)', () => {
+    const { deps, written } = makeDeps();
+    const { cellName, ...noCell } = baseEdit;
+    void cellName;
+    const r = assembleDecorationEdit({ ...noCell, kind: 'remove' }, deps);
+    expect(r.cellName).toBe(CELL);
+    const editedIlf = parseIlf(written.get(r.editedIlfFilePath.replace(/\\/g, '/'))!);
+    expect(editedIlf.some((n) => n.objectTemplateName === TABLE)).toBe(false);
+  });
+
+  it('throws the same "could not resolve" error as edit for an unresolvable target', () => {
+    const { deps } = makeDeps();
+    expect(() => assembleDecorationEdit({ ...baseEdit, kind: 'remove', cellName: 'nope' }, deps)).toThrow(/could not resolve/i);
+  });
+
+  it('ignores newO2p for remove (unused)', () => {
+    const { deps, written } = makeDeps();
+    const r = assembleDecorationEdit({ ...baseEdit, kind: 'remove', newO2p: [] }, deps);
+    const editedIlf = parseIlf(written.get(r.editedIlfFilePath.replace(/\\/g, '/'))!);
+    expect(editedIlf.length).toBe(1);
+    expect(editedIlf[0].transform).toEqual(origChair);
+  });
+
+  it('mirrorToStockIlf=true produces a stock-path modify staged entry for remove, matching the edit path shape', () => {
+    const { deps, written } = makeDeps();
+    const r = assembleDecorationEdit({ ...baseEdit, kind: 'remove' }, { ...deps, mirrorToStockIlf: true });
+    const mirrorAbs = `/override/${STOCK_ILF_VFS}`;
+    const mirrored = parseIlf(written.get(mirrorAbs)!);
+    expect(mirrored.length).toBe(1);
+    expect(mirrored[0].transform).toEqual(origChair);
+    expect(r.stagedEntries).toContainEqual({ virtualPath: STOCK_ILF_VFS, filePath: expect.stringContaining(STOCK_ILF_VFS.split('/').pop()!), action: 'modify' });
   });
 });
