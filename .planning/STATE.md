@@ -4,10 +4,10 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 05.1 context gathered
-last_updated: "2026-08-01T22:30:10.610Z"
-last_activity: 2026-08-01 -- Phase 05.1 planning complete
+last_updated: "2026-08-01T23:34:41.446Z"
+last_activity: 2026-08-01 -- Phase 05.1 execution started
 progress:
-  total_phases: 14
+  total_phases: 15
   completed_phases: 10
   total_plans: 100
   completed_plans: 85
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** One tool that takes a modder from raw idea to deployed, in-game-verified SWG mod without leaving the app — and without restarting the client to see a change.
-**Current focus:** Productize the live world editor (off-roadmap continuation of the model-D pivot), then Phase 6 — Blender Bridge.
+**Current focus:** Phase 05.1 — live-world-editor-productization
 
 ## Current Position
 
-Phase: 6 (roadmap) — deferred behind the live-world-editor productize pass
-Plan: Not started
-Status: Ready to execute
+Phase: 05.1 (live-world-editor-productization) — EXECUTING
+Plan: 1 of 15
+Status: Executing Phase 05.1
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
         verified live 2026-07-30/31: hover-pick → Arm → gizmo move → Persist → .ilf edit +
@@ -40,7 +40,7 @@ Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decorat
       panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
       decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
       (Blender Bridge).
-Last activity: 2026-08-01 -- Phase 05.1 planning complete
+Last activity: 2026-08-01 -- Phase 05.1 execution started
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
@@ -337,6 +337,12 @@ Roadmap-shaping decisions affecting current work:
 
 ### Blockers/Concerns
 
+- 05.1-01 Task 5 (checkpoint:human-verify, gate=blocking): Tasks 1-4 complete and committed
+  (REBIND_REFUSED label fix; ilf.ts addNode/removeNode; decorationPersist kind=edit|add|remove;
+  .ilf registered in the CORE-05 standing gate with a REQUIRED real-asset fixture extracted from
+  D:/SWG Infinity/SWG Infinity/Live — 11/11 ilf-roundtrip.test.ts + registry-coverage.test.ts
+  green, real-asset lane PASSING not skipped). Awaiting human confirmation per
+  05.1-01-PLAN.md Task 5's how-to-verify steps. Plan 05.1-01 does not close until approved.
 - [Standing risk]: Every binary format layout in `docs/` is an AI-proposed hypothesis (rated LOW—VERIFY). No parser merges without a cited `swg-client-v2` source + byte-exact round-trip on a real asset.
 - [Phase 3/5]: Live-injection pointer/offset discovery is per-client-build and effort-unbounded — mine Utinni, use runtime AOB resolution; treat magnitude as a planning unknown.
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
@@ -359,12 +365,16 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-01T01:35:45.176Z
-Stopped at: Phase 05.1 context gathered
-  Full renderer suite (59 files / 453 tests) green post-commit; tsc --noEmit clean. Two commits:
-  83012d7 (SchemaRail + real Hex view + gate wiring), 0523aef (editorTabs.ts + VfsTree/
-  TreVfsBrowser wiring + DatatablePanel retirement, LAYOUT_VERSION 3→4).
-Next session: pick up 05-09 (.stf strings editor, DATA-02, sketch 018-A) — reuses
-  editorTabs.openEditorTab and the shared GateBar/FailBanner unchanged per 05-08's readiness
-  notes. Then 05-10/11/12 (viewport gizmo + live-sync HUD, LIVE-03).
-Resume file: .planning/phases/05.1-live-world-editor-productization/05.1-CONTEXT.md
+Last session: 2026-08-01T23:34:41.446Z
+Stopped at: Phase 05.1 Plan 01, Task 5 checkpoint (blocking, awaiting human verification)
+  Tasks 1-4 executed and committed (RED/GREEN per task): (1) decorationResultLabel
+  REBIND_REFUSED label fix (SC1); (2) ilf.ts addNode/removeNode append/delete primitives with
+  byte-exact round-trip coverage (SC4); (3) decorationPersist.ts kind-aware assembly
+  (edit|add|remove) + cellName result field + exported sanitizeId (ROUND 3 R3/R5 seam prep);
+  (4) .ilf registered in the CORE-05 standing gate (extract-ilf-fixtures.cjs +
+  ilf-roundtrip.test.ts) with a REQUIRED (not skip-on-absent) real-asset fixture extracted from
+  D:/SWG Infinity/SWG Infinity/Live (ROUND 3 REVIEWS.md C5). Task 5 is a blocking
+  checkpoint:human-verify confirming the real-asset lane is green — do not self-approve.
+Next session: resume 05.1-01 Task 5 checkpoint once the human confirms per its how-to-verify
+  steps, then continue with the phase's remaining plans (05.1-02 onward).
+Resume file: .planning/phases/05.1-live-world-editor-productization/05.1-01-PLAN.md
