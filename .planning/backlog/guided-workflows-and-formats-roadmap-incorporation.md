@@ -70,19 +70,27 @@ Queue is all unexecuted ahead of this: **4.4 → 5 → 5.1 (in convergence-revie
 Inserting a workflows phase is a *relative-priority* decision (workflows vs Blender), not a queue-jump —
 5.1 still finishes and executes first.
 
-**Decision:** insert **Phase 5.2 "Guided Workflows I + AI Layer"** after 5.1, **before Blender (6)**,
-with **the AI capability in hand** — NOT deferred to Phase 8. Maintainer's rationale: having the AI
-capabilities available *during* the workflows build will refine/reshape how the wizards are done, so
-dogfood the AI-driven wizard as it's built rather than building tier-A first and bolting AI on in Phase 8.
+**Decision:** insert **Phase 5.2 "Guided Workflows I"** after 5.1, **before Blender (6)**, with the
+AI-driven-wizard **concept in hand as a design constraint** — NOT the full AI implementation.
 
-Scope landed in 5.2 (ROADMAP + REQUIREMENTS updated 2026-08-01):
+*Refinement (maintainer clarification, same day):* the first framing was "AI capability in hand," but
+what's wanted is the **concept** in hand — build the engine so it's AI-drivable (so that shapes the
+architecture now), while holding the actual AI *drive* (MCP exposure + embedded agent) for Phase 8.
+This matches the design doc's own §4 ("AI-01 proceeds unchanged, adding `workflow.*` when it lands;
+tier B then works with zero additional AI engineering") and avoids standing up an MCP server in 5.2
+just to validate drivability.
+
+Scope in **5.2** (ROADMAP + REQUIREMENTS updated 2026-08-01):
 - Flow engine + **asset-discovery resolver** + W1 wizards (texture reskin, packaging + per-server-policy checker), tier-A human-driven (**WF-01**).
-- **Minimal MCP `workflow.*` surface** so external agents (Claude Code/Cursor/Copilot) drive wizards with human-custody confirmation (**WF-02**) — pulled forward from Phase 8.
-- **Optional embedded BYO-credential agent** (**AI-03**) — tier-C SDK/OAuth verified against the Claude API reference at build time.
+- The flow/step contract is **built AI-drivable by design** (inputs collectable by form OR tool call; actions = the same typed service calls an agent would make; shared confirm boundaries) — validated by a contract/spec review against the `workflow.*` surface shape, NOT a live agent. This is the "concept in hand."
 - Sketch-021 decoration flow retrofit as engine-hosted flow #1.
 
+Deferred to **Phase 8** (where the MCP server + AI-02 already live):
+- **WF-02** — expose `workflow.*` over MCP so external agents (Claude Code/Cursor/Copilot) drive wizards with human-custody confirmation. Near-zero net-new wizard work because 5.2 built the engine AI-drivable.
+- **AI-03** — optional embedded BYO-credential agent; tier-C SDK/OAuth verified against the Claude API reference at build time.
+- **AI-01** stays the first MCP work and now also wraps 5.2's workflow engine.
+
 Consequences recorded:
-- **Phase 8 AI-01 narrows** to broadening the MCP surface to the full backend service set + AI-02 advisory assists — no longer the first MCP work.
 - **Blender (Phase 6) stays put**, slides one execution slot behind 5.2 (decoupled sidecar, no downstream dependency; audience already served by swg-blender-plugin).
 - **Formats §10 P1–P6 queue** → the concrete plan for **Phase 7 (Format Editors)** (still to be folded into Phase 7's detail when 7 is planned; some items — the asset-discovery resolver, and P1 template-compile as a dependency of the W3 "new prop" wizard — surface earlier via 5.2/its wizards).
 

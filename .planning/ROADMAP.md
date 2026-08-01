@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 4.4: UX Polish & Deploy Hardening** *(INSERTED)* - Knock out the 6 UI-related pending todos: delete-project-with-restore + e2e deploy-flow Playwright coverage (the two high-severity items), plus console/log tabs, statusbar mesh name, VFS override dim, viewport default facing
 - [ ] **Phase 5: WYSIWYG Live-Sync & Typed Editors** - Drag a gizmo and move the object in the running client; first DTII/STF edit surfaces
 - [ ] **Phase 5.1: Live World Editor Productization** *(INSERTED)* - Productize the proven model-D decoration-persist pipeline: World panel building tree (019-A), in-game status-strip HUD replacing the CONSULT-69 debug probe (020-A), add/remove decorations incl. the new `.ilf` row-append path (021-A), mirror-mode toggle, rotation persist, human-readable failure surface
-- [ ] **Phase 5.2: Guided Workflows I + AI Layer** *(INSERTED)* - Declarative guided-wizard engine over the existing services (maintainer-originated AI-driven-wizard concept): asset-discovery resolver + W1 wizards (texture reskin, packaging + per-server-policy checker), human-driven tier A, **plus the AI capability in hand** — a minimal MCP `workflow.*` surface (external-agent drive) and an optional embedded BYO-credential agent — so dogfooding the AI-driven wizard reshapes the wizard design. Retrofits sketch-021 as flow #1. Design: `docs/09-ai-mcp/guided-workflows-and-ai-layer.md`
+- [ ] **Phase 5.2: Guided Workflows I** *(INSERTED)* - Declarative guided-wizard engine over the existing services (maintainer-originated AI-driven-wizard concept): asset-discovery resolver + W1 wizards (texture reskin, packaging + per-server-policy checker), human-driven tier A. **The concept is in hand as a design constraint** — the flow/step contract is built AI-drivable (same typed tool surface an agent would call; shared confirm boundaries) so Phase 8's MCP server wraps it with zero rework. Actual AI drive (MCP `workflow.*` exposure, embedded agent) lands in Phase 8. Retrofits sketch-021 as flow #1. Design: `docs/09-ai-mcp/guided-workflows-and-ai-layer.md`
 - [ ] **Phase 6: Blender Bridge** - Connect Blender over WebSocket and round-trip animation to a valid `.ans` (decoupled sidecar)
 - [ ] **Phase 7: Format Editors** - Terrain, world snapshots, flora, collision/portals, UI, audio/FX — parallelizable leaves on the IFF root
 - [ ] **Phase 8: Parity, Navmesh, MCP & AI** - Core3 dual-track parity, navmesh, MCP server, and advisory AI assists (independent islands)
@@ -419,16 +419,17 @@ Plans:
 - [ ] 05.1-15-PLAN.md — Cell-name change-request handoff + phase sign-off checkpoint (SC1-SC5 observed/missing diff) [autonomous: false]
 **UI hint**: yes
 
-### Phase 5.2: Guided Workflows I + AI Layer (INSERTED)
+### Phase 5.2: Guided Workflows I (INSERTED)
 
 **Goal:** Turn the most common mod-making journeys into a declarative *Guided Workflow* engine layered
-on the services the toolkit already ships — **and put the AI capability in hand during the build**, so
-driving the wizards with an agent reshapes how the wizards are designed (the maintainer's rationale for
-sequencing this before Blender). Flows are data, not code; four consumer faces share one permission
-model and one audit trail: (A) human UI wizard — no AI; (B) external MCP agents the user already owns
-(Claude Code/Cursor/Copilot); (C) optional embedded BYO-credential agent; (D) AI-02 spot assists
-(orthogonal, later). The keystone new service is the **asset-discovery resolver** (template → appearance
-chain → `.sht` → `.dds`), which also answers the community's #1 question ("which file is this object?").
+on the services the toolkit already ships — with **the AI-driven-wizard concept in hand as a design
+constraint** (the maintainer's rationale for sequencing this before Blender): build the flow/step
+contract so an agent could drive it, so that shapes the architecture now — but ship only the human
+(tier-A) faces here and let the actual AI drive ride Phase 8. Flows are data, not code; the four
+consumer faces share one permission model and one audit trail — (A) human UI wizard (this phase);
+(B) external MCP agents / (C) optional embedded agent (Phase 8); (D) AI-02 spot assists (orthogonal).
+The keystone new service is the **asset-discovery resolver** (template → appearance chain → `.sht` →
+`.dds`), which also answers the community's #1 question ("which file is this object?").
 
 The AI-driven-wizard **concept originated with the maintainer**; the design elaboration and the demand
 evidence (ModTheGalaxy census; per-server mod policies) are in `docs/09-ai-mcp/guided-workflows-and-ai-layer.md`
@@ -436,17 +437,15 @@ and `docs/02-formats/asset-format-census-and-editing-guide.md` §8–9 (per-step
 Decision record: `.planning/backlog/guided-workflows-and-formats-roadmap-incorporation.md`.
 
 **Mode:** mvp
-**Requirements**: WF-01, WF-02, AI-03
+**Requirements**: WF-01
 **Depends on:** Phase 5.1 (the world editor + sketch-021 wizard retrofit as flow #1), Phase 5 (live-sync
-services + overlay), Phase 1 (IFF/TRE/VFS the resolver walks). Pulls a minimal MCP `workflow.*` surface
-forward from Phase 8 (AI-01 there broadens it to the full backend).
+services + overlay), Phase 1 (IFF/TRE/VFS the resolver walks).
 **Success Criteria** (what must be TRUE):
   1. A human can complete the top journeys — **texture reskin** and **mod packaging + per-server policy check** — end-to-end through a guided wizard with **zero AI**, each step gated by shared confirm boundaries; wizard state persists across an app restart and across an "edit in an external tool and come back" step.
   2. The **asset-discovery resolver** walks any bound object → its appearance chain → shaders → the concrete `.dds`/asset list, and every wizard reuses it (no hand-entered virtual paths).
   3. **Per-server legality is first-class**: the packaging wizard audits a mod against a per-server policy ruleset (flagging e.g. Legends-restricted classes: terrain / footstep-sound / collision / animation / interior-layout) and emits mod-manager-ready output.
-  4. The workflow engine is exposed over a minimal MCP surface (`workflow.list/start/status/step/confirm`) so an **external agent** the user already owns can drive a wizard, with **human-custody confirmation** — the agent's `confirm` *requests*; the grant comes from the user in the toolkit; an agent cannot self-approve past a deploy/live-write boundary.
-  5. (AI-03) An **optional embedded BYO-credential agent** can conversationally drive at least one W1 flow behind a settings toggle, stopping at every confirmation boundary; everything still works with AI absent (tier A is always there). Tier-C SDK/OAuth specifics are verified against the current Claude API reference at build time.
-  6. The sketch-021 decoration flow is **retrofit as the first engine-hosted flow**, not a standalone modal.
+  4. **The flow/step contract is AI-drivable by design** (the "concept in hand"): every step's inputs are collectable by a form OR a tool call, its actions are the same typed service calls an agent would make, and its confirm boundaries are shared — so Phase 8 wraps the engine over MCP with **zero rework**. Validated by a contract/spec review against the `workflow.*` surface shape, NOT by a live agent in this phase.
+  5. The sketch-021 decoration flow is **retrofit as the first engine-hosted flow**, not a standalone modal.
 **Plans**: TBD
 **UI hint**: yes
 
@@ -476,14 +475,15 @@ forward from Phase 8 (AI-01 there broadens it to the full backend).
 **UI hint**: yes
 
 ### Phase 8: Parity, Navmesh, MCP & AI
-**Goal**: Layer the independent islands — sequenced by value, not dependency — onto the established service layer: Core3/SWGEmu dual-track parity with a standalone audit, a Recast/Detour navmesh, an MCP server wrapping the backend services, and advisory AI assists that always preview before writing. *(The `workflow.*` MCP slice + external/embedded agent drive land earlier in Phase 5.2 per WF-02/AI-03; AI-01 here broadens the MCP surface to the full backend service set — it is no longer the first MCP work.)*
+**Goal**: Layer the independent islands — sequenced by value, not dependency — onto the established service layer: Core3/SWGEmu dual-track parity with a standalone audit, a Recast/Detour navmesh, an MCP server wrapping the backend services, and advisory AI assists that always preview before writing. *(The MCP server also wraps Phase 5.2's guided-workflow engine — which was built AI-drivable by design — so exposing `workflow.*` over MCP with human-custody confirmation (WF-02) and the optional embedded BYO-credential agent (AI-03) land here with minimal net-new wizard work.)*
 **Mode:** mvp
 **Depends on**: Phase 5 (datatable editor for parity), Phase 1-2 (assets for navmesh)
-**Requirements**: SRV-01, AI-01, AI-02
+**Requirements**: SRV-01, AI-01, AI-02, WF-02, AI-03
 **Success Criteria** (what must be TRUE):
   1. The user can sync client datatable changes to Core3/SWGEmu Lua templates through a transactional stage-validate-commit-both flow (verified against the real `MMOCoreORB` tree), and a standalone parity audit reports zero drift.
-  2. The toolkit exposes its capabilities as an MCP server with read-only resources and confirmation-gated write tools, reusing the same backend services the UI calls.
+  2. The toolkit exposes its capabilities as an MCP server with read-only resources and confirmation-gated write tools, reusing the same backend services the UI calls — **including Phase 5.2's `workflow.*` engine, so an external agent (Claude Code/Cursor/Copilot) can drive a wizard with human-custody confirmation (the agent's `confirm` requests; the grant comes from the user; no self-approval past a deploy/live-write boundary) (WF-02).**
   3. AI assists add value advisorily (e.g. natural-language datatable queries, mocap->`.ans`, format reverse-engineering aid) and always show a diff/preview before any write.
+  4. **An optional embedded BYO-credential agent can conversationally drive any workflow behind a settings toggle, stopping at every confirmation boundary; everything still works with AI absent (AI-03). Tier-C SDK/OAuth specifics are verified against the current Claude API reference at build time.**
 **Plans**: TBD
 **UI hint**: yes
 
@@ -507,7 +507,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 4.2 -> 4.3 -> 4
 | 4.4 UX Polish & Deploy Hardening *(INSERTED)* | 0/15 | Planned, not executed | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/12 | Planned, not executed | - |
 | 5.1 Live World Editor Productization *(INSERTED)* | 0/15 | Planning (cross-AI convergence loop) | - |
-| 5.2 Guided Workflows I + AI Layer *(INSERTED)* | 0/TBD | Not started | - |
+| 5.2 Guided Workflows I *(INSERTED)* | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
 | 8. Parity, Navmesh, MCP & AI | 0/TBD | Not started | - |
