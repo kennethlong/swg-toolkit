@@ -114,4 +114,11 @@ describe('decorationResultLabel', () => {
     expect(decorationResultLabel(LIVE_DECORATION_RESULT.OK)).toMatch(/ok/i);
     expect(decorationResultLabel(LIVE_DECORATION_RESULT.NOT_A_WS_NODE)).toMatch(/\.ws node/i);
   });
+
+  it('labels REBIND_REFUSED with human words, never a raw code', () => {
+    const label = decorationResultLabel(LIVE_DECORATION_RESULT.REBIND_REFUSED);
+    expect(label).toMatch(/refused/i);
+    expect(label).not.toMatch(/-5/);
+    expect(label).not.toMatch(/unknown result/i);
+  });
 });
