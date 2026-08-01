@@ -69,6 +69,8 @@ packages/harness/fixtures-real/effect/*.eft
 packages/harness/fixtures-real/datatable/*.iff
 # Real .stf localized-string-table asset (05-05 — aprilfools.stf, local-only CORE-05 gate)
 packages/harness/fixtures-real/stf/*.stf
+# Real .ilf interior-layout asset (05.1-01 — extract-ilf-fixtures.cjs output, local-only CORE-05 gate)
+packages/harness/fixtures-real/ilf/*.ilf
 
 # SWG client crash dumps + boot trace — the client writes these into its working
 # directory (which launch-and-inject pointed at the toolkit dir before the 05 cwd
