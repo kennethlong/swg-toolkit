@@ -19,7 +19,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex, resolveNode, type IlfNode } from './ilf';
+import { parseIlf, serializeIlf, editNodeTransform, resolveRowIndex, resolveNode, addNode, removeNode, type IlfNode } from './ilf';
 import { deriveBuildingTemplate, readInteriorLayoutFileName } from './buildingTemplate';
 
 export interface DecorationEdit {
@@ -40,6 +40,17 @@ export interface DecorationEdit {
   originalO2p: number[];
   /** The decoration's o2p AFTER the move — written into the `.ilf`. */
   newO2p: number[];
+  /**
+   * Which `.ilf` mutation to perform. Defaults to 'edit' when absent — 100% backward compatible
+   * with the proven live pipeline, which never sets it.
+   *   - 'edit': existing behavior (resolve + editNodeTransform), byte-identical, zero regression.
+   *   - 'add': append a new node (no prior row to resolve). Requires `cellName` (fail closed —
+   *     an ADD with no cellName is a caller bug). `originalO2p` is unused; `newO2p` is the new
+   *     node's transform.
+   *   - 'remove': resolve the target row the SAME way 'edit' does, then delete it. `newO2p` is
+   *     unused for this kind.
+   */
+  kind?: 'edit' | 'add' | 'remove';
 }
 
 export interface DecorationPersistDeps {
@@ -62,8 +73,14 @@ export interface DecorationPersistDeps {
 }
 
 export interface DecorationPersistResult {
-  /** The `.ilf` row that was edited (within-cell index). */
+  /** The `.ilf` row that was edited/added/removed (within-cell index). */
   rowIndex: number;
+  /**
+   * The cell this persist touched — `resolved.cellName` for 'edit'/'remove', or the
+   * caller-pinned `edit.cellName` for 'add' (always defined for that kind). Lets callers report
+   * which cell a persist touched without re-deriving it (ROUND 3 — REVIEWS.md R3/R5).
+   */
+  cellName: string;
   /** VFS path of the derived template — feed this to wsSetNodeTemplateName(nodeId, this). */
   derivedTemplateVfsPath: string;
   /** VFS path of the edited `.ilf` the derived template points at. */
@@ -77,7 +94,10 @@ export interface DecorationPersistResult {
   stagedEntries: { virtualPath: string; filePath: string; action: 'add' | 'modify' }[];
 }
 
-function sanitizeId(id: string): string {
+/** Sanitize an id for use in a filename (`edit_<id>.ilf`/`edit_<id>.iff`). Exported so Plan 06's
+ *  durable per-building map can key by the IDENTICAL sanitized id `worldEditorScan.ts` reads off
+ *  the override-dir filename, without re-implementing or drifting from these rules. */
+export function sanitizeId(id: string): string {
   return id.replace(/[^a-z0-9_]/gi, '_').toLowerCase() || 'x';
 }
 
@@ -117,6 +137,7 @@ function nearestCandidates(nodes: IlfNode[], templateName: string, o2p: number[]
  * decoration can't be resolved in the stock `.ilf` (fail closed — never persist the wrong object).
  */
 export function assembleDecorationEdit(edit: DecorationEdit, deps: DecorationPersistDeps): DecorationPersistResult {
+  const kind = edit.kind ?? 'edit';
   const id = sanitizeId(edit.buildingInstanceId);
   const write = deps.writeFile ?? defaultWrite;
 
@@ -149,39 +170,68 @@ export function assembleDecorationEdit(edit: DecorationEdit, deps: DecorationPer
     `(${nodes.length} rows), deco=${edit.decorationTemplateName} origPos=${fmtPos(edit.originalO2p)} newPos=${fmtPos(edit.newO2p)}`,
   );
 
-  // Derive (cellName, rowIndex) from template + original o2p unless the caller pinned the cell.
-  const tryResolve = (ns: IlfNode[]): { cellName: string; rowIndex: number } | null => {
-    if (edit.cellName !== undefined) {
-      const r = resolveRowIndex(ns, edit.cellName, edit.decorationTemplateName, edit.originalO2p);
-      return r === null ? null : { cellName: edit.cellName, rowIndex: r };
+  let resultCellName: string;
+  let resultRowIndex: number;
+  let mutatedNodes: IlfNode[];
+
+  if (kind === 'add') {
+    // No prior row to match — an ADD requires the caller to pin the cell (fail closed; a missing
+    // cellName here is a caller bug, not something to guess at).
+    if (edit.cellName === undefined) {
+      throw new Error('decorationPersist: kind="add" requires edit.cellName (there is no prior row to derive it from)');
     }
-    return resolveNode(ns, edit.decorationTemplateName, edit.originalO2p);
-  };
+    resultCellName = edit.cellName;
+    // The new node's within-cell rowIndex is the count of prior nodes sharing its cell — matches
+    // addNode's own append-only guarantee (ilf.ts).
+    resultRowIndex = nodes.filter((n) => n.cellName === resultCellName).length;
+    const newNode: IlfNode = {
+      objectTemplateName: edit.decorationTemplateName,
+      cellName: resultCellName,
+      transform: edit.newO2p,
+    };
+    mutatedNodes = addNode(nodes, newNode);
+    logf(`assemble: add cell=${resultCellName} row=${resultRowIndex} template=${edit.decorationTemplateName}`);
+  } else {
+    // 'edit' and 'remove' share the SAME resolve step + orphaned-edit-recovery — both need to find
+    // the existing row before mutating it.
+    const tryResolve = (ns: IlfNode[]): { cellName: string; rowIndex: number } | null => {
+      if (edit.cellName !== undefined) {
+        const r = resolveRowIndex(ns, edit.cellName, edit.decorationTemplateName, edit.originalO2p);
+        return r === null ? null : { cellName: edit.cellName, rowIndex: r };
+      }
+      return resolveNode(ns, edit.decorationTemplateName, edit.originalO2p);
+    };
 
-  let resolved = tryResolve(nodes);
-  if (resolved === null && baseIsAccumulated) {
-    // Orphaned-edit recovery: a prior persist wrote the edited .ilf but its rebind never landed,
-    // so the live world still spawns from the STOCK layout — the captured o2p matches stock rows,
-    // not the accumulated copy. Resolve (and re-base the edit) against stock; the write below then
-    // replaces the orphaned copy with stock + this edit.
-    logf(`assemble: no match in accumulated base — nearest: ${nearestCandidates(nodes, edit.decorationTemplateName, edit.originalO2p)}`);
-    logf(`assemble: retrying against stock ${stockIlfVfs}`);
-    const stockNodes = parseIlf(deps.readVfs(stockIlfVfs));
-    resolved = tryResolve(stockNodes);
-    if (resolved !== null) nodes = stockNodes;
-  }
-  if (resolved === null) {
-    logf(`assemble: FAIL — nearest: ${nearestCandidates(nodes, edit.decorationTemplateName, edit.originalO2p)}`);
-    throw new Error(
-      edit.cellName !== undefined
-        ? `decorationPersist: could not resolve picked ${edit.decorationTemplateName} in cell ${edit.cellName}`
-        : `decorationPersist: could not resolve picked ${edit.decorationTemplateName} in any cell`,
-    );
-  }
-  const { cellName, rowIndex } = resolved;
-  logf(`assemble: resolved cell=${cellName} row=${rowIndex}`);
+    let resolved = tryResolve(nodes);
+    if (resolved === null && baseIsAccumulated) {
+      // Orphaned-edit recovery: a prior persist wrote the edited .ilf but its rebind never landed,
+      // so the live world still spawns from the STOCK layout — the captured o2p matches stock rows,
+      // not the accumulated copy. Resolve (and re-base the edit) against stock; the write below then
+      // replaces the orphaned copy with stock + this edit.
+      logf(`assemble: no match in accumulated base — nearest: ${nearestCandidates(nodes, edit.decorationTemplateName, edit.originalO2p)}`);
+      logf(`assemble: retrying against stock ${stockIlfVfs}`);
+      const stockNodes = parseIlf(deps.readVfs(stockIlfVfs));
+      resolved = tryResolve(stockNodes);
+      if (resolved !== null) nodes = stockNodes;
+    }
+    if (resolved === null) {
+      logf(`assemble: FAIL — nearest: ${nearestCandidates(nodes, edit.decorationTemplateName, edit.originalO2p)}`);
+      throw new Error(
+        edit.cellName !== undefined
+          ? `decorationPersist: could not resolve picked ${edit.decorationTemplateName} in cell ${edit.cellName}`
+          : `decorationPersist: could not resolve picked ${edit.decorationTemplateName} in any cell`,
+      );
+    }
+    resultCellName = resolved.cellName;
+    resultRowIndex = resolved.rowIndex;
+    logf(`assemble: resolved cell=${resultCellName} row=${resultRowIndex}`);
 
-  const editedIlf = serializeIlf(editNodeTransform(nodes, cellName, rowIndex, edit.newO2p));
+    mutatedNodes = kind === 'remove'
+      ? removeNode(nodes, resultCellName, resultRowIndex)
+      : editNodeTransform(nodes, resultCellName, resultRowIndex, edit.newO2p);
+  }
+
+  const editedIlf = serializeIlf(mutatedNodes);
   const derivedTemplate = deriveBuildingTemplate(stockIff, editedIlfVfsPath);
 
   const editedIlfFilePath = path.join(deps.overrideDir, editedIlfVfsPath);
@@ -204,7 +254,8 @@ export function assembleDecorationEdit(edit: DecorationEdit, deps: DecorationPer
   }
 
   return {
-    rowIndex,
+    rowIndex: resultRowIndex,
+    cellName: resultCellName,
     derivedTemplateVfsPath,
     editedIlfVfsPath,
     derivedTemplateFilePath,
