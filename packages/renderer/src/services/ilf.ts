@@ -201,6 +201,44 @@ export function resolveNode(
 }
 
 /**
+ * Append `node` to the end of `nodes`. Returns a NEW array (does not mutate `nodes` or
+ * `node.transform`). Append-only: the new node's within-cell rowIndex is automatically the count
+ * of prior nodes sharing its cellName, since no later node shares that cell yet. Never throws —
+ * appending is always valid.
+ *
+ * Disclosure (ROUND-3-REVIEW R7): because this is strictly append-only, re-adding a
+ * previously-removed node (e.g. Undo) places it at the END of its cell, not its original
+ * position — an accepted, disclosed consequence, not a defect. See Plan 13/15 for scoping.
+ */
+export function addNode(nodes: IlfNode[], node: IlfNode): IlfNode[] {
+  return [
+    ...nodes.map((n) => ({ ...n, transform: [...n.transform] })),
+    { ...node, transform: [...node.transform] },
+  ];
+}
+
+/**
+ * Remove the `rowIndex`-th node in `cellName` (0-based, in file order). Returns a NEW array; every
+ * other node's content is unchanged, and every LATER same-cell node's *effective* rowIndex shifts
+ * down by one (re-derived by resolveRowIndex/resolveNode, never stored). Throws if the
+ * (cellName, rowIndex) doesn't resolve — same fail-closed contract as editNodeTransform.
+ */
+export function removeNode(nodes: IlfNode[], cellName: string, rowIndex: number): IlfNode[] {
+  const out: IlfNode[] = [];
+  let seen = -1;
+  let removed = false;
+  for (const n of nodes) {
+    if (n.cellName === cellName) {
+      seen++;
+      if (seen === rowIndex && !removed) { removed = true; continue; }
+    }
+    out.push({ ...n, transform: [...n.transform] });
+  }
+  if (!removed) throw new Error(`ilf: no node at (cell="${cellName}", rowIndex=${rowIndex})`);
+  return out;
+}
+
+/**
  * Replace the o2p transform of the `rowIndex`-th node in `cellName` (0-based, in file order —
  * the within-cell identity). Returns a NEW array (does not mutate the input). Throws if the
  * (cellName, rowIndex) doesn't resolve — fail closed rather than edit the wrong object.
