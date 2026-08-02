@@ -50,12 +50,14 @@
 #include <cstdlib>   // _strtoui64 (decimal u64 building id)
 
 // Channel byte size — matches LIVE_CHANNEL_TOTAL_SIZE (@swg/contracts) AND the agent's
-// sizeof(LiveState). Grown from the original 400-byte frame to 1308 to append the
-// decoration-persist region (CAPTURE @400 + REBIND @1024 + RESULT @1300 — model D). The
-// CAPTURE + RESULT spans ride along in readChannelView's whole-view copy, so the renderer
-// parses them with the same seqlock idiom it uses for the read frame; only the host->agent
-// REBIND write needs its own N-API method (writeRebind, added with the host wiring step).
-static constexpr size_t CHANNEL_BYTE_SIZE = 1308;
+// sizeof(LiveState). Grown from the original 400-byte frame to 1308 (decoration-persist
+// region: CAPTURE @400 + REBIND @1024 + RESULT @1300 — model D), then to 1864 (05.1-03: the
+// CAPTURE_KIND/CAPTURE_CELL_NAME extension @1308/1312, plus the new unified HOST_CMD region
+// @1440). The CAPTURE + RESULT + HOST_CMD spans ride along in readChannelView's whole-view
+// copy, so the renderer parses them with the same seqlock idiom it uses for the read frame;
+// only the host->agent REBIND/HOST_CMD writes need their own N-API methods (writeRebind;
+// writeHostCommand lands in Plan 07).
+static constexpr size_t CHANNEL_BYTE_SIZE = 1864;
 
 // ---------------------------------------------------------------------------
 // Per-channel state.

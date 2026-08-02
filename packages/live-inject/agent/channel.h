@@ -36,8 +36,8 @@
  *   ... decoration-persist CAPTURE/REBIND/RESULT region, offset 400-1307 (see below) ...
  *   captureKind:      offset 1308 (uint32_t,  4 bytes — 05.1-03, D-01/C8)
  *   captureCellName:  offset 1312 (char[128], null-terminated ASCII — 05.1-03, D-01/C8)
- *   TOTAL:               1440 bytes (grows to 1864 in Task 2, same plan, once the HOST_CMD
- *                         region is appended)
+ *   ... HOST_CMD region, offset 1440-1863 (see below) ...
+ *   TOTAL:               1864 bytes
  *
  * LIVE_READFRAME_BYTES (320) is the span channelWrite copies every tick —
  * transform + networkId + templateName + liveness + focusToken. It is a
@@ -103,6 +103,17 @@ struct LiveState {
     //     written/read inside the existing seqlock span, not physical adjacency. ---
     uint32_t  captureKind;                // offset 1308 — 0=edit, 1=add, 2=arm-failed
     char      captureCellName[128];       // offset 1312 — dual-purpose: add→cell name, arm-failed→reason
+
+    // --- Unified HOST_CMD region (host -> agent), seqlocked by hostCmdSeqCounter (05.1-03) ---
+    LONG      hostCmdSeqCounter;          // offset 1440
+    uint32_t  hostCmdEpoch;               // offset 1444
+    uint32_t  hostCmdAction;              // offset 1448 — HOST_CMD_ACTION_* values
+    char      hostCmdStr1[256];           // offset 1452
+    char      hostCmdStr2[128];           // offset 1708
+    uint64_t  hostCmdId;                  // offset 1836
+    float     hostCmdVec3[3];             // offset 1844
+    int32_t   hostCmdResultCode;          // offset 1856 — written FIRST
+    uint32_t  hostCmdResultEpoch;         // offset 1860 — published LAST
 };
 #pragma pack(pop)
 
@@ -147,6 +158,14 @@ static constexpr int32_t DECO_RESULT_ABORTED              = -3;
 static constexpr int32_t DECO_RESULT_NOT_A_WS_NODE        = -4;
 static constexpr int32_t DECO_RESULT_REBIND_REFUSED       = -5;  // provider -1: empty name / buildout node / template unresolvable
 
+// HOST_CMD_ACTION values (mirror LIVE_HOST_CMD_ACTION in @swg/contracts/live-inject.ts).
+static constexpr uint32_t HOST_CMD_ACTION_RELOAD_CURRENT_SCENE = 1;
+static constexpr uint32_t HOST_CMD_ACTION_LOAD_EDITOR_SCENE    = 2;
+static constexpr uint32_t HOST_CMD_ACTION_TELEPORT             = 3;
+static constexpr uint32_t HOST_CMD_ACTION_START_PLACEMENT      = 4;
+static constexpr uint32_t HOST_CMD_ACTION_CANCEL_PLACEMENT     = 5;
+static constexpr uint32_t HOST_CMD_ACTION_DESPAWN_NODE         = 6;
+
 // ---------------------------------------------------------------------------
 // LiveCommand — plain-data snapshot of one command-region read
 // ---------------------------------------------------------------------------
@@ -181,6 +200,18 @@ struct DecorationRebind {
     uint32_t flags;              // DECO_REBIND_FLAG_*
     uint64_t buildingId;
     char     derivedTemplate[256];
+};
+
+/** One host->agent action request the agent reads from the HOST_CMD region (05.1-03).
+ *  Read-side snapshot type Plan 07's channelReadHostCommand populates — per-action payload
+ *  usage documented in LIVE_HOST_CMD_LAYOUT (@swg/contracts/live-inject.ts). */
+struct HostCommand {
+    uint32_t epoch;
+    uint32_t action;             // HOST_CMD_ACTION_*
+    char     str1[256];
+    char     str2[128];
+    uint64_t id;
+    float    vec3[3];
 };
 
 // ---------------------------------------------------------------------------
@@ -248,6 +279,23 @@ bool channelReadRebind(DecorationRebind* out);
  * discipline: a torn read of one stale-but-valid word is harmless).
  */
 void channelWriteResult(int32_t code, uint32_t epoch);
+
+/**
+ * channelReadHostCommand — agent-side seqlock retry-read of the HOST_CMD region (same
+ * idiom as channelReadRebind). Returns false on a torn/mid-write read (out left untouched
+ * — retry next poll). The caller applies each NEW out->epoch once (compare to
+ * last-applied). Implementation lands in Plan 07 — declared here only (05.1-03
+ * Interface-First groundwork).
+ */
+bool channelReadHostCommand(HostCommand* out);
+
+/**
+ * channelWriteHostCommandResult — agent publishes a HOST_CMD outcome. code is written
+ * FIRST, epoch LAST (code-before-epoch, same discipline as channelWriteResult).
+ * Implementation lands in Plan 07 — declared here only (05.1-03 Interface-First
+ * groundwork).
+ */
+void channelWriteHostCommandResult(int32_t code, uint32_t epoch);
 
 /**
  * channelClose — unmap the view and release the file-mapping handle.

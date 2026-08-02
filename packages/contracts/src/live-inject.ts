@@ -307,13 +307,11 @@ export const LIVE_DECORATION_CAPTURE_KIND = {
   ARM_FAILED: 2,
 } as const;
 
-/** Total mapping size once the decoration region is included (was 400). Exactly
- *  sizeof(LiveState) under #pragma pack(4): the last field RESULT_EPOCH ends at 1308 and
- *  the struct is already 4-aligned, so no trailing pad. Host CHANNEL_BYTE_SIZE + agent
- *  LIVE_STATE_BYTE_SIZE both equal this. NOTE: this grows to 1864 in Task 2 (below, same
- *  plan) once the CAPTURE_KIND/CAPTURE_CELL_NAME region above and the HOST_CMD region are
- *  both accounted for — left at 1308 here deliberately; Task 2 owns the bump. */
-export const LIVE_CHANNEL_TOTAL_SIZE = 1308;
+/** Total mapping size once the decoration region (through CAPTURE_CELL_NAME, offset
+ *  1440) AND the HOST_CMD region (through HOST_CMD_RESULT_EPOCH, offset 1864) are both
+ *  included (was 1308, then 400 before that). Exactly sizeof(LiveState) under
+ *  #pragma pack(4). Host CHANNEL_BYTE_SIZE + agent LIVE_STATE_BYTE_SIZE both equal this. */
+export const LIVE_CHANNEL_TOTAL_SIZE = 1864;
 
 /** Host → agent rebind flags (REBIND_FLAGS bits). */
 export const LIVE_DECORATION_REBIND_FLAGS = {
@@ -342,6 +340,61 @@ export const LIVE_DECORATION_RESULT = {
   ABORTED:            -3,  // host sent ABORT
   NOT_A_WS_NODE:      -4,  // building is server-streamed / buildout, not a client .ws node (invariant 2)
   REBIND_REFUSED:     -5,  // wsSetNodeTemplateName returned -1 (empty name / buildout node / template unresolvable) — save NOT attempted
+} as const;
+
+// ---------------------------------------------------------------------------
+// Live World Editor: unified HOST_CMD channel region (05.1-03)
+// ---------------------------------------------------------------------------
+
+/**
+ * One new, single, reusable host → agent one-shot action-request region, riding the SAME
+ * single named mapping (still no second CreateFileMappingA — the mapping grows from 1440
+ * to LIVE_CHANNEL_TOTAL_SIZE=1864 bytes). Carries all SIX host → agent actions this phase
+ * needs (reload scene / load editor scene / teleport / start placement / cancel placement /
+ * despawn a node), discriminated by HOST_CMD_ACTION, rather than six separate channel
+ * regions — per the file's own "extend, don't fork" doctrine.
+ *
+ * Same request/response idiom as REBIND/RESULT above, generalized: the host writes a
+ * seqlocked request under HOST_CMD_SEQ_COUNTER and bumps HOST_CMD_EPOCH; the agent applies
+ * each new epoch exactly once and publishes HOST_CMD_RESULT_CODE (written FIRST) then
+ * HOST_CMD_RESULT_EPOCH (published LAST) — the same code-before-epoch, no-seqlock
+ * discipline as RESULT_CODE/RESULT_EPOCH.
+ *
+ * Per-action payload usage:
+ *   RELOAD_CURRENT_SCENE(1)  — no payload.
+ *   LOAD_EDITOR_SCENE(2)     — STR1 terrain, STR2 avatar template.
+ *   TELEPORT(3)              — VEC3 xyz.
+ *   START_PLACEMENT(4)       — STR1 decoration template, STR2 cellName, ID building id.
+ *   CANCEL_PLACEMENT(5)      — no payload.
+ *   DESPAWN_NODE(6)          — ID networkId to remove. Result code mirrors
+ *                               utinni_wsRemoveNode: 1=removed / 0=miss / -1=occupied.
+ *                               All OTHER actions use 1=ok / 0=endpoint-unresolved-or-failed.
+ */
+export const LIVE_HOST_CMD_LAYOUT = {
+  HOST_CMD_SEQ_COUNTER: { offset: 1440, length: 4   },
+  HOST_CMD_EPOCH:        { offset: 1444, length: 4   },
+  /** LIVE_HOST_CMD_ACTION. */
+  HOST_CMD_ACTION:       { offset: 1448, length: 4   },
+  HOST_CMD_STR1:          { offset: 1452, length: 256 },
+  HOST_CMD_STR2:          { offset: 1708, length: 128 },
+  /** decimal-u64-as-two-u32-halves — same crossing pattern CAPTURE_BUILDING_ID uses. */
+  HOST_CMD_ID:            { offset: 1836, length: 8   },
+  /** 3 floats. */
+  HOST_CMD_VEC3:          { offset: 1844, length: 12  },
+  /** signed int32. Written FIRST. */
+  HOST_CMD_RESULT_CODE:   { offset: 1856, length: 4   },
+  /** Published LAST (code-before-epoch discipline). */
+  HOST_CMD_RESULT_EPOCH:  { offset: 1860, length: 4   },
+} as const;
+
+/** LIVE_HOST_CMD_ACTION — the six host → agent one-shot actions this phase needs. */
+export const LIVE_HOST_CMD_ACTION = {
+  RELOAD_CURRENT_SCENE: 1,
+  LOAD_EDITOR_SCENE:    2,
+  TELEPORT:             3,
+  START_PLACEMENT:      4,
+  CANCEL_PLACEMENT:     5,
+  DESPAWN_NODE:         6,
 } as const;
 
 // ---------------------------------------------------------------------------

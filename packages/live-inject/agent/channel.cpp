@@ -22,8 +22,9 @@
 #include <cstring>
 
 // Layout verification — keep these in the .cpp to catch packing regressions early.
-static_assert(sizeof(LiveState) == 1308,
-    "LiveState must match LIVE_CHANNEL_TOTAL_SIZE (1308 bytes — 400-byte frame + decoration region)");
+static_assert(sizeof(LiveState) == 1864,
+    "LiveState must match LIVE_CHANNEL_TOTAL_SIZE (1864 bytes — 400-byte frame + decoration "
+    "region incl. CAPTURE_KIND/CAPTURE_CELL_NAME + HOST_CMD region, 05.1-03)");
 static_assert(offsetof(LiveState, transform) == 4,
     "transform offset must be 4 to match LIVE_CHANNEL_LAYOUT.TRANSFORM.offset");
 static_assert(offsetof(LiveState, networkId) == 52,
@@ -65,6 +66,17 @@ static_assert(offsetof(LiveState, resultEpoch)            == 1304, "resultEpoch 
 // CAPTURE, non-contiguous with captureBuildingTemplate (768) above.
 static_assert(offsetof(LiveState, captureKind)             == 1308, "captureKind @ 1308");
 static_assert(offsetof(LiveState, captureCellName)         == 1312, "captureCellName @ 1312");
+// Unified HOST_CMD region (05.1-03) — mirror LIVE_HOST_CMD_LAYOUT in
+// @swg/contracts/live-inject.ts.
+static_assert(offsetof(LiveState, hostCmdSeqCounter)       == 1440, "hostCmdSeqCounter @ 1440");
+static_assert(offsetof(LiveState, hostCmdEpoch)            == 1444, "hostCmdEpoch @ 1444");
+static_assert(offsetof(LiveState, hostCmdAction)           == 1448, "hostCmdAction @ 1448");
+static_assert(offsetof(LiveState, hostCmdStr1)             == 1452, "hostCmdStr1 @ 1452");
+static_assert(offsetof(LiveState, hostCmdStr2)             == 1708, "hostCmdStr2 @ 1708");
+static_assert(offsetof(LiveState, hostCmdId)               == 1836, "hostCmdId @ 1836");
+static_assert(offsetof(LiveState, hostCmdVec3)             == 1844, "hostCmdVec3 @ 1844");
+static_assert(offsetof(LiveState, hostCmdResultCode)       == 1856, "hostCmdResultCode @ 1856");
+static_assert(offsetof(LiveState, hostCmdResultEpoch)      == 1860, "hostCmdResultEpoch @ 1860");
 
 // ---------------------------------------------------------------------------
 // Module-global file-mapping handles (one channel per agent instance)

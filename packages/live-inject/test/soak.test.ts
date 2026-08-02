@@ -20,7 +20,7 @@
 // Reference: 05-12-PLAN.md Task 1 <action>/<acceptance_criteria>.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { LIVE_CHANNEL_LAYOUT } from '@swg/contracts';
+import { LIVE_CHANNEL_LAYOUT, LIVE_CHANNEL_TOTAL_SIZE } from '@swg/contracts';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const addon = require('../index.js') as {
@@ -37,7 +37,11 @@ const addon = require('../index.js') as {
 
 const CHANNEL_NAME = `Local\\SwgToolkitLive_soak_${process.pid}_${Date.now()}`;
 const SOAK_ITERATIONS = 500;
-const TOTAL_SIZE = LIVE_CHANNEL_LAYOUT.TOTAL_SIZE.length; // 400 (05-01 ROUND 5)
+// Whole-mapping size (grows as the channel gains regions — was 400 pre-05-01-decoration,
+// then 1308, now 1864 as of 05.1-03's CAPTURE_KIND/CAPTURE_CELL_NAME + HOST_CMD region).
+// LIVE_CHANNEL_LAYOUT.TOTAL_SIZE.length stays a FIXED 400 (the original read/command-frame
+// span, unrelated to later region growth) — do not use it here.
+const TOTAL_SIZE = LIVE_CHANNEL_TOTAL_SIZE;
 
 describe('GC-pressure soak — command-slot channel binding', () => {
   beforeAll(() => {
@@ -61,7 +65,7 @@ describe('GC-pressure soak — command-slot channel binding', () => {
     () => {
       const opened = addon.openChannel(CHANNEL_NAME);
       expect(opened).toBeInstanceOf(ArrayBuffer);
-      expect(opened.byteLength).toBe(400);
+      expect(opened.byteLength).toBe(TOTAL_SIZE);
 
       for (let i = 0; i < SOAK_ITERATIONS; i++) {
         // Vary the payload every iteration so a stale/dangling read (a buffer
@@ -88,7 +92,6 @@ describe('GC-pressure soak — command-slot channel binding', () => {
         expect(view).not.toBeNull();
         expect(view).toBeInstanceOf(ArrayBuffer);
         expect(view!.byteLength).toBe(TOTAL_SIZE);
-        expect(view!.byteLength).toBe(400);
 
         // Confirm the command-region seqlock landed even (write complete, not
         // torn) and the just-written values read back out correctly at the
