@@ -411,10 +411,23 @@ const char* armDecorationEdit() {
     // is the correct source. Until the provider ships it (REQUEST 2026-07-30) the slot is null;
     // fall back to the current left-click selection (which for now resolves the cell, not the
     // building — hence the "no interiorLayoutFileName" abort you'll see without the shim).
+    // When the resolver IS advertised, its answer is authoritative INCLUDING 0. Per the client
+    // catalog (engine_hookpoints.inc:446 + the v25 note): "world-cell objects report 0 (no
+    // PortalProperty)" — i.e. 0 means "not inside a POB", a definitive NO, not "unknown". The old
+    // `if (bldgId == 0) bldgId = g_lastRayId` fallback was a PRE-SHIM workaround (see REQUEST
+    // 2026-07-30) that outlived its cause: after v25 shipped it silently substituted the picked
+    // object's OWN id, so hovering a building from outside armed it as its own containing
+    // building — meaningless state that would assemble an .ilf edit against a building that never
+    // contained the object, and it made the refusal path unreachable (the 020-A `failed` state
+    // could never be exercised). The fallback now applies ONLY when the slot is unresolved.
     int64_t bldgId = 0;
-    if (swg::endpoints::getContainingBuildingId) bldgId = swg::endpoints::getContainingBuildingId(deco);
-    if (bldgId == 0) bldgId = (g_lastRayId != 0) ? g_lastRayId : g_pickedId;
-    if (bldgId == 0) return "no building id — hover a decoration (or click the building), then Arm";
+    if (swg::endpoints::getContainingBuildingId) {
+        bldgId = swg::endpoints::getContainingBuildingId(deco);
+        if (bldgId == 0) return "not inside a building — interior decorations only";
+    } else {
+        bldgId = (g_lastRayId != 0) ? g_lastRayId : g_pickedId;
+        if (bldgId == 0) return "no building id — hover a decoration (or click the building), then Arm";
+    }
 
     // Pre-move o2p of the decoration.
     if (!swg::endpoints::getObjectTransformO2P(deco, g_capOriginalO2p)) return "getTransformO2P returned 0";
