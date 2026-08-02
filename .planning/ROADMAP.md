@@ -387,7 +387,7 @@ Engineering ride-alongs owed by the pivot (handoff "Remaining follow-ups"):
   4. A user can ADD a new decoration end-to-end (021-A wizard pick → overlay ghost placement → persisted `.ilf` gains a new row that survives scene reload) and REMOVE a decoration with the same persistence guarantee.
   5. Rotation edits persist and reload correctly, and the agent `-1`-refused mapping fix ships (a refused rebind can never report a save-result).
 
-**Plans:** 6/15 plans executed
+**Plans:** 7/16 plans executed
 Plans:
 **Wave 0** *(parallel — no cross-plan dependencies)*
 - [x] 05.1-01-PLAN.md — Wave-0 gates: REBIND_REFUSED label fix, .ilf addNode/removeNode, decorationPersist kind=edit|add|remove + byte-exact round-trip tests
@@ -396,12 +396,13 @@ Plans:
 - [x] 05.1-04-PLAN.md — worldEditorScan.ts (disk-scan-as-truth building tree) + worldEditorStore.ts (session overlay + history + badge)
 
 **Wave 1** *(blocked on Wave 0)*
-- [ ] 05.1-05-PLAN.md — Agent HUD rewrite (020-A Status Strip): retire CONSULT-69, F/G/R hotkey capture, verify-wire shipped REBIND_REFUSED/editor-scene ride-alongs [autonomous: false]
+- [x] 05.1-05-PLAN.md — Agent HUD rewrite (020-A Status Strip): retire CONSULT-69, F/G/R hotkey capture, verify-wire shipped REBIND_REFUSED/editor-scene ride-alongs [autonomous: false] — checkpoint APPROVED 2026-08-02 (2 live fixes: Esc-key removal, building-id fallback retirement; 1 pre-existing crash defect routed to new Plan 05.1-16; 1 label deviation approved to ship)
 - [x] 05.1-06-PLAN.md — Orchestrator: thread mirrorToStockIlf + reconcileMirrorMode (D-09) + capture.kind=add branch
 - [x] 05.1-07-PLAN.md — Native HOST_CMD channel: agent read+ack (channel.cpp) + host N-API write export (channel_binding.cpp/addon.cpp)
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 05.1-08-PLAN.md — Renderer hostCommand.ts send* wrappers + useChannelReader.ts result polling
+- [ ] 05.1-16-PLAN.md — Game-thread command queue + overlay fault containment: fixes a pre-existing re-entrant gameLoadScene crash (Present-callback scene swap) + per-frame strip fault containment (HUD-blanking SEH faults) [autonomous: false] — INSERTED 2026-08-02, MUST run after 05.1-08 and before 05.1-09 (hard prerequisite — Plan 09 dispatches HOST_CMD scene-swap actions from the same render-callback context that crashed here)
 - [ ] 05.1-09-PLAN.md — Agent consumes HOST_CMD (reload/editor-scene/teleport/despawn) + binds wsRemoveNode [autonomous: false]
 - [ ] 05.1-10-PLAN.md — World panel shell: dockview registration + tree/mirror-toggle/live-strip/detail-card (019-A core)
 

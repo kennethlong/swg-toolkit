@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-07-PLAN.md — HOST_CMD channel read/write C++ primitives (agent channelReadHostCommand/channelWriteHostCommandResult + host writeHostCommand N-API export), both packages built clean, SUMMARY written
-last_updated: "2026-08-02T01:27:01.169Z"
+stopped_at: Completed 05.1-05-PLAN.md — 020-A Status Strip (CONSULT-69 probe retired, F/G/R hotkey
+last_updated: "2026-08-02T12:09:04.011Z"
 last_activity: 2026-08-02
 progress:
   total_phases: 15
   completed_phases: 10
-  total_plans: 100
-  completed_plans: 91
-  percent: 67
+  total_plans: 101
+  completed_plans: 92
+  percent: 91
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 7 of 15
+Plan: 8 of 16 (05.1-16 inserted 2026-08-02, wave 2, runs after 05.1-08/before 05.1-09 — see 05.1-16-PLAN.md)
 Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
@@ -148,6 +148,7 @@ Progress: [█████████░] 91%
 | Phase 05.1-live-world-editor-productization P04 | ~20min | 2 tasks | 4 files |
 | Phase 05.1-live-world-editor-productization P06 | single session | 1 tasks | 4 files |
 | Phase 05.1-live-world-editor-productization P07 | ~15min | 2 tasks | 5 files |
+| Phase 05.1-live-world-editor-productization P05 | multi-session | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -347,6 +348,10 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1-06]: reconcileMirrorMode's Phase 2 resolve/group step (reading each building's stock template for its mirror path) shares Phase 1's zero-writes-until-clean discipline rather than being folded into apply-phase rollback — keeps the transactional guarantee simple: nothing is written until the FULL set of buildings for this pass is provably resolvable
 - [Phase 05.1-06]: Test-forced throws in reconcileMirrorMode tests use fs spies (path-conditional mockImplementation, call-through otherwise), not directory-collision tricks — a pre-existing directory at a WRITE target is silently treated by the exists-check as already-reconciled and never forces a throw; confirmed via direct fs probe (EISDIR on read, EPERM on unlink on Windows) that only the DELETE direction reliably throws on a directory collision
 - [Phase 05.1]: [Phase 05.1, Plan 07]: channelReadHostCommand/channelWriteHostCommandResult mirror channelReadRebind/channelWriteResult line-for-line; writeHostCommand mirrors writeRebind's shape, accepting vec3 as Float32Array(3) or number[3] per the plan's own behavior spec
+- [Phase 05.1, Plan 05]: Esc KEY binding removed from the 020-A strip (checkpoint fix, 2ec00e3) — SWG polls input via DirectInput not the Win32 queue, so hkWndProc can only OBSERVE (io.WantCaptureKeyboard) never CONSUME a keystroke; the bound Esc also toggled SWG's own settings menu. Sketch 020-A specified an Esc BUTTON, never an Esc KEY. F/G/R remain double-fire into the game for the same structural reason -- standing DirectInput input-arbitration limitation for any future agent-input plan.
+- [Phase 05.1, Plan 05]: Stale pre-shim building-id fallback in armDecorationEdit retired (checkpoint fix, cb6f369) — After v25 shipped getContainingBuildingId (2026-07-30), bldgId==0 is authoritative (world-cell object, no PortalProperty), but a fallback left over from before the provider shipped it was overriding that definitive NO with the hovered object's own id, silently arming a building as its own containing building and making the refusal path unreachable. Fallback now applies ONLY when the slot is genuinely unresolved.
+- [Phase 05.1, Plan 05]: Plan 05.1-16 inserted into wave 2 (runs after 05.1-08, before 05.1-09) to close a pre-existing re-entrant gameLoadScene crash and a per-frame overlay fault-containment gap — 05.1-05's blocking checkpoint found step 8 ('Editor scene') crashed the client: gameLoadScene is called from inside hkSwapChainPresent's render callback (commit 36ab9b7, not this plan's diff), a re-entrant scene swap. A related HUD-blanking fault (Bug A, 3,424 consecutive per-frame SEH faults in one run) shares the same fault-containment gap. Plan 09 would otherwise dispatch HOST_CMD scene-swap actions from the same render-callback context and reproduce the crash on its own checkpoint, so 05.1-16 is a hard prerequisite that must land first.
+- [Phase 05.1, Plan 05]: 020-A strip label ships as two-segment 'Decoration . Building', not sketch 020-A's three-segment 'Decoration . Cell . Building' -- maintainer-approved deviation — The cell-name segment is genuinely unresolvable: all 150 rows of the client's v26 advertised catalog were checked and none returns a cell name string. Deferred to Phase 5.2 (SC5 retrofits the sketch-021 flow; SC2's asset-discovery resolver is adjacent); tracked at .planning/todos/pending/hud-cell-name-label-segment.md, provider change request filed by 05.1-15.
 
 ### Pending Todos
 
@@ -378,18 +383,23 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-02T01:27:01.143Z
-Stopped at: Completed 05.1-07-PLAN.md — HOST_CMD channel read/write C++ primitives (agent channelReadHostCommand/channelWriteHostCommandResult + host writeHostCommand N-API export), both packages built clean, SUMMARY written
-  Tasks 1-4 executed and committed (RED/GREEN per task): (1) decorationResultLabel
-  REBIND_REFUSED label fix (SC1); (2) ilf.ts addNode/removeNode append/delete primitives with
-  byte-exact round-trip coverage (SC4); (3) decorationPersist.ts kind-aware assembly
-  (edit|add|remove) + cellName result field + exported sanitizeId (ROUND 3 R3/R5 seam prep);
-  (4) .ilf registered in the CORE-05 standing gate (extract-ilf-fixtures.cjs +
-  ilf-roundtrip.test.ts) with a REQUIRED (not skip-on-absent) real-asset fixture extracted from
-  D:/SWG Infinity/SWG Infinity/Live (ROUND 3 REVIEWS.md C5). Task 5's checkpoint was APPROVED
-  by the orchestrator on independently-reproduced evidence (fixture confirmed on disk 17542
-  bytes; `npx vitest run ilf-roundtrip.test.ts --reporter=verbose` re-run live, 7/7 passed, 0
-  skipped, real-asset describe block confirmed genuinely executed). Plan 05.1-01 is CLOSED.
-  SUMMARY.md written and committed (4648e75, plus self-check addendum).
-Next session: continue with the phase's remaining plans (05.1-02 onward).
+Last session: 2026-08-02T12:09:03.980Z
+Stopped at: Completed 05.1-05-PLAN.md — 020-A Status Strip (CONSULT-69 probe retired, F/G/R hotkey
+  state machine, arm-failure CAPTURE publish for C8). Tasks 1-2 executed and committed (d9feae7,
+  f18790c). Task 3's blocking in-game checkpoint was APPROVED by the maintainer 2026-08-02, but not
+  cleanly on the first pass: two live defects were found and fixed mid-checkpoint (Esc KEY binding
+  removed, 2ec00e3 — it toggled SWG's own settings menu, a DirectInput input-arbitration limitation,
+  not a regression; stale pre-shim building-id fallback in armDecorationEdit retired, cb6f369 — was
+  making the refusal path unreachable post-v25). One pre-existing agent defect (step 8, "Editor
+  scene" crashed the client — re-entrant gameLoadScene call from inside hkSwapChainPresent's render
+  callback, commit 36ab9b7, NOT this plan's diff) plus a related HUD-blanking fault (Bug A, 3,424
+  consecutive per-frame SEH faults in one run) were found, attributed, and explicitly NOT fixed here
+  — routed to new plan 05.1-16 (wave 2, inserted this session, MUST run after 05.1-08 and before
+  05.1-09 since Plan 09 would otherwise reproduce the same re-entrant-scene-swap crash on its own
+  checkpoint). One label deviation (two-segment "Decoration · Building" vs. sketch 020-A's
+  three-segment "Decoration · Cell · Building" — cell-name genuinely unresolvable in the current
+  client's advertised catalog, all 150 rows checked) was explicitly approved by the maintainer to
+  ship, deferred to Phase 5.2. Plan 05.1-05 is CLOSED. SUMMARY.md written and committed.
+Next session: continue with the phase's remaining plans — next up is 05.1-08 (wave 2), with 05.1-16
+  now a hard prerequisite that must land before 05.1-09.
 Resume file: None
