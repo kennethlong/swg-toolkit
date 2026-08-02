@@ -56,6 +56,7 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pWsSetNodeTemplateName)(int64_t id, const char* name); // v23 model-D rebind
     typedef void(__cdecl*     pWsVoid)();
     typedef int(__cdecl*      pGetSceneId)(char* buf, int cap);
+    typedef int(__cdecl*      pWsRemoveNode)(int64_t networkIdInt);   // 05.1-09: 1 removed/0 miss/-1 occupied
     // 05.1-16: the real per-frame tick ("game::mainLoop" -> &Game::runGameLoopOnce), DISTINCT
     // from g_mainLoopCounter's getMainLoopCount accessor below — see rva_table.cpp for the full
     // provenance note. Preferred drain point for the deferred scene-swap command queue.
@@ -83,6 +84,7 @@ namespace swg { namespace endpoints {
     extern pWsLoad            wsLoad;
     extern pWsVoid            wsUnloadSnapshot;
     extern pGetSceneId        getSceneId;
+    extern pWsRemoveNode      wsRemoveNode;
     extern pMainLoop          mainLoop;
     typedef void*(__thiscall* pGetNetworkId)(void*);
     extern pGetNetworkId      getNetworkId;
@@ -287,6 +289,11 @@ uint32_t g_captureEpoch = 0;             // monotonic; bumped once per Persist c
 uint32_t g_lastAppliedRebindEpoch = 0;   // agent applies each new REBIND epoch once
 int32_t  g_lastDecoResult = 0x7fffffff;  // last rebind outcome (sentinel = none yet)
 uint32_t g_lastDecoResultEpoch = 0;
+// 05.1-09: HOST_CMD's own last-applied-epoch tracker (handleHostCommand(), defined further down
+// this file, alongside the deferred-queue extension) — same consume-once-per-epoch shape as
+// g_lastAppliedRebindEpoch above, on the SEPARATE REBIND vs. HOST_CMD region/epoch space. Reset to
+// 0 whenever a fresh HOST_CMD epoch of 0 is observed (R9 review, BB4 — see handleHostCommand()).
+uint32_t g_lastAppliedHostCmdEpoch = 0;
 // D-10: true when the most-recently-APPLIED rebind's persist had mirrorToStockIlf resolve
 // false (host-set DECO_REBIND_FLAG_MIRROR_OFF), stashed by applyPendingRebind alongside
 // g_lastAppliedRebindEpoch and read-only from the strip's saved-state check (020-A) so a
@@ -762,14 +769,30 @@ void renderDecorationStripGuarded() {
 //     click via renderFrame()) and, on the preferred drain path, hkMainLoop drains AFTER
 //     that same call returns. No atomics/locks needed; a plain fixed-capacity ring is
 //     sufficient and allocates nothing on the render thread. ---
-enum class DeferredCmdKind : uint8_t { None = 0, LoadScene };
+// 05.1-09: kind gains Reload (RELOAD_CURRENT_SCENE) alongside LoadScene (LOAD_EDITOR_SCENE) —
+// same scene-lifecycle class per 05.1-16-SUMMARY's handoff table (both MUST NOT be issued from
+// inside Present). Reload uses worldSnapshot::wsUnloadSnapshot+wsLoad, a DIFFERENT engine call
+// pair than game::cleanupScene/loadScene — nothing in the 05.1-16 evidence shows it needs the
+// two-frame gap that gameLoadScene does (that FATAL is specific to InputScheme's ground-input-map
+// release, tied to the SceneCreator player-recreation lifecycle Reload does not go through), so
+// Reload executes in a SINGLE drain pass, just moved outside Present. Flagged as an assumption,
+// not a proven fact, in this plan's checkpoint return — Task 3 smoke-tests it live.
+enum class DeferredCmdKind : uint8_t { None = 0, LoadScene, Reload };
 struct DeferredCmd {
     DeferredCmdKind kind = DeferredCmdKind::None;
-    char terrain[128] = {};
-    char player[160] = {};
+    char terrain[128] = {};   // LoadScene only
+    char player[160] = {};    // LoadScene only
+    char scene[128] = {};     // Reload only
     // Two-frame sequencing latch (Utinni game.cpp:499-554 equivalent of `sceneCleaned`).
     // false = cleanupScene still owed; true = teardown done a tick ago, safe to load.
+    // LoadScene only — Reload has no cleanup step (see kind comment above).
     bool sceneCleaned = false;
+    // 05.1-09: 0 = locally-triggered (existing ImGui button; no ack owed — nothing is waiting
+    // on a HOST_CMD epoch). Non-zero = the HOST_CMD epoch handleHostCommand() consumed to enqueue
+    // this command; drainDeferredCommands() publishes exactly one channelWriteHostCommandResult
+    // for it at the point the command actually EXECUTES (ack-on-execution — see this plan's
+    // checkpoint-return design-decision statement), never at enqueue time.
+    uint32_t hostCmdEpoch = 0;
 };
 constexpr int kDeferredQueueCapacity = 4;
 DeferredCmd g_deferredQueue[kDeferredQueueCapacity];
@@ -797,7 +820,9 @@ bool enqueueDeferredCmd(const DeferredCmd& cmd) {
     return true;
 }
 
-bool enqueueDeferredLoadScene(const char* terrain, const char* player) {
+// hostCmdEpoch defaults to 0 (local ImGui button caller — unchanged call site, no ack owed).
+// handleHostCommand() passes its consumed epoch explicitly so the eventual drain can ack it.
+bool enqueueDeferredLoadScene(const char* terrain, const char* player, uint32_t hostCmdEpoch = 0) {
     DeferredCmd cmd;
     cmd.kind = DeferredCmdKind::LoadScene;
     std::strncpy(cmd.terrain, terrain, sizeof(cmd.terrain) - 1);
@@ -805,6 +830,20 @@ bool enqueueDeferredLoadScene(const char* terrain, const char* player) {
     std::strncpy(cmd.player, player, sizeof(cmd.player) - 1);
     cmd.player[sizeof(cmd.player) - 1] = '\0';
     cmd.sceneCleaned = false;   // frame 1 (cleanup) is always owed on a fresh request
+    cmd.hostCmdEpoch = hostCmdEpoch;
+    return enqueueDeferredCmd(cmd);
+}
+
+// 05.1-09: Reload's remote-only counterpart to enqueueDeferredLoadScene above. No local ImGui
+// caller — the existing "Reload current scene" button keeps calling wsUnloadSnapshot()+wsLoad()
+// synchronously inline (unchanged, per this plan's task-2 action note); this path exists ONLY for
+// the HOST_CMD RELOAD_CURRENT_SCENE dispatch, so hostCmdEpoch is not defaulted.
+bool enqueueDeferredReload(const char* scene, uint32_t hostCmdEpoch) {
+    DeferredCmd cmd;
+    cmd.kind = DeferredCmdKind::Reload;
+    std::strncpy(cmd.scene, scene, sizeof(cmd.scene) - 1);
+    cmd.scene[sizeof(cmd.scene) - 1] = '\0';
+    cmd.hostCmdEpoch = hostCmdEpoch;
     return enqueueDeferredCmd(cmd);
 }
 
@@ -854,37 +893,170 @@ void drainDeferredCommands() {
 
         switch (cmd.kind) {
             case DeferredCmdKind::LoadScene:
-                if (swg::endpoints::gameLoadScene) {
-                    // TWO-FRAME SEQUENCE (05.1-16 checkpoint finding). Draining outside Present is
-                    // necessary but NOT sufficient: calling loadScene while a scene is already live
-                    // FATALs at InputScheme.cpp:480 ("fetchGroundInputMap called on a new player
-                    // without releasing old one"). Verified live — it crashes in-world but SUCCEEDS
-                    // from the login screen, where there is no GroundScene/player to release.
-                    //
-                    // Ground truth is Utinni's hkMainLoop state machine (game.cpp:499-554), which is
-                    // NOT "cleanup then load" in one call: frame N runs cleanupScene and latches
-                    // sceneCleaned; frame N+1 runs loadScene. The engine needs a full tick between
-                    // teardown and construction. We reproduce that by re-queueing ourselves once
-                    // after cleanup, so the load lands on the NEXT drain (i.e. the next mainLoop
-                    // tick) rather than immediately after the teardown returns.
-                    if (!cmd.sceneCleaned && swg::endpoints::gameCleanupScene) {
-                        dbg("overlay: deferred LoadScene — frame 1: cleanupScene (scene is live)");
-                        swg::endpoints::gameCleanupScene();
-                        DeferredCmd next = cmd;
-                        next.sceneCleaned = true;
-                        if (!enqueueDeferredCmd(next)) {
-                            dbg("overlay: deferred LoadScene — re-queue FAILED after cleanup; scene left unloaded");
-                        }
-                        break;   // do NOT load this frame
-                    }
-                    dbg("overlay: deferred LoadScene — frame 2: loadScene (game thread, outside Present)");
-                    swg::endpoints::gameLoadScene(cmd.terrain, cmd.player);
-                    invalidateSceneCachedPointers("loadScene");
+                if (!swg::endpoints::gameLoadScene) {
+                    // Endpoint unresolved on this client build — the command can never execute.
+                    // Ack now (0 = endpoint unresolved) rather than stranding a HOST_CMD-originated
+                    // request's pending slot until its 11 s timeout (Plan 08's "agent always-acks").
+                    if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(0, cmd.hostCmdEpoch);
+                    break;
                 }
+                // TWO-FRAME SEQUENCE (05.1-16 checkpoint finding). Draining outside Present is
+                // necessary but NOT sufficient: calling loadScene while a scene is already live
+                // FATALs at InputScheme.cpp:480 ("fetchGroundInputMap called on a new player
+                // without releasing old one"). Verified live — it crashes in-world but SUCCEEDS
+                // from the login screen, where there is no GroundScene/player to release.
+                //
+                // Ground truth is Utinni's hkMainLoop state machine (game.cpp:499-554), which is
+                // NOT "cleanup then load" in one call: frame N runs cleanupScene and latches
+                // sceneCleaned; frame N+1 runs loadScene. The engine needs a full tick between
+                // teardown and construction. We reproduce that by re-queueing ourselves once
+                // after cleanup, so the load lands on the NEXT drain (i.e. the next mainLoop
+                // tick) rather than immediately after the teardown returns.
+                if (!cmd.sceneCleaned && swg::endpoints::gameCleanupScene) {
+                    dbg("overlay: deferred LoadScene — frame 1: cleanupScene (scene is live)");
+                    swg::endpoints::gameCleanupScene();
+                    DeferredCmd next = cmd;          // hostCmdEpoch carries forward with the copy
+                    next.sceneCleaned = true;
+                    if (!enqueueDeferredCmd(next)) {
+                        dbg("overlay: deferred LoadScene — re-queue FAILED after cleanup; scene left unloaded");
+                        // Queue-overflow drop: the command will now NEVER execute. Ack 0 so the
+                        // renderer's pending slot resolves immediately instead of timing out.
+                        if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(0, cmd.hostCmdEpoch);
+                    }
+                    break;   // do NOT load this frame — ack (if any) happens on frame 2 or the drop path above
+                }
+                dbg("overlay: deferred LoadScene — frame 2: loadScene (game thread, outside Present)");
+                swg::endpoints::gameLoadScene(cmd.terrain, cmd.player);
+                invalidateSceneCachedPointers("loadScene");
+                // Ack-on-execution (this plan's design decision, stated in the checkpoint return):
+                // the scene has ACTUALLY swapped by this line, so code 1 here is truthful, not a
+                // hopeful ack-on-enqueue. Plan 08's 11 s timeout comfortably absorbs the one-plus-
+                // frame delay between HOST_CMD consumption and this point.
+                if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(1, cmd.hostCmdEpoch);
+                break;
+            case DeferredCmdKind::Reload:
+                if (!swg::endpoints::wsLoad) {
+                    if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(0, cmd.hostCmdEpoch);
+                    break;
+                }
+                dbg("overlay: deferred Reload — wsUnloadSnapshot+wsLoad (game thread, outside Present)");
+                if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
+                swg::endpoints::wsLoad(cmd.scene);
+                invalidateSceneCachedPointers("reload current scene (HOST_CMD)");
+                if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(1, cmd.hostCmdEpoch);
                 break;
             case DeferredCmdKind::None:
                 break;
         }
+    }
+}
+
+// --- 05.1-09: HOST_CMD dispatch — the remote-trigger counterpart to the local ImGui buttons
+//     above (reload/editor-scene/teleport) plus DESPAWN_NODE (no local button exists for it).
+//     Structural analog: applyPendingRebind()'s per-frame consume-once-per-epoch shape (torn-read
+//     bail, epoch-vs-last-applied gate, mark-applied BEFORE dispatch). Called from renderFrame()
+//     immediately after applyPendingRebind(), same as that function's own call site discipline.
+//
+//     Per-action routing (05.1-16-SUMMARY's handoff table, binding): RELOAD_CURRENT_SCENE and
+//     LOAD_EDITOR_SCENE are BOTH proven-FATAL from inside Present (scene-lifecycle class) and are
+//     therefore ALWAYS routed through the deferred queue — never called directly here, even though
+//     this function itself runs inside Present. TELEPORT is proven safe from Present (05.1-05
+//     checkpoint) and is called directly, matching the existing teleport button. DESPAWN_NODE
+//     mutates snapshot state but does not recreate the player/scene, so it is also called directly
+//     (UNKNOWN-verified-live per the handoff table — Task 3 smoke-tests it).
+//
+//     ACK-TIMING DESIGN DECISION (required by this plan, not pre-decided by 05.1-16 or Plan 08):
+//     deferred actions ack ON EXECUTION, not on enqueue. Enqueue-time acking would tell the
+//     renderer "success" before the scene has actually swapped — a lie if the two-frame sequence
+//     later hits an unresolved endpoint or a queue-overflow drop. Ack-on-execution is truthful and
+//     the 11 s PLACEMENT_ACK_TIMEOUT_MS-sibling budget (Plan 08's HOST_CMD ACK PROTOCOL) comfortably
+//     absorbs the one-plus-frame delay between consumption here and execution in
+//     drainDeferredCommands(). See that function's LoadScene/Reload cases for where the deferred
+//     ack actually publishes (success on real execution; 0 on unresolved-endpoint or overflow-drop
+//     — every path acks exactly once, never silently stranding the renderer's pending slot).
+void handleHostCommand() {
+    HostCommand cmd = {};
+    if (!channelReadHostCommand(&cmd)) return;   // torn read or channel closed — retry next frame
+
+    if (cmd.epoch == 0) {
+        // R9 review, BB4 (ground-truth adjudicated): a zeroed epoch slot means a fresh
+        // openChannel just re-initialized the region — channel_binding.cpp:153-154's
+        // std::memset(view, 0, CHANNEL_BYTE_SIZE) runs UNCONDITIONALLY on every open, including a
+        // re-open while this agent is still running, so no REGION epoch survives a toolkit
+        // restart. Only this AGENT-LOCAL tracker can go stale across that restart. Resetting here
+        // guarantees a restarted toolkit's epochs 1..N can never silently collide with (and be
+        // swallowed by) a stale tracker left over from a previous toolkit session.
+        g_lastAppliedHostCmdEpoch = 0;
+        return;
+    }
+    if (cmd.epoch == g_lastAppliedHostCmdEpoch) return;   // already handled this epoch (self-loop)
+    g_lastAppliedHostCmdEpoch = cmd.epoch;                // mark BEFORE dispatch — consume-once, never re-entrant
+
+    int32_t code = 0;
+    bool deferredAck = false;   // true = a queued command owns publishing its own ack later
+
+    switch (cmd.action) {
+        case HOST_CMD_ACTION_RELOAD_CURRENT_SCENE: {
+            char scene[128] = {};
+            const bool haveScene = swg::endpoints::getSceneId && swg::endpoints::wsLoad &&
+                swg::endpoints::getSceneId(scene, sizeof(scene)) > 0 && scene[0] != '\0';
+            if (haveScene && enqueueDeferredReload(scene, cmd.epoch)) {
+                deferredAck = true;   // drainDeferredCommands() acks this epoch on real execution
+            }
+            // else: no scene resolved, or the queue is full — code stays 0, acked below now.
+            break;
+        }
+        case HOST_CMD_ACTION_LOAD_EDITOR_SCENE: {
+            if (swg::endpoints::gameLoadScene && cmd.str1[0] != '\0' && cmd.str2[0] != '\0' &&
+                enqueueDeferredLoadScene(cmd.str1, cmd.str2, cmd.epoch)) {
+                deferredAck = true;   // drainDeferredCommands() acks this epoch on real execution
+            }
+            // else: endpoint unresolved, empty terrain/avatar, or the queue is full — code 0 below.
+            break;
+        }
+        case HOST_CMD_ACTION_TELEPORT: {
+            // Same call sequence as the existing "Go##teleport" button (identity rotation,
+            // vec3 as world position) — inlined here rather than extracted into a shared helper
+            // so the existing button's own instrumentation (click trace + read-back log, added by
+            // 05.1-16 to diagnose the stale-player-after-reload defect) stays untouched.
+            if (swg::endpoints::getPlayer && swg::endpoints::setTransform_o2w) {
+                void* player = swg::endpoints::getPlayer();
+                if (player) {
+                    const float t[12] = {
+                        1.0f, 0.0f, 0.0f, cmd.vec3[0],
+                        0.0f, 1.0f, 0.0f, cmd.vec3[1],
+                        0.0f, 0.0f, 1.0f, cmd.vec3[2],
+                    };
+                    swg::endpoints::setTransform_o2w(player, t);
+                    code = 1;
+                }
+                // else: no player (mid reload/scene-swap) — code stays 0.
+            }
+            // else: endpoint(s) unresolved — code stays 0.
+            break;
+        }
+        case HOST_CMD_ACTION_DESPAWN_NODE: {
+            if (swg::endpoints::wsRemoveNode) {
+                // Verbatim pass-through, per this plan's behavior spec — 1/0/-1 is the CALLER's
+                // contract to interpret (hostCommand.ts's describeHostCommandResult), never
+                // remapped here.
+                code = swg::endpoints::wsRemoveNode(static_cast<int64_t>(cmd.id));
+            }
+            // else: endpoint unresolved — code stays 0.
+            break;
+        }
+        default:
+            // START_PLACEMENT/CANCEL_PLACEMENT (4/5 — Plan 12's dedicated ghost/reticle
+            // state-machine work) and any unrecognized future action value: fail-closed, never a
+            // crash or a silent drop — code stays 0 and is published below, so Plan 12's future
+            // handler can widen this same dispatch by adding cases rather than fighting over
+            // epoch tracking (T-05.1-09b).
+            code = 0;
+            break;
+    }
+
+    if (!deferredAck) {
+        channelWriteHostCommandResult(code, cmd.epoch);
     }
 }
 
@@ -918,6 +1090,12 @@ void renderFrame() {
     // can show the same frame it lands — that property does not depend on hover-tracking
     // order and is unaffected by the 05.1-16 reorder below.
     applyPendingRebind();
+
+    // 05.1-09: consume any HOST_CMD the toolkit published this frame (remote
+    // reload/editor-scene/teleport/despawn trigger). Same "run every frame, un-gated" discipline
+    // as applyPendingRebind() immediately above — a SEPARATE region/epoch space, so ordering
+    // relative to applyPendingRebind() has no cross-effect either way.
+    handleHostCommand();
 
     // Hover tracking: track the last non-null hud hover pick every frame so a decoration
     // hovered in the world can still be latched after the cursor moves to the panel.
