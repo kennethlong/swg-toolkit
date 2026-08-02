@@ -139,6 +139,10 @@ static constexpr uint32_t GUARD_FLAG_STOPPING           = 0x4;
 // LIVE_DECORATION_RESULT in @swg/contracts/live-inject.ts exactly).
 static constexpr uint32_t DECO_REBIND_FLAG_APPLY = 0x1;
 static constexpr uint32_t DECO_REBIND_FLAG_ABORT = 0x2;
+// Set by the host alongside APPLY when this persist's mirrorToStockIlf resolved to false —
+// lets the agent's status strip show a distinct "saved (not visible here)" variant per
+// D-10, without the agent needing any knowledge of per-project settings.
+static constexpr uint32_t DECO_REBIND_FLAG_MIRROR_OFF = 0x4;
 
 // CAPTURE_KIND values (mirror LIVE_DECORATION_CAPTURE_KIND in @swg/contracts/live-inject.ts).
 static constexpr uint32_t DECO_CAPTURE_KIND_EDIT       = 0;

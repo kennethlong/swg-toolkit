@@ -320,6 +320,10 @@ export const LIVE_DECORATION_REBIND_FLAGS = {
   /** Cancel the pending capture (assembly failed / user backed out) — agent clears its
    *  pending state and writes RESULT_CODE = ABORTED without touching the snapshot. */
   ABORT: 0x2,
+  /** Set by the host alongside APPLY when this persist's mirrorToStockIlf resolved to
+   *  false — lets the agent's status strip show a distinct "saved (not visible here)"
+   *  variant per D-10, without the agent needing any knowledge of per-project settings. */
+  MIRROR_OFF: 0x4,
 } as const;
 
 /** Agent → host rebind outcome (RESULT_CODE). Extends the wsSaveSnapshot result space so a
