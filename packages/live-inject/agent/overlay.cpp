@@ -273,6 +273,25 @@ uint32_t g_captureEpoch = 0;             // monotonic; bumped once per Persist c
 uint32_t g_lastAppliedRebindEpoch = 0;   // agent applies each new REBIND epoch once
 int32_t  g_lastDecoResult = 0x7fffffff;  // last rebind outcome (sentinel = none yet)
 uint32_t g_lastDecoResultEpoch = 0;
+// D-10: true when the most-recently-APPLIED rebind's persist had mirrorToStockIlf resolve
+// false (host-set DECO_REBIND_FLAG_MIRROR_OFF), stashed by applyPendingRebind alongside
+// g_lastAppliedRebindEpoch and read-only from the strip's saved-state check (020-A) so a
+// mirror-off persist reads "saved (not visible here)" instead of plain "saved".
+bool     g_lastRebindMirrorOff = false;
+// Last arm-attempt failure reason (020-A hover state, F key). Stashed locally AND published
+// off-process via the CAPTURE region (kind=ARM_FAILED) so the World panel's
+// worldEditorStore.recordArmFailure has a real source — not a dead-end local-only global (C8).
+char     g_lastArmFailureReason[256] = {};
+
+// --- 020-A Status Strip auto-clear timers (render-thread-only, ImGui::GetTime() seconds).
+//     Distinguishes "still showing an old saved/failed/couldn't-arm message" from "a brand
+//     new one just landed this frame" so saved/failed/couldn't-arm auto-clear back to
+//     idle/hover a few seconds after landing instead of sticking around forever (exact
+//     seconds — Claude's discretion per this plan's behavior spec). ---
+constexpr double kStripMessageHoldSec = 2.0;
+uint32_t g_stripLastShownResultEpoch = 0;   // last g_lastDecoResultEpoch the strip has shown
+double   g_stripResultShownUntil = 0.0;     // ImGui::GetTime() deadline for the current saved/failed text
+double   g_stripArmFailShownUntil = 0.0;    // ImGui::GetTime() deadline for "couldn't arm" text
 
 // Resolve the object the gizmo edits: a ray-picked object (re-resolved from its
 // id each frame) takes precedence, else the current in-game target, else the
@@ -453,6 +472,7 @@ void applyPendingRebind() {
     if (!channelReadRebind(&rb)) return;                 // torn read or channel closed
     if (rb.epoch == 0 || rb.epoch == g_lastAppliedRebindEpoch) return;  // nothing new
     g_lastAppliedRebindEpoch = rb.epoch;
+    g_lastRebindMirrorOff = (rb.flags & DECO_REBIND_FLAG_MIRROR_OFF) != 0;   // D-10 stash
 
     // Apply the REBIND's OWN payload — it is self-contained (the toolkit derived the template
     // FOR rb.buildingId and echoes it) and epoch-gated, so it need not match the currently-armed
@@ -488,34 +508,184 @@ void applyPendingRebind() {
     if (code == DECO_RESULT_OK && rb.buildingId == static_cast<uint64_t>(g_capBuildingId)) g_capArmed = false;
 }
 
+// --- 020-A Status Strip label helpers ----------------------------------------------------
+// The agent has no friendly-name or cell-name resolver (no such endpoint is advertised) —
+// decorationTemplate/buildingTemplate are raw VFS paths (e.g.
+// "object/tangible/furniture/general/shared_cantina_table.iff"). DEVIATION from sketch
+// 020-A's exact mock copy ("Cantina Table · alcove1 · Cantina (Mos Eisley)"), which needs
+// data (a friendly display name, the cell name) this process cannot resolve — the World
+// panel (host side, Plan 04) derives friendly building labels from the .iff's own DERV/base
+// chunk, a capability this x86 agent DLL does not have. Best-effort substitute: prettify the
+// raw template path (strip dir + extension + "shared_" prefix, underscores → spaces, title
+// case) and omit the cell segment entirely rather than fabricate one.
+void prettifyTemplateLabel(const char* templatePath, char* out, size_t outCap) {
+    if (outCap == 0) return;
+    if (templatePath == nullptr || templatePath[0] == '\0') { out[0] = '\0'; return; }
+    const char* base = std::strrchr(templatePath, '/');
+    base = base ? base + 1 : templatePath;
+    if (std::strncmp(base, "shared_", 7) == 0) base += 7;
+    char stem[256] = {};
+    size_t n = 0;
+    for (; base[n] != '\0' && base[n] != '.' && n < sizeof(stem) - 1; ++n) stem[n] = base[n];
+    stem[n] = '\0';
+    bool startOfWord = true;
+    size_t w = 0;
+    for (size_t i = 0; stem[i] != '\0' && w < outCap - 1; ++i) {
+        char c = stem[i];
+        if (c == '_') { out[w++] = ' '; startOfWord = true; continue; }
+        if (startOfWord && c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+        startOfWord = false;
+        out[w++] = c;
+    }
+    out[w] = '\0';
+}
+
+// Decoration + building label, e.g. "Cantina Table \xC2\xB7 Cantina Tatooine" — building
+// resolved either from an explicit template (armed/saved/failed, already captured) or by
+// live-resolving buildingId (hover preview, no capture yet). buildingTemplateOverride may be
+// nullptr/empty to force the live-resolve path.
+void buildStripLabel(const char* decoTemplate, int64_t buildingId, const char* buildingTemplateOverride,
+                      char* out, size_t outCap) {
+    char decoLabel[128] = {};
+    prettifyTemplateLabel(decoTemplate, decoLabel, sizeof(decoLabel));
+    char bldgLabel[128] = {};
+    if (buildingTemplateOverride != nullptr && buildingTemplateOverride[0] != '\0') {
+        prettifyTemplateLabel(buildingTemplateOverride, bldgLabel, sizeof(bldgLabel));
+    } else if (buildingId != 0 && swg::endpoints::getObjectByIdAdvertised && swg::endpoints::getTemplateFilename) {
+        int64_t bid = buildingId;
+        void* bldg = swg::endpoints::getObjectByIdAdvertised(&bid);
+        if (bldg) {
+            const char* bt = swg::endpoints::getTemplateFilename(bldg);
+            if (bt) prettifyTemplateLabel(bt, bldgLabel, sizeof(bldgLabel));
+        }
+    }
+    if (bldgLabel[0] != '\0') std::snprintf(out, outCap, "%s \xC2\xB7 %s", decoLabel, bldgLabel);
+    else std::snprintf(out, outCap, "%s", decoLabel[0] != '\0' ? decoLabel : "(decoration)");
+}
+
 // --- 020-A Status Strip: retires the old debug-probe CollapsingHeader (raw pointers, latch
 //     buttons, a raw-integer result-code text line — the exact SC1 violation this replaces). One thin
 //     top-center ImGui window, hotkey-driven (F arm, G/R move/rotate, Esc cancel). The
 //     arm/persist/rebind INTERNALS above are reused completely unchanged — only the TRIGGER
 //     (hotkey vs. the old probe's button clicks) and the RENDER surface change here.
-//     Scaffolded in Task 1 (window shell + idle placeholder); Task 2 wires the full
-//     idle/hover/armed/saved/failed state machine (D-11/D-12/D-13) + the C8 arm-failure
-//     CAPTURE publish. Called from renderFrame() right after applyPendingRebind() so the
-//     strip always reflects the LATEST rebind result even the same frame it lands. ---
+//     Five coarse states only (idle/hover/armed/saved/failed) — SC1: never a raw
+//     LIVE_DECORATION_RESULT code or full reason text reaches this surface; that detail is
+//     deliberately punted to the World panel (D-12). Called from renderFrame() right after
+//     applyPendingRebind() so it always reflects the LATEST rebind result even the same
+//     frame it lands. ---
 void renderDecorationStrip() {
-    const ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io = ImGui::GetIO();
+
+    // --- F/G/R contextual hotkeys (D-11: gated on !WantCaptureKeyboard so the strip never
+    //     hijacks keystrokes meant for another ImGui text field, e.g. the Editor-scene
+    //     terrain/avatar text inputs). F only arms while genuinely hovering AND nothing else
+    //     is armed; G/R only act while armed. ---
+    if (!io.WantCaptureKeyboard) {
+        if (!g_capArmed && g_lastRayObj != nullptr && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+            const char* failReason = armDecorationEdit();
+            if (failReason != nullptr) {
+                std::strncpy(g_lastArmFailureReason, failReason, sizeof(g_lastArmFailureReason) - 1);
+                g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+
+                // C8: publish the failure off-process via the CAPTURE region (kind=ARM_FAILED,
+                // reusing cellName as the reason string per channel.h's documented dual-purpose
+                // slot) so the World panel's worldEditorStore.recordArmFailure has a real
+                // source — not just this agent-local stash with no reader.
+                DecorationCapture cap = {};
+                cap.kind = DECO_CAPTURE_KIND_ARM_FAILED;
+                cap.buildingId = 0;
+                std::strncpy(cap.cellName, failReason, sizeof(cap.cellName) - 1);
+                cap.cellName[sizeof(cap.cellName) - 1] = '\0';
+                channelWriteCapture(&cap, ++g_captureEpoch);
+
+                g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+            }
+        }
+        if (g_capArmed) {
+            if (ImGui::IsKeyPressed(ImGuiKey_G, false)) { g_gizmoOp = 0; g_gizmoEnabled = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_R, false)) { g_gizmoOp = 1; g_gizmoEnabled = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { g_capArmed = false; }
+        }
+    }
+
+    // --- coarse state classification (words only — SC1) ---
+    if (g_lastDecoResultEpoch != 0 && g_lastDecoResultEpoch != g_stripLastShownResultEpoch) {
+        g_stripLastShownResultEpoch = g_lastDecoResultEpoch;
+        g_stripResultShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+    }
+    const bool showResult = ImGui::GetTime() < g_stripResultShownUntil;
+    const bool showArmFail = !g_capArmed && ImGui::GetTime() < g_stripArmFailShownUntil;
+
+    enum class DecoStripState { Idle, Hover, Armed, Saved, Failed };
+    DecoStripState state;
+    if (g_capArmed) state = DecoStripState::Armed;
+    else if (showResult && g_lastDecoResult == DECO_RESULT_OK) state = DecoStripState::Saved;
+    else if (showResult) state = DecoStripState::Failed;
+    else if (g_lastRayObj != nullptr) state = DecoStripState::Hover;
+    else state = DecoStripState::Idle;
+
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, 12.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
     ImGui::SetNextWindowBgAlpha(0.85f);
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize |
                                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
     if (ImGui::Begin("##decoStrip", nullptr, flags)) {
-        // object/context label — idle placeholder until Task 2 wires hover/armed state.
-        ImGui::TextDisabled("hover a decoration to pick it");
-        if (g_capArmed) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "ARMED");
-            ImGui::SameLine();
-            if (ImGui::Button("Persist")) { /* Task 2 wires this to persistDecorationEdit() */ }
-            ImGui::SameLine();
-            if (ImGui::Button("Esc")) { g_capArmed = false; }
+        char label[300] = {};
+        switch (state) {
+            case DecoStripState::Idle:
+                break;   // no object label — nothing under the cursor, nothing armed
+            case DecoStripState::Hover: {
+                int64_t bldgId = 0;
+                if (swg::endpoints::getContainingBuildingId) bldgId = swg::endpoints::getContainingBuildingId(g_lastRayObj);
+                if (bldgId == 0) bldgId = (g_lastRayId != 0) ? g_lastRayId : g_pickedId;
+                buildStripLabel(g_lastRayObjTmpl, bldgId, nullptr, label, sizeof(label));
+                break;
+            }
+            case DecoStripState::Armed:
+            case DecoStripState::Saved:
+            case DecoStripState::Failed:
+                // g_capDecorationTemplate/g_capBuildingTemplate/g_capBuildingId persist past
+                // disarm (armDecorationEdit sets them, nothing clears them on success/fail) —
+                // reading them here always reflects the LAST armed edit, exactly what
+                // saved/failed needs to still show.
+                buildStripLabel(g_capDecorationTemplate, g_capBuildingId, g_capBuildingTemplate, label, sizeof(label));
+                break;
         }
-        ImGui::SameLine();
+        if (label[0] != '\0') { ImGui::TextUnformatted(label); ImGui::SameLine(); }
+
+        switch (state) {
+            case DecoStripState::Idle:
+                break;
+            case DecoStripState::Hover:
+                if (showArmFail) ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "couldn't arm \xE2\x80\x94 see World panel");
+                else ImGui::TextDisabled("press F to arm");
+                break;
+            case DecoStripState::Armed: {
+                float curO2p[12] = {};
+                const bool haveDelta = g_capFocus != nullptr && swg::endpoints::getObjectTransformO2P &&
+                                        swg::endpoints::getObjectTransformO2P(g_capFocus, curO2p);
+                if (haveDelta) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "ARMED \xCE\x94 % .2f, % .2f, % .2f",
+                                        curO2p[3] - g_capOriginalO2p[3], curO2p[7] - g_capOriginalO2p[7],
+                                        curO2p[11] - g_capOriginalO2p[11]);
+                } else {
+                    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "ARMED");
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Persist")) persistDecorationEdit();
+                ImGui::SameLine();
+                if (ImGui::Button("Esc")) g_capArmed = false;
+                break;
+            }
+            case DecoStripState::Saved:
+                if (g_lastRebindMirrorOff) ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.55f, 1.0f), "saved (not visible here)");
+                else ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.35f, 1.0f), "saved");
+                break;
+            case DecoStripState::Failed:
+                ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "failed \xE2\x80\x94 see World panel");
+                break;
+        }
+        if (state != DecoStripState::Idle) ImGui::SameLine();
         ImGui::TextDisabled("F arm \xC2\xB7 G/R move/rotate");
     }
     ImGui::End();
