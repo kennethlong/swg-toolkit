@@ -51,7 +51,7 @@ vi.mock('./nativeTre', () => ({ nativeCore: nativeMocks }));
 
 // Import AFTER vi.mock — vitest hoists vi.mock to the top of the file, so the mock
 // is guaranteed active before the imports below resolve.
-import { detectFolderKind, readWorkspaceJson, writeWorkspaceJson, initProject } from './projectBinding';
+import { detectFolderKind, readWorkspaceJson, writeWorkspaceJson, updateWorkspaceMeta, initProject } from './projectBinding';
 import { getStudioDir } from './workspaceService';
 
 // ─── Temp-dir lifecycle ───────────────────────────────────────────────────────
@@ -118,6 +118,87 @@ describe('writeWorkspaceJson / readWorkspaceJson', () => {
     const result = readWorkspaceJson(path.join(tmpBase, '.studio-absent'));
     expect(result.kind).toBe('mod-project');
     expect(result.clientPath).toBeNull();
+  });
+});
+
+describe('updateWorkspaceMeta — world editor fields (05.1-02)', () => {
+  it('Test 5a: persists mirrorToStockIlf via updateWorkspaceMeta; readWorkspaceJson round-trips false', () => {
+    const studioDir = path.join(tmpBase, '.studio');
+    fs.mkdirSync(studioDir, { recursive: true });
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+
+    updateWorkspaceMeta(studioDir, { mirrorToStockIlf: false });
+
+    expect(readWorkspaceJson(studioDir).mirrorToStockIlf).toBe(false);
+  });
+
+  it('Test 5b: persists worldEditorBookmarks array verbatim (name/scene/x/y/z, no precision loss)', () => {
+    const studioDir = path.join(tmpBase, '.studio');
+    fs.mkdirSync(studioDir, { recursive: true });
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+
+    const bookmarks = [
+      { name: 'Cantina Entrance', scene: 'tatooine', x: 123.456, y: 12.0, z: -456.789 },
+      { name: 'Coronet Bank', scene: 'corellia', x: -1024.25, y: 5.5, z: 2048.125 },
+    ];
+    updateWorkspaceMeta(studioDir, { worldEditorBookmarks: bookmarks });
+
+    expect(readWorkspaceJson(studioDir).worldEditorBookmarks).toEqual(bookmarks);
+  });
+
+  it('Test 5c: persists worldEditorBuildingTemplates map; underlying read/write round-trips the whole object', () => {
+    const studioDir = path.join(tmpBase, '.studio');
+    fs.mkdirSync(studioDir, { recursive: true });
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+
+    updateWorkspaceMeta(studioDir, {
+      worldEditorBuildingTemplates: {
+        '1082874': 'object/building/tatooine/shared_cantina_tatooine.iff',
+      },
+    });
+    expect(readWorkspaceJson(studioDir).worldEditorBuildingTemplates).toEqual({
+      '1082874': 'object/building/tatooine/shared_cantina_tatooine.iff',
+    });
+
+    // A second call merges by spreading the PREVIOUS read before adding a key — proving
+    // read/write round-trips the whole object (updateWorkspaceMeta itself is a shallow
+    // patch, per its existing contract; the merge is the caller's job).
+    const prev = readWorkspaceJson(studioDir).worldEditorBuildingTemplates ?? {};
+    updateWorkspaceMeta(studioDir, {
+      worldEditorBuildingTemplates: {
+        ...prev,
+        '1082875': 'object/building/naboo/shared_theed_starport.iff',
+      },
+    });
+
+    expect(readWorkspaceJson(studioDir).worldEditorBuildingTemplates).toEqual({
+      '1082874': 'object/building/tatooine/shared_cantina_tatooine.iff',
+      '1082875': 'object/building/naboo/shared_theed_starport.iff',
+    });
+  });
+
+  it('Test 5d: readWorkspaceJson on a pre-existing file without the new keys does not throw; fields are undefined', () => {
+    const studioDir = path.join(tmpBase, '.studio');
+    fs.mkdirSync(studioDir, { recursive: true });
+    // Simulate a workspace.json written BEFORE this change — no new fields present.
+    writeWorkspaceJson(studioDir, { kind: 'client', clientPath: '/some/client/path' });
+
+    let result: ReturnType<typeof readWorkspaceJson> | undefined;
+    expect(() => { result = readWorkspaceJson(studioDir); }).not.toThrow();
+    expect(result!.mirrorToStockIlf).toBeUndefined();
+    expect(result!.worldEditorBookmarks).toBeUndefined();
+    expect(result!.worldEditorBuildingTemplates).toBeUndefined();
+  });
+
+  it('Test 5e: updateWorkspaceMeta write is atomic — no .tmp file survives after a successful call', () => {
+    const studioDir = path.join(tmpBase, '.studio');
+    fs.mkdirSync(studioDir, { recursive: true });
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+
+    updateWorkspaceMeta(studioDir, { mirrorToStockIlf: true });
+
+    const remaining = fs.readdirSync(studioDir);
+    expect(remaining.some((f) => f.endsWith('.tmp'))).toBe(false);
   });
 });
 
