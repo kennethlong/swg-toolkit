@@ -266,6 +266,54 @@ void channelWriteResult(int32_t code, uint32_t epoch) {
 }
 
 // ---------------------------------------------------------------------------
+// channelReadHostCommand — agent-side seqlock retry-read of the HOST_CMD region
+// (same idiom as channelReadRebind).
+// ---------------------------------------------------------------------------
+
+bool channelReadHostCommand(HostCommand* out) {
+    if (!s_view || !out) return false;
+
+    volatile LONG* seq = reinterpret_cast<volatile LONG*>(
+        static_cast<char*>(s_view) + offsetof(LiveState, hostCmdSeqCounter));
+
+    // Step 1 — odd seq means the host is mid-write; skip this read.
+    LONG seq1 = *seq;
+    if ((seq1 & 1) != 0) return false;
+
+    const LiveState* ls = static_cast<const LiveState*>(s_view);
+    out->epoch  = ls->hostCmdEpoch;
+    out->action = ls->hostCmdAction;
+    std::memcpy(out->str1, ls->hostCmdStr1, sizeof(out->str1));
+    out->str1[sizeof(out->str1) - 1] = '\0';
+    std::memcpy(out->str2, ls->hostCmdStr2, sizeof(out->str2));
+    out->str2[sizeof(out->str2) - 1] = '\0';
+    out->id = ls->hostCmdId;
+    std::memcpy(out->vec3, ls->hostCmdVec3, sizeof(out->vec3));
+
+    // Step 2 — torn-read check; reject if seq changed during our read.
+    LONG seq2 = *seq;
+    return seq1 == seq2;
+}
+
+// ---------------------------------------------------------------------------
+// channelWriteHostCommandResult — agent publishes a HOST_CMD outcome (single words)
+// ---------------------------------------------------------------------------
+
+void channelWriteHostCommandResult(int32_t code, uint32_t epoch) {
+    if (!s_view) return;
+
+    volatile LONG* codePtr = reinterpret_cast<volatile LONG*>(
+        static_cast<char*>(s_view) + offsetof(LiveState, hostCmdResultCode));
+    volatile LONG* epochPtr = reinterpret_cast<volatile LONG*>(
+        static_cast<char*>(s_view) + offsetof(LiveState, hostCmdResultEpoch));
+
+    // code BEFORE epoch: the host reads code only once epoch matches the epoch it awaits,
+    // so publishing epoch last guarantees a matching-epoch host read sees this code.
+    InterlockedExchange(codePtr, static_cast<LONG>(code));
+    InterlockedExchange(epochPtr, static_cast<LONG>(epoch));
+}
+
+// ---------------------------------------------------------------------------
 // channelClose — unmap and release the file-mapping handle
 // ---------------------------------------------------------------------------
 
