@@ -55,6 +55,10 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pWsSetNodeTemplateName)(int64_t id, const char* name); // v23 model-D rebind
     typedef void(__cdecl*     pWsVoid)();
     typedef int(__cdecl*      pGetSceneId)(char* buf, int cap);
+    // 05.1-16: the real per-frame tick ("game::mainLoop" -> &Game::runGameLoopOnce), DISTINCT
+    // from g_mainLoopCounter's getMainLoopCount accessor below — see rva_table.cpp for the full
+    // provenance note. Preferred drain point for the deferred scene-swap command queue.
+    typedef void(__cdecl*     pMainLoop)(bool presentToWindow, HWND hwnd, int width, int height);
     extern pGetPlayer         getPlayer;
     extern pGetTransform_o2w  getTransform_o2w;
     extern pSetTransform_o2w  setTransform_o2w;
@@ -77,6 +81,7 @@ namespace swg { namespace endpoints {
     extern pWsLoad            wsLoad;
     extern pWsVoid            wsUnloadSnapshot;
     extern pGetSceneId        getSceneId;
+    extern pMainLoop          mainLoop;
     typedef void*(__thiscall* pGetNetworkId)(void*);
     extern pGetNetworkId      getNetworkId;
     bool isAdvertisedClient();
@@ -109,6 +114,13 @@ using pResizeBuffers    = HRESULT(__stdcall*)(IDXGISwapChain* pSwapChain, UINT B
 // --- Original (trampolined) entry points, filled by Detour::Create. ---
 pSwapChainPresent g_origPresent       = nullptr;
 pResizeBuffers    g_origResizeBuffers = nullptr;
+
+// --- 05.1-16: trampoline to the REAL per-frame tick (game::mainLoop -> Game::runGameLoopOnce),
+//     the PREFERRED drain point for the deferred scene-swap command queue below — a full stack
+//     frame outside this Present hook's own call chain (see hkMainLoop). Null on a build where
+//     the "game::mainLoop" catalog row failed to resolve; hkSwapChainPresent's post-Present
+//     fallback activates ONLY in that case (see the drain call site there). ---
+swg::endpoints::pMainLoop g_origMainLoop = nullptr;
 
 // --- Borrowed contract pointers (NEVER Released — client-owned). Set by the acquisition
 //     thread BEFORE the detour is installed, so the render thread always sees them. ---
@@ -710,6 +722,118 @@ void renderDecorationStrip() {
     ImGui::End();
 }
 
+// --- 020-A strip fault containment (Bug A, 05.1-16). Own SEH handler so a bad per-frame
+//     engine read (a stale/freed borrowed Object*) costs a label for one frame, never the
+//     whole overlay — hkSwapChainPresent's outer handler stays as the last-resort net for
+//     everything else. A separate wrapper function (not __try inlined into renderFrame()
+//     itself) mirrors the file's own established C2712 workaround (see renderFrame()'s
+//     header comment: no C++ unwind objects may share a function with __try on this MSVC). ---
+void renderDecorationStripGuarded() {
+    static uint32_t s_stripFaultCount = 0;
+    __try {
+        renderDecorationStrip();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        ++s_stripFaultCount;
+        // Rate-limited (hard requirement 4 — this fired 3,424 times in one run pre-fix):
+        // first 5 verbatim, then every 50th, always carrying a running count + region.
+        if (s_stripFaultCount <= 5 || (s_stripFaultCount % 50) == 0) {
+            char buf[160];
+            std::snprintf(buf, sizeof(buf),
+                "overlay: SEH fault in renderDecorationStrip [020-A strip] — strip skipped this frame (count=%u)\n",
+                s_stripFaultCount);
+            dbg(buf);
+        }
+    }
+}
+
+// --- 05.1-16 Bug B fix: deferred command queue for engine calls that DESTROY AND RECREATE
+//     the player/scene (gameLoadScene and future scene-lifecycle actions) — issuing these
+//     synchronously from inside Present re-entrantly tears down/rebuilds the scene mid-frame
+//     and FATALs (InputScheme::fetchGroundInputMap "on a new player without releasing old
+//     one" — see 05.1-16-PLAN.md's evidence section). Teleport and other calls that merely
+//     MOVE the existing player are proven safe from Present (05.1-05 checkpoint) and are
+//     deliberately NOT routed through this queue — see the plan's routing table.
+//
+//     Single game thread, never concurrent: the producer (an ImGui button click) and the
+//     consumer (drainDeferredCommands, called from hkMainLoop below) both run on the SAME
+//     thread — Game::runGameLoopOnce calls Graphics::Present (which reaches our button
+//     click via renderFrame()) and, on the preferred drain path, hkMainLoop drains AFTER
+//     that same call returns. No atomics/locks needed; a plain fixed-capacity ring is
+//     sufficient and allocates nothing on the render thread. ---
+enum class DeferredCmdKind : uint8_t { None = 0, LoadScene };
+struct DeferredCmd {
+    DeferredCmdKind kind = DeferredCmdKind::None;
+    char terrain[128] = {};
+    char player[160] = {};
+};
+constexpr int kDeferredQueueCapacity = 4;
+DeferredCmd g_deferredQueue[kDeferredQueueCapacity];
+int      g_deferredHead = 0;   // next slot to consume
+int      g_deferredTail = 0;   // next slot to produce
+int      g_deferredCount = 0;
+uint32_t g_deferredDroppedCount = 0;
+
+// Called from the ImGui button handler (render thread, inside Present) — enqueues only,
+// never calls the engine directly. Fixed capacity; drops-with-log on overflow rather than
+// growing (no allocation on the render thread).
+bool enqueueDeferredLoadScene(const char* terrain, const char* player) {
+    if (g_deferredCount >= kDeferredQueueCapacity) {
+        ++g_deferredDroppedCount;
+        char buf[160];
+        std::snprintf(buf, sizeof(buf),
+            "overlay: deferred queue FULL — dropped LoadScene command (total dropped=%u)\n",
+            g_deferredDroppedCount);
+        dbg(buf);
+        return false;
+    }
+    DeferredCmd& slot = g_deferredQueue[g_deferredTail];
+    slot.kind = DeferredCmdKind::LoadScene;
+    std::strncpy(slot.terrain, terrain, sizeof(slot.terrain) - 1);
+    slot.terrain[sizeof(slot.terrain) - 1] = '\0';
+    std::strncpy(slot.player, player, sizeof(slot.player) - 1);
+    slot.player[sizeof(slot.player) - 1] = '\0';
+    g_deferredTail = (g_deferredTail + 1) % kDeferredQueueCapacity;
+    ++g_deferredCount;
+    return true;
+}
+
+// Drains the queue. Consumed BEFORE the engine call executes (advance head/count first) so a
+// command can never double-execute even if the engine call itself re-enters this path.
+// Called from hkMainLoop (preferred — genuinely outside Present) or, as a fallback, from
+// hkSwapChainPresent after g_origPresent() returns (see that call site's own caveat).
+void drainDeferredCommands() {
+    while (g_deferredCount > 0) {
+        DeferredCmd cmd = g_deferredQueue[g_deferredHead];
+        g_deferredQueue[g_deferredHead].kind = DeferredCmdKind::None;
+        g_deferredHead = (g_deferredHead + 1) % kDeferredQueueCapacity;
+        --g_deferredCount;
+
+        switch (cmd.kind) {
+            case DeferredCmdKind::LoadScene:
+                if (swg::endpoints::gameLoadScene) {
+                    dbg("overlay: draining deferred LoadScene command (game thread, outside Present)");
+                    swg::endpoints::gameLoadScene(cmd.terrain, cmd.player);
+                }
+                break;
+            case DeferredCmdKind::None:
+                break;
+        }
+    }
+}
+
+// --- 05.1-16 preferred drain point: detour of game::mainLoop (Game::runGameLoopOnce), the
+//     real per-frame tick. g_origMainLoop is the trampoline to the ORIGINAL tick (identical
+//     Present-call-included frame this build already runs) — we call it FIRST so this frame's
+//     own Present has fully returned, THEN drain. At that point Graphics::Present's entire
+//     call chain (Graphics.cpp:1171 in the FATAL stack — see 05.1-16-PLAN.md evidence) has
+//     unwound completely: this is a stack frame ABOVE Present, not nested inside it, mirroring
+//     Utinni's own proven hkMainLoop precedent for issuing game::loadScene from exactly this
+//     call site (game.cpp:460-553). ---
+void __cdecl hkMainLoop(bool presentToWindow, HWND hwnd, int width, int height) {
+    if (g_origMainLoop != nullptr) g_origMainLoop(presentToWindow, hwnd, width, height);
+    drainDeferredCommands();
+}
+
 void renderFrame() {
     ensureImguiInit();
     if (!g_imguiInit) return;
@@ -722,14 +846,11 @@ void renderFrame() {
     ImGui::NewFrame();
 
     // Decoration persist (model D): consume any REBIND the toolkit published (game thread,
-    // un-gated by the panel/header — must run every frame the overlay renders).
+    // un-gated by the panel/header — must run every frame the overlay renders). Runs BEFORE
+    // the strip below so applyPendingRebind's result-epoch is always the LATEST one the strip
+    // can show the same frame it lands — that property does not depend on hover-tracking
+    // order and is unaffected by the 05.1-16 reorder below.
     applyPendingRebind();
-
-    // 020-A Status Strip: the productized in-game half of the boundary rule ("point at the
-    // world" = overlay; rows/fields/text = the World panel). Called here (not inside the
-    // main window Begin/End below) so it always reflects the LATEST rebind result even the
-    // same frame it lands, and renders as its own thin top-center window per the sketch.
-    renderDecorationStrip();
 
     // Hover tracking: track the last non-null hud hover pick every frame so a decoration
     // hovered in the world can still be latched after the cursor moves to the panel.
@@ -786,6 +907,14 @@ void renderFrame() {
             g_latchedFocus = g_lastHoverObj;
         }
     }
+
+    // 020-A Status Strip: the productized in-game half of the boundary rule ("point at the
+    // world" = overlay; rows/fields/text = the World panel). 05.1-16 REORDER (Bug A fix): now
+    // called AFTER the hover-tracking block above (not before it, as originally), so
+    // g_lastRayObj/g_lastRayObjTmpl are THIS frame's values, not a one-frame-stale borrowed
+    // pointer that can already be freed by the time the strip reads it. Guarded (own SEH) so
+    // a bad pointer costs this label for one frame, never the rest of the overlay.
+    renderDecorationStripGuarded();
 
     // --- STATIC overlay (step 2): proof-of-life only, no engine interaction. ---
     ImGui::SetNextWindowPos(ImVec2(24, 24), ImGuiCond_FirstUseEver);
@@ -948,7 +1077,10 @@ void renderFrame() {
         // --- Editor scene (offline, single-player): game::loadScene builds a FULL scene via the
         //     SceneCreator lifecycle with no server session, so the snapshot layer spawns every
         //     building itself — the canonical context to SEE a model-D rebind (derived template +
-        //     edited .ilf) in-world, free of the hybrid server-stream replacement (§4). ---
+        //     edited .ilf) in-world, free of the hybrid server-stream replacement (§4).
+        //     05.1-16 Bug B fix: this DESTROYS AND RECREATES the player/scene — calling it
+        //     synchronously here (inside Present) re-entrantly FATALs (see plan evidence). The
+        //     button now ENQUEUES only; the deferred queue executes it outside Present. ---
         if (swg::endpoints::gameLoadScene) {
             ImGui::Separator();
             ImGui::TextDisabled("Editor scene (OFFLINE single-player — replaces any live session!)");
@@ -957,7 +1089,7 @@ void renderFrame() {
             ImGui::InputText("Terrain##edscene", s_edTerrain, sizeof(s_edTerrain));
             ImGui::InputText("Avatar##edscene",  s_edPlayer,  sizeof(s_edPlayer));
             if (ImGui::Button("Load editor scene") && s_edTerrain[0] != '\0' && s_edPlayer[0] != '\0') {
-                swg::endpoints::gameLoadScene(s_edTerrain, s_edPlayer);
+                enqueueDeferredLoadScene(s_edTerrain, s_edPlayer);
             }
         }
 
@@ -1030,14 +1162,38 @@ HRESULT __stdcall hkSwapChainPresent(IDXGISwapChain* sc, UINT syncInterval, UINT
     if (s_firstFire) { s_firstFire = false; dbg("overlay: hkSwapChainPresent first fire (DXGI detour confirmed)"); }
 
     // A fault inside the overlay degrades to a skipped frame, never a client crash
-    // (mirrors agent_main's poll-loop SEH discipline).
+    // (mirrors agent_main's poll-loop SEH discipline). This is the LAST-RESORT net —
+    // the 020-A strip has its own scoped handler (renderDecorationStripGuarded) so a
+    // fault there costs one label, not this entire frame (Bug A, 05.1-16).
+    static uint32_t s_outerFaultCount = 0;
     __try {
         renderFrame();
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        dbg("overlay: SEH fault in renderFrame — frame skipped");
+        ++s_outerFaultCount;
+        // Rate-limited (hard requirement 4 — this line alone fired 3,424 times in one
+        // pre-fix run): first 5 verbatim, then every 50th, always with a running count.
+        if (s_outerFaultCount <= 5 || (s_outerFaultCount % 50) == 0) {
+            char buf[160];
+            std::snprintf(buf, sizeof(buf),
+                "overlay: SEH fault in renderFrame [outer/last-resort] — frame skipped (count=%u)\n",
+                s_outerFaultCount);
+            dbg(buf);
+        }
     }
 
-    return g_origPresent(sc, syncInterval, flags);
+    HRESULT hr = g_origPresent(sc, syncInterval, flags);
+
+    // 05.1-16 FALLBACK drain (hard requirement 1): only reachable when the game::mainLoop
+    // detour never installed (catalog row unresolved on this build — see tryInstall()).
+    // g_origPresent() has just returned above, so the swap itself has completed; this is
+    // NOT claimed to be main-loop semantics (we are still inside Graphics::Present's own
+    // call chain, one frame short of hkMainLoop's true outside-Present position) — it is a
+    // best-effort net for a build where the preferred drain point is unavailable.
+    if (g_origMainLoop == nullptr) {
+        drainDeferredCommands();
+    }
+
+    return hr;
 }
 
 // --- DXGI ResizeBuffers hook. Release our RTV BEFORE the original (else
@@ -1049,8 +1205,31 @@ HRESULT __stdcall hkResizeBuffers(IDXGISwapChain* sc, UINT bufferCount, UINT wid
     return hr;
 }
 
+// 05.1-16: one-shot install of the game::mainLoop detour (the preferred deferred-queue drain
+// point — see hkMainLoop's own comment). Independent of the D3D11 swapchain (mainLoop ticks
+// every frame from process start, well before a swapchain may exist), so this installs as
+// soon as the endpoint resolves rather than waiting on tryInstall()'s D3D11 gate. Idempotent
+// (guarded by g_origMainLoop != nullptr) and safe to poll repeatedly.
+void tryInstallMainLoopHook() {
+    if (g_origMainLoop != nullptr) return;                  // already installed
+    if (swg::endpoints::mainLoop == nullptr) return;         // catalog row unresolved — poll again
+
+    g_origMainLoop = reinterpret_cast<swg::endpoints::pMainLoop>(Detour::Create(
+        reinterpret_cast<LPVOID>(swg::endpoints::mainLoop), reinterpret_cast<LPVOID>(&hkMainLoop), DETOUR_TYPE_PUSH_RET));
+
+    if (g_origMainLoop != nullptr) {
+        dbg("overlay: game::mainLoop detour installed (deferred-queue drain point live, outside Present)");
+    } else {
+        dbg("overlay: Detour::Create(game::mainLoop) failed — falling back to post-Present drain");
+    }
+}
+
 // Advertised-contract consumer. Returns true once the detours are installed (latched).
 bool tryInstall() {
+    // Independent of the D3D11 latch below (mainLoop has nothing to do with the swapchain);
+    // retried every acquisitionThread tick until it succeeds or the endpoint proves absent.
+    tryInstallMainLoopHook();
+
     if (InterlockedCompareExchange(&g_installed, 0, 0) != 0) return true;
 
     HMODULE hGl11 = GetModuleHandleA("gl11_r.dll");

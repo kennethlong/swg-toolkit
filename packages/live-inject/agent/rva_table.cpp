@@ -318,6 +318,20 @@ pGetContainingBuildingId getContainingBuildingId = nullptr;
 typedef void(__cdecl* pGameLoadScene)(const char* terrainFilename, const char* playerFilename);
 pGameLoadScene gameLoadScene = nullptr;
 
+// --- Per-frame game-thread tick (advertised, engine_hookpoints.inc:74 / catalog "game::mainLoop"
+//     -> &Game::runGameLoopOnce, engine_advertise.cpp:743). 05.1-16: the PREFERRED drain point for
+//     the deferred scene-swap command queue — DISTINCT from "game::g_mainLoopCounter" above (->
+//     &Game::getMainLoopCount, a call-not-read counter ACCESSOR, not the tick itself). mainLoop is
+//     the real per-frame function: Utinni already detours this exact address for the identical
+//     purpose (hkMainLoop, game.cpp:460-553, including its own advertised game::loadScene call —
+//     proven precedent for issuing a scene load from here, never from inside Present). EXACT
+//     __cdecl(bool,HWND,int,int) signature match confirmed by the advertise-side comment
+//     ("24-4a RE-POINT ... EXACT __cdecl signature match to Utinni hkMainLoop"). ADVERTISED-ONLY —
+//     no legacy SWGEmu RVA known/verified for this entry point in this codebase; overlay.cpp falls
+//     back to a post-Present drain when this slot is unresolved (see 05.1-16-PLAN.md). ---
+typedef void(__cdecl* pMainLoop)(bool presentToWindow, HWND hwnd, int width, int height);
+pMainLoop mainLoop = nullptr;
+
 // ============================================================
 // Binding array — maps advertised contract names to slot storage cells.
 // resolve() iterates this to overwrite slots by name (advertised path).
@@ -358,6 +372,7 @@ Binding g_agentBindings[] = {
     {"object::getTransformO2P",             (void**)&getObjectTransformO2P},   // v24: copy-out o2p (last model-D accessor)
     {"object::getContainingBuildingId",     (void**)&getContainingBuildingId}, // v25 handback 2026-07-30: cell→building (proven live)
     {"game::loadScene",                     (void**)&gameLoadScene},           // offline editor scene (single-player; model-D visible-verify context)
+    {"game::mainLoop",                      (void**)&mainLoop},                // 05.1-16: per-frame tick — deferred-queue drain point OUTSIDE Present
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 
