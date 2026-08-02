@@ -914,6 +914,13 @@ void drainDeferredCommands() {
                 // tick) rather than immediately after the teardown returns.
                 if (!cmd.sceneCleaned && swg::endpoints::gameCleanupScene) {
                     dbg("overlay: deferred LoadScene — frame 1: cleanupScene (scene is live)");
+                    // Invalidate BEFORE the teardown, not only after frame 2's loadScene. The object
+                    // graph dies HERE — a full frame before the load — and a DebugView capture caught
+                    // the strip faulting inside exactly that window (loadScene @53874.902 -> strip
+                    // fault @53875.015 -> invalidation @53875.027). Clearing at frame 1 closes it; the
+                    // frame-2 invalidation stays as the belt-and-braces pass for anything loadScene
+                    // itself creates and then discards.
+                    invalidateSceneCachedPointers("cleanupScene (frame 1)");
                     swg::endpoints::gameCleanupScene();
                     DeferredCmd next = cmd;          // hostCmdEpoch carries forward with the copy
                     next.sceneCleaned = true;
