@@ -5,6 +5,14 @@
  * read-before-liveness reorder) and Task 3 (studioDir threading, resolved-
  * mirror threading, decoration edit/add persist RESULT wiring).
  *
+ * @vitest-environment jsdom
+ * (needs document — 05.1-08 introduced renderHook here; the root vitest.config.ts
+ * defaults to environment:node and globs `packages/*​/src/**​/*.test.ts`, so this FILE
+ * is collected by the root aggregate run while `.tsx` component tests are not. Without
+ * this directive the aggregate run fails with "document is not defined" even though the
+ * package-scoped run — `pnpm --filter @swg/renderer exec vitest run` — is green under
+ * the package's own jsdom config. Same convention as logService.test.ts:18.)
+ *
  * RED phase: parseChannelView/decodeGuardFields/getRegionView are not
  * exported yet (or do not exist) — imports/assertions fail.
  * GREEN phase: parseChannelView reuses ONE module-level Float32Array(12) via
