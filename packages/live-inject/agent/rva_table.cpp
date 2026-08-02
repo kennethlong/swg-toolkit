@@ -318,6 +318,17 @@ pGetContainingBuildingId getContainingBuildingId = nullptr;
 typedef void(__cdecl* pGameLoadScene)(const char* terrainFilename, const char* playerFilename);
 pGameLoadScene gameLoadScene = nullptr;
 
+// --- Scene teardown (advertised, engine_hookpoints.inc:77 / catalog "game::cleanupScene").
+//     05.1-16 CHECKPOINT FINDING: gameLoadScene alone FATALs when a scene is ALREADY live
+//     (InputScheme.cpp:480 "fetchGroundInputMap called on a new player without releasing old
+//     one") — it crashes in-world but SUCCEEDS from the login screen, where there is no
+//     GroundScene/player to release. Ground truth for the correct sequence is Utinni's own
+//     hkMainLoop TWO-FRAME state machine (game.cpp:499-554), which is NOT "cleanup then load"
+//     in one call: frame N runs Game::cleanupScene() and latches sceneCleaned=true; frame N+1
+//     runs loadScene. The engine gets a full tick between teardown and construction. ---
+typedef void(__cdecl* pGameCleanupScene)();
+pGameCleanupScene gameCleanupScene = nullptr;
+
 // --- Per-frame game-thread tick (advertised, engine_hookpoints.inc:74 / catalog "game::mainLoop"
 //     -> &Game::runGameLoopOnce, engine_advertise.cpp:743). 05.1-16: the PREFERRED drain point for
 //     the deferred scene-swap command queue — DISTINCT from "game::g_mainLoopCounter" above (->
@@ -373,6 +384,7 @@ Binding g_agentBindings[] = {
     {"object::getContainingBuildingId",     (void**)&getContainingBuildingId}, // v25 handback 2026-07-30: cell→building (proven live)
     {"game::loadScene",                     (void**)&gameLoadScene},           // offline editor scene (single-player; model-D visible-verify context)
     {"game::mainLoop",                      (void**)&mainLoop},                // 05.1-16: per-frame tick — deferred-queue drain point OUTSIDE Present
+    {"game::cleanupScene",                  (void**)&gameCleanupScene},        // 05.1-16: MUST run a frame BEFORE loadScene when a scene is live (Utinni game.cpp:548-554)
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 

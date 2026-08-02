@@ -50,6 +50,7 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pGetObjectTransformO2P)(void* object, float* out12);
     typedef int64_t(__cdecl*  pGetContainingBuildingId)(void* object);
     typedef void(__cdecl*     pGameLoadScene)(const char* terrainFilename, const char* playerFilename);
+    typedef void(__cdecl*     pGameCleanupScene)();   // 05.1-16: "game::cleanupScene" (inc:77)
     typedef void*(__cdecl*    pGetObjectById)(const void* networkId);
     typedef void(__cdecl*     pWsLoad)(const char* sceneName);
     typedef int(__cdecl*      pWsSetNodeTemplateName)(int64_t id, const char* name); // v23 model-D rebind
@@ -77,6 +78,7 @@ namespace swg { namespace endpoints {
     extern pGetObjectTransformO2P getObjectTransformO2P;
     extern pGetContainingBuildingId getContainingBuildingId;
     extern pGameLoadScene     gameLoadScene;
+    extern pGameCleanupScene  gameCleanupScene;   // 05.1-16: frame-1 teardown before loadScene
     extern pGetObjectById     getObjectByIdAdvertised;
     extern pWsLoad            wsLoad;
     extern pWsVoid            wsUnloadSnapshot;
@@ -765,6 +767,9 @@ struct DeferredCmd {
     DeferredCmdKind kind = DeferredCmdKind::None;
     char terrain[128] = {};
     char player[160] = {};
+    // Two-frame sequencing latch (Utinni game.cpp:499-554 equivalent of `sceneCleaned`).
+    // false = cleanupScene still owed; true = teardown done a tick ago, safe to load.
+    bool sceneCleaned = false;
 };
 constexpr int kDeferredQueueCapacity = 4;
 DeferredCmd g_deferredQueue[kDeferredQueueCapacity];
@@ -776,25 +781,31 @@ uint32_t g_deferredDroppedCount = 0;
 // Called from the ImGui button handler (render thread, inside Present) — enqueues only,
 // never calls the engine directly. Fixed capacity; drops-with-log on overflow rather than
 // growing (no allocation on the render thread).
-bool enqueueDeferredLoadScene(const char* terrain, const char* player) {
+bool enqueueDeferredCmd(const DeferredCmd& cmd) {
     if (g_deferredCount >= kDeferredQueueCapacity) {
         ++g_deferredDroppedCount;
         char buf[160];
         std::snprintf(buf, sizeof(buf),
-            "overlay: deferred queue FULL — dropped LoadScene command (total dropped=%u)\n",
+            "overlay: deferred queue FULL — dropped command (total dropped=%u)\n",
             g_deferredDroppedCount);
         dbg(buf);
         return false;
     }
-    DeferredCmd& slot = g_deferredQueue[g_deferredTail];
-    slot.kind = DeferredCmdKind::LoadScene;
-    std::strncpy(slot.terrain, terrain, sizeof(slot.terrain) - 1);
-    slot.terrain[sizeof(slot.terrain) - 1] = '\0';
-    std::strncpy(slot.player, player, sizeof(slot.player) - 1);
-    slot.player[sizeof(slot.player) - 1] = '\0';
+    g_deferredQueue[g_deferredTail] = cmd;
     g_deferredTail = (g_deferredTail + 1) % kDeferredQueueCapacity;
     ++g_deferredCount;
     return true;
+}
+
+bool enqueueDeferredLoadScene(const char* terrain, const char* player) {
+    DeferredCmd cmd;
+    cmd.kind = DeferredCmdKind::LoadScene;
+    std::strncpy(cmd.terrain, terrain, sizeof(cmd.terrain) - 1);
+    cmd.terrain[sizeof(cmd.terrain) - 1] = '\0';
+    std::strncpy(cmd.player, player, sizeof(cmd.player) - 1);
+    cmd.player[sizeof(cmd.player) - 1] = '\0';
+    cmd.sceneCleaned = false;   // frame 1 (cleanup) is always owed on a fresh request
+    return enqueueDeferredCmd(cmd);
 }
 
 // Drains the queue. Consumed BEFORE the engine call executes (advance head/count first) so a
@@ -802,7 +813,14 @@ bool enqueueDeferredLoadScene(const char* terrain, const char* player) {
 // Called from hkMainLoop (preferred — genuinely outside Present) or, as a fallback, from
 // hkSwapChainPresent after g_origPresent() returns (see that call site's own caveat).
 void drainDeferredCommands() {
-    while (g_deferredCount > 0) {
+    // Snapshot the count at entry. A command RE-QUEUED during this drain (the LoadScene
+    // cleanup->load handoff below) is appended past this bound and is therefore NOT consumed
+    // until the NEXT mainLoop tick — which is precisely the one-full-frame gap between
+    // cleanupScene and loadScene that the engine requires. Draining `while (count > 0)` would
+    // pick the re-queued command straight back up in this same pass and collapse the gap,
+    // reproducing the exact FATAL this sequencing exists to avoid.
+    int toProcess = g_deferredCount;
+    while (toProcess-- > 0 && g_deferredCount > 0) {
         DeferredCmd cmd = g_deferredQueue[g_deferredHead];
         g_deferredQueue[g_deferredHead].kind = DeferredCmdKind::None;
         g_deferredHead = (g_deferredHead + 1) % kDeferredQueueCapacity;
@@ -811,7 +829,29 @@ void drainDeferredCommands() {
         switch (cmd.kind) {
             case DeferredCmdKind::LoadScene:
                 if (swg::endpoints::gameLoadScene) {
-                    dbg("overlay: draining deferred LoadScene command (game thread, outside Present)");
+                    // TWO-FRAME SEQUENCE (05.1-16 checkpoint finding). Draining outside Present is
+                    // necessary but NOT sufficient: calling loadScene while a scene is already live
+                    // FATALs at InputScheme.cpp:480 ("fetchGroundInputMap called on a new player
+                    // without releasing old one"). Verified live — it crashes in-world but SUCCEEDS
+                    // from the login screen, where there is no GroundScene/player to release.
+                    //
+                    // Ground truth is Utinni's hkMainLoop state machine (game.cpp:499-554), which is
+                    // NOT "cleanup then load" in one call: frame N runs cleanupScene and latches
+                    // sceneCleaned; frame N+1 runs loadScene. The engine needs a full tick between
+                    // teardown and construction. We reproduce that by re-queueing ourselves once
+                    // after cleanup, so the load lands on the NEXT drain (i.e. the next mainLoop
+                    // tick) rather than immediately after the teardown returns.
+                    if (!cmd.sceneCleaned && swg::endpoints::gameCleanupScene) {
+                        dbg("overlay: deferred LoadScene — frame 1: cleanupScene (scene is live)");
+                        swg::endpoints::gameCleanupScene();
+                        DeferredCmd next = cmd;
+                        next.sceneCleaned = true;
+                        if (!enqueueDeferredCmd(next)) {
+                            dbg("overlay: deferred LoadScene — re-queue FAILED after cleanup; scene left unloaded");
+                        }
+                        break;   // do NOT load this frame
+                    }
+                    dbg("overlay: deferred LoadScene — frame 2: loadScene (game thread, outside Present)");
                     swg::endpoints::gameLoadScene(cmd.terrain, cmd.player);
                 }
                 break;
