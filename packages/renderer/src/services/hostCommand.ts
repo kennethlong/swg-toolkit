@@ -36,7 +36,7 @@ const addon = require('@swg/live-inject') as {
  *  match property is a direct consequence of this counter never resetting). */
 let hostCmdEpoch = 0;
 
-const ZERO_VEC3: readonly [number, number, number] = [0, 0, 0];
+const ZERO_VEC3: number[] = [0, 0, 0];
 
 export function sendReloadCurrentScene(mappingName: string): void {
   addon.writeHostCommand(
