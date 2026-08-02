@@ -9,6 +9,7 @@ import {
   LIVE_DECORATION_LAYOUT,
   LIVE_CHANNEL_TOTAL_SIZE,
   LIVE_DECORATION_RESULT,
+  LIVE_DECORATION_CAPTURE_KIND,
 } from '@swg/contracts';
 import { parseDecorationCapture, readDecorationResult, decorationResultLabel } from './decorationChannel';
 
@@ -88,6 +89,90 @@ describe('parseDecorationCapture', () => {
     const r = parseDecorationCapture(buf);
     expect(r).not.toBeNull();
     expect(r!.epoch).toBe(0);
+  });
+});
+
+// ─── 05.1-08 Task 3, C2: CAPTURE_KIND / CAPTURE_CELL_NAME decode ────────────────────────────────
+
+function writeCellName(view: DataView, s: string): void {
+  for (let i = 0; i < s.length; i++) view.setUint8(D.CAPTURE_CELL_NAME.offset + i, s.charCodeAt(i));
+  view.setUint8(D.CAPTURE_CELL_NAME.offset + s.length, 0);
+}
+
+describe('parseDecorationCapture — CAPTURE_KIND/CAPTURE_CELL_NAME decode (05.1-08 Task 3, C2)', () => {
+  it('CAPTURE_KIND=1 (ADD) with a CAPTURE_CELL_NAME string decodes kind==="add" and the exact cellName', () => {
+    const { buf, view } = makeBuf();
+    writeCapture(view, { seq: 2, epoch: 1, buildingId: BIG_ID, original: orig, next: moved, deco: DECO, bldg: BLDG });
+    view.setUint32(D.CAPTURE_KIND.offset, LIVE_DECORATION_CAPTURE_KIND.ADD, true);
+    writeCellName(view, 'cell1');
+
+    const r = parseDecorationCapture(buf);
+    expect(r).not.toBeNull();
+    expect(r!.capture.kind).toBe('add');
+    expect(r!.capture.cellName).toBe('cell1');
+  });
+
+  it('CAPTURE_KIND=0 (or a zeroed field, matching a pre-Plan-03 buffer) decodes kind==="edit" and cellName===undefined', () => {
+    const { buf, view } = makeBuf();
+    writeCapture(view, { seq: 2, epoch: 1, buildingId: BIG_ID, original: orig, next: moved, deco: DECO, bldg: BLDG });
+    // CAPTURE_KIND/CAPTURE_CELL_NAME left zeroed — simulates a pre-05.1-03 agent buffer.
+
+    const r = parseDecorationCapture(buf);
+    expect(r).not.toBeNull();
+    expect(r!.capture.kind).toBe('edit');
+    expect(r!.capture.cellName).toBeUndefined();
+  });
+
+  it('CAPTURE_KIND=2 (ARM_FAILED) decodes kind==="arm-failed"', () => {
+    const { buf, view } = makeBuf();
+    writeCapture(view, { seq: 2, epoch: 1, buildingId: BIG_ID, original: orig, next: moved, deco: DECO, bldg: BLDG });
+    view.setUint32(D.CAPTURE_KIND.offset, LIVE_DECORATION_CAPTURE_KIND.ARM_FAILED, true);
+    writeCellName(view, 'could not resolve target cell');
+
+    const r = parseDecorationCapture(buf);
+    expect(r).not.toBeNull();
+    expect(r!.capture.kind).toBe('arm-failed');
+    expect(r!.capture.cellName).toBe('could not resolve target cell');
+  });
+
+  it('an unrecognized CAPTURE_KIND value fails safe to "edit" rather than throwing', () => {
+    const { buf, view } = makeBuf();
+    writeCapture(view, { seq: 2, epoch: 1, buildingId: BIG_ID, original: orig, next: moved, deco: DECO, bldg: BLDG });
+    view.setUint32(D.CAPTURE_KIND.offset, 99, true);
+
+    expect(() => parseDecorationCapture(buf)).not.toThrow();
+    expect(parseDecorationCapture(buf)!.capture.kind).toBe('edit');
+  });
+
+  it('integration: a REAL, hand-built ADD-kind ArrayBuffer decodes end-to-end through the REAL parseDecorationCapture (C2 — not a mocked capture object)', () => {
+    const buf = new ArrayBuffer(LIVE_CHANNEL_TOTAL_SIZE);
+    const view = new DataView(buf);
+    const buildingId = 555555n;
+
+    view.setUint32(D.CAPTURE_SEQ_COUNTER.offset, 4, true); // even
+    view.setUint32(D.CAPTURE_EPOCH.offset, 11, true);
+    view.setUint32(D.CAPTURE_BUILDING_ID.offset, Number(buildingId & 0xffffffffn), true);
+    view.setUint32(D.CAPTURE_BUILDING_ID.offset + 4, Number(buildingId >> 32n), true);
+    for (let i = 0; i < 12; i++) view.setFloat32(D.CAPTURE_ORIGINAL_O2P.offset + i * 4, orig[i], true);
+    for (let i = 0; i < 12; i++) view.setFloat32(D.CAPTURE_NEW_O2P.offset + i * 4, moved[i], true);
+    // asciiz writers, matching writeAsciiz's convention
+    const writeStr = (offset: number, s: string) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+      view.setUint8(offset + s.length, 0);
+    };
+    writeStr(D.CAPTURE_DECORATION_TEMPLATE.offset, DECO);
+    writeStr(D.CAPTURE_BUILDING_TEMPLATE.offset, BLDG);
+    view.setUint32(D.CAPTURE_KIND.offset, LIVE_DECORATION_CAPTURE_KIND.ADD, true);
+    writeStr(D.CAPTURE_CELL_NAME.offset, 'cell_interior_1');
+
+    const r = parseDecorationCapture(buf);
+    expect(r).not.toBeNull();
+    expect(r!.epoch).toBe(11);
+    expect(r!.capture.kind).toBe('add');
+    expect(r!.capture.cellName).toBe('cell_interior_1');
+    expect(r!.capture.buildingInstanceId).toBe(buildingId.toString());
+    expect(r!.capture.decorationTemplateName).toBe(DECO);
+    expect(r!.capture.buildingTemplateVfsPath).toBe(BLDG);
   });
 });
 
