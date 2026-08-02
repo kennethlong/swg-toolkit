@@ -38,8 +38,13 @@ export const THEME_STORAGE_KEY   = 'swg-active-theme' as const;
  *  Datatable/Console/Log trio (plan 09 — sketch 008 S4 + S8).
  *  Bumped from 3 → 4 (05-08): retired the 'datatable' placeholder panel id — bottom pane is
  *  now Console/Log only; DatatableGridEditor opens dynamically via editorTabs.ts instead.
- *  Bumped from 4 → 5 (05.1-10): added the 'world' panel — Live World Editor productization. */
-export const LAYOUT_VERSION     = 5 as const;
+ *  Bumped from 4 → 5 (05.1-10): added the 'world' panel — Live World Editor productization.
+ *  Bumped from 5 → 6 (05.1-09 checkpoint): added the 'live-inspector' panel to the DEFAULT layout.
+ *  It was reopenable but had never been in buildInitialLayout, so the 4→5 bump wiped it from saved
+ *  layouts and the launch/attach surface disappeared. This bump is what makes the fix reach users
+ *  who already migrated to 5 — without it their (now stale) v5 layout is considered current and is
+ *  never rebuilt, so they would keep the broken arrangement. */
+export const LAYOUT_VERSION     = 6 as const;
 export const LAYOUT_VERSION_KEY = 'swg-workspace-layout-version' as const;
 
 // ---------------------------------------------------------------------------
@@ -138,6 +143,19 @@ export function buildInitialLayout(api: DockviewApi): void {
     id: 'vcs',
     component: 'vcs',
     title: 'Version Control',
+    position: { direction: 'within', referencePanel: 'inspector' },
+  });
+
+  // Live Inspector — launch/attach + live session state. Registered in STATIC_PANEL_IDS and
+  // reopenable since plan 08, but it had NEVER been added to the initial layout, so it existed
+  // only in whatever saved layout a user happened to have. 05.1-10's LAYOUT_VERSION 4->5 bump
+  // invalidated saved layouts and the panel silently vanished — reported at the 05.1-09 live
+  // checkpoint as "I don't see the launch/attach panel on the right". A tool whose core loop is
+  // "attach to a running client" must not ship a default layout without it.
+  api.addPanel({
+    id: 'live-inspector',
+    component: 'live-inspector',
+    title: 'Live Inspector',
     position: { direction: 'within', referencePanel: 'inspector' },
   });
 
