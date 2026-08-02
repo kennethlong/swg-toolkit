@@ -604,7 +604,13 @@ void renderDecorationStrip() {
         if (g_capArmed) {
             if (ImGui::IsKeyPressed(ImGuiKey_G, false)) { g_gizmoOp = 0; g_gizmoEnabled = true; }
             if (ImGui::IsKeyPressed(ImGuiKey_R, false)) { g_gizmoOp = 1; g_gizmoEnabled = true; }
-            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { g_capArmed = false; }
+            // NO Escape key binding — deliberate. Sketch 020-A specs Esc as an on-strip BUTTON
+            // (`im-btn ghost`), and only F and G/R as KEYS (`im-key`); the two are distinguished
+            // by class in the sketch. An Esc KEY binding was tried and reverted: SWG polls game
+            // input via DirectInput, NOT the Win32 message queue, so hkWndProc cannot consume a
+            // keystroke (it always forwards — see hkWndProc's own note) and Esc reached the game
+            // too, toggling the in-game settings menu on every cancel. Cancel is the strip's Esc
+            // BUTTON below. See the input-arbitration limitation note in this plan's SUMMARY.
         }
     }
 
