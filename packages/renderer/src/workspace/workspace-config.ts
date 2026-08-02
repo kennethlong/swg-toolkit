@@ -37,8 +37,9 @@ export const THEME_STORAGE_KEY   = 'swg-active-theme' as const;
 /** Bumped from 2 → 3: renamed 'Inspector'→'Inspect', replaced single 'data' with
  *  Datatable/Console/Log trio (plan 09 — sketch 008 S4 + S8).
  *  Bumped from 3 → 4 (05-08): retired the 'datatable' placeholder panel id — bottom pane is
- *  now Console/Log only; DatatableGridEditor opens dynamically via editorTabs.ts instead. */
-export const LAYOUT_VERSION     = 4 as const;
+ *  now Console/Log only; DatatableGridEditor opens dynamically via editorTabs.ts instead.
+ *  Bumped from 4 → 5 (05.1-10): added the 'world' panel — Live World Editor productization. */
+export const LAYOUT_VERSION     = 5 as const;
 export const LAYOUT_VERSION_KEY = 'swg-workspace-layout-version' as const;
 
 // ---------------------------------------------------------------------------
@@ -140,7 +141,15 @@ export function buildInitialLayout(api: DockviewApi): void {
     position: { direction: 'within', referencePanel: 'inspector' },
   });
 
-  // Inspect is the default active tab in the right group — adding 'deploy'/'vcs' last
-  // would otherwise leave Deploy focused (and auto-widened) on a fresh start.
+  // 05.1-10 (sketch 019-A): World tab — "Inspect | Deploy | World" tabstrip in the same group.
+  api.addPanel({
+    id: 'world',
+    component: 'world',
+    title: 'World',
+    position: { direction: 'within', referencePanel: 'inspector' },
+  });
+
+  // Inspect is the default active tab in the right group — adding 'deploy'/'vcs'/'world' last
+  // would otherwise leave one of them focused (and auto-widened) on a fresh start.
   inspectorPanel?.api?.setActive?.();
 }

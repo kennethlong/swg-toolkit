@@ -71,6 +71,9 @@ import DatatableGridEditor from '../panels/editors/DatatableGridEditor';
 // 05-09: .stf strings editor — SAME dynamic per-file editor-tab shape as DatatableGridEditor
 // above (opened exclusively via editorTabs.openEditorTab; excluded from STATIC_PANEL_IDS).
 import StfStringsEditor from '../panels/editors/StfStringsEditor';
+// 05.1-10: World tab (sketch 019-A) — the productized live-world-editor panel. Full body lands
+// in this same plan's Task 2; this import + the four registrations below are Task 1's contract.
+import WorldPanel from '../panels/world/WorldPanel';
 
 // ─── Panel component registry ─────────────────────────────────────────────────
 //
@@ -102,6 +105,8 @@ const panelComponents: Record<string, React.FunctionComponent<IDockviewPanelProp
   // 05-09: dynamic per-file .stf editor tab component — same shape as 'datatable-grid-editor'.
   // Deliberately NOT added to STATIC_PANEL_IDS.
   'stf-strings-editor': StfStringsEditor,
+  // 05.1-10: World tab (sketch 019-A) — static singleton panel, docks alongside Inspect/Deploy/VCS.
+  world: WorldPanel,
 };
 
 /**
@@ -113,6 +118,7 @@ const panelComponents: Record<string, React.FunctionComponent<IDockviewPanelProp
  */
 const STATIC_PANEL_IDS = [
   'sidebar', 'viewport', 'inspector', 'data', 'live-inspector', 'deploy', 'vcs', 'console', 'log',
+  'world',
 ] as const;
 
 // ─── Width constants for active-panel auto-widen (M3) ────────────────────────
@@ -134,6 +140,8 @@ const PANEL_TITLES: Record<string, string> = {
   // Plan 09 (S8): bottom-pane pair ('datatable' placeholder retired in 05-08)
   console:          'Console',
   log:              'Log',
+  // 05.1-10: World tab (sketch 019-A)
+  world:            'World',
 };
 
 /**
@@ -151,6 +159,8 @@ const PANEL_REOPEN_POSITIONS: Record<string, { direction: string; referencePanel
   // Plan 09 (S8): bottom-pane pair reopen positions ('datatable' placeholder retired in 05-08)
   console:          { direction: 'below',  referencePanel: 'viewport' },
   log:              { direction: 'within', referencePanel: 'console' },
+  // 05.1-10: World tab docks alongside Inspect/Deploy/VCS (019-A's "Inspect | Deploy | World" tabstrip).
+  world:            { direction: 'within', referencePanel: 'inspector' },
 };
 
 // ─── WorkspaceShell ───────────────────────────────────────────────────────────
