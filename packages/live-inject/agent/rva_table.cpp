@@ -262,6 +262,14 @@ typedef void(__cdecl*    pWsUnloadSnapshot)();
 typedef int(__cdecl*     pWsSetNodeTemplateName)(int64_t id, const char* name); // v23: in-place .ws node template re-point (model-D lossless rebind)
 typedef void(__cdecl*    pWsLoad)(const char* sceneName);   // static WorldSnapshot::load(char const*)
 typedef int(__cdecl*     pGetSceneId)(char* buf, int cap);  // game::getSceneId (v21 copy-out, size-first)
+// --- 05.1-09: wsRemoveNode (advertised, engine_advertise.cpp:993, WorldSnapshot.cpp:2348-2358).
+//     utinni_wsRemoveNode(networkIdInt) -> 1 removed / 0 miss (id-less/buildout-provenance node,
+//     the engine's OWN wsIsBuildoutNode guard refuses these — T-05.1-09a's actual enforcement
+//     boundary, not caller discipline) / -1 occupied (try again). SCOPE: this-session
+//     wsAddObject-minted preview nodes ONLY — never called on an id-less .ilf-sourced decoration
+//     (RESEARCH Pitfall 2/4); the caller (Plan 13's live-despawn case) is responsible for only
+//     ever sending ids it tracked from its own wsAddObject spawns. ---
+typedef int(__cdecl*     pWsRemoveNode)(int64_t networkIdInt);
 pWsAddObject      wsAddObject      = nullptr;
 pWsSaveSnapshot   wsSaveSnapshot   = nullptr;
 pWsGetSavePath    wsGetSavePath    = nullptr;
@@ -269,6 +277,7 @@ pWsUnloadSnapshot wsUnloadSnapshot = nullptr;
 pWsSetNodeTemplateName wsSetNodeTemplateName = nullptr;
 pWsLoad           wsLoad           = nullptr;
 pGetSceneId       getSceneId       = nullptr;
+pWsRemoveNode     wsRemoveNode     = nullptr;
 
 // --- Ray-pick (advertised v20, provider handback 2026-07-19). Copy-out cursor
 //     ray-cast from the current camera through client-window pixel (x,y):
@@ -377,6 +386,7 @@ Binding g_agentBindings[] = {
     {"worldSnapshot::wsSetNodeTemplateName", (void**)&wsSetNodeTemplateName}, // v23 handback (model-D lossless rebind)
     {"worldSnapshot::load",             (void**)&wsLoad},           // engine_advertise.cpp:726 (load/reload a scene)
     {"game::getSceneId",                (void**)&getSceneId},       // v21 handback (one-click reload / .ws auto-name)
+    {"worldSnapshot::wsRemoveNode",     (void**)&wsRemoveNode},     // engine_advertise.cpp:993 — 1/0/-1; this-session preview-node despawn only (05.1-09)
     // --- Ray-pick (advertised v20 handback 2026-07-19) ---
     {"clientWorld::collideScreenRay",       (void**)&collideScreenRay},
     {"clientWorld::collideScreenRayObject", (void**)&collideScreenRayObject}, // v22: borrowed Object* pick
