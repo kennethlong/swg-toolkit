@@ -1,16 +1,740 @@
 /**
  * packages/renderer/src/panels/world/WorldPanel.tsx
- * The World dockview tab (sketch 019-A, Variant A — Building Tree).
+ * The World dockview tab (sketch 019-A, Variant A — Building Tree). 05.1-10 Task 2.
  *
- * Registered in WorkspaceShell.tsx's 5-place panel contract (05.1-10 Task 1). This file is a
- * placeholder — Task 2 of 05.1-10-PLAN.md fully implements the panel body (tree, mirror-mode
- * toggle, live-session strip, selection detail card, failure badge).
+ * Builds THIS plan's slice of 019-A's spine: the building-first tree (buildings own the
+ * hierarchy, decorations nest under their building), the mirror-mode toggle (wired to Plan 06's
+ * per-project reconcileMirrorMode), the live-session strip (mirrors StatusBar.tsx's useLiveStore
+ * idiom), and a selection detail card. The Activity/Scene accordions and the footer's
+ * Add-decoration/Stage buttons are Plan 11's scope (out of this file for now).
+ *
+ * resolveOverridePair() (ROUND 4/W3, ROUND 5/V6, ROUND 6/X1) is the ONE shared, null-safe helper
+ * every write/refresh call site in this file uses to resolve {overrideDir, readVfs, meta,
+ * studioDir}. It is a PLAIN function (never a hook) invoked from event handlers and effects, so
+ * it reads studioDir via useWorkspaceStore.getState() — never the hook-selector form, which would
+ * throw "Invalid hook call" the first time a user clicks a write action in this panel.
+ *
+ * Badge derivation (building/decoration status badges) is Claude's discretion, documented inline
+ * — see deriveDecorationBadge/deriveBuildingBadge below. This plan's disk-scanned tree has no
+ * signal distinguishing "confirmed applied this session" from "always was on disk", so a row not
+ * armed/failed this session renders as SAVED (D-05: anything in the tree is, by definition,
+ * persisted).
+ *
+ * NOTE (sketch-vs-reality gap, disclosed per AGENTS.md): 019-A's live-strip mock shows a
+ * "scene chip" (e.g. "tatooine"). No field anywhere in this codebase (liveStore, the shared
+ * channel contracts, or worldEditorStore) tracks the attached client's current scene/planet name
+ * — this plan's own Plan 11 sibling (Scene accordion) doesn't add one either. Rendering a fake
+ * value would violate the accuracy_requirement, so the live-strip's scene chip renders an honest
+ * "scene: not tracked yet" placeholder rather than a fabricated planet name.
  */
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
+import fs from 'fs';
+import path from 'path';
+
+import type { WorkspaceBindingMeta } from '@swg/contracts';
+import {
+  useWorldEditorStore,
+  worldEditorRowId,
+  worldEditorBuildingRowId,
+  parseWorldEditorRowId,
+  type SessionOverlayStatus,
+  type PersistHistoryEntry,
+} from '../../state/worldEditorStore';
+import type { WorldEditorBuilding, WorldEditorDecoration } from '../../services/worldEditorScan';
+import { useLiveStore } from '../../state/liveStore';
+import { useWorkspaceStore } from '../../state/workspaceStore';
+import { resolveScanRoot } from '../../services/worldEditorScan';
+import { makeReadVfs, reconcileMirrorMode } from '../../services/decorationPersistOrchestrator';
+import { readWorkspaceJson } from '../../services/projectBinding';
+import { readInteriorLayoutFileName } from '../../services/buildingTemplate';
+import { log } from '../../services/logService';
+
+// ─── Small formatting helpers ───────────────────────────────────────────────────
+
+/** Basename of a VFS-style ('/') or OS-style ('\\') path — never throws. */
+function baseNameOf(p: string): string {
+  const parts = p.split(/[\\/]/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : p;
+}
+
+/** Translation columns (3, 7, 11) of a row-major 3x4 o2p transform, 2 decimals. */
+function formatPosition(t: number[]): string {
+  const x = (t[3] ?? 0).toFixed(2);
+  const y = (t[7] ?? 0).toFixed(2);
+  const z = (t[11] ?? 0).toFixed(2);
+  return `${x}, ${y}, ${z}`;
+}
+
+/** D-13 FULL 12-element readout, grouped 4/row, 2 decimals — NOT translation-only (ROUND-3-
+ *  REVIEW R4): a rotate-only edit changes 9 of these 12 elements, so this renders visibly
+ *  different before vs. after even when translation is identical. */
+function formatTransform12(t: number[]): string {
+  const f = (n: number | undefined) => (n ?? 0).toFixed(2);
+  const rows = [t.slice(0, 4), t.slice(4, 8), t.slice(8, 12)];
+  return rows.map((row) => row.map(f).join(' ')).join(' / ');
+}
+
+// ─── Badge derivation (Claude's discretion — documented) ────────────────────────
+
+interface Badge {
+  label: string;
+  kind: 'ok' | 'pend' | 'orph';
+}
+
+/** A decoration row's badge: 'armed'/'failed' overlay wins; anything else (including no overlay
+ *  entry at all) renders SAVED — the disk-scanned tree only ever contains persisted rows. */
+function deriveDecorationBadge(status: SessionOverlayStatus | undefined): Badge {
+  if (status === 'armed') return { label: 'ARMED', kind: 'pend' };
+  if (status === 'failed') return { label: 'FAILED', kind: 'orph' };
+  return { label: 'SAVED', kind: 'ok' };
+}
+
+/** A building row's badge aggregates its decorations' overlay statuses: any FAILED wins over any
+ *  ARMED, which wins over the SAVED default (matching deriveDecorationBadge's own precedence). */
+function deriveBuildingBadge(building: WorldEditorBuilding, overlay: Map<string, SessionOverlayStatus>): Badge {
+  let armed = 0;
+  let failed = 0;
+  for (const d of building.decorations) {
+    const status = overlay.get(worldEditorRowId(building.buildingId, d.cellName, d.rowIndex));
+    if (status === 'armed') armed++;
+    else if (status === 'failed') failed++;
+  }
+  if (failed > 0) return { label: `${failed} FAILED`, kind: 'orph' };
+  if (armed > 0) return { label: `${armed} ARMED`, kind: 'pend' };
+  return { label: `${building.decorations.length} SAVED`, kind: 'ok' };
+}
+
+function badgeColors(kind: Badge['kind']): { background: string; color: string } {
+  if (kind === 'orph') return { background: 'rgba(224,88,79,.15)', color: 'var(--color-danger)' };
+  if (kind === 'pend') return { background: 'rgba(224,161,58,.15)', color: 'var(--color-warn)' };
+  return { background: 'var(--color-accent-dim)', color: 'var(--color-accent)' };
+}
+
+// ─── D-07b client-path mismatch check ────────────────────────────────────────────
+
+/** Same longest-prefix, case-insensitive comparison resolveRunningClientOverrideDir already uses
+ *  (decorationPersistOrchestrator.ts) — an exe path "matches" a bound install dir when it equals
+ *  it or sits under it. */
+function isClientPathMismatch(clientExe: string, boundClientPath: string): boolean {
+  const exeNorm = clientExe.replace(/\\/g, '/').toLowerCase();
+  const boundNorm = boundClientPath.replace(/\\/g, '/').toLowerCase();
+  return !(exeNorm === boundNorm || exeNorm.startsWith(`${boundNorm}/`));
+}
+
+// ─── Resolved override pair ──────────────────────────────────────────────────────
+
+interface OverridePair {
+  overrideDir: string;
+  readVfs: (vfsPath: string) => Buffer;
+  meta: WorkspaceBindingMeta;
+  studioDir: string;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function WorldPanel(_props: IDockviewPanelProps<any>): React.ReactElement {
-  return <div>World</div>;
+export default function WorldPanel(props: IDockviewPanelProps<any>): React.ReactElement {
+  const tree = useWorldEditorStore((s) => s.tree);
+  const selectedRowId = useWorldEditorStore((s) => s.selectedRowId);
+  const sessionOverlay = useWorldEditorStore((s) => s.sessionOverlay);
+  const history = useWorldEditorStore((s) => s.history);
+  const hasFailureBadge = useWorldEditorStore((s) => s.hasFailureBadge);
+  const select = useWorldEditorStore((s) => s.select);
+  const refresh = useWorldEditorStore((s) => s.refresh);
+
+  // (ROUND-3-REVIEW R8/M2) TWO SEPARATE selectors — clientLabel is NOT a field on the 'attached'
+  // status-union member; liveStatus.clientLabel does not type-check.
+  const liveStatus = useLiveStore((s) => s.status);
+  const clientLabel = useLiveStore((s) => s.clientLabel);
+  // The active project's bound client path (workspaceStore mirrors WorkspaceBindingMeta.clientPath
+  // at open time) — a safe hook read for the D-07b mismatch hint, computed during render.
+  const boundClientPath = useWorkspaceStore((s) => s.clientPath);
+
+  const [scanRootAvailable, setScanRootAvailable] = useState(false);
+  const [mirrorToStockIlf, setMirrorToStockIlf] = useState(true);
+  const [buildingsOpen, setBuildingsOpen] = useState(true);
+
+  // ── resolveOverridePair (ROUND 4/W3, ROUND 5/V6, ROUND 6/X1) ────────────────────────────────
+  // A PLAIN function (never a hook) — reads studioDir via useWorkspaceStore.getState(), the
+  // imperative accessor, NEVER the hook-selector form (this function is invoked from event
+  // handlers, where a hook call would throw "Invalid hook call").
+  function resolveOverridePair(): OverridePair | null {
+    const studioDir = useWorkspaceStore.getState().studioDir;
+    if (!studioDir) return null;
+    const meta = readWorkspaceJson(studioDir);
+    const overrideDir = resolveScanRoot(
+      liveStatus.kind === 'attached' ? clientLabel ?? null : null,
+      { cfgPath: meta.cfgPath, clientPath: meta.clientPath },
+    );
+    if (overrideDir === null) return null;
+    return { overrideDir, readVfs: makeReadVfs(overrideDir), meta, studioDir };
+  }
+
+  // (ROUND-3-REVIEW R2) refreshTree() re-reads readWorkspaceJson FRESH on every call via
+  // resolveOverridePair — never a stale mount-time meta.
+  function refreshTree(): void {
+    const pair = resolveOverridePair();
+    if (pair === null) {
+      setScanRootAvailable(false);
+      return;
+    }
+    setScanRootAvailable(true);
+    setMirrorToStockIlf(pair.meta.mirrorToStockIlf ?? true);
+    refresh(pair.overrideDir, pair.meta.worldEditorBuildingTemplates);
+  }
+
+  // Mount + re-run on liveStatus.kind change (attach/detach re-resolves the scan root).
+  useEffect(() => {
+    refreshTree();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStatus.kind]);
+
+  // ── C12: failure badge — tab-title modified-dot idiom (DatatableGridEditor.tsx precedent) ────
+  useEffect(() => {
+    try {
+      props.api?.setTitle(`World${hasFailureBadge ? ' ●' : ''}`);
+    } catch {
+      /* api unavailable in some test envs */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasFailureBadge, props.api]);
+
+  // ── C12: acknowledge on activation (never on mount alone) ──────────────────────────────────
+  useEffect(() => {
+    const api = props.api;
+    if (!api) return;
+    try {
+      // ROUND-3-REVIEW R13: onDidActiveChange only fires on a CHANGE — if this tab is ALREADY
+      // active at mount time (e.g. restored as the last-focused tab), check isActive synchronously
+      // once too, so an already-visible badge is acknowledged as a real activation would have done.
+      if (api.isActive && useWorldEditorStore.getState().hasFailureBadge) {
+        useWorldEditorStore.getState().acknowledgeFailures();
+      }
+      const disposable = api.onDidActiveChange((e: { isActive: boolean }) => {
+        if (e.isActive) useWorldEditorStore.getState().acknowledgeFailures();
+      });
+      return () => disposable.dispose();
+    } catch {
+      /* api unavailable in some test envs */
+      return undefined;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.api]);
+
+  // ── Mirror toggle (ROUND 3 R4/R6/R8; ROUND 4 W1/W3; ROUND 5 V7) ────────────────────────────
+  function handleMirrorToggle(): void {
+    const nextValue = !mirrorToStockIlf;
+    const pair = resolveOverridePair();
+    if (pair === null) return; // defense-in-depth no-op — the toggle should already be disabled
+    try {
+      const result = reconcileMirrorMode(pair.studioDir, pair.overrideDir, pair.readVfs, nextValue);
+      if (result.failures.length > 0) {
+        const detail = result.failures.map((f) => `${f.buildingId} (${f.error})`).join('; ');
+        log('warn', 'log', `Mirror mode change blocked: ${detail}`);
+        const allUnchanged = result.failures.every((f) => f.diskState === 'unchanged');
+        const message = allUnchanged
+          ? `mirror mode change blocked — no buildings' mirrors were changed: ${detail}`
+          : `mirror mode change blocked — most buildings' mirrors were not changed, but ` +
+            `${result.failures.filter((f) => f.diskState === 'uncertain').map((f) => f.buildingId).join(', ')} ` +
+            `could not be verified after a rollback failure — check their mirror files manually: ` +
+            `${result.failures.filter((f) => f.diskState === 'uncertain').map((f) => f.error).join('; ')}`;
+        useWorldEditorStore.getState().recordPersistResult({
+          timestampISO: new Date().toISOString(),
+          buildingLabel: 'Mirror mode',
+          decorationLabel: '(all edited buildings)',
+          outcome: 'error',
+          message,
+        });
+      }
+    } catch (e) {
+      log('error', 'log', `Mirror mode change threw: ${(e as Error).message}`);
+    }
+    // Clean, blocked, or rolled-back — refreshTree() re-reads the actually-persisted value, so
+    // the switch's rendered state always matches what really landed on disk/settings.
+    refreshTree();
+  }
+
+  function handleStubClick(label: string): void {
+    log('info', 'log', `${label}: not yet wired — coming in a later phase.`);
+  }
+
+  function handleRowSelect(rowId: string): void {
+    select(rowId);
+  }
+
+  // ── Selection resolution ────────────────────────────────────────────────────────────────────
+  const parsedSelection = useMemo(() => {
+    if (!selectedRowId) return null;
+    try {
+      return parseWorldEditorRowId(selectedRowId);
+    } catch {
+      return null;
+    }
+  }, [selectedRowId]);
+
+  const selectedBuilding: WorldEditorBuilding | null = parsedSelection
+    ? tree.find((b) => b.buildingId === parsedSelection.buildingId) ?? null
+    : null;
+
+  const selectedDecoration: WorldEditorDecoration | null =
+    parsedSelection?.kind === 'decoration' && selectedBuilding
+      ? selectedBuilding.decorations.find(
+          (d) => d.cellName === parsedSelection.cellName && d.rowIndex === parsedSelection.rowIndex,
+        ) ?? null
+      : null;
+
+  const matchingHistoryEntry: PersistHistoryEntry | null = useMemo(() => {
+    if (!selectedDecoration) return null;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const entry = history[i];
+      if (entry.cellName === selectedDecoration.cellName && entry.rowIndex === selectedDecoration.rowIndex) {
+        return entry;
+      }
+    }
+    return null;
+  }, [history, selectedDecoration]);
+
+  // Best-effort: does a stock-path mirror file exist for the selected building? Never throws.
+  const hasMirror = useMemo(() => {
+    if (!selectedBuilding || !selectedBuilding.buildingTemplateVfsPath) return false;
+    const pair = resolveOverridePair();
+    if (!pair) return false;
+    try {
+      const stockIff = pair.readVfs(selectedBuilding.buildingTemplateVfsPath);
+      const stockIlfVfs = readInteriorLayoutFileName(stockIff);
+      if (!stockIlfVfs) return false;
+      return fs.existsSync(path.join(pair.overrideDir, stockIlfVfs));
+    } catch {
+      return false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBuilding, liveStatus.kind, clientLabel]);
+
+  // ── D-07b mismatch hint ─────────────────────────────────────────────────────────────────────
+  const attached = liveStatus.kind === 'attached';
+  const clientMismatch =
+    attached && clientLabel !== null && boundClientPath !== null && isClientPathMismatch(clientLabel, boundClientPath);
+
+  // ── Render ───────────────────────────────────────────────────────────────────────────────────
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: 'var(--color-surface)',
+        color: 'var(--color-text)',
+        fontFamily: 'var(--font-sans)',
+        fontSize: 'var(--text-sm)',
+        overflowY: 'auto',
+      }}
+    >
+      {/* ── Live-session strip ──────────────────────────────────────────────────────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '7px 12px',
+          background: 'var(--color-surface-2)',
+          borderBottom: '1px solid var(--color-border-soft)',
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: attached ? 'var(--color-accent)' : 'var(--color-text-faint)',
+            flex: 'none',
+          }}
+        />
+        {attached && liveStatus.kind === 'attached' ? (
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-text-muted)',
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {clientLabel ?? 'attached'} · pid {liveStatus.pid}
+          </span>
+        ) : (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', flex: 1 }}>
+            No live session
+          </span>
+        )}
+        {/* D-07b: informational, never blocking — the attached client still wins for scanning. */}
+        {clientMismatch && (
+          <span
+            role="alert"
+            title="attached client differs from this project's bound client"
+            style={{ fontSize: 'var(--text-xs)', color: 'var(--color-warn)' }}
+          >
+            △ attached client differs from this project&rsquo;s bound client
+          </span>
+        )}
+        {/* Sketch-vs-reality gap (see file header): no data source tracks the current scene. */}
+        <span
+          title="scene tracking not available yet"
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--color-text-faint)',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          scene: not tracked yet
+        </span>
+        <button
+          type="button"
+          aria-label="Refresh the World tab's building tree"
+          title="Refresh"
+          onClick={refreshTree}
+          style={{
+            background: 'transparent',
+            border: '1px solid var(--color-border-soft)',
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--color-text-muted)',
+            cursor: 'pointer',
+            padding: '2px 6px',
+          }}
+        >
+          ⟳
+        </button>
+      </div>
+
+      {/* ── Mirror-mode toggle row (D-08, D-09) ─────────────────────────────────────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 9,
+          padding: '8px 12px',
+          background: 'rgba(74,140,255,.06)',
+          borderBottom: '1px solid var(--color-border-soft)',
+        }}
+      >
+        <button
+          type="button"
+          role="switch"
+          aria-checked={mirrorToStockIlf}
+          aria-label="Mirror to stock layout"
+          disabled={!scanRootAvailable}
+          onClick={handleMirrorToggle}
+          style={{
+            width: 30,
+            height: 16,
+            borderRadius: 'var(--radius-full)',
+            border: '1px solid var(--color-border-soft)',
+            background: mirrorToStockIlf ? 'var(--color-accent)' : 'var(--color-widget)',
+            cursor: scanRootAvailable ? 'pointer' : 'not-allowed',
+            opacity: scanRootAvailable ? 1 : 0.5,
+            flex: 'none',
+          }}
+        />
+        <div style={{ flex: 1 }}>
+          <div>Mirror to stock layout</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+            {mirrorToStockIlf
+              ? 'per-template: all buildings with this layout show the edit'
+              : 'per-instance: edits are visible in editor scenes, not on hybrid live servers'}
+          </div>
+        </div>
+        <span
+          style={{
+            font: '600 10px/1 var(--font-sans)',
+            padding: '3px 7px',
+            borderRadius: 'var(--radius-full)',
+            background: 'rgba(74,140,255,.13)',
+            color: 'var(--color-info)',
+          }}
+        >
+          PER-TEMPLATE
+        </span>
+      </div>
+
+      {/* D-08 (LOCKED): visible, disabled per-instance scope option — not omittable. */}
+      <div
+        role="radio"
+        aria-checked={false}
+        aria-disabled="true"
+        title="server-side per-instance repoint — coming later"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 9,
+          padding: '6px 12px 10px',
+          background: 'rgba(74,140,255,.06)',
+          borderBottom: '1px solid var(--color-border-soft)',
+          color: 'var(--color-text-faint)',
+          cursor: 'not-allowed',
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 30,
+            height: 16,
+            borderRadius: 'var(--radius-full)',
+            border: '1px solid var(--color-border-soft)',
+            background: 'var(--color-widget)',
+            opacity: 0.5,
+            flex: 'none',
+          }}
+        />
+        <div style={{ flex: 1 }}>
+          <div>Per-instance (server repoint)</div>
+          <div style={{ fontSize: 'var(--text-xs)' }}>server-side per-instance repoint — coming later</div>
+        </div>
+      </div>
+
+      {/* ── Edited buildings ─────────────────────────────────────────────────────────────────── */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={buildingsOpen}
+        onClick={() => setBuildingsOpen((v) => !v)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '7px 12px',
+          background: 'var(--color-header)',
+          borderTop: '1px solid var(--color-border)',
+          borderBottom: '1px solid var(--color-border)',
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        <span aria-hidden="true" style={{ fontSize: 9, color: 'var(--color-text-faint)' }}>
+          {buildingsOpen ? '▾' : '▸'}
+        </span>
+        Edited buildings
+        <span
+          style={{
+            marginLeft: 'auto',
+            font: '600 10px/1 var(--font-sans)',
+            padding: '3px 7px',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--color-widget)',
+            color: 'var(--color-text-muted)',
+          }}
+        >
+          {tree.length}
+        </span>
+      </div>
+
+      {!scanRootAvailable && (
+        <div style={{ padding: '10px 12px', fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+          No live session / project not bound to a client — nothing to scan yet.
+        </div>
+      )}
+
+      {scanRootAvailable && buildingsOpen && (
+        <div>
+          {tree.map((building) => {
+            const buildingRowId = worldEditorBuildingRowId(building.buildingId);
+            const badge = deriveBuildingBadge(building, sessionOverlay);
+            const colors = badgeColors(badge.kind);
+            return (
+              <React.Fragment key={building.buildingId}>
+                <div
+                  role="option"
+                  aria-selected={selectedRowId === buildingRowId}
+                  data-testid="world-building-row"
+                  onClick={() => handleRowSelect(buildingRowId)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 9,
+                    padding: '7px 12px',
+                    borderBottom: '1px solid var(--color-border-soft)',
+                    cursor: 'pointer',
+                    background: selectedRowId === buildingRowId ? 'var(--color-accent-dim)' : undefined,
+                  }}
+                >
+                  <span aria-hidden="true" style={{ width: 16, color: 'var(--color-text-faint)' }}>
+                    ⌂
+                  </span>
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {building.displayLabel}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--color-text-faint)',
+                      }}
+                    >
+                      {baseNameOf(building.derivedTemplatePath)} · node {building.buildingId}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      font: '600 10px/1 var(--font-sans)',
+                      padding: '3px 7px',
+                      borderRadius: 'var(--radius-full)',
+                      ...colors,
+                    }}
+                  >
+                    {badge.label}
+                  </span>
+                </div>
+                {building.decorations.map((deco) => {
+                  const rowId = worldEditorRowId(building.buildingId, deco.cellName, deco.rowIndex);
+                  const decoBadge = deriveDecorationBadge(sessionOverlay.get(rowId));
+                  const decoColors = badgeColors(decoBadge.kind);
+                  return (
+                    <div
+                      key={rowId}
+                      role="option"
+                      aria-selected={selectedRowId === rowId}
+                      data-testid="world-decoration-row"
+                      onClick={() => handleRowSelect(rowId)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 9,
+                        padding: '7px 12px',
+                        paddingLeft: 30,
+                        borderBottom: '1px solid var(--color-border-soft)',
+                        cursor: 'pointer',
+                        background: selectedRowId === rowId ? 'var(--color-accent-dim)' : undefined,
+                      }}
+                    >
+                      <span aria-hidden="true" style={{ width: 16, color: 'var(--color-text-faint)' }}>
+                        ▦
+                      </span>
+                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {baseNameOf(deco.objectTemplateName)}
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--text-xs)',
+                            color: 'var(--color-text-faint)',
+                          }}
+                        >
+                          {deco.cellName} · row {deco.rowIndex}
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          font: '600 10px/1 var(--font-sans)',
+                          padding: '3px 7px',
+                          borderRadius: 'var(--radius-full)',
+                          ...decoColors,
+                        }}
+                      >
+                        {decoBadge.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Selection detail card (decoration rows only) ────────────────────────────────────── */}
+      {selectedDecoration && (
+        <div
+          data-testid="world-detail-card"
+          style={{
+            margin: 10,
+            background: 'var(--color-surface-2)',
+            border: '1px solid var(--color-border-soft)',
+            borderRadius: 'var(--radius-md)',
+            padding: '10px 12px',
+          }}
+        >
+          <DetailRow k="Decoration" v={baseNameOf(selectedDecoration.objectTemplateName)} />
+          <DetailRow k="Cell / row" v={`${selectedDecoration.cellName} · row ${selectedDecoration.rowIndex}`} />
+          <DetailRow k="Position" v={formatPosition(selectedDecoration.transform)} />
+          <DetailRow
+            k="Last persist"
+            v={renderLastPersist(matchingHistoryEntry)}
+          />
+          <DetailRow
+            k="Files"
+            v={
+              selectedBuilding
+                ? [baseNameOf(selectedBuilding.editedIlfPath), baseNameOf(selectedBuilding.derivedTemplatePath), hasMirror ? 'mirror' : null]
+                    .filter((s): s is string => s !== null)
+                    .join(' · ')
+                : '—'
+            }
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+            <button type="button" onClick={() => handleStubClick('Go to')} style={stubBtnStyle}>
+              Go to
+            </button>
+            <button type="button" onClick={() => handleStubClick('Revert')} style={stubBtnStyle}>
+              Revert
+            </button>
+            <button type="button" onClick={() => handleStubClick('Edit in game')} style={stubBtnStyle}>
+              Edit in game
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Small render helpers ────────────────────────────────────────────────────────
+
+const stubBtnStyle: React.CSSProperties = {
+  background: 'var(--color-widget)',
+  color: 'var(--color-text)',
+  border: '1px solid var(--color-border-soft)',
+  borderRadius: 'var(--radius-sm)',
+  font: '600 var(--text-xs)/1 var(--font-sans)',
+  padding: '4px 9px',
+  cursor: 'pointer',
+};
+
+function DetailRow({ k, v }: { k: string; v: React.ReactNode }): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 5 }}>
+      <span style={{ width: 92, color: 'var(--color-text-faint)', flex: 'none' }}>{k}</span>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--text-xs)',
+          color: 'var(--color-text)',
+          overflowWrap: 'anywhere',
+        }}
+      >
+        {v}
+      </span>
+    </div>
+  );
+}
+
+/** ROUND-3-REVIEW R4 (D-13): the FULL 12-element before/after readout when the matching history
+ *  entry carries it; the outcome-word-only fallback when it doesn't (an older/incomplete entry);
+ *  "not yet persisted this session" when no matching entry exists at all. Never throws. */
+function renderLastPersist(entry: PersistHistoryEntry | null): React.ReactElement | string {
+  if (!entry) return 'not yet persisted this session';
+  if (entry.beforeTransform && entry.afterTransform) {
+    return (
+      <>
+        <div data-testid="world-last-persist-before">before: [{formatTransform12(entry.beforeTransform)}]</div>
+        <div data-testid="world-last-persist-after">after: [{formatTransform12(entry.afterTransform)}]</div>
+      </>
+    );
+  }
+  return entry.message;
 }
