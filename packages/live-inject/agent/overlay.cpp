@@ -1173,6 +1173,16 @@ void renderFrame() {
             static const char* s_tpNote = nullptr;
             if (ImGui::Button("Go##teleport")) {
                 void* player = swg::endpoints::getPlayer();
+                // Unconditional trace: the in-UI note proved unreliable (long SameLine text clips off
+                // the right edge of the window), so the LOG is the authoritative signal for whether a
+                // teleport click registered at all and what the engine handed back.
+                {
+                    char tb[192];
+                    std::snprintf(tb, sizeof(tb),
+                        "overlay: teleport click — player=%p target=(%.1f, %.1f, %.1f)\n",
+                        player, s_tpPos[0], s_tpPos[1], s_tpPos[2]);
+                    dbg(tb);
+                }
                 if (player) {
                     const float t[12] = {
                         1.0f, 0.0f, 0.0f, s_tpPos[0],
@@ -1180,6 +1190,26 @@ void renderFrame() {
                         0.0f, 0.0f, 1.0f, s_tpPos[2],
                     };
                     swg::endpoints::setTransform_o2w(player, t);
+                    // Read the transform straight back. This discriminates the two failure modes the
+                    // 05.1-16 checkpoint could not tell apart from in-game observation alone:
+                    //   read-back == target  -> the write LANDED; something later moves the player
+                    //                           back (collision/authority/movement re-assert), or the
+                    //                           camera is what did not follow.
+                    //   read-back != target  -> the write itself did not take.
+                    if (swg::endpoints::getTransform_o2w) {
+                        // Same read idiom drawGizmo() uses: returns a Transform*, copy 12 floats
+                        // (row-major 3x4, translation in column 3).
+                        void* backPtr = swg::endpoints::getTransform_o2w(player);
+                        if (backPtr != nullptr) {
+                            float back[12] = {};
+                            std::memcpy(back, backPtr, sizeof(back));
+                            char rb[192];
+                            std::snprintf(rb, sizeof(rb),
+                                "overlay: teleport read-back — now=(%.1f, %.1f, %.1f) wanted=(%.1f, %.1f, %.1f)\n",
+                                back[3], back[7], back[11], s_tpPos[0], s_tpPos[1], s_tpPos[2]);
+                            dbg(rb);
+                        }
+                    }
                     // KNOWN LIMITATION (05.1-16 checkpoint): this writes the WORLD transform only
                     // and does not reparent the player's cell — object::setParentCell is not bound.
                     // Teleporting to coords INSIDE a POB therefore leaves the player parented to the
@@ -1194,7 +1224,9 @@ void renderFrame() {
                     dbg("overlay: teleport requested but getPlayer() returned null\n");
                 }
             }
-            if (s_tpNote != nullptr) { ImGui::SameLine(); ImGui::TextDisabled("%s", s_tpNote); }
+            // OWN LINE, not SameLine — appended after the wide InputFloat3 + button this clipped off
+            // the right edge of the window and read as "no message at all" during the 05.1-16 checkpoint.
+            if (s_tpNote != nullptr) ImGui::TextDisabled("teleport: %s", s_tpNote);
         }
         ImGui::Separator();
 
