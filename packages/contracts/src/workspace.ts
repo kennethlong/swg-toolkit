@@ -103,4 +103,16 @@ export interface WorkspaceBindingMeta {
    *  Launch & Inject field when the project opens; more specific than clientPath —
    *  a full exe path, e.g. a decoupled stage build's SwgClient_r.exe). */
   liveClientExe?: string;
+  /** World editor: per-project decoration mirror-mode default override (D-08). Absent means
+   *  "use the default" (true) — the caller resolves the default; this field only stores an
+   *  explicit override, never a read-time default injection. */
+  mirrorToStockIlf?: boolean;
+  /** World editor: saved teleport bookmarks for the World panel (D-07), persisted per-project. */
+  worldEditorBookmarks?: { name: string; scene: string; x: number; y: number; z: number }[];
+  /** World editor: durable per-building memory of the STOCK building template's own VFS path
+   *  (e.g. 'object/building/tatooine/shared_cantina_tatooine.iff'), keyed by sanitized building
+   *  id. Populated by Plan 06's orchestrator on every successful live edit/add capture — this
+   *  value cannot be re-derived from override-dir bytes alone (05.1-02-PLAN.md ROUND 3 revision,
+   *  REVIEWS.md R3), so Plan 04's scan and Plan 13's offline Remove read it from here instead. */
+  worldEditorBuildingTemplates?: Record<string, string>;
 }
