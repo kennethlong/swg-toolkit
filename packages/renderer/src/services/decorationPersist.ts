@@ -106,6 +106,36 @@ function defaultWrite(absPath: string, bytes: Buffer): void {
   fs.writeFileSync(absPath, bytes);
 }
 
+/**
+ * Write `editedIlfBytes` at the STOCK `.ilf` VFS path inside `deps.overrideDir` (the
+ * per-TEMPLATE visibility mirror — see DecorationPersistDeps.mirrorToStockIlf) and return the
+ * staged entry to append. Extracted out of assembleDecorationEdit's own mirror branch (which
+ * still calls this) so decorationPersistOrchestrator.ts's `reconcileMirrorMode` (05.1-06,
+ * D-09) can reuse the EXACT SAME write logic outside a single persist's assembly — a pure
+ * refactor-for-reuse, no behavior change to the proven edit path.
+ */
+export function writeStockMirror(
+  deps: { overrideDir: string; writeFile?: (absPath: string, bytes: Buffer) => void },
+  stockIlfVfsPath: string,
+  editedIlfBytes: Buffer,
+): { virtualPath: string; filePath: string; action: 'modify' } {
+  const write = deps.writeFile ?? defaultWrite;
+  const mirroredFilePath = path.join(deps.overrideDir, stockIlfVfsPath);
+  write(mirroredFilePath, editedIlfBytes);
+  return { virtualPath: stockIlfVfsPath, filePath: mirroredFilePath, action: 'modify' };
+}
+
+/**
+ * Delete the stock-path mirror file at `stockIlfVfsPath` inside `deps.overrideDir` (mirror mode
+ * turned off, or reconcileMirrorMode's rollback undoing a prior write). Throws if the file does
+ * not exist — callers that need "delete if present" semantics check existence first
+ * (reconcileMirrorMode does; assembleDecorationEdit never calls this today).
+ */
+export function removeStockMirror(deps: { overrideDir: string }, stockIlfVfsPath: string): void {
+  const filePath = path.join(deps.overrideDir, stockIlfVfsPath);
+  fs.unlinkSync(filePath);
+}
+
 const fmtPos = (t: number[]): string => `(${t[3]?.toFixed(3)},${t[7]?.toFixed(3)},${t[11]?.toFixed(3)})`;
 
 /** Top-3 template-matching rows by transform distance — the "why didn't it match" diagnostic. */
@@ -247,9 +277,7 @@ export function assembleDecorationEdit(edit: DecorationEdit, deps: DecorationPer
   // Per-template visibility mirror: shadow the STOCK ilf path so server-streamed instances (which
   // spawn from the stock template) read the edited layout too. Scope caveat traced loudly.
   if (deps.mirrorToStockIlf) {
-    const mirroredFilePath = path.join(deps.overrideDir, stockIlfVfs);
-    write(mirroredFilePath, editedIlf);
-    stagedEntries.push({ virtualPath: stockIlfVfs, filePath: mirroredFilePath, action: 'modify' });
+    stagedEntries.push(writeStockMirror(deps, stockIlfVfs, editedIlf));
     logf(`assemble: mirrored edited .ilf to STOCK path ${stockIlfVfs} (per-TEMPLATE — every instance of this layout shows the edit)`);
   }
 
