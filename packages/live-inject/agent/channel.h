@@ -288,16 +288,16 @@ void channelWriteResult(int32_t code, uint32_t epoch);
  * channelReadHostCommand — agent-side seqlock retry-read of the HOST_CMD region (same
  * idiom as channelReadRebind). Returns false on a torn/mid-write read (out left untouched
  * — retry next poll). The caller applies each NEW out->epoch once (compare to
- * last-applied). Implementation lands in Plan 07 — declared here only (05.1-03
- * Interface-First groundwork).
+ * last-applied). Implemented in channel.cpp (05.1-07); the agent-side dispatch that
+ * calls this and actually applies each action lands in Plan 09.
  */
 bool channelReadHostCommand(HostCommand* out);
 
 /**
  * channelWriteHostCommandResult — agent publishes a HOST_CMD outcome. code is written
  * FIRST, epoch LAST (code-before-epoch, same discipline as channelWriteResult).
- * Implementation lands in Plan 07 — declared here only (05.1-03 Interface-First
- * groundwork).
+ * Implemented in channel.cpp (05.1-07); the agent-side dispatch that calls this lands
+ * in Plan 09.
  */
 void channelWriteHostCommandResult(int32_t code, uint32_t epoch);
 
