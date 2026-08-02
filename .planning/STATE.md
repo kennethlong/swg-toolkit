@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-06-PLAN.md — Task 1 executed (test/RED then feat/GREEN commits), decorationPersistOrchestrator.ts per-project mirrorToStockIlf + transactional reconcileMirrorMode (D-08/D-09) SUMMARY written, plan closed
-last_updated: "2026-08-02T01:08:44.255Z"
+stopped_at: Completed 05.1-07-PLAN.md — HOST_CMD channel read/write C++ primitives (agent channelReadHostCommand/channelWriteHostCommandResult + host writeHostCommand N-API export), both packages built clean, SUMMARY written
+last_updated: "2026-08-02T01:27:01.169Z"
 last_activity: 2026-08-02
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 100
-  completed_plans: 90
-  percent: 90
+  completed_plans: 91
+  percent: 67
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 6 of 15
+Plan: 7 of 15
 Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
@@ -46,7 +46,7 @@ Last activity: 2026-08-02
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 91%
 
 ### 02-03 key facts (crew-verified)
 
@@ -147,6 +147,7 @@ Progress: [█████████░] 90%
 | Phase 05.1 P03 | ~15min | 3 tasks | 5 files |
 | Phase 05.1-live-world-editor-productization P04 | ~20min | 2 tasks | 4 files |
 | Phase 05.1-live-world-editor-productization P06 | single session | 1 tasks | 4 files |
+| Phase 05.1-live-world-editor-productization P07 | ~15min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -345,6 +346,7 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1, Plan 04]: PROJECT-SWITCH RESET ORDERING CONTRACT implemented as a module-scope synchronous useWorkspaceStore.subscribe() at the bottom of worldEditorStore.ts (reset-before-render), never a React effect — R9 review BB2/BB5 -- Plan 13's removeUndoStore registers the identical subscription form
 - [Phase 05.1-06]: reconcileMirrorMode's Phase 2 resolve/group step (reading each building's stock template for its mirror path) shares Phase 1's zero-writes-until-clean discipline rather than being folded into apply-phase rollback — keeps the transactional guarantee simple: nothing is written until the FULL set of buildings for this pass is provably resolvable
 - [Phase 05.1-06]: Test-forced throws in reconcileMirrorMode tests use fs spies (path-conditional mockImplementation, call-through otherwise), not directory-collision tricks — a pre-existing directory at a WRITE target is silently treated by the exists-check as already-reconciled and never forces a throw; confirmed via direct fs probe (EISDIR on read, EPERM on unlink on Windows) that only the DELETE direction reliably throws on a directory collision
+- [Phase 05.1]: [Phase 05.1, Plan 07]: channelReadHostCommand/channelWriteHostCommandResult mirror channelReadRebind/channelWriteResult line-for-line; writeHostCommand mirrors writeRebind's shape, accepting vec3 as Float32Array(3) or number[3] per the plan's own behavior spec
 
 ### Pending Todos
 
@@ -376,8 +378,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-02T01:08:44.210Z
-Stopped at: Completed 05.1-06-PLAN.md — Task 1 executed (test/RED then feat/GREEN commits), decorationPersistOrchestrator.ts per-project mirrorToStockIlf + transactional reconcileMirrorMode (D-08/D-09) SUMMARY written, plan closed
+Last session: 2026-08-02T01:27:01.143Z
+Stopped at: Completed 05.1-07-PLAN.md — HOST_CMD channel read/write C++ primitives (agent channelReadHostCommand/channelWriteHostCommandResult + host writeHostCommand N-API export), both packages built clean, SUMMARY written
   Tasks 1-4 executed and committed (RED/GREEN per task): (1) decorationResultLabel
   REBIND_REFUSED label fix (SC1); (2) ilf.ts addNode/removeNode append/delete primitives with
   byte-exact round-trip coverage (SC4); (3) decorationPersist.ts kind-aware assembly

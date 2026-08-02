@@ -387,7 +387,7 @@ Engineering ride-alongs owed by the pivot (handoff "Remaining follow-ups"):
   4. A user can ADD a new decoration end-to-end (021-A wizard pick → overlay ghost placement → persisted `.ilf` gains a new row that survives scene reload) and REMOVE a decoration with the same persistence guarantee.
   5. Rotation edits persist and reload correctly, and the agent `-1`-refused mapping fix ships (a refused rebind can never report a save-result).
 
-**Plans:** 15 plans
+**Plans:** 6/15 plans executed
 Plans:
 **Wave 0** *(parallel — no cross-plan dependencies)*
 - [x] 05.1-01-PLAN.md — Wave-0 gates: REBIND_REFUSED label fix, .ilf addNode/removeNode, decorationPersist kind=edit|add|remove + byte-exact round-trip tests
@@ -398,7 +398,7 @@ Plans:
 **Wave 1** *(blocked on Wave 0)*
 - [ ] 05.1-05-PLAN.md — Agent HUD rewrite (020-A Status Strip): retire CONSULT-69, F/G/R hotkey capture, verify-wire shipped REBIND_REFUSED/editor-scene ride-alongs [autonomous: false]
 - [x] 05.1-06-PLAN.md — Orchestrator: thread mirrorToStockIlf + reconcileMirrorMode (D-09) + capture.kind=add branch
-- [ ] 05.1-07-PLAN.md — Native HOST_CMD channel: agent read+ack (channel.cpp) + host N-API write export (channel_binding.cpp/addon.cpp)
+- [x] 05.1-07-PLAN.md — Native HOST_CMD channel: agent read+ack (channel.cpp) + host N-API write export (channel_binding.cpp/addon.cpp)
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 05.1-08-PLAN.md — Renderer hostCommand.ts send* wrappers + useChannelReader.ts result polling
@@ -506,7 +506,7 @@ Phases execute in numeric order: 0 -> 1 -> 2 -> 3 -> 4 -> 4.1 -> 4.2 -> 4.3 -> 4
 | 4.3 Versioning Model & SearchTOC Mount Completion *(INSERTED)* | 12/12 | Complete | 2026-07-03 |
 | 4.4 UX Polish & Deploy Hardening *(INSERTED)* | 0/15 | Planned, not executed | - |
 | 5. WYSIWYG Live-Sync & Typed Editors | 0/12 | Planned, not executed | - |
-| 5.1 Live World Editor Productization *(INSERTED)* | 0/15 | Planning (cross-AI convergence loop) | - |
+| 5.1 Live World Editor Productization *(INSERTED)* | 6/15 | In Progress|  |
 | 5.2 Guided Workflows I *(INSERTED)* | 0/TBD | Not started | - |
 | 6. Blender Bridge | 0/TBD | Not started | - |
 | 7. Format Editors | 0/TBD | Not started | - |
