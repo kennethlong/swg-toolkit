@@ -397,7 +397,7 @@ Plans:
 
 **Wave 1** *(blocked on Wave 0)*
 - [ ] 05.1-05-PLAN.md — Agent HUD rewrite (020-A Status Strip): retire CONSULT-69, F/G/R hotkey capture, verify-wire shipped REBIND_REFUSED/editor-scene ride-alongs [autonomous: false]
-- [ ] 05.1-06-PLAN.md — Orchestrator: thread mirrorToStockIlf + reconcileMirrorMode (D-09) + capture.kind=add branch
+- [x] 05.1-06-PLAN.md — Orchestrator: thread mirrorToStockIlf + reconcileMirrorMode (D-09) + capture.kind=add branch
 - [ ] 05.1-07-PLAN.md — Native HOST_CMD channel: agent read+ack (channel.cpp) + host N-API write export (channel_binding.cpp/addon.cpp)
 
 **Wave 2** *(blocked on Wave 1)*
