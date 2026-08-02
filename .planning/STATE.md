@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-05-PLAN.md — 020-A Status Strip (CONSULT-69 probe retired, F/G/R hotkey
-last_updated: "2026-08-02T12:09:04.011Z"
+stopped_at: Completed 05.1-08-PLAN.md
+last_updated: "2026-08-02T13:15:03.485Z"
 last_activity: 2026-08-02
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 101
-  completed_plans: 92
-  percent: 91
+  completed_plans: 93
+  percent: 92
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 8 of 16 (05.1-16 inserted 2026-08-02, wave 2, runs after 05.1-08/before 05.1-09 — see 05.1-16-PLAN.md)
+Plan: 9 of 16 (05.1-16 inserted 2026-08-02, wave 2, runs after 05.1-08/before 05.1-09 — see 05.1-16-PLAN.md)
 Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
@@ -46,7 +46,7 @@ Last activity: 2026-08-02
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 92%
 
 ### 02-03 key facts (crew-verified)
 
@@ -149,6 +149,7 @@ Progress: [█████████░] 91%
 | Phase 05.1-live-world-editor-productization P06 | single session | 1 tasks | 4 files |
 | Phase 05.1-live-world-editor-productization P07 | ~15min | 2 tasks | 5 files |
 | Phase 05.1-live-world-editor-productization P05 | multi-session | 3 tasks | 1 files |
+| Phase 05.1 P08 | 55min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -352,6 +353,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1, Plan 05]: Stale pre-shim building-id fallback in armDecorationEdit retired (checkpoint fix, cb6f369) — After v25 shipped getContainingBuildingId (2026-07-30), bldgId==0 is authoritative (world-cell object, no PortalProperty), but a fallback left over from before the provider shipped it was overriding that definitive NO with the hovered object's own id, silently arming a building as its own containing building and making the refusal path unreachable. Fallback now applies ONLY when the slot is genuinely unresolved.
 - [Phase 05.1, Plan 05]: Plan 05.1-16 inserted into wave 2 (runs after 05.1-08, before 05.1-09) to close a pre-existing re-entrant gameLoadScene crash and a per-frame overlay fault-containment gap — 05.1-05's blocking checkpoint found step 8 ('Editor scene') crashed the client: gameLoadScene is called from inside hkSwapChainPresent's render callback (commit 36ab9b7, not this plan's diff), a re-entrant scene swap. A related HUD-blanking fault (Bug A, 3,424 consecutive per-frame SEH faults in one run) shares the same fault-containment gap. Plan 09 would otherwise dispatch HOST_CMD scene-swap actions from the same render-callback context and reproduce the crash on its own checkpoint, so 05.1-16 is a hard prerequisite that must land first.
 - [Phase 05.1, Plan 05]: 020-A strip label ships as two-segment 'Decoration . Building', not sketch 020-A's three-segment 'Decoration . Cell . Building' -- maintainer-approved deviation — The cell-name segment is genuinely unresolvable: all 150 rows of the client's v26 advertised catalog were checked and none returns a cell name string. Deferred to Phase 5.2 (SC5 retrofits the sketch-021 flow; SC2's asset-discovery resolver is adjacent); tracked at .planning/todos/pending/hud-cell-name-label-segment.md, provider change request filed by 05.1-15.
+- [Phase 05.1]: hostCommand.ts wraps writeHostCommand with 6 typed send* functions; sendStartPlacement alone returns its epoch for Plan 14's ack correlation — avoids a cross-cutting signature change to the other 5 functions since no caller needs their epoch back yet
+- [Phase 05.1]: Tasks 2+3 (05.1-08) committed as one RED/GREEN pair, not four separate task commits — both modify the same useChannelReader.ts poll() function in immediately adjacent, interleaved code; splitting would require a synthetic intermediate state neither task's acceptance criteria describes
 
 ### Pending Todos
 
@@ -383,8 +386,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-02T12:09:03.980Z
-Stopped at: Completed 05.1-05-PLAN.md — 020-A Status Strip (CONSULT-69 probe retired, F/G/R hotkey
+Last session: 2026-08-02T13:15:03.456Z
+Stopped at: Completed 05.1-08-PLAN.md
   state machine, arm-failure CAPTURE publish for C8). Tasks 1-2 executed and committed (d9feae7,
   f18790c). Task 3's blocking in-game checkpoint was APPROVED by the maintainer 2026-08-02, but not
   cleanly on the first pass: two live defects were found and fixed mid-checkpoint (Esc KEY binding
