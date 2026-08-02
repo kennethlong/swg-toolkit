@@ -236,7 +236,7 @@ int64_t g_pickedId = 0;
 bool    g_havePickPoint = false;
 float   g_pickPoint[3] = {};
 
-// --- CONSULT-69 decisive experiment: can the hover pointer reach an id-less .ilf
+// --- Id-less .ilf decoration reach: can the hover pointer reach an id-less .ilf
 //     decoration and can the gizmo move it? g_lastHoverObj tracks the most recent
 //     non-null hud hover pick (cuiHud::getTarget, which selects id-less objects too
 //     under allowTargetAnything); g_latchedFocus freezes one so the gizmo drives it
@@ -278,7 +278,7 @@ uint32_t g_lastDecoResultEpoch = 0;
 // id each frame) takes precedence, else the current in-game target, else the
 // player. Runs on the render/game thread (safe to touch engine objects here).
 // The current hud hover pick (cuiHud::getTarget). Selects id-less .ilf decorations too
-// under allowTargetAnything (CONSULT-69). Null when nothing is hovered / cursor off-world.
+// under allowTargetAnything. Null when nothing is hovered / cursor off-world.
 void* resolveHoverPick() {
     if (swg::endpoints::isAdvertisedClient() &&
         swg::endpoints::cuiHudGetInstance && swg::endpoints::cuiHudGetTarget) {
@@ -290,7 +290,7 @@ void* resolveHoverPick() {
 
 void* resolveFocusObject() {
     void* focus = nullptr;
-    // CONSULT-69: a latched hover pointer (id-less decoration) wins — the gizmo drives it.
+    // A latched hover pointer (id-less decoration) wins — the gizmo drives it.
     if (g_latchedFocus != nullptr) return g_latchedFocus;
     // Ray-picked selection wins — re-resolve the id to a live Object* (ABA-safe).
     if (g_pickedId != 0 && swg::endpoints::getObjectByIdAdvertised) {
@@ -488,6 +488,39 @@ void applyPendingRebind() {
     if (code == DECO_RESULT_OK && rb.buildingId == static_cast<uint64_t>(g_capBuildingId)) g_capArmed = false;
 }
 
+// --- 020-A Status Strip: retires the old debug-probe CollapsingHeader (raw pointers, latch
+//     buttons, a raw-integer result-code text line — the exact SC1 violation this replaces). One thin
+//     top-center ImGui window, hotkey-driven (F arm, G/R move/rotate, Esc cancel). The
+//     arm/persist/rebind INTERNALS above are reused completely unchanged — only the TRIGGER
+//     (hotkey vs. the old probe's button clicks) and the RENDER surface change here.
+//     Scaffolded in Task 1 (window shell + idle placeholder); Task 2 wires the full
+//     idle/hover/armed/saved/failed state machine (D-11/D-12/D-13) + the C8 arm-failure
+//     CAPTURE publish. Called from renderFrame() right after applyPendingRebind() so the
+//     strip always reflects the LATEST rebind result even the same frame it lands. ---
+void renderDecorationStrip() {
+    const ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, 12.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize |
+                                    ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##decoStrip", nullptr, flags)) {
+        // object/context label — idle placeholder until Task 2 wires hover/armed state.
+        ImGui::TextDisabled("hover a decoration to pick it");
+        if (g_capArmed) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "ARMED");
+            ImGui::SameLine();
+            if (ImGui::Button("Persist")) { /* Task 2 wires this to persistDecorationEdit() */ }
+            ImGui::SameLine();
+            if (ImGui::Button("Esc")) { g_capArmed = false; }
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("F arm \xC2\xB7 G/R move/rotate");
+    }
+    ImGui::End();
+}
+
 void renderFrame() {
     ensureImguiInit();
     if (!g_imguiInit) return;
@@ -503,7 +536,13 @@ void renderFrame() {
     // un-gated by the panel/header — must run every frame the overlay renders).
     applyPendingRebind();
 
-    // CONSULT-69: track the last non-null hud hover pick every frame so a decoration
+    // 020-A Status Strip: the productized in-game half of the boundary rule ("point at the
+    // world" = overlay; rows/fields/text = the World panel). Called here (not inside the
+    // main window Begin/End below) so it always reflects the LATEST rebind result even the
+    // same frame it lands, and renders as its own thin top-center window per the sketch.
+    renderDecorationStrip();
+
+    // Hover tracking: track the last non-null hud hover pick every frame so a decoration
     // hovered in the world can still be latched after the cursor moves to the panel.
     // Follow-hover: ONCE a decoration is latched (opted into decoration mode), hovering
     // another one switches the latch to it — so you don't Clear+re-Latch per chair. A
@@ -609,83 +648,6 @@ void renderFrame() {
             ImGui::RadioButton("World", &g_gizmoMode, 0);   ImGui::SameLine();
             ImGui::RadioButton("Local", &g_gizmoMode, 1);
             ImGui::TextDisabled("Esc while dragging = revert");
-        }
-        ImGui::Separator();
-
-        // --- CONSULT-69 decisive experiment: can we select + move an id-less .ilf
-        //     interior decoration via the pointer-keyed hover pick (no NetworkId)? ---
-        if (ImGui::CollapsingHeader("In-cell decoration probe (CONSULT-69)")) {
-            ImGui::TextDisabled("Hover an object IN-WORLD (cursor OFF this panel) to sample it.");
-            ImGui::Text("HUD pick (cuiHud::getTarget): %p", g_probeHoverPtr);
-            ImGui::Text("  template : %s", g_lastHoverTmpl[0] != '\0' ? g_lastHoverTmpl : "(null pick — not pointer-selectable)");
-            ImGui::Text("  networkId: %lld", static_cast<long long>(g_lastHoverNet));
-            ImGui::Separator();
-            ImGui::Text("last world ray: hit=%d id=%lld @(%.1f %.1f %.1f)",
-                        g_lastRayHit ? 1 : 0, static_cast<long long>(g_lastRayId),
-                        g_lastRayPt[0], g_lastRayPt[1], g_lastRayPt[2]);
-            ImGui::Text("ray Object* (v22): %p", g_lastRayObj);
-            ImGui::Text("  template: %s", g_lastRayObjTmpl[0] != '\0' ? g_lastRayObjTmpl : "(null / no hit)");
-            ImGui::TextDisabled("§2.1: is that template the TABLE (good) or floor/terrain (need extent-pick)?");
-            ImGui::Separator();
-            if (ImGui::Button("Latch last hovered")) g_latchedFocus = g_lastHoverObj;   // hud pick (chairs/tangibles)
-            ImGui::SameLine();
-            if (ImGui::Button("Latch ray object")) g_latchedFocus = g_lastRayObj;        // raw ray hit (.ilf decorations)
-            ImGui::SameLine();
-            if (ImGui::Button("Clear latch")) g_latchedFocus = nullptr;
-            ImGui::Checkbox("Follow hover", &g_followHover);
-            ImGui::Text("latched: %p  (gizmo edits this when set)", g_latchedFocus);
-            ImGui::Separator();
-            // --- v24: object o2p read (the .ilf transform of the focus object). Live, so a
-            //     gizmo-move shows the CELL-space delta (smoke step 2), and it's what
-            //     resolveRowIndex/editNodeTransform consume at persist time. ---
-            if (swg::endpoints::getObjectTransformO2P == nullptr) {
-                ImGui::TextDisabled("object::getTransformO2P: not advertised by this client");
-            } else {
-                void* focus = resolveFocusObject();
-                float o2p[12] = {0};
-                const int ok = focus ? swg::endpoints::getObjectTransformO2P(focus, o2p) : 0;
-                if (ok) {
-                    ImGui::Text("o2p (cell-space, row-major 3x4):");
-                    ImGui::Text("  i: % .3f % .3f % .3f", o2p[0], o2p[4], o2p[8]);   // frame i (col 0)
-                    ImGui::Text("  j: % .3f % .3f % .3f", o2p[1], o2p[5], o2p[9]);   // frame j (col 1)
-                    ImGui::Text("  k: % .3f % .3f % .3f", o2p[2], o2p[6], o2p[10]);  // frame k (col 2)
-                    ImGui::Text("  pos: % .3f % .3f % .3f", o2p[3], o2p[7], o2p[11]); // col 3
-                } else {
-                    ImGui::TextDisabled("o2p: no focus object (latch a decoration first)");
-                }
-            }
-            ImGui::Separator();
-
-            // --- Decoration persist (model D) round trip. Arm (snapshot pre-move baseline)
-            //     → move with the gizmo → Persist (ships new o2p) → toolkit assembles the loose
-            //     files → the agent rebinds the .ws node + saves. ---
-            static const char* s_decoMsg = nullptr;
-            const bool haveRebind = (swg::endpoints::wsSetNodeTemplateName != nullptr);
-            ImGui::TextDisabled("Persist decoration (edit → .ilf + derived template → .ws rebind)");
-            if (swg::endpoints::getContainingBuildingId) {
-                ImGui::TextDisabled("hover the decoration → Arm → move → Persist");
-            } else {
-                ImGui::TextDisabled("getContainingBuildingId unresolved — a wall click resolves the CELL,");
-                ImGui::TextDisabled("not the building (abort: no interiorLayoutFileName). Needs the shim.");
-                ImGui::Text("   click-selection id: %lld", static_cast<long long>(g_pickedId));
-            }
-            if (ImGui::Button("Arm edit from ray object")) s_decoMsg = armDecorationEdit();
-            if (g_capArmed) {
-                ImGui::SameLine();
-                if (ImGui::Button("Persist")) s_decoMsg = persistDecorationEdit();
-                ImGui::SameLine();
-                if (ImGui::Button("Cancel")) { g_capArmed = false; s_decoMsg = "cancelled"; }
-                ImGui::Text("armed: bldg id %lld · %s", static_cast<long long>(g_capBuildingId), g_capDecorationTemplate);
-                ImGui::TextDisabled("building: %s", g_capBuildingTemplate);
-            } else {
-                ImGui::TextDisabled("not armed — hover a decoration, then Arm");
-            }
-            if (!haveRebind) ImGui::TextDisabled("(wsSetNodeTemplateName unresolved — rebind will report node-not-found)");
-            if (s_decoMsg) ImGui::TextWrapped("edit: %s", s_decoMsg);
-            if (g_lastDecoResultEpoch != 0) {
-                ImGui::Text("last rebind (epoch %u): code %d %s", g_lastDecoResultEpoch, g_lastDecoResult,
-                            g_lastDecoResult == DECO_RESULT_OK ? "(ok — saved)" : "(see LIVE_DECORATION_RESULT)");
-            }
         }
         ImGui::Separator();
 
