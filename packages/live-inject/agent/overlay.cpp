@@ -812,6 +812,32 @@ bool enqueueDeferredLoadScene(const char* terrain, const char* player) {
 // command can never double-execute even if the engine call itself re-enters this path.
 // Called from hkMainLoop (preferred — genuinely outside Present) or, as a fallback, from
 // hkSwapChainPresent after g_origPresent() returns (see that call site's own caveat).
+// --- Scene-change pointer invalidation (05.1-16 checkpoint finding).
+//     Every cached engine pointer in this file is a BORROWED Object* with no ownership and no
+//     liveness signal. A scene swap (loadScene, or wsUnloadSnapshot+wsLoad) destroys the entire
+//     object graph, so every one of them dangles immediately afterward — they were previously
+//     set to nullptr ONLY at declaration and never cleared again for the life of the process.
+//     Any subsequent deref (the strip's per-frame getContainingBuildingId(g_lastRayObj), the
+//     gizmo's focus resolve) is then a use-after-free, which is the leading candidate for the
+//     3,424-fault HUD-blank run in this plan's evidence section.
+//     Disarms any in-flight edit too: an arm captured against a destroyed object can never be
+//     persisted meaningfully, and silently keeping g_capArmed set would let a Persist write a
+//     row for an object that no longer exists. ---
+void invalidateSceneCachedPointers(const char* why) {
+    g_lastHoverObj  = nullptr;
+    g_latchedFocus  = nullptr;
+    g_probeHoverPtr = nullptr;
+    g_lastRayObj    = nullptr;
+    g_lastRayObjTmpl[0] = '\0';
+    g_lastRayId     = 0;
+    g_pickedId      = 0;
+    g_capFocus      = nullptr;
+    g_capArmed      = false;
+    char buf[160];
+    std::snprintf(buf, sizeof(buf), "overlay: scene changed (%s) — cached object pointers invalidated, edit disarmed\n", why);
+    dbg(buf);
+}
+
 void drainDeferredCommands() {
     // Snapshot the count at entry. A command RE-QUEUED during this drain (the LoadScene
     // cleanup->load handoff below) is appended past this bound and is therefore NOT consumed
@@ -853,6 +879,7 @@ void drainDeferredCommands() {
                     }
                     dbg("overlay: deferred LoadScene — frame 2: loadScene (game thread, outside Present)");
                     swg::endpoints::gameLoadScene(cmd.terrain, cmd.player);
+                    invalidateSceneCachedPointers("loadScene");
                 }
                 break;
             case DeferredCmdKind::None:
@@ -1099,6 +1126,7 @@ void renderFrame() {
             if (ImGui::Button("Reload current scene")) {
                 if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
                 swg::endpoints::wsLoad(scene);
+                invalidateSceneCachedPointers("reload current scene");
             }
             if (!haveScene) ImGui::EndDisabled();
             ImGui::SameLine();
@@ -1111,6 +1139,7 @@ void renderFrame() {
             if (ImGui::Button("Load##scene") && s_sceneName[0] != '\0') {
                 if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
                 swg::endpoints::wsLoad(s_sceneName);
+                invalidateSceneCachedPointers("manual scene load");
             }
         }
 
@@ -1141,6 +1170,7 @@ void renderFrame() {
             static float s_tpPos[3] = { 3428.0f, 8.0f, -4788.0f };
             ImGui::InputFloat3("Teleport x/y/z", s_tpPos, "%.1f");
             ImGui::SameLine();
+            static const char* s_tpNote = nullptr;
             if (ImGui::Button("Go##teleport")) {
                 void* player = swg::endpoints::getPlayer();
                 if (player) {
@@ -1150,8 +1180,21 @@ void renderFrame() {
                         0.0f, 0.0f, 1.0f, s_tpPos[2],
                     };
                     swg::endpoints::setTransform_o2w(player, t);
+                    // KNOWN LIMITATION (05.1-16 checkpoint): this writes the WORLD transform only
+                    // and does not reparent the player's cell — object::setParentCell is not bound.
+                    // Teleporting to coords INSIDE a POB therefore leaves the player parented to the
+                    // world cell, so portal culling renders the interior wrong (walls read as
+                    // see-through). Outdoor teleports are unaffected. See the cell-aware-teleport todo.
+                    s_tpNote = "moved (interiors render wrong — world-cell parent, see todo)";
+                } else {
+                    // Previously a SILENT no-op: after a scene reload getPlayer() can return null and
+                    // the button appeared simply not to work, which is indistinguishable from a broken
+                    // build. Say so instead.
+                    s_tpNote = "no player — reload/scene-swap in progress?";
+                    dbg("overlay: teleport requested but getPlayer() returned null\n");
                 }
             }
+            if (s_tpNote != nullptr) { ImGui::SameLine(); ImGui::TextDisabled("%s", s_tpNote); }
         }
         ImGui::Separator();
 
