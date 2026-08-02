@@ -12,7 +12,7 @@
  * number can't hold a full 64-bit .ws node id losslessly; writeRebind parses it back with _strtoui64.
  */
 
-import { LIVE_DECORATION_LAYOUT, LIVE_DECORATION_RESULT } from '@swg/contracts';
+import { LIVE_DECORATION_LAYOUT, LIVE_DECORATION_RESULT, LIVE_DECORATION_CAPTURE_KIND } from '@swg/contracts';
 import type { DecorationCapture } from '@swg/contracts';
 
 function readFloats(view: DataView, offset: number, count: number): number[] {
@@ -51,12 +51,24 @@ export function parseDecorationCapture(
   const decorationTemplateName = readAsciiz(buf, D.CAPTURE_DECORATION_TEMPLATE.offset, D.CAPTURE_DECORATION_TEMPLATE.length);
   const buildingTemplateVfsPath = readAsciiz(buf, D.CAPTURE_BUILDING_TEMPLATE.offset, D.CAPTURE_BUILDING_TEMPLATE.length);
 
+  // (05.1-08 Task 3, C2) CAPTURE_KIND/CAPTURE_CELL_NAME — non-contiguous with the fields above
+  // (1308/1312 vs 512-1024) but still INSIDE the same seq1...seq2 seqlock span (Plan 03 Task 1's
+  // explicit ordering requirement: correctness depends on seqlock span membership, not physical
+  // byte adjacency).
+  const kindNum = view.getUint32(D.CAPTURE_KIND.offset, true);
+  const kind =
+    kindNum === LIVE_DECORATION_CAPTURE_KIND.ADD ? 'add'
+    : kindNum === LIVE_DECORATION_CAPTURE_KIND.ARM_FAILED ? 'arm-failed'
+    : 'edit'; // fail-safe default — never throw on an unrecognized kind value
+  const cellNameRaw = readAsciiz(buf, D.CAPTURE_CELL_NAME.offset, D.CAPTURE_CELL_NAME.length);
+  const cellName = cellNameRaw || undefined;
+
   const seq2 = view.getUint32(D.CAPTURE_SEQ_COUNTER.offset, true);
   if (seq1 !== seq2) return null; // torn read
 
   return {
     epoch,
-    capture: { buildingInstanceId, buildingTemplateVfsPath, decorationTemplateName, originalO2p, newO2p },
+    capture: { buildingInstanceId, buildingTemplateVfsPath, decorationTemplateName, originalO2p, newO2p, kind, cellName },
   };
 }
 

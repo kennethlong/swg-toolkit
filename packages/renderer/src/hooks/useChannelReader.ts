@@ -40,9 +40,12 @@ import { useEffect, useRef } from 'react';
 import { useLiveStore } from '../state/liveStore';
 import { log } from '../services/logService';
 import { LIVE_CHANNEL_LAYOUT, LIVE_GUARD_FLAGS } from '@swg/contracts';
-import type { VerifiedObjectState } from '@swg/contracts';
+import type { VerifiedObjectState, DecorationCapture } from '@swg/contracts';
 import { parseDecorationCapture, readDecorationResult, decorationResultLabel } from '../services/decorationChannel';
 import { handleDecorationCapture } from '../services/decorationPersistOrchestrator';
+import { parseHostCommandResult } from '../services/hostCommand';
+import { useWorldEditorStore, formatPersistMessage } from '../state/worldEditorStore';
+import { useWorkspaceStore } from '../state/workspaceStore';
 
 // Path B: require the addon directly (nodeIntegration:true in the renderer).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -233,22 +236,24 @@ export function useChannelReader(): void {
     // is strictly greater. Local to this effect → reset cleanly on re-attach.
     let lastCaptureEpoch = 0;
     let lastResultEpoch = 0;
+    // HOST_CMD result epoch tracker (05.1-08 Task 2) — same zeroed-at-openChannel baseline as
+    // lastCaptureEpoch/lastResultEpoch; see this plan's HOST_CMD ACK PROTOCOL "Epoch lifetime"
+    // clause (R9 review, BB4) for why 0 is correct across toolkit restarts.
+    let lastHostCmdResultEpoch = 0;
+    // (05.1-08 Task 3, C7) Stashes the CAPTURE-time-resolved mirrorToStockIlf (and cellName/
+    // rowIndex, ROUND 3/R5) for correlation with the RESULT epoch that answers this exact
+    // capture — NOT re-read independently at RESULT time. Cleared once matched, or never set at
+    // all for an arm-failed capture (no RESULT will ever arrive to correlate against).
+    let pendingCapture: {
+      epoch: number;
+      capture: DecorationCapture;
+      mirrorToStockIlf: boolean;
+      cellName?: string;
+      rowIndex?: number;
+    } | null = null;
 
     function poll() {
       if (stopped) return;
-
-      // Client-exit detection (throttled) — is the target process still alive?
-      const now = Date.now();
-      if (now - lastLiveCheck >= LIVENESS_CHECK_MS) {
-        lastLiveCheck = now;
-        if (!isPidAlive(pid)) {
-          stopped = true;
-          try { addon.closeChannel(mappingName); } catch { /* mapping already gone */ }
-          log('warn', 'log', 'SWG client exited — live session ended.');
-          useLiveStore.getState().detach();
-          return; // stop polling; the effect re-runs on the status change and no-ops
-        }
-      }
 
       const buf: ArrayBuffer | null = addon.readChannelView(mappingName);
       if (buf) {
@@ -264,21 +269,91 @@ export function useChannelReader(): void {
 
         // Decoration persist (model D): a new CAPTURE epoch → assemble + rebind; a new RESULT
         // epoch → surface the outcome. One-shot per epoch (guarded by the last-seen counters).
+        // (05.1-08 Task 3, C3) studioDir threaded from the REAL active-project store — the
+        // previous call site never populated it, so ctx.studioDir resolution defaulted to true
+        // forever in the live app (C3's actual bug).
+        const studioDir = useWorkspaceStore.getState().studioDir;
         const cap = parseDecorationCapture(buf);
         if (cap !== null && cap.epoch > lastCaptureEpoch) {
           lastCaptureEpoch = cap.epoch;
-          handleDecorationCapture(cap.epoch, cap.capture, {
+          const { mirrorToStockIlf, cellName, rowIndex } = handleDecorationCapture(cap.epoch, cap.capture, {
             mappingName,
             clientExe: useLiveStore.getState().clientLabel,
+            studioDir,
           });
+          // (C8/C7) An arm-failed capture never gets a REBIND sent, so no RESULT will ever
+          // arrive to correlate against — stashing it here would risk a LATER, unrelated RESULT
+          // epoch spuriously matching a stale pendingCapture.
+          if (cap.capture.kind !== 'arm-failed') {
+            pendingCapture = { epoch: cap.epoch, capture: cap.capture, mirrorToStockIlf, cellName, rowIndex };
+          }
         }
         const res = readDecorationResult(buf);
         if (res.epoch > lastResultEpoch) {
           lastResultEpoch = res.epoch;
           const level = res.code === 0 ? 'info' : 'warn';
           log(level, 'log', `Decoration rebind #${res.epoch}: ${decorationResultLabel(res.code)}.`);
+
+          // (05.1-08 Task 3, D-10/D-12/SC4) Any base edit/add persist RESULT — not just Remove —
+          // reaches worldEditorStore's session history + failure badge, using the SAME
+          // CAPTURE-time-resolved mirrorToStockIlf value handleDecorationCapture returned (C7),
+          // never a fresh independent readWorkspaceJson read at RESULT time. The mirror-off
+          // suffix is applied ONLY on a genuine success (ROUND 3/MED-9) — a failure message never
+          // reads as a success-shaped sentence.
+          if (pendingCapture !== null && pendingCapture.epoch === res.epoch) {
+            const resolved = pendingCapture;
+            pendingCapture = null;
+            const buildingLabel =
+              useWorldEditorStore.getState().tree.find((b) => b.buildingId === resolved.capture.buildingInstanceId)
+                ?.displayLabel ?? resolved.capture.buildingInstanceId;
+            const baseMessage = decorationResultLabel(res.code);
+            const message = res.code === 0 ? formatPersistMessage(baseMessage, resolved.mirrorToStockIlf) : baseMessage;
+            useWorldEditorStore.getState().recordPersistResult({
+              timestampISO: new Date().toISOString(),
+              buildingLabel,
+              decorationLabel: resolved.capture.decorationTemplateName,
+              outcome: res.code === 0 ? 'ok' : 'error',
+              message,
+              beforeTransform: resolved.capture.originalO2p,
+              afterTransform: resolved.capture.newO2p,
+              cellName: resolved.cellName,
+              rowIndex: resolved.rowIndex,
+            });
+          }
+        }
+
+        // HOST_CMD result (05.1-08 Task 2, C9): a coarse, ALWAYS-words-only diagnostic trace — no
+        // numeric code appears in this generic log line. This poll loop has no way to know which
+        // action a given epoch answers; the RICH per-action outcome (describeHostCommandResult)
+        // is each specific caller's own job (Plan 11/13/14) once it knows which action it sent.
+        const hostRes = parseHostCommandResult(buf);
+        if (hostRes.epoch > lastHostCmdResultEpoch) {
+          lastHostCmdResultEpoch = hostRes.epoch;
+          const hostLevel = hostRes.code === 1 ? 'info' : 'warn';
+          log(hostLevel, 'log', `Host command #${hostRes.epoch}: ${hostRes.code === 1 ? 'ok' : 'not ok'}.`);
+          // (BLOCKER fix, checker revision) The ONLY writer of lastHostCommandResult anywhere in
+          // the codebase — Plan 14's placement-ack correlation effect (and any future Plan 11/13
+          // caller) reads it against this shared field.
+          useWorldEditorStore.getState().setLastHostCommandResult(hostRes.epoch, hostRes.code);
         }
       }
+
+      // Client-exit detection (throttled) — is the target process still alive? (R10 review, CC5:
+      // this check runs AFTER the tick's read+process block, not before — an ack already sitting
+      // in the channel when client exit is detected is consumed on the SAME tick that detects the
+      // exit, never discarded and replaced with a false 'detached' durable record.)
+      const now = Date.now();
+      if (now - lastLiveCheck >= LIVENESS_CHECK_MS) {
+        lastLiveCheck = now;
+        if (!isPidAlive(pid)) {
+          stopped = true;
+          try { addon.closeChannel(mappingName); } catch { /* mapping already gone */ }
+          log('warn', 'log', 'SWG client exited — live session ended.');
+          useLiveStore.getState().detach();
+          return; // stop polling; the effect re-runs on the status change and no-ops
+        }
+      }
+
       timerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
     }
 
