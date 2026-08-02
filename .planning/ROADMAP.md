@@ -403,7 +403,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1)*
 - [x] 05.1-08-PLAN.md — Renderer hostCommand.ts send* wrappers + useChannelReader.ts result polling
 - [x] 05.1-16-PLAN.md — Game-thread command queue + overlay fault containment: fixes a pre-existing re-entrant gameLoadScene crash (Present-callback scene swap) + per-frame strip fault containment (HUD-blanking SEH faults) [autonomous: false] — INSERTED 2026-08-02, MUST run after 05.1-08 and before 05.1-09 (hard prerequisite — Plan 09 dispatches HOST_CMD scene-swap actions from the same render-callback context that crashed here)
-- [ ] 05.1-09-PLAN.md — Agent consumes HOST_CMD (reload/editor-scene/teleport/despawn) + binds wsRemoveNode [autonomous: false]
+- [x] 05.1-09-PLAN.md — Agent consumes HOST_CMD (reload/editor-scene/teleport/despawn) + binds wsRemoveNode [autonomous: false]
 - [x] 05.1-10-PLAN.md — World panel shell: dockview registration + tree/mirror-toggle/live-strip/detail-card (019-A core)
 
 **Wave 3** *(blocked on Wave 2)*

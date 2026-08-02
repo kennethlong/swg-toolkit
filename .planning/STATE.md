@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-10-PLAN.md
-last_updated: "2026-08-02T14:49:46.769Z"
+stopped_at: Completed 05.1-09-PLAN.md
+last_updated: "2026-08-02T19:41:12.330Z"
 last_activity: 2026-08-02
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 101
-  completed_plans: 95
-  percent: 94
+  completed_plans: 96
+  percent: 95
 ---
 
 # Project State
@@ -26,11 +26,12 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 10 of 16 (05.1-16 inserted 2026-08-02, wave 2, runs after 05.1-08/before 05.1-09 — see 05.1-16-PLAN.md)
-NOTE: 05.1-10 executed 2026-08-02 out of sequence (parallel wave 2 — depends only on 02/04/06,
-      not on 09) while 05.1-09 (wave 2, agent-side HOST_CMD dispatch) remains OUTSTANDING — no
-      05.1-09-SUMMARY.md exists yet. Do not treat plan-counter "10" as "09 is done"; check
-      per-plan SUMMARY.md presence, not the position counter, before resuming.
+Plan: 11 of 16 (05.1-16 inserted 2026-08-02, wave 2, runs after 05.1-08/before 05.1-09 — see 05.1-16-PLAN.md)
+NOTE: 05.1-09 (wave 2, agent-side HOST_CMD dispatch) is now CLOSED — checkpoint APPROVED
+      2026-08-02, all four remote actions (RELOAD_CURRENT_SCENE/LOAD_EDITOR_SCENE/TELEPORT/
+      DESPAWN_NODE) verified live; 05.1-09-SUMMARY.md written. 05.1-10 had already executed
+      2026-08-02 out of sequence (parallel wave 2). Both 09 and 10 are done; per-plan
+      SUMMARY.md presence, not the position counter, remains the source of truth.
 Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
@@ -50,7 +51,7 @@ Last activity: 2026-08-02
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [█████████░] 94%
+Progress: [██████████] 95%
 
 ### 02-03 key facts (crew-verified)
 
@@ -155,6 +156,7 @@ Progress: [█████████░] 94%
 | Phase 05.1-live-world-editor-productization P05 | multi-session | 3 tasks | 1 files |
 | Phase 05.1 P08 | 55min | 3 tasks | 6 files |
 | Phase 05.1 P10 | single session | 2 tasks tasks | 4 files files |
+| Phase 05.1-live-world-editor-productization P09 | multi-session | 2 tasks tasks | 2 files files |
 
 ## Accumulated Context
 
@@ -363,6 +365,10 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1]: resolveOverridePair() reads studioDir via useWorkspaceStore.getState(), never the hook-selector form -- it is a plain function invoked from event handlers (mirror toggle onChange), where a hook call would throw Invalid hook call
 - [Phase 05.1]: 05.1-10: WorldPanel building/decoration badges use documented FAILED > ARMED > SAVED precedence (no UNAPPLIED state) -- the disk-scanned tree has no signal distinguishing confirmed-applied-this-session from always-on-disk
 - [Phase 05.1]: 05.1-10: live-strip scene chip has no backing data source anywhere in this codebase (liveStore/channel contracts/worldEditorStore) -- renders an honest scene: not tracked yet placeholder rather than a fabricated planet name
+- [Phase 05.1]: 05.1-09: DESPAWN_NODE calls wsRemoveNode DIRECTLY from the render callback, not through the deferred queue -- measured live (repeat despawn of the same id after a successful first despawn returned ack code 0/refused, client stayed up), resolving Plan 16's 'UNKNOWN -- verify live, do not assume' entry
+- [Phase 05.1]: 05.1-09: RELOAD_CURRENT_SCENE and LOAD_EDITOR_SCENE are both routed through the 05.1-16 deferred queue (proven FATAL from inside Present); TELEPORT and DESPAWN_NODE are called directly
+- [Phase 05.1]: 05.1-09: An ack of code=1 on RELOAD_CURRENT_SCENE is NOT evidence the world reloaded intact -- the call succeeded but the world-state was measurably degraded (cantina/collision/snapshot creatures missing until moving around). Invalidates a verification assumption Plans 12 and 15 depend on (reload-to-confirm-persistence)
+- [Phase 05.1]: 05.1-09 checkpoint: Plan 12's placement-container rule REVISED (commit 01869df) -- container is derived from the CLICK ray hit (getContainingBuildingId), never the player or the World-panel preselection; fail-OPEN-on-building-id-0 rule REVERSED, 0 is authoritative 'outside any building', not an ambiguous sentinel
 
 ### Pending Todos
 
@@ -377,6 +383,7 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
 - e2e/04-workspace.spec.ts has 2 pre-existing failures (SidebarPanel title-update timing, Titlebar theme-select timeout) that will now surface in CI since 04.4-09 finally lets the lean job build+run E2E for real. Confirmed unrelated to 04.4-09 via A/B test. See deferred-items.md in 04.4 phase dir.
 - 05-12 Task 2 (checkpoint:human-verify, gate=blocking): maintainer in-world UAT pending -- attach to real advertised (swg-client-v2) and legacy (SWGEmu) clients and step through 05-12-PLAN.md how-to-verify steps 1-8 (cross-build targeting, mismatch warning, guard fail-closed, coalesced Revert ALL, clean detach incl. null-player, despawn-retarget). LIVE-03 and Phase 05 (12/12 plans) do not close until approved.
+- Plan 12/15 reload-to-confirm-persistence verification steps are invalidated by 05.1-09's finding: RELOAD_CURRENT_SCENE ack=1 is not evidence the world reloaded intact (snapshot objects can be un-registered ghosts, cantina/collision/creatures briefly missing). See .planning/todos/pending/reload-scene-is-lossy.md
 
 ### Quick Tasks Completed
 
@@ -394,8 +401,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-02T14:49:46.742Z
-Stopped at: Completed 05.1-10-PLAN.md
+Last session: 2026-08-02T19:40:57.051Z
+Stopped at: Completed 05.1-09-PLAN.md
   state machine, arm-failure CAPTURE publish for C8). Tasks 1-2 executed and committed (d9feae7,
   f18790c). Task 3's blocking in-game checkpoint was APPROVED by the maintainer 2026-08-02, but not
   cleanly on the first pass: two live defects were found and fixed mid-checkpoint (Esc KEY binding
