@@ -1,0 +1,440 @@
+/**
+ * packages/renderer/src/panels/world/WorldPanel.test.tsx
+ * Component tests for WorldPanel — 019-A's tree/mirror-toggle/live-strip/detail-card spine
+ * (this plan's scope), the D-08 disabled per-instance option, the C12 failure badge, the D-07b
+ * mismatch hint, and ROUND 3-6's resolveOverridePair()/refreshTree() correctness fixes.
+ *
+ * Mocking strategy:
+ *   - useWorldEditorStore / useLiveStore / useWorkspaceStore stay REAL (seeded via setState(),
+ *     matching this repo's established pattern — see useChannelReader.test.ts).
+ *   - worldEditorScan.ts (resolveScanRoot, scanWorldEditorState), decorationPersistOrchestrator.ts
+ *     (makeReadVfs, reconcileMirrorMode), and projectBinding.ts (readWorkspaceJson) are partially
+ *     mocked (importOriginal spread) so refresh()'s real reconciliation logic still runs, but no
+ *     real fs/detectClients work happens.
+ */
+
+import React from 'react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('../../services/worldEditorScan', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/worldEditorScan')>();
+  return { ...actual, resolveScanRoot: vi.fn(), scanWorldEditorState: vi.fn() };
+});
+vi.mock('../../services/decorationPersistOrchestrator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/decorationPersistOrchestrator')>();
+  return { ...actual, makeReadVfs: vi.fn(), reconcileMirrorMode: vi.fn() };
+});
+vi.mock('../../services/projectBinding', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/projectBinding')>();
+  return { ...actual, readWorkspaceJson: vi.fn(), updateWorkspaceMeta: vi.fn() };
+});
+vi.mock('../../services/logService', () => ({ log: vi.fn() }));
+
+import WorldPanel from './WorldPanel';
+import { useWorldEditorStore, worldEditorRowId, worldEditorBuildingRowId } from '../../state/worldEditorStore';
+import type { WorldEditorBuilding } from '../../services/worldEditorScan';
+import { useLiveStore } from '../../state/liveStore';
+import { useWorkspaceStore } from '../../state/workspaceStore';
+import { resolveScanRoot, scanWorldEditorState } from '../../services/worldEditorScan';
+import { makeReadVfs, reconcileMirrorMode } from '../../services/decorationPersistOrchestrator';
+import { readWorkspaceJson, updateWorkspaceMeta } from '../../services/projectBinding';
+import { log } from '../../services/logService';
+import type { WorkspaceBindingMeta } from '@swg/contracts';
+
+// ─── Fixtures ─────────────────────────────────────────────────────────────────
+
+const BUILDING_1: WorldEditorBuilding = {
+  buildingId: '1082874',
+  displayLabel: 'Cantina — Mos Eisley',
+  editedIlfPath: 'C:/override/interiorlayout/toolkit/edit_1082874.ilf',
+  derivedTemplatePath: 'C:/override/object/building/toolkit/edit_1082874.iff',
+  buildingTemplateVfsPath: 'object/building/tatooine/shared_cantina_tatooine.iff',
+  decorations: [
+    {
+      cellName: 'alcove1',
+      rowIndex: 3,
+      objectTemplateName: 'object/tangible/furniture/tatooine/shared_frn_tatt_table_cantina_table_3.iff',
+      transform: [1, 0, 0, 15.96, 0, 1, 0, -0.9, 0, 0, 1, -14.33],
+    },
+    {
+      cellName: 'alcove1',
+      rowIndex: 7,
+      objectTemplateName: 'object/tangible/furniture/tatooine/shared_frn_tatt_chair_small.iff',
+      transform: [1, 0, 0, 1, 0, 1, 0, 2, 0, 0, 1, 3],
+    },
+  ],
+};
+
+const BUILDING_2: WorldEditorBuilding = {
+  buildingId: '1084112',
+  displayLabel: 'Guild Hall — Anchorhead',
+  editedIlfPath: 'C:/override/interiorlayout/toolkit/edit_1084112.ilf',
+  derivedTemplatePath: 'C:/override/object/building/toolkit/edit_1084112.iff',
+  buildingTemplateVfsPath: '',
+  decorations: [
+    {
+      cellName: 'main',
+      rowIndex: 0,
+      objectTemplateName: 'object/tangible/furniture/generic/shared_frn_generic_table.iff',
+      transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0],
+    },
+  ],
+};
+
+function seedTree(): void {
+  vi.mocked(scanWorldEditorState).mockReturnValue([BUILDING_1, BUILDING_2]);
+}
+
+function defaultMeta(overrides: Partial<WorkspaceBindingMeta> = {}): WorkspaceBindingMeta {
+  return {
+    kind: 'client',
+    clientPath: '/bound/client',
+    cfgPath: '/bound/client/swgemu.cfg',
+    mirrorToStockIlf: true,
+    worldEditorBuildingTemplates: {},
+    ...overrides,
+  };
+}
+
+function makeApi(initialActive = false) {
+  let handler: ((e: { isActive: boolean }) => void) | null = null;
+  const api = {
+    setTitle: vi.fn(),
+    isActive: initialActive,
+    onDidActiveChange: vi.fn((cb: (e: { isActive: boolean }) => void) => {
+      handler = cb;
+      return { dispose: vi.fn() };
+    }),
+  };
+  return {
+    api,
+    fireActiveChange: (isActive: boolean) => handler?.({ isActive }),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderPanel(api: any = makeApi().api) {
+  return render(<WorldPanel api={api} containerApi={{} as never} params={{}} /* eslint-disable-line @typescript-eslint/no-explicit-any */ />);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  useWorldEditorStore.setState({
+    tree: [],
+    selectedRowId: null,
+    sessionOverlay: new Map(),
+    history: [],
+    hasFailureBadge: false,
+    lastHostCommandResult: null,
+  });
+  useLiveStore.setState({ status: { kind: 'idle' }, clientLabel: null });
+  useWorkspaceStore.setState({ studioDir: '/fake/studio', clientPath: '/bound/client' });
+
+  vi.mocked(resolveScanRoot).mockReturnValue('/override');
+  vi.mocked(scanWorldEditorState).mockReturnValue([]);
+  vi.mocked(readWorkspaceJson).mockReturnValue(defaultMeta());
+  vi.mocked(makeReadVfs).mockReturnValue(vi.fn(() => Buffer.from('stub')));
+  vi.mocked(reconcileMirrorMode).mockReturnValue({ failures: [] });
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+describe('WorldPanel — 019-A tree/mirror-toggle/live-strip/detail-card spine', () => {
+  it('renders the live-session strip, mirror toggle row + hint, "Edited buildings" count chip, and every building/decoration row', () => {
+    seedTree();
+    renderPanel();
+
+    expect(screen.getByText('No live session')).not.toBeNull();
+    expect(screen.getByText('Mirror to stock layout')).not.toBeNull();
+    expect(screen.getByText(/per-template: all buildings with this layout show the edit/)).not.toBeNull();
+    expect(screen.getByText('Edited buildings')).not.toBeNull();
+    expect(screen.getByText('2')).not.toBeNull(); // count chip
+
+    expect(screen.getByText('Cantina — Mos Eisley')).not.toBeNull();
+    expect(screen.getByText('Guild Hall — Anchorhead')).not.toBeNull();
+    const decoRows = screen.getAllByTestId('world-decoration-row');
+    expect(decoRows).toHaveLength(3);
+    expect(screen.getByText('shared_frn_tatt_table_cantina_table_3.iff')).not.toBeNull();
+    expect(screen.getByText('shared_frn_tatt_chair_small.iff')).not.toBeNull();
+    expect(screen.getByText('shared_frn_generic_table.iff')).not.toBeNull();
+  });
+
+  it('selecting a decoration row shows the detail card with Decoration/Cell·row/Position/Last persist/Files', () => {
+    seedTree();
+    renderPanel();
+
+    fireEvent.click(screen.getByText('shared_frn_tatt_table_cantina_table_3.iff'));
+
+    const card = screen.getByTestId('world-detail-card');
+    expect(within(card).getByText('Decoration')).not.toBeNull();
+    expect(within(card).getByText('Cell / row')).not.toBeNull();
+    expect(within(card).getByText('alcove1 · row 3')).not.toBeNull();
+    expect(within(card).getByText('Position')).not.toBeNull();
+    expect(within(card).getByText('15.96, -0.90, -14.33')).not.toBeNull();
+    expect(within(card).getByText('Last persist')).not.toBeNull();
+    expect(within(card).getByText('not yet persisted this session')).not.toBeNull();
+    expect(within(card).getByText('Files')).not.toBeNull();
+    expect(within(card).getByText(/edit_1082874\.ilf.*edit_1082874\.iff/)).not.toBeNull();
+  });
+
+  it('D-08: renders a VISIBLE, DISABLED "Per-instance (server repoint)" option with a "coming later" hint, and clicking it never calls reconcileMirrorMode', () => {
+    seedTree();
+    renderPanel();
+
+    const perInstance = screen.getByText('Per-instance (server repoint)');
+    expect(perInstance).not.toBeNull();
+    const control = screen.getByRole('radio');
+    expect(control.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getAllByText(/coming later/).length).toBeGreaterThan(0);
+
+    fireEvent.click(control);
+    expect(reconcileMirrorMode).not.toHaveBeenCalled();
+  });
+
+  it('mirror toggle onChange resolves a real overrideDir/readVfs via resolveOverridePair and calls ONLY reconcileMirrorMode (never updateWorkspaceMeta directly)', () => {
+    seedTree();
+    renderPanel();
+
+    const toggle = screen.getByRole('switch', { name: 'Mirror to stock layout' });
+    fireEvent.click(toggle);
+
+    expect(resolveScanRoot).toHaveBeenCalled();
+    expect(makeReadVfs).toHaveBeenCalledWith('/override');
+    expect(reconcileMirrorMode).toHaveBeenCalledWith('/fake/studio', '/override', expect.any(Function), false);
+    expect(updateWorkspaceMeta).not.toHaveBeenCalled();
+  });
+
+  it('a failed reconcile (all diskState unchanged) records a durable history entry with the all-or-nothing wording, warns via log(), and the switch stays at its PRE-toggle value', () => {
+    seedTree();
+    vi.mocked(reconcileMirrorMode).mockReturnValue({
+      failures: [{ buildingId: '1082874', error: 'unknown template', diskState: 'unchanged' }],
+    });
+    renderPanel();
+
+    const toggle = screen.getByRole('switch', { name: 'Mirror to stock layout' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+
+    expect(log).toHaveBeenCalledWith('warn', 'log', expect.stringContaining('1082874'));
+    const history = useWorldEditorStore.getState().history;
+    expect(history).toHaveLength(1);
+    expect(history[0].outcome).toBe('error');
+    expect(history[0].message).toMatch(/no buildings' mirrors were changed/);
+    // refreshTree() re-reads the (unchanged) persisted meta — switch reflects the PRE-toggle value.
+    expect(screen.getByRole('switch', { name: 'Mirror to stock layout' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('a failed reconcile with a diskState:"uncertain" entry records the HEDGED wording naming the uncertain building, never the unconditional claim', () => {
+    seedTree();
+    vi.mocked(reconcileMirrorMode).mockReturnValue({
+      failures: [
+        { buildingId: '1082874', error: 'sibling threw', diskState: 'unchanged' },
+        { buildingId: '1084112', error: 'rollback double-fault', diskState: 'uncertain' },
+      ],
+    });
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Mirror to stock layout' }));
+
+    const history = useWorldEditorStore.getState().history;
+    expect(history).toHaveLength(1);
+    expect(history[0].message).toMatch(/could not be verified after a rollback failure/);
+    expect(history[0].message).toContain('1084112');
+    expect(history[0].message).not.toMatch(/^mirror mode change blocked — no buildings' mirrors were changed/);
+  });
+
+  it('a null resolveScanRoot makes the mirror toggle a no-op (makeReadVfs/reconcileMirrorMode never called)', () => {
+    seedTree();
+    vi.mocked(resolveScanRoot).mockReturnValue(null);
+    renderPanel();
+
+    const toggle = screen.getByRole('switch', { name: 'Mirror to stock layout' });
+    fireEvent.click(toggle);
+
+    expect(makeReadVfs).not.toHaveBeenCalled();
+    expect(reconcileMirrorMode).not.toHaveBeenCalled();
+  });
+
+  it('a null resolveScanRoot on mount renders the words-only disabled state and never calls refresh() (scanWorldEditorState never called)', () => {
+    vi.mocked(resolveScanRoot).mockReturnValue(null);
+    renderPanel();
+
+    expect(screen.getByText(/no live session \/ project not bound to a client/i)).not.toBeNull();
+    expect(scanWorldEditorState).not.toHaveBeenCalled();
+  });
+
+  it('a seeded studioDir:null makes resolveOverridePair() return null WITHOUT ever calling readWorkspaceJson, and renders the disabled state', () => {
+    useWorkspaceStore.setState({ studioDir: null });
+    renderPanel();
+
+    expect(readWorkspaceJson).not.toHaveBeenCalled();
+    expect(screen.getByText(/no live session \/ project not bound to a client/i)).not.toBeNull();
+  });
+
+  it('exercising the mirror toggle through a real fireEvent click completes without throwing "Invalid hook call" (resolveOverridePair reads studioDir via getState(), never a hook selector)', () => {
+    seedTree();
+    renderPanel();
+    expect(() => {
+      fireEvent.click(screen.getByRole('switch', { name: 'Mirror to stock layout' }));
+    }).not.toThrow();
+  });
+
+  it('clicking a detail-card stub button shows the honest "not yet wired" message, never the sketch mock\'s success-implying copy', () => {
+    seedTree();
+    renderPanel();
+    fireEvent.click(screen.getByText('shared_frn_tatt_table_cantina_table_3.iff'));
+
+    fireEvent.click(screen.getByText('Go to'));
+    expect(log).toHaveBeenCalledWith('info', 'log', expect.stringContaining('not yet wired'));
+    expect(log).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.stringContaining('Teleporting'));
+
+    fireEvent.click(screen.getByText('Revert'));
+    expect(log).toHaveBeenCalledWith('info', 'log', expect.stringContaining('not yet wired'));
+    expect(log).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.stringContaining('Reverting row 3 to stock transform'));
+
+    fireEvent.click(screen.getByText('Edit in game'));
+    expect(log).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.stringContaining('Row pinned to overlay gizmo'));
+  });
+
+  it('D-13: a history entry carrying before/after transforms renders the FULL 12-element readout in the detail card', () => {
+    seedTree();
+    useWorldEditorStore.setState({
+      history: [
+        {
+          timestampISO: new Date().toISOString(),
+          buildingLabel: 'Cantina — Mos Eisley',
+          decorationLabel: 'Cantina Table',
+          outcome: 'ok',
+          message: 'Rebound + saved.',
+          cellName: 'alcove1',
+          rowIndex: 3,
+          beforeTransform: [1, 0, 0, 16.82, 0, 1, 0, -0.9, 0, 0, 1, -14.96],
+          afterTransform: [1, 0, 0, 15.96, 0, 1, 0, -0.9, 0, 0, 1, -14.33],
+        },
+      ],
+    });
+    renderPanel();
+    fireEvent.click(screen.getByText('shared_frn_tatt_table_cantina_table_3.iff'));
+
+    const before = screen.getByTestId('world-last-persist-before').textContent ?? '';
+    const after = screen.getByTestId('world-last-persist-after').textContent ?? '';
+    expect(before).toContain('16.82');
+    expect(after).toContain('15.96');
+  });
+
+  it('D-13/ROUND-3-REVIEW-R4: a ROTATE-ONLY history entry (same translation, different rotation) renders a VISIBLY DIFFERENT before vs after string', () => {
+    seedTree();
+    useWorldEditorStore.setState({
+      history: [
+        {
+          timestampISO: new Date().toISOString(),
+          buildingLabel: 'Cantina — Mos Eisley',
+          decorationLabel: 'Cantina Table',
+          outcome: 'ok',
+          message: 'Rebound + saved.',
+          cellName: 'alcove1',
+          rowIndex: 3,
+          // Same translation (cols 3/7/11); rotation (the rest) differs.
+          beforeTransform: [1, 0, 0, 15.96, 0, 1, 0, -0.9, 0, 0, 1, -14.33],
+          afterTransform: [0, -1, 0, 15.96, 1, 0, 0, -0.9, 0, 0, 1, -14.33],
+        },
+      ],
+    });
+    renderPanel();
+    fireEvent.click(screen.getByText('shared_frn_tatt_table_cantina_table_3.iff'));
+
+    const before = screen.getByTestId('world-last-persist-before').textContent ?? '';
+    const after = screen.getByTestId('world-last-persist-after').textContent ?? '';
+    expect(before).not.toBe(after);
+  });
+
+  it('an entry lacking before/after data falls back to outcome-word-only rendering without throwing', () => {
+    seedTree();
+    useWorldEditorStore.setState({
+      history: [
+        {
+          timestampISO: new Date().toISOString(),
+          buildingLabel: 'Cantina — Mos Eisley',
+          decorationLabel: 'Cantina Table',
+          outcome: 'ok',
+          message: 'Legacy entry, no transform data.',
+          cellName: 'alcove1',
+          rowIndex: 3,
+        },
+      ],
+    });
+    expect(() => renderPanel()).not.toThrow();
+    fireEvent.click(screen.getByText('shared_frn_tatt_table_cantina_table_3.iff'));
+    expect(screen.getByText('Legacy entry, no transform data.')).not.toBeNull();
+  });
+
+  it('the live-strip refresh control and the mirror toggle EACH independently call readWorkspaceJson at invocation time (never a cached mount-time meta)', () => {
+    seedTree();
+    renderPanel();
+    const callsAfterMount = vi.mocked(readWorkspaceJson).mock.calls.length;
+    expect(callsAfterMount).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
+    expect(vi.mocked(readWorkspaceJson).mock.calls.length).toBeGreaterThan(callsAfterMount);
+
+    const afterRefreshClick = vi.mocked(readWorkspaceJson).mock.calls.length;
+    fireEvent.click(screen.getByRole('switch', { name: 'Mirror to stock layout' }));
+    expect(vi.mocked(readWorkspaceJson).mock.calls.length).toBeGreaterThan(afterRefreshClick);
+  });
+
+  it('C12: with hasFailureBadge:true seeded, props.api.setTitle is called with a string containing the modified-dot suffix', () => {
+    seedTree();
+    const { api } = makeApi();
+    useWorldEditorStore.setState({ hasFailureBadge: true });
+    renderPanel(api);
+
+    expect(api.setTitle).toHaveBeenCalledWith(expect.stringContaining('●'));
+  });
+
+  it('C12: onDidActiveChange firing with isActive:true calls acknowledgeFailures() exactly once', () => {
+    seedTree();
+    useWorldEditorStore.setState({ hasFailureBadge: true });
+    const { api, fireActiveChange } = makeApi(false);
+    const ackSpy = vi.spyOn(useWorldEditorStore.getState(), 'acknowledgeFailures');
+    renderPanel(api);
+
+    fireActiveChange(true);
+    expect(ackSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('C12: a tab already active at mount time (isActive: true) acknowledges immediately, without waiting for a change event', () => {
+    seedTree();
+    useWorldEditorStore.setState({ hasFailureBadge: true });
+    const { api } = makeApi(true);
+    const ackSpy = vi.spyOn(useWorldEditorStore.getState(), 'acknowledgeFailures');
+    renderPanel(api);
+
+    expect(ackSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('D-07b: an attached client whose exe path differs from the project\'s bound clientPath renders the mismatch hint', () => {
+    seedTree();
+    useLiveStore.setState({ status: { kind: 'attached', pid: 1234, mappingName: 'm' }, clientLabel: 'D:/OtherClient/SwgClient_r.exe' });
+    useWorkspaceStore.setState({ clientPath: '/bound/client' });
+    renderPanel();
+
+    expect(screen.getByText(/attached client differs from this project.s bound client/i)).not.toBeNull();
+  });
+
+  it('D-07b: an attached client whose exe path MATCHES the bound clientPath renders no mismatch hint', () => {
+    seedTree();
+    useLiveStore.setState({
+      status: { kind: 'attached', pid: 1234, mappingName: 'm' },
+      clientLabel: '/bound/client/SwgClient_r.exe',
+    });
+    useWorkspaceStore.setState({ clientPath: '/bound/client' });
+    renderPanel();
+
+    expect(screen.queryByText(/attached client differs/i)).toBeNull();
+  });
+});
