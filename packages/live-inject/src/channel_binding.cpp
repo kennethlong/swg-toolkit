@@ -402,3 +402,94 @@ Napi::Value WriteRebind(const Napi::CallbackInfo& info) {
 
     return env.Undefined();
 }
+
+// ---------------------------------------------------------------------------
+// writeHostCommand(name, epoch, action, str1, str2, id, vec3) → undefined
+//   Host → agent unified HOST_CMD action request (05.1-03/05.1-07). Seqlock write of the
+//   HOST_CMD region (offsets 1440-1855; RESULT_CODE/RESULT_EPOCH at 1856/1860 are
+//   agent-authoritative and never touched here). id is a DECIMAL u64 STRING (JS numbers
+//   can't hold a full 64-bit id losslessly) — same parse discipline as writeRebind's
+//   buildingId. vec3 accepts a Float32Array(3) or a plain number[] of length 3.
+// ---------------------------------------------------------------------------
+Napi::Value WriteHostCommand(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    const char* kUsage =
+        "writeHostCommand: (name: string, epoch: number, action: number, str1: string, "
+        "str2: string, id: string, vec3: Float32Array(3)) required";
+
+    if (info.Length() < 7 || !info[0].IsString() || !info[1].IsNumber() ||
+        !info[2].IsNumber() || !info[3].IsString() || !info[4].IsString() ||
+        !info[5].IsString() || (!info[6].IsTypedArray() && !info[6].IsArray())) {
+        Napi::TypeError::New(env, kUsage).ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    const std::string name   = info[0].As<Napi::String>().Utf8Value();
+    const uint32_t     epoch  = info[1].As<Napi::Number>().Uint32Value();
+    const uint32_t     action = info[2].As<Napi::Number>().Uint32Value();
+    const std::string str1   = info[3].As<Napi::String>().Utf8Value();
+    const std::string str2   = info[4].As<Napi::String>().Utf8Value();
+    const std::string idStr  = info[5].As<Napi::String>().Utf8Value();
+
+    // vec3: Float32Array(3) or number[3] — extract exactly 3 floats.
+    float vec3[3] = { 0.0f, 0.0f, 0.0f };
+    if (info[6].IsTypedArray()) {
+        Napi::TypedArray ta = info[6].As<Napi::TypedArray>();
+        const void* vec3Data = static_cast<const char*>(ta.ArrayBuffer().Data()) + ta.ByteOffset();
+        size_t vec3ByteLength = ta.ByteLength();
+        if (ta.TypedArrayType() != napi_float32_array || vec3ByteLength != 12) {
+            Napi::RangeError::New(env, "writeHostCommand: vec3 must be exactly 3 floats")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        std::memcpy(vec3, vec3Data, 12);
+    } else {
+        Napi::Array arr = info[6].As<Napi::Array>();
+        if (arr.Length() != 3) {
+            Napi::RangeError::New(env, "writeHostCommand: vec3 must be exactly 3 floats")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        for (uint32_t i = 0; i < 3; i++) {
+            Napi::Value v = arr.Get(i);
+            if (!v.IsNumber()) {
+                Napi::TypeError::New(env, "writeHostCommand: vec3 elements must be numbers")
+                    .ThrowAsJavaScriptException();
+                return env.Undefined();
+            }
+            vec3[i] = v.As<Napi::Number>().FloatValue();
+        }
+    }
+
+    const uint64_t id = _strtoui64(idStr.c_str(), nullptr, 10);  // 0 on garbage → agent refuses
+
+    auto it = s_channels.find(name);
+    if (it == s_channels.end() || it->second.view == nullptr) {
+        Napi::Error::New(env, "writeHostCommand: channel not open — call openChannel first")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    char* view = static_cast<char*>(it->second.view);
+
+    // Seqlock write at offset 1440 — spans the HOST_CMD request region (1440-1855).
+    // RESULT_CODE/RESULT_EPOCH (1856-1863) are agent-authoritative and never touched here.
+    volatile LONG* hostCmdSeq = reinterpret_cast<volatile LONG*>(view + 1440);
+
+    InterlockedIncrement(hostCmdSeq);                    // seq → odd: write in progress
+    std::memcpy(view + 1444, &epoch, 4);                 // HOST_CMD_EPOCH
+    std::memcpy(view + 1448, &action, 4);                // HOST_CMD_ACTION
+    // HOST_CMD_STR1 (1452, 256 bytes) — truncate to 255 chars, zero-fill then copy
+    // (guaranteed NUL-terminated; never overflows the fixed slot).
+    std::memset(view + 1452, 0, 256);
+    std::memcpy(view + 1452, str1.c_str(), str1.size() < 255 ? str1.size() : 255);
+    // HOST_CMD_STR2 (1708, 128 bytes) — truncate to 127 chars, same discipline.
+    std::memset(view + 1708, 0, 128);
+    std::memcpy(view + 1708, str2.c_str(), str2.size() < 127 ? str2.size() : 127);
+    std::memcpy(view + 1836, &id, 8);                    // HOST_CMD_ID
+    std::memcpy(view + 1844, vec3, 12);                  // HOST_CMD_VEC3
+    InterlockedIncrement(hostCmdSeq);                    // seq → even: write complete
+
+    return env.Undefined();
+}

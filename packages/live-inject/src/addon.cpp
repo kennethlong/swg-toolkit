@@ -17,6 +17,8 @@
  *     closeChannel(name)
  *     readChannelView(name) → ArrayBuffer | null
  *     writeCommand(name, transformBytes, scaleBytes, flags) → undefined
+ *     writeRebind(name, epoch, buildingId, derivedTemplate, flags) → undefined
+ *     writeHostCommand(name, epoch, action, str1, str2, id, vec3) → undefined
  *
  *   Test-utility resolver (Plan 03-02 TDD) → inject_binding.cpp:
  *     lookupByNameInTable, resolveFromSyntheticTable, resolveFromExe, isAdvertisedClient
@@ -49,6 +51,7 @@ Napi::Value CloseChannel(const Napi::CallbackInfo& info);
 Napi::Value ReadChannelView(const Napi::CallbackInfo& info);
 Napi::Value WriteCommand(const Napi::CallbackInfo& info);
 Napi::Value WriteRebind(const Napi::CallbackInfo& info);
+Napi::Value WriteHostCommand(const Napi::CallbackInfo& info);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Inject/attach/detach + PID discovery
@@ -76,6 +79,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("readChannelView", Napi::Function::New(env, ReadChannelView));
     exports.Set("writeCommand",    Napi::Function::New(env, WriteCommand));
     exports.Set("writeRebind",     Napi::Function::New(env, WriteRebind));
+    exports.Set("writeHostCommand", Napi::Function::New(env, WriteHostCommand));
 
     return exports;
 }
