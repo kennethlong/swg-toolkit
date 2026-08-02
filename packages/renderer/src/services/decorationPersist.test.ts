@@ -3,9 +3,13 @@
  * Toolkit-side model-D assembly — dependency-injected, no real TRE/fs.
  */
 
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
 import { describe, it, expect } from 'vitest';
 
-import { assembleDecorationEdit, sanitizeId, type DecorationEdit } from './decorationPersist';
+import { assembleDecorationEdit, sanitizeId, writeStockMirror, removeStockMirror, type DecorationEdit } from './decorationPersist';
 import { serializeIffTree, type IffChunk } from './iffTree';
 import { serializeIlf, parseIlf, type IlfNode } from './ilf';
 import { readInteriorLayoutFileName } from './buildingTemplate';
@@ -155,6 +159,27 @@ describe('assembleDecorationEdit', () => {
     const editedIlf = parseIlf(written.get(r2.editedIlfFilePath.replace(/\\/g, '/'))!);
     expect(editedIlf[0].transform).toEqual(newTable); // first edit preserved
     expect(editedIlf[1].transform).toEqual(newChair); // second edit applied
+  });
+});
+
+describe('writeStockMirror / removeStockMirror (05.1-06 — extracted for reconcileMirrorMode reuse)', () => {
+  it('writeStockMirror writes bytes at overrideDir/stockIlfVfsPath and returns a modify entry', () => {
+    const written = new Map<string, Buffer>();
+    const deps = { overrideDir: '/override', writeFile: (abs: string, b: Buffer) => written.set(abs.replace(/\\/g, '/'), b) };
+    const entry = writeStockMirror(deps, STOCK_ILF_VFS, Buffer.from('hello'));
+    expect(entry).toEqual({ virtualPath: STOCK_ILF_VFS, filePath: expect.stringContaining(STOCK_ILF_VFS.split('/').pop()!), action: 'modify' });
+    expect(written.get(`/override/${STOCK_ILF_VFS}`)!.toString()).toBe('hello');
+  });
+
+  it('removeStockMirror deletes the file written by writeStockMirror (real fs round-trip)', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'swg-toolkit-mirror-test-'));
+    const deps = { overrideDir: tmpDir };
+    writeStockMirror(deps, STOCK_ILF_VFS, Buffer.from('hello'));
+    const abs = path.join(tmpDir, STOCK_ILF_VFS);
+    expect(fs.existsSync(abs)).toBe(true);
+    removeStockMirror(deps, STOCK_ILF_VFS);
+    expect(fs.existsSync(abs)).toBe(false);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });
 
