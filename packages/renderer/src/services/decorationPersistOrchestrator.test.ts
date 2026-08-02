@@ -206,13 +206,17 @@ describe('handleDecorationCapture — capture.kind branching (D-01/C8/MED-10)', 
     useWorldEditorStore.setState({ recordArmFailure: useWorldEditorStore.getState().recordArmFailure });
   });
 
-  it('arm-failed returns { mirrorToStockIlf: true } even when the project setting resolves to false', () => {
+  // (C7) The arm-failed short-circuit is one of the three exit paths C7 names explicitly; it must
+  // return the RESOLVED per-project value, not a literal. Plan 08 stashes this value and reuses it
+  // at RESULT time instead of re-reading settings, so a literal here would reintroduce exactly the
+  // "resolved twice, can disagree" gap C7 exists to close.
+  it('arm-failed returns the RESOLVED mirrorToStockIlf (false) when the project setting is false', () => {
     const studioDir = path.join(tmpRoot, 'studio');
     writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null, mirrorToStockIlf: false });
     const spy = vi.fn();
     useWorldEditorStore.setState({ recordArmFailure: spy });
     const r = handleDecorationCapture(1, { ...baseCapture, kind: 'arm-failed', cellName: 'reason' }, { mappingName: 'm', clientExe: CLIENT_EXE, studioDir });
-    expect(r).toEqual({ mirrorToStockIlf: true });
+    expect(r).toEqual({ mirrorToStockIlf: false });
   });
 
   it("arm-failed uses the fallback reason string when cellName is absent", () => {

@@ -182,7 +182,7 @@ export function handleDecorationCapture(
   if (capture.kind === 'arm-failed') {
     useWorldEditorStore.getState().recordArmFailure(capture.cellName ?? '(unknown arm failure)');
     dbg(`capture #${epoch}: arm-failed — ${capture.cellName ?? '(unknown arm failure)'}`);
-    return { mirrorToStockIlf: true };
+    return { mirrorToStockIlf };
   }
 
   try {
