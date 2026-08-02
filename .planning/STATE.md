@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 05.1 context gathered
-last_updated: "2026-08-01T23:34:41.446Z"
-last_activity: 2026-08-01 -- Phase 05.1 execution started
+stopped_at: Completed 05.1-01-PLAN.md — Task 5 checkpoint approved, plan closed
+last_updated: "2026-08-02T00:00:05.255Z"
+last_activity: 2026-08-01
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 100
-  completed_plans: 85
-  percent: 85
+  completed_plans: 86
+  percent: 86
 ---
 
 # Project State
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 1 of 15
-Status: Executing Phase 05.1
+Plan: 2 of 15
+Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
         verified live 2026-07-30/31: hover-pick → Arm → gizmo move → Persist → .ilf edit +
@@ -40,13 +40,13 @@ Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decorat
       panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
       decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
       (Blender Bridge).
-Last activity: 2026-08-01 -- Phase 05.1 execution started
+Last activity: 2026-08-01
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [██████████] 99%
+Progress: [█████████░] 86%
 
 ### 02-03 key facts (crew-verified)
 
@@ -142,6 +142,7 @@ Progress: [██████████] 99%
 | Phase 05 P10 | ~13min | 2 tasks | 5 files |
 | Phase 05-wysiwyg-live-sync-typed-editors P11 | ~37min | 3 tasks | 16 files |
 | Phase 05 P12 | ~7min (Task 1 only) | 1 tasks | 2 files |
+| Phase 05.1 P01 | multi-session | 5 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -328,6 +329,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05-11]: Guard-blocked/StatusBar scale-precedence logic extracted to liveSyncGuardPrecedence.ts, shared by LiveSyncClientCard and StatusBar
 - [Phase 05-11]: Gizmo mode lifted from Viewport.tsx local useState to gizmoModeStore.ts so StatusBar's mode segment shares the same source of truth
 - [Phase 05-12]: Vitest 4 removed test.poolOptions; --expose-gc for the GC-pressure soak test is now a top-level test.execArgv option, not poolOptions.forks.execArgv
+- [Phase 05.1-01]: Real-asset .ilf round-trip lane is REQUIRED (fail-if-absent), not skip-on-absent — REVIEWS.md C5 — matches every other binary format's ground-truth discipline (tre/iff/dtii/stf/mesh)
+- [Phase 05.1-01]: addNode stays strictly append-only; Undo re-add of a removed row lands at end-of-cell (accepted, disclosed consequence, not revised for positional insert) — ROUND-3-REVIEW R7
+- [Phase 05.1-01]: DecorationPersistResult gains cellName; sanitizeId exported unchanged — seam prep so Plan 06's durable per-building map and Plan 13's offline remove path can report/key the touched cell without re-deriving it
 
 ### Pending Todos
 
@@ -337,12 +341,6 @@ Roadmap-shaping decisions affecting current work:
 
 ### Blockers/Concerns
 
-- 05.1-01 Task 5 (checkpoint:human-verify, gate=blocking): Tasks 1-4 complete and committed
-  (REBIND_REFUSED label fix; ilf.ts addNode/removeNode; decorationPersist kind=edit|add|remove;
-  .ilf registered in the CORE-05 standing gate with a REQUIRED real-asset fixture extracted from
-  D:/SWG Infinity/SWG Infinity/Live — 11/11 ilf-roundtrip.test.ts + registry-coverage.test.ts
-  green, real-asset lane PASSING not skipped). Awaiting human confirmation per
-  05.1-01-PLAN.md Task 5's how-to-verify steps. Plan 05.1-01 does not close until approved.
 - [Standing risk]: Every binary format layout in `docs/` is an AI-proposed hypothesis (rated LOW—VERIFY). No parser merges without a cited `swg-client-v2` source + byte-exact round-trip on a real asset.
 - [Phase 3/5]: Live-injection pointer/offset discovery is per-client-build and effort-unbounded — mine Utinni, use runtime AOB resolution; treat magnitude as a planning unknown.
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
@@ -365,16 +363,18 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-01T23:34:41.446Z
-Stopped at: Phase 05.1 Plan 01, Task 5 checkpoint (blocking, awaiting human verification)
+Last session: 2026-08-02T00:00:05.222Z
+Stopped at: Completed 05.1-01-PLAN.md — Task 5 checkpoint approved, plan closed
   Tasks 1-4 executed and committed (RED/GREEN per task): (1) decorationResultLabel
   REBIND_REFUSED label fix (SC1); (2) ilf.ts addNode/removeNode append/delete primitives with
   byte-exact round-trip coverage (SC4); (3) decorationPersist.ts kind-aware assembly
   (edit|add|remove) + cellName result field + exported sanitizeId (ROUND 3 R3/R5 seam prep);
   (4) .ilf registered in the CORE-05 standing gate (extract-ilf-fixtures.cjs +
   ilf-roundtrip.test.ts) with a REQUIRED (not skip-on-absent) real-asset fixture extracted from
-  D:/SWG Infinity/SWG Infinity/Live (ROUND 3 REVIEWS.md C5). Task 5 is a blocking
-  checkpoint:human-verify confirming the real-asset lane is green — do not self-approve.
-Next session: resume 05.1-01 Task 5 checkpoint once the human confirms per its how-to-verify
-  steps, then continue with the phase's remaining plans (05.1-02 onward).
-Resume file: .planning/phases/05.1-live-world-editor-productization/05.1-01-PLAN.md
+  D:/SWG Infinity/SWG Infinity/Live (ROUND 3 REVIEWS.md C5). Task 5's checkpoint was APPROVED
+  by the orchestrator on independently-reproduced evidence (fixture confirmed on disk 17542
+  bytes; `npx vitest run ilf-roundtrip.test.ts --reporter=verbose` re-run live, 7/7 passed, 0
+  skipped, real-asset describe block confirmed genuinely executed). Plan 05.1-01 is CLOSED.
+  SUMMARY.md written and committed (4648e75, plus self-check addendum).
+Next session: continue with the phase's remaining plans (05.1-02 onward).
+Resume file: None

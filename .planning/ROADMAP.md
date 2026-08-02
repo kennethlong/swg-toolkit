@@ -390,7 +390,7 @@ Engineering ride-alongs owed by the pivot (handoff "Remaining follow-ups"):
 **Plans:** 15 plans
 Plans:
 **Wave 0** *(parallel — no cross-plan dependencies)*
-- [ ] 05.1-01-PLAN.md — Wave-0 gates: REBIND_REFUSED label fix, .ilf addNode/removeNode, decorationPersist kind=edit|add|remove + byte-exact round-trip tests
+- [x] 05.1-01-PLAN.md — Wave-0 gates: REBIND_REFUSED label fix, .ilf addNode/removeNode, decorationPersist kind=edit|add|remove + byte-exact round-trip tests
 - [ ] 05.1-02-PLAN.md — Per-project settings: WorkspaceBindingMeta mirrorToStockIlf + worldEditorBookmarks, projectBinding helpers
 - [ ] 05.1-03-PLAN.md — Channel contract extension: CAPTURE kind/cellName (ADD identity) + new unified LIVE_HOST_CMD region (scene actions, placement start/cancel, despawn)
 - [ ] 05.1-04-PLAN.md — worldEditorScan.ts (disk-scan-as-truth building tree) + worldEditorStore.ts (session overlay + history + badge)
