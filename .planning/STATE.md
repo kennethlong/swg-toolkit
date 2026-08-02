@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-08-PLAN.md
-last_updated: "2026-08-02T13:15:03.485Z"
+stopped_at: Completed 05.1-10-PLAN.md
+last_updated: "2026-08-02T14:49:46.769Z"
 last_activity: 2026-08-02
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 101
-  completed_plans: 93
-  percent: 92
+  completed_plans: 95
+  percent: 94
 ---
 
 # Project State
@@ -26,7 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 9 of 16 (05.1-16 inserted 2026-08-02, wave 2, runs after 05.1-08/before 05.1-09 — see 05.1-16-PLAN.md)
+Plan: 10 of 16 (05.1-16 inserted 2026-08-02, wave 2, runs after 05.1-08/before 05.1-09 — see 05.1-16-PLAN.md)
+NOTE: 05.1-10 executed 2026-08-02 out of sequence (parallel wave 2 — depends only on 02/04/06,
+      not on 09) while 05.1-09 (wave 2, agent-side HOST_CMD dispatch) remains OUTSTANDING — no
+      05.1-09-SUMMARY.md exists yet. Do not treat plan-counter "10" as "09 is done"; check
+      per-plan SUMMARY.md presence, not the position counter, before resuming.
 Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
@@ -46,7 +50,7 @@ Last activity: 2026-08-02
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 94%
 
 ### 02-03 key facts (crew-verified)
 
@@ -150,6 +154,7 @@ Progress: [█████████░] 92%
 | Phase 05.1-live-world-editor-productization P07 | ~15min | 2 tasks | 5 files |
 | Phase 05.1-live-world-editor-productization P05 | multi-session | 3 tasks | 1 files |
 | Phase 05.1 P08 | 55min | 3 tasks | 6 files |
+| Phase 05.1 P10 | single session | 2 tasks tasks | 4 files files |
 
 ## Accumulated Context
 
@@ -355,6 +360,9 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1, Plan 05]: 020-A strip label ships as two-segment 'Decoration . Building', not sketch 020-A's three-segment 'Decoration . Cell . Building' -- maintainer-approved deviation — The cell-name segment is genuinely unresolvable: all 150 rows of the client's v26 advertised catalog were checked and none returns a cell name string. Deferred to Phase 5.2 (SC5 retrofits the sketch-021 flow; SC2's asset-discovery resolver is adjacent); tracked at .planning/todos/pending/hud-cell-name-label-segment.md, provider change request filed by 05.1-15.
 - [Phase 05.1]: hostCommand.ts wraps writeHostCommand with 6 typed send* functions; sendStartPlacement alone returns its epoch for Plan 14's ack correlation — avoids a cross-cutting signature change to the other 5 functions since no caller needs their epoch back yet
 - [Phase 05.1]: Tasks 2+3 (05.1-08) committed as one RED/GREEN pair, not four separate task commits — both modify the same useChannelReader.ts poll() function in immediately adjacent, interleaved code; splitting would require a synthetic intermediate state neither task's acceptance criteria describes
+- [Phase 05.1]: resolveOverridePair() reads studioDir via useWorkspaceStore.getState(), never the hook-selector form -- it is a plain function invoked from event handlers (mirror toggle onChange), where a hook call would throw Invalid hook call
+- [Phase 05.1]: 05.1-10: WorldPanel building/decoration badges use documented FAILED > ARMED > SAVED precedence (no UNAPPLIED state) -- the disk-scanned tree has no signal distinguishing confirmed-applied-this-session from always-on-disk
+- [Phase 05.1]: 05.1-10: live-strip scene chip has no backing data source anywhere in this codebase (liveStore/channel contracts/worldEditorStore) -- renders an honest scene: not tracked yet placeholder rather than a fabricated planet name
 
 ### Pending Todos
 
@@ -386,8 +394,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-02T13:15:03.456Z
-Stopped at: Completed 05.1-08-PLAN.md
+Last session: 2026-08-02T14:49:46.742Z
+Stopped at: Completed 05.1-10-PLAN.md
   state machine, arm-failure CAPTURE publish for C8). Tasks 1-2 executed and committed (d9feae7,
   f18790c). Task 3's blocking in-game checkpoint was APPROVED by the maintainer 2026-08-02, but not
   cleanly on the first pass: two live defects were found and fixed mid-checkpoint (Esc KEY binding
