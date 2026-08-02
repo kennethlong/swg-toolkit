@@ -2,7 +2,23 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-08-01-phase05.1-CONVERGED-ready-to-execute.md](2026-08-01-phase05.1-CONVERGED-ready-to-execute.md)** — ACTIVE. ← start here.
+- **[2026-08-02-phase05.1-wave2-complete-live-findings.md](2026-08-02-phase05.1-wave2-complete-live-findings.md)** — ACTIVE. ← start here.
+  Phase **05.1 Waves 1-2 COMPLETE (11/16)**; resume at **Wave 3 (plans 11, 12)** via
+  `/gsd:execute-phase 05.1`. **Plan 05.1-16 was INSERTED** this session (phase is 16 plans now) after a
+  live checkpoint CRASHED the client — re-entrant `loadScene` from the Present hook; fixed with a
+  game-thread deferred queue + Utinni's two-frame `cleanupScene`→`loadScene` sequence.
+  **⚠ TWO BLOCKERS before Wave 3:** (a) "Reload current scene" is LOSSY — snapshot objects return as
+  un-registered ghosts with no collision, which INVALIDATES the reload-to-confirm-persistence step in
+  Plans 12 AND 15 (a correctly-persisted object reads as missing); (b) Plan 11's D-07 bookmarks inherit
+  two teleport defects (no cell reparenting → see-through interiors; stale player pointer after reload).
+  **Six defects found by live checkpoints, none by any automated gate** — including one that broke the
+  ROOT aggregate suite while the package-scoped suite stayed green. **Plan 12 was REVISED** (`01869df`):
+  placement container now derives from the CLICK POINT, not the player or the picker preselection
+  (maintainer decision — a doorway makes them disagree), and R10's fail-open-on-building-id-0 rule was
+  REVERSED as falsified. HEAD `d35b55d`, clean, not pushed; aggregate suite 80 files / 724 passed.
+  Supersedes the CONVERGED handoff below.
+
+- **[2026-08-01-phase05.1-CONVERGED-ready-to-execute.md](2026-08-01-phase05.1-CONVERGED-ready-to-execute.md)** — superseded by the Wave-2 handoff above (that plan set is now 11/16 executed).
   Phase **05.1 plan set CONVERGED** after a 13-round cross-AI review loop (unanimous 5/5, 0 findings;
   HIGH trajectory 7→7→6→2→1→0). **Ready to execute: `/clear` → `/gsd:execute-phase 05.1`** (15 plans,
   6 waves, 6 human-verify checkpoints at 01/05/09/11/12/15). Two proven pillars — reset-before-render
