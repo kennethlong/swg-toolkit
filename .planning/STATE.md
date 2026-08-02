@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-02-PLAN.md — Tasks 1-2 executed, SUMMARY written, plan closed
-last_updated: "2026-08-02T00:08:41.396Z"
+stopped_at: Completed 05.1-03-PLAN.md — Tasks 1-3 executed (3 atomic commits), agent DLL + host addon rebuilt and verified, SUMMARY written, plan closed
+last_updated: "2026-08-02T00:24:49.316Z"
 last_activity: 2026-08-02
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 100
-  completed_plans: 87
-  percent: 87
+  completed_plans: 88
+  percent: 88
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 3 of 15
+Plan: 4 of 15
 Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
@@ -46,7 +46,7 @@ Last activity: 2026-08-02
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [█████████░] 87%
+Progress: [█████████░] 88%
 
 ### 02-03 key facts (crew-verified)
 
@@ -144,6 +144,7 @@ Progress: [█████████░] 87%
 | Phase 05 P12 | ~7min (Task 1 only) | 1 tasks | 2 files |
 | Phase 05.1 P01 | multi-session | 5 tasks | 9 files |
 | Phase 05.1-live-world-editor-productization P02 | ~10min | 2 tasks | 2 files |
+| Phase 05.1 P03 | ~15min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -335,6 +336,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1-01]: DecorationPersistResult gains cellName; sanitizeId exported unchanged — seam prep so Plan 06's durable per-building map and Plan 13's offline remove path can report/key the touched cell without re-deriving it
 - [Phase ?]: [Phase 05.1, Plan 02]: WorkspaceBindingMeta.worldEditorBuildingTemplates merge is the caller's job (spread previous read) — updateWorkspaceMeta stays a shallow patch, matching every other field's existing contract
 - [Phase ?]: [Phase 05.1, Plan 02]: readWorkspaceJson stays a pure passthrough for mirrorToStockIlf — default (true when absent) resolved by the caller (Plan 06/10), not injected at the read layer, per D-08's read-at-persist-time contract
+- [Phase 05.1]: channelWriteCapture copies captureKind/captureCellName INSIDE the existing captureSeqCounter seqlock span despite the 1308/1312 offset gap vs the rest of CAPTURE (400-1024) -- correctness depends on seqlock span membership, not physical adjacency
+- [Phase 05.1]: LIVE_CHANNEL_TOTAL_SIZE + both C++ size literals (channel.cpp static_assert, channel_binding.cpp CHANNEL_BYTE_SIZE) bumped 1308->1864 in the SAME plan as the struct growth (05.1-03) -- closes REVIEWS.md C1 BLOCKER (struct grown in one plan, size literals left stale in files no later plan owned)
 
 ### Pending Todos
 
@@ -366,8 +369,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-02T00:08:41.360Z
-Stopped at: Completed 05.1-02-PLAN.md — Tasks 1-2 executed, SUMMARY written, plan closed
+Last session: 2026-08-02T00:24:49.277Z
+Stopped at: Completed 05.1-03-PLAN.md — Tasks 1-3 executed (3 atomic commits), agent DLL + host addon rebuilt and verified, SUMMARY written, plan closed
   Tasks 1-4 executed and committed (RED/GREEN per task): (1) decorationResultLabel
   REBIND_REFUSED label fix (SC1); (2) ilf.ts addNode/removeNode append/delete primitives with
   byte-exact round-trip coverage (SC4); (3) decorationPersist.ts kind-aware assembly
