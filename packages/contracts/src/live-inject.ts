@@ -101,6 +101,16 @@ export interface DecorationCapture {
   originalO2p: number[];
   /** 12 floats, row-major o2p 3×4, after the gizmo move. */
   newO2p: number[];
+  /** Defaults to 'edit' when absent server-side, per Plan 01's assembleDecorationEdit
+   *  contract. 'add' = a brand-new placement (D-01), not an edit of an existing row.
+   *  'arm-failed' = an arm-attempt failure (C8) — carries no decoration move at all;
+   *  only `cellName` (repurposed as a reason string) is meaningful for this kind. */
+  kind?: 'edit' | 'add' | 'arm-failed';
+  /** Required and meaningful only when kind==='add' (the target cell name for the new
+   *  .ilf row). When kind==='arm-failed', this SAME field is REPURPOSED to carry a
+   *  human-readable arm-failure reason string instead of a cell name — the two purposes
+   *  are mutually exclusive per kind and never overlap for a single capture event (C8). */
+  cellName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -279,12 +289,30 @@ export const LIVE_DECORATION_LAYOUT = {
   RESULT_CODE:               { offset: 1300, length: 4   },
   /** Echoes the epoch the agent applied. Published LAST. 0 = no result yet. */
   RESULT_EPOCH:              { offset: 1304, length: 4   },
+
+  // --- CAPTURE kind/cellName extension (05.1-03, D-01/C8) — SAME seqlock span as the
+  //     rest of CAPTURE (captureSeqCounter @ 400), even though these two fields are
+  //     non-contiguous with the CAPTURE_*_TEMPLATE fields above (768..1024 vs 1308/1312) ---
+  /** LIVE_DECORATION_CAPTURE_KIND: 0=edit, 1=add, 2=arm-failed. */
+  CAPTURE_KIND:              { offset: 1308, length: 4   },
+  /** asciiz, dual-purpose: kind===1 (add) → cell name; kind===2 (arm-failed) → a
+   *  human-readable failure reason string; unused for kind===0 (edit). */
+  CAPTURE_CELL_NAME:         { offset: 1312, length: 128 },
+} as const;
+
+/** LIVE_DECORATION_CAPTURE_KIND — CAPTURE_KIND field values (05.1-03, D-01/C8). */
+export const LIVE_DECORATION_CAPTURE_KIND = {
+  EDIT:       0,
+  ADD:        1,
+  ARM_FAILED: 2,
 } as const;
 
 /** Total mapping size once the decoration region is included (was 400). Exactly
  *  sizeof(LiveState) under #pragma pack(4): the last field RESULT_EPOCH ends at 1308 and
  *  the struct is already 4-aligned, so no trailing pad. Host CHANNEL_BYTE_SIZE + agent
- *  LIVE_STATE_BYTE_SIZE both equal this. */
+ *  LIVE_STATE_BYTE_SIZE both equal this. NOTE: this grows to 1864 in Task 2 (below, same
+ *  plan) once the CAPTURE_KIND/CAPTURE_CELL_NAME region above and the HOST_CMD region are
+ *  both accounted for — left at 1308 here deliberately; Task 2 owns the bump. */
 export const LIVE_CHANNEL_TOTAL_SIZE = 1308;
 
 /** Host → agent rebind flags (REBIND_FLAGS bits). */

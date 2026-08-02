@@ -33,7 +33,11 @@
  *   cmdFlags:      offset 388 (uint32_t,    4 bytes)
  *   guardStatus:   offset 392 (uint32_t,    4 bytes — agent-authoritative, no seqlock)
  *   guardAddr:     offset 396 (uint32_t,    4 bytes — agent-authoritative, no seqlock)
- *   TOTAL:                400 bytes
+ *   ... decoration-persist CAPTURE/REBIND/RESULT region, offset 400-1307 (see below) ...
+ *   captureKind:      offset 1308 (uint32_t,  4 bytes — 05.1-03, D-01/C8)
+ *   captureCellName:  offset 1312 (char[128], null-terminated ASCII — 05.1-03, D-01/C8)
+ *   TOTAL:               1440 bytes (grows to 1864 in Task 2, same plan, once the HOST_CMD
+ *                         region is appended)
  *
  * LIVE_READFRAME_BYTES (320) is the span channelWrite copies every tick —
  * transform + networkId + templateName + liveness + focusToken. It is a
@@ -92,6 +96,13 @@ struct LiveState {
     // --- Decoration-persist RESULT (agent -> host), single aligned words (no seqlock) ---
     uint32_t  resultCode;                // offset 1300  — LIVE_DECORATION_RESULT; written FIRST
     uint32_t  resultEpoch;               // offset 1304  — echoes applied epoch; published LAST
+
+    // --- CAPTURE kind/cellName extension (05.1-03, D-01/C8) — SAME seqlock span as the
+    //     rest of CAPTURE (captureSeqCounter @ 400), NON-CONTIGUOUS with the CAPTURE_*_TEMPLATE
+    //     fields above (768..1024 vs 1308/1312); correctness depends entirely on being
+    //     written/read inside the existing seqlock span, not physical adjacency. ---
+    uint32_t  captureKind;                // offset 1308 — 0=edit, 1=add, 2=arm-failed
+    char      captureCellName[128];       // offset 1312 — dual-purpose: add→cell name, arm-failed→reason
 };
 #pragma pack(pop)
 
@@ -117,6 +128,11 @@ static constexpr uint32_t GUARD_FLAG_STOPPING           = 0x4;
 // LIVE_DECORATION_RESULT in @swg/contracts/live-inject.ts exactly).
 static constexpr uint32_t DECO_REBIND_FLAG_APPLY = 0x1;
 static constexpr uint32_t DECO_REBIND_FLAG_ABORT = 0x2;
+
+// CAPTURE_KIND values (mirror LIVE_DECORATION_CAPTURE_KIND in @swg/contracts/live-inject.ts).
+static constexpr uint32_t DECO_CAPTURE_KIND_EDIT       = 0;
+static constexpr uint32_t DECO_CAPTURE_KIND_ADD        = 1;
+static constexpr uint32_t DECO_CAPTURE_KIND_ARM_FAILED = 2;
 
 static constexpr int32_t DECO_RESULT_OK                   = 0;
 static constexpr int32_t DECO_RESULT_SAVE_NO_SNAPSHOT     = 1;
@@ -145,13 +161,18 @@ struct LiveCommand {
 // Decoration-persist plain-data snapshots (model D round trip)
 // ---------------------------------------------------------------------------
 
-/** One captured decoration move the agent publishes to the CAPTURE region. */
+/** One captured decoration move the agent publishes to the CAPTURE region.
+ *  `kind`/`cellName` (05.1-03, D-01/C8): kind defaults to DECO_CAPTURE_KIND_EDIT when the
+ *  caller doesn't set it; cellName is meaningful for ADD (a cell name) and ARM_FAILED (a
+ *  reason string) only — the two purposes are mutually exclusive per kind. */
 struct DecorationCapture {
     uint64_t buildingId;
     float    originalO2p[3][4];
     float    newO2p[3][4];
     char     decorationTemplate[256];
     char     buildingTemplate[256];
+    uint32_t kind;
+    char     cellName[128];
 };
 
 /** One rebind directive the agent reads from the REBIND region. */

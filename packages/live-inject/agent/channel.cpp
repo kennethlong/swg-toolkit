@@ -61,6 +61,10 @@ static_assert(offsetof(LiveState, rebindBuildingId)       == 1036, "rebindBuildi
 static_assert(offsetof(LiveState, rebindDerivedTemplate)  == 1044, "rebindDerivedTemplate @ 1044");
 static_assert(offsetof(LiveState, resultCode)             == 1300, "resultCode @ 1300");
 static_assert(offsetof(LiveState, resultEpoch)            == 1304, "resultEpoch @ 1304");
+// CAPTURE kind/cellName extension (05.1-03, D-01/C8) — SAME seqlock span as the rest of
+// CAPTURE, non-contiguous with captureBuildingTemplate (768) above.
+static_assert(offsetof(LiveState, captureKind)             == 1308, "captureKind @ 1308");
+static_assert(offsetof(LiveState, captureCellName)         == 1312, "captureCellName @ 1312");
 
 // ---------------------------------------------------------------------------
 // Module-global file-mapping handles (one channel per agent instance)
@@ -194,6 +198,12 @@ void channelWriteCapture(const DecorationCapture* cap, uint32_t epoch) {
     ls->captureDecorationTemplate[sizeof(ls->captureDecorationTemplate) - 1] = '\0';
     std::memcpy(ls->captureBuildingTemplate, cap->buildingTemplate, sizeof(ls->captureBuildingTemplate));
     ls->captureBuildingTemplate[sizeof(ls->captureBuildingTemplate) - 1] = '\0';
+    // captureKind/captureCellName (05.1-03, D-01/C8) — non-contiguous with the fields above
+    // (offset 1308/1312 vs 768), but MUST land inside this SAME seqlock span, not a separate
+    // unlocked write, so a torn read across the offset gap is impossible.
+    ls->captureKind = cap->kind;
+    std::memcpy(ls->captureCellName, cap->cellName, sizeof(ls->captureCellName));
+    ls->captureCellName[sizeof(ls->captureCellName) - 1] = '\0';
 
     // seq → even: write complete; host reader may proceed.
     InterlockedIncrement(seq);
