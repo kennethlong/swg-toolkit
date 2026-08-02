@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-01-PLAN.md — Task 5 checkpoint approved, plan closed
-last_updated: "2026-08-02T00:00:05.255Z"
-last_activity: 2026-08-01
+stopped_at: Completed 05.1-02-PLAN.md — Tasks 1-2 executed, SUMMARY written, plan closed
+last_updated: "2026-08-02T00:08:41.396Z"
+last_activity: 2026-08-02
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 100
-  completed_plans: 86
-  percent: 86
+  completed_plans: 87
+  percent: 87
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 2 of 15
+Plan: 3 of 15
 Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
@@ -40,13 +40,13 @@ Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decorat
       panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
       decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
       (Blender Bridge).
-Last activity: 2026-08-01
+Last activity: 2026-08-02
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 87%
 
 ### 02-03 key facts (crew-verified)
 
@@ -143,6 +143,7 @@ Progress: [█████████░] 86%
 | Phase 05-wysiwyg-live-sync-typed-editors P11 | ~37min | 3 tasks | 16 files |
 | Phase 05 P12 | ~7min (Task 1 only) | 1 tasks | 2 files |
 | Phase 05.1 P01 | multi-session | 5 tasks | 9 files |
+| Phase 05.1-live-world-editor-productization P02 | ~10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -332,6 +333,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1-01]: Real-asset .ilf round-trip lane is REQUIRED (fail-if-absent), not skip-on-absent — REVIEWS.md C5 — matches every other binary format's ground-truth discipline (tre/iff/dtii/stf/mesh)
 - [Phase 05.1-01]: addNode stays strictly append-only; Undo re-add of a removed row lands at end-of-cell (accepted, disclosed consequence, not revised for positional insert) — ROUND-3-REVIEW R7
 - [Phase 05.1-01]: DecorationPersistResult gains cellName; sanitizeId exported unchanged — seam prep so Plan 06's durable per-building map and Plan 13's offline remove path can report/key the touched cell without re-deriving it
+- [Phase ?]: [Phase 05.1, Plan 02]: WorkspaceBindingMeta.worldEditorBuildingTemplates merge is the caller's job (spread previous read) — updateWorkspaceMeta stays a shallow patch, matching every other field's existing contract
+- [Phase ?]: [Phase 05.1, Plan 02]: readWorkspaceJson stays a pure passthrough for mirrorToStockIlf — default (true when absent) resolved by the caller (Plan 06/10), not injected at the read layer, per D-08's read-at-persist-time contract
 
 ### Pending Todos
 
@@ -363,8 +366,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-02T00:00:05.222Z
-Stopped at: Completed 05.1-01-PLAN.md — Task 5 checkpoint approved, plan closed
+Last session: 2026-08-02T00:08:41.360Z
+Stopped at: Completed 05.1-02-PLAN.md — Tasks 1-2 executed, SUMMARY written, plan closed
   Tasks 1-4 executed and committed (RED/GREEN per task): (1) decorationResultLabel
   REBIND_REFUSED label fix (SC1); (2) ilf.ts addNode/removeNode append/delete primitives with
   byte-exact round-trip coverage (SC4); (3) decorationPersist.ts kind-aware assembly
