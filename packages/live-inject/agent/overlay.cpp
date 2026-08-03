@@ -14,6 +14,7 @@
  */
 
 #include <Windows.h>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -345,6 +346,19 @@ float    g_placementYaw = 0.0f;   // local preview-only yaw accumulator; R key i
 uint32_t g_capKind = 0;              // DECO_CAPTURE_KIND_EDIT(0) / _ADD(1)
 char     g_capCellName[128] = {};
 
+// --- Task 2: the live node id the placement click's wsAddObject call minted (temp preview
+//     object), captured at spawn/auto-arm time. Valid only while g_capArmed && g_capKind==ADD. ---
+int64_t  g_placementSpawnedId = 0;
+
+// --- Task 2: which spawned temp-preview node (if any) the CURRENTLY IN-FLIGHT rebind's
+//     originating capture belongs to. The REBIND payload itself carries no kind, so this MUST be
+//     tracked agent-side — set by persistDecorationEdit() at the moment the capture is SENT (not
+//     at spawn time: the user may nudge/re-Persist several times before a successful save, and
+//     only the outcome of the LATEST Persist should drive the eventual despawn). Consumed by
+//     applyPendingRebind()'s DECO_RESULT_OK branch. ---
+bool     g_pendingRebindWasAdd = false;
+int64_t  g_pendingRebindSpawnedId = 0;
+
 // --- 020-A Status Strip auto-clear timers (render-thread-only, ImGui::GetTime() seconds).
 //     Distinguishes "still showing an old saved/failed/couldn't-arm message" from "a brand
 //     new one just landed this frame" so saved/failed/couldn't-arm auto-clear back to
@@ -533,6 +547,19 @@ const char* persistDecorationEdit() {
     if (!swg::endpoints::getObjectTransformO2P(g_capFocus, &cap.newO2p[0][0])) return "getTransformO2P (new) returned 0";
     std::strncpy(cap.decorationTemplate, g_capDecorationTemplate, sizeof(cap.decorationTemplate) - 1);
     std::strncpy(cap.buildingTemplate,   g_capBuildingTemplate,   sizeof(cap.buildingTemplate) - 1);
+    // Task 2: extend the CAPTURE write with kind/cellName (Plan 03's struct fields) — defaults to
+    // EDIT/empty for the normal edit path (g_capKind/g_capCellName are EDIT-default-initialized
+    // and reset at every successful F-arm/Esc-cancel site, ROUND 3/R2), zero behavior change there.
+    cap.kind = g_capKind;
+    std::strncpy(cap.cellName, g_capCellName, sizeof(cap.cellName) - 1);
+    cap.cellName[sizeof(cap.cellName) - 1] = '\0';
+
+    // Task 2: track which spawned temp-preview node (if any) THIS Persist belongs to, so
+    // applyPendingRebind()'s DECO_RESULT_OK branch can despawn it after a successful save. Set
+    // here, at the point the capture is SENT, not at spawn time (see g_pendingRebindWasAdd's own
+    // declaration comment for why).
+    g_pendingRebindWasAdd    = (g_capKind == DECO_CAPTURE_KIND_ADD);
+    g_pendingRebindSpawnedId = g_placementSpawnedId;
 
     channelWriteCapture(&cap, ++g_captureEpoch);
     return nullptr;
@@ -580,7 +607,18 @@ void applyPendingRebind() {
     g_lastDecoResultEpoch = rb.epoch;
     channelWriteResult(code, rb.epoch);
     // Disarm only when the commit matches the edit currently armed (multi-arm safe).
-    if (code == DECO_RESULT_OK && rb.buildingId == static_cast<uint64_t>(g_capBuildingId)) g_capArmed = false;
+    const bool committedMatchesArmed = (rb.buildingId == static_cast<uint64_t>(g_capBuildingId));
+    if (code == DECO_RESULT_OK && committedMatchesArmed) g_capArmed = false;
+
+    // Task 2: post-save despawn of the wsAddObject-minted temp preview node, for a kind=ADD
+    // rebind that succeeded — matches RESEARCH.md's own stated "after a successful rebind+save"
+    // design. Runs alongside the disarm above: never for a plain edit (no temp node exists there
+    // — g_pendingRebindWasAdd is false), and never on a failed/refused ADD persist (the user may
+    // still be iterating; leave the preview live so they can retry Persist without re-placing).
+    if (code == DECO_RESULT_OK && committedMatchesArmed && g_pendingRebindWasAdd) {
+        if (swg::endpoints::wsRemoveNode) swg::endpoints::wsRemoveNode(g_pendingRebindSpawnedId);
+        g_pendingRebindWasAdd = false;
+    }
 }
 
 // --- 020-A Status Strip label helpers ----------------------------------------------------
@@ -638,6 +676,140 @@ void buildStripLabel(const char* decoTemplate, int64_t buildingId, const char* b
     else std::snprintf(out, outCap, "%s", decoLabel[0] != '\0' ? decoLabel : "(decoration)");
 }
 
+// --- Task 2 (021-A Frame 2): click-to-spawn. Container resolution REVISED 2026-08-02 (supersedes
+//     the original C6 preselect-and-validate guard and ROUND 3/R10's fail-open rule; maintainer
+//     decision at the 05.1-09 checkpoint) — the container is DERIVED FROM THE CLICK, never from
+//     g_placementBuildingId (the World panel picker's preselection) and never from the player.
+//     Called once per placement click / "Place here" press, reusing THIS frame's
+//     g_lastRayHit/g_lastRayObj/g_lastRayPt (the SAME collideScreenRay/collideScreenRayObject
+//     sample the hover-tracking block already took — no second ray-cast). ---
+void attemptPlacementSpawn() {
+    if (!g_lastRayHit) return;
+
+    // C6 — resolve the container FROM THE CLICK's own getContainingBuildingId result (the SAME
+    // resolver armDecorationEdit already calls, on the SAME ray-hit Object* the hover block
+    // sampled this frame). Do NOT compare against g_placementBuildingId: player position, picker
+    // preselection, and target position are three independent inputs, and a doorway makes them
+    // disagree — a click legitimately lands in a DIFFERENT building than the preselection.
+    int64_t clickBuildingId = 0;
+    if (!swg::endpoints::getContainingBuildingId) {
+        // Genuinely "cannot answer" — distinct from a resolved 0 (do NOT collapse the two, per
+        // ROUND 3/R10's superseding note). Leave placement mode active; refuse this click only.
+        std::strncpy(g_lastArmFailureReason, "endpoint unresolved (getContainingBuildingId)", sizeof(g_lastArmFailureReason) - 1);
+        g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+        g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+        return;
+    }
+    if (g_lastRayObj != nullptr) {
+        clickBuildingId = swg::endpoints::getContainingBuildingId(g_lastRayObj);
+    }
+    // g_lastRayObj == nullptr (bare terrain / no object under the click) carries the SAME
+    // authoritative answer as a resolved 0 — there is nothing here for the resolver to walk.
+
+    if (clickBuildingId == 0) {
+        // FAIL CLOSED (ROUND 3/R10 SUPERSEDED 2026-08-02): 0 is the client catalog's authoritative
+        // "world-cell object, no PortalProperty" answer — i.e. this click is outside any building
+        // — not an ambiguous "could not resolve" sentinel. Refuse, spawn nothing, leave placement
+        // mode ACTIVE so the user can retry inside a building. Words-only, names it as an unbuilt
+        // route (the .ws exterior authoring route is future work), not a prohibition.
+        std::strncpy(g_lastArmFailureReason, "outside a building \xE2\x80\x94 exterior placement not wired yet", sizeof(g_lastArmFailureReason) - 1);
+        g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+        g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+        return;
+    }
+
+    // ROUND 3/R3 ripple (REVISED 2026-08-02: resolve for clickBuildingId, NOT g_placementBuildingId
+    // — resolving for the preselected id would write an .ilf row describing the WRONG building's
+    // template, the same wrong-container defect class the fail-closed rule above exists to
+    // prevent). SAME getObjectByIdAdvertised + getTemplateFilename lookup armDecorationEdit's tail
+    // already performs — assembleDecorationEdit's FIRST operation (readVfs(buildingTemplateVfsPath))
+    // throws immediately on a stale/empty path.
+    g_capBuildingTemplate[0] = '\0';
+    if (swg::endpoints::getObjectByIdAdvertised && swg::endpoints::getTemplateFilename) {
+        int64_t bid = clickBuildingId;
+        void* bldg = swg::endpoints::getObjectByIdAdvertised(&bid);
+        if (bldg) {
+            const char* bt = swg::endpoints::getTemplateFilename(bldg);
+            if (bt && bt[0] != '\0') {
+                std::strncpy(g_capBuildingTemplate, bt, sizeof(g_capBuildingTemplate) - 1);
+                g_capBuildingTemplate[sizeof(g_capBuildingTemplate) - 1] = '\0';
+            }
+        }
+    }
+    if (g_capBuildingTemplate[0] == '\0') {
+        // Do NOT call wsAddObject with an empty g_capBuildingTemplate — treat as a spawn failure,
+        // same words-only class of message armDecorationEdit uses for its own equivalent failure.
+        std::strncpy(g_lastArmFailureReason, "could not resolve building template from id", sizeof(g_lastArmFailureReason) - 1);
+        g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+        g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+        return;
+    }
+
+    if (!swg::endpoints::wsAddObject) {
+        std::strncpy(g_lastArmFailureReason, "endpoint unresolved (wsAddObject)", sizeof(g_lastArmFailureReason) - 1);
+        g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+        g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+        return;
+    }
+
+    // Spawn transform: identity + local yaw (R key, radians) about world-up Y, row-major 3x4,
+    // positioned at the click's floor hit (matches "Insert at cursor"'s col-3 = position idiom).
+    const float c = std::cos(g_placementYaw), s = std::sin(g_placementYaw);
+    const float t12[12] = {
+        c,    0.0f, s,    g_lastRayPt[0],
+        0.0f, 1.0f, 0.0f, g_lastRayPt[1],
+        -s,   0.0f, c,    g_lastRayPt[2],
+    };
+
+    const int64_t newId = swg::endpoints::wsAddObject(g_placementTemplate, t12, clickBuildingId);
+    if (newId == 0) {
+        std::strncpy(g_lastArmFailureReason, "spawn failed (wsAddObject returned 0)", sizeof(g_lastArmFailureReason) - 1);
+        g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+        g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+        return;
+    }
+
+    // Auto-arm: the SAME tail armDecorationEdit() uses (D-01's "one code path for add and edit"),
+    // resolving the spawned Object* via getObjectByIdAdvertised — this is a NEW, parallel code
+    // path, not a call to armDecorationEdit() itself (which requires an existing g_lastRayObj
+    // hover target a freshly-spawned object doesn't have this frame).
+    void* spawned = nullptr;
+    if (swg::endpoints::getObjectByIdAdvertised) {
+        int64_t sid = newId;
+        spawned = swg::endpoints::getObjectByIdAdvertised(&sid);
+    }
+    if (spawned == nullptr) {
+        // The object DID spawn live even though auto-arm resolution failed — exit placement mode
+        // so the user isn't stuck mid-placement, but do not pretend it's armed.
+        std::strncpy(g_lastArmFailureReason, "spawned but could not resolve the new object", sizeof(g_lastArmFailureReason) - 1);
+        g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+        g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+        g_placementActive = false;
+        return;
+    }
+
+    // Pre-move o2p of the JUST-SPAWNED transform (so the FIRST persist's "move" delta is measured
+    // from the placement point, not the origin) — best-effort fallback to the spawn transform if
+    // the read-back fails.
+    if (!swg::endpoints::getObjectTransformO2P || !swg::endpoints::getObjectTransformO2P(spawned, g_capOriginalO2p)) {
+        std::memcpy(g_capOriginalO2p, t12, sizeof(g_capOriginalO2p));
+    }
+    g_latchedFocus  = spawned;
+    g_capFocus      = spawned;
+    g_capArmed      = true;
+    g_capBuildingId = clickBuildingId;   // the container actually clicked, not the preselection
+    std::strncpy(g_capDecorationTemplate, g_placementTemplate, sizeof(g_capDecorationTemplate) - 1);
+    g_capDecorationTemplate[sizeof(g_capDecorationTemplate) - 1] = '\0';
+    // g_capBuildingTemplate already resolved above (ROUND 3/R3 ripple).
+
+    g_capKind = DECO_CAPTURE_KIND_ADD;
+    std::strncpy(g_capCellName, g_placementCellName, sizeof(g_capCellName) - 1);
+    g_capCellName[sizeof(g_capCellName) - 1] = '\0';
+    g_placementSpawnedId = newId;   // the temp preview node this ADD capture's eventual Persist despawns
+
+    g_placementActive = false;   // successful spawn exits placement mode
+}
+
 // --- 021-A Frame 2 (Plan 12): placement-mode ghost/reticle/strip render step, gated on
 //     g_placementActive. Called from renderFrame() AFTER the hover-tracking block (reuses THIS
 //     frame's g_lastRayHit/g_lastRayPt sample from collideScreenRay — no second ray-cast
@@ -646,9 +818,9 @@ void buildStripLabel(const char* decoTemplate, int64_t buildingId, const char* b
 //     placement locally (no ack owed — a local keypress, not a HOST_CMD epoch, same as the
 //     existing decoration strip's own local Esc-button-not-key precedent — SWG's DirectInput
 //     input path means hkWndProc cannot CONSUME a keystroke, only observe it, so an Esc KEY here
-//     would double-fire into the game same as the strip's documented limitation). The click-to-
-//     spawn handler itself lands in Task 2 (attemptPlacementSpawn(), defined above this function
-//     once Task 2 runs) — this Task 1 revision renders state only. ---
+//     would double-fire into the game same as the strip's documented limitation). Click-to-spawn
+//     (Task 2): a left click over the world (or the "Place here" button) while a valid ray hit
+//     exists calls attemptPlacementSpawn(). ---
 void renderPlacementMode() {
     if (!g_placementActive) return;
 
@@ -690,10 +862,18 @@ void renderPlacementMode() {
         ImGui::TextDisabled("click floor = place \xC2\xB7 R rotate \xC2\xB7 Esc cancel");
         if (g_lastRayHit) {
             ImGui::SameLine();
-            if (ImGui::SmallButton("Place here")) { /* Task 2 wires this to attemptPlacementSpawn() */ }
+            if (ImGui::SmallButton("Place here")) attemptPlacementSpawn();
         }
     }
     ImGui::End();
+
+    // Click-to-spawn (Task 2): a left click over the WORLD (not this strip or any other ImGui
+    // surface — same !io.WantCaptureMouse gate the existing hover sampling uses) while the
+    // current-frame ray hit is valid. g_placementActive is re-checked because the button above may
+    // already have consumed this click and exited placement mode this same frame.
+    if (g_placementActive && g_lastRayHit && !io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        attemptPlacementSpawn();
+    }
 }
 
 // --- 020-A Status Strip: retires the old debug-probe CollapsingHeader (raw pointers, latch
