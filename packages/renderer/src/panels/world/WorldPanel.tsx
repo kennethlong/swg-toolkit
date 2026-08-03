@@ -30,7 +30,7 @@
  * "scene: not tracked yet" placeholder rather than a fabricated planet name.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 import fs from 'fs';
 import path from 'path';
@@ -41,6 +41,7 @@ import {
   worldEditorRowId,
   worldEditorBuildingRowId,
   parseWorldEditorRowId,
+  formatPersistMessage,
   type SessionOverlayStatus,
   type PersistHistoryEntry,
   type PersistOutcome,
@@ -49,11 +50,18 @@ import type { WorldEditorBuilding, WorldEditorDecoration } from '../../services/
 import { useLiveStore } from '../../state/liveStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { resolveScanRoot } from '../../services/worldEditorScan';
-import { makeReadVfs, reconcileMirrorMode } from '../../services/decorationPersistOrchestrator';
+import {
+  makeReadVfs,
+  reconcileMirrorMode,
+  removeDecorationRow,
+  addBackDecorationRow,
+} from '../../services/decorationPersistOrchestrator';
 import { readWorkspaceJson, updateWorkspaceMeta } from '../../services/projectBinding';
 import { readInteriorLayoutFileName } from '../../services/buildingTemplate';
 import { log } from '../../services/logService';
 import { sendReloadCurrentScene, sendLoadEditorScene, sendTeleport } from '../../services/hostCommand';
+import { useRemoveUndoStore, type RemovedRowEntry } from '../../state/removeUndoStore';
+import RemoveUndoToast from './RemoveUndoToast';
 
 type WorldEditorBookmark = NonNullable<WorkspaceBindingMeta['worldEditorBookmarks']>[number];
 
@@ -230,6 +238,10 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
   // The active project's bound client path (workspaceStore mirrors WorkspaceBindingMeta.clientPath
   // at open time) — a safe hook read for the D-07b mismatch hint, computed during render.
   const boundClientPath = useWorkspaceStore((s) => s.clientPath);
+  // (ROUND 10, AA5 — 05.1-13) Used ONLY to key <RemoveUndoToast> so a project switch forces a
+  // full unmount/remount of that component's local state — every OTHER read of studioDir in
+  // this file still goes through resolveOverridePair()'s imperative getState() form (ROUND 6/X1).
+  const studioDir = useWorkspaceStore((s) => s.studioDir);
 
   const [scanRootAvailable, setScanRootAvailable] = useState(false);
   const [mirrorToStockIlf, setMirrorToStockIlf] = useState(true);
@@ -366,6 +378,101 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
 
   function handleRowSelect(rowId: string): void {
     select(rowId);
+  }
+
+  // ── Remove / Undo (D-02/D-03 — 05.1-13) ─────────────────────────────────────────────────────
+  // Forward-looking groundwork FOR Plan 14's content-identity "(NEW)" diff effect (later wave,
+  // SAME file): a QUEUE (never a bare boolean, never a single overwritable ref — ROUND 6/X3,
+  // ROUND 7/Z5) of restored-row identity keys, drained by that effect so an Undo-restored row is
+  // never marked "(NEW)" even on the very next refresh.
+  const suppressNextDiffRef = useRef<Array<{ buildingId: string; cellName: string; objectTemplateName: string }>>([]);
+
+  // (ROUND 3/R4-R7; ROUND 4/W3; ROUND 5/V5/V6/V12) Per-row Remove action — no confirm dialog
+  // (D-03's guard is the undo toast, not a dialog). ALWAYS resolves overrideDir/readVfs/studioDir
+  // via the SAME shared, null-safe resolveOverridePair() every other write action in this file
+  // uses (never a second, independently-resolved pair), and ALWAYS passes liveNetworkId: null —
+  // no producer in this phase populates a live node id to look up (C4).
+  function handleRemove(building: WorldEditorBuilding, deco: WorldEditorDecoration): void {
+    const pair = resolveOverridePair();
+    if (pair === null) return; // defense-in-depth no-op — the row action should already be absent/disabled
+    const st = useLiveStore.getState().status;
+    const mappingName = st.kind === 'attached' ? st.mappingName : null;
+    try {
+      removeDecorationRow(
+        pair.studioDir,
+        pair.overrideDir,
+        pair.readVfs,
+        building,
+        deco.cellName,
+        deco.rowIndex,
+        null, // liveNetworkId — ALWAYS null this phase (C4)
+        mappingName,
+      );
+      useRemoveUndoStore.getState().push({
+        id: worldEditorRowId(building.buildingId, deco.cellName, deco.rowIndex),
+        buildingId: building.buildingId,
+        cellName: deco.cellName,
+        rowIndex: deco.rowIndex,
+        removedNode: {
+          objectTemplateName: deco.objectTemplateName,
+          cellName: deco.cellName,
+          transform: deco.transform,
+        },
+      });
+      useWorldEditorStore.getState().recordPersistResult({
+        timestampISO: new Date().toISOString(),
+        buildingLabel: building.displayLabel,
+        decorationLabel: baseNameOf(deco.objectTemplateName),
+        outcome: 'warn',
+        message: formatPersistMessage('removed — reload scene to see it gone', pair.meta.mirrorToStockIlf ?? true),
+        cellName: deco.cellName,
+        rowIndex: deco.rowIndex,
+      });
+      refreshTree();
+    } catch (e) {
+      log('error', 'log', `Remove failed: ${(e as Error).message}`);
+    }
+  }
+
+  // (ROUND 5/V1; ROUND 6/X3/X4/X6; ROUND 7/Z1/Z5; R9 review/BB9) WorldPanel owns the ENTIRE Undo
+  // restore end-to-end — RemoveUndoToast has no write-path access of its own. No up-front
+  // clearUndoError (BB9): failure branches OVERWRITE via setUndoError (no pre-clear needed); the
+  // success branch clears only AFTER restore() confirms.
+  function handleUndo(entry: RemovedRowEntry): void {
+    const building = useWorldEditorStore.getState().tree.find((b) => b.buildingId === entry.buildingId);
+    if (!building) {
+      const msg = `Undo failed: building ${entry.buildingId} is no longer in the scanned tree — it may have been removed since this toast appeared.`;
+      log('warn', 'log', msg);
+      useRemoveUndoStore.getState().setUndoError(entry.id, msg);
+      return;
+    }
+    const pair = resolveOverridePair();
+    if (pair === null) {
+      const msg = 'Undo failed: no resolvable project/client scan root — attach a live session or bind this project to a client.';
+      log('warn', 'log', msg);
+      useRemoveUndoStore.getState().setUndoError(entry.id, msg);
+      return;
+    }
+    try {
+      // ROUND 7/Z1: the add-back write runs BEFORE restore() pops the entry from pending — a
+      // thrown add-back can therefore never present as a false "restored" success.
+      addBackDecorationRow(pair.studioDir, pair.overrideDir, pair.readVfs, building, entry.removedNode);
+    } catch (e) {
+      const msg = `Undo failed: ${(e as Error).message}`;
+      log('warn', 'log', msg);
+      useRemoveUndoStore.getState().setUndoError(entry.id, msg);
+      return;
+    }
+    useRemoveUndoStore.getState().restore(entry.id);
+    useRemoveUndoStore.getState().clearUndoError(entry.id); // R9 review/BB9 — settle-time, id-scoped
+    // ROUND 5/V2 groundwork; ROUND 6/X3 — identity-keyed; ROUND 7/Z5 — a spread-append onto the
+    // queue, NEVER an overwrite, so a second successful Undo before Plan 14 drains the first can
+    // never clobber it.
+    suppressNextDiffRef.current = [
+      ...suppressNextDiffRef.current,
+      { buildingId: entry.buildingId, cellName: entry.cellName, objectTemplateName: entry.removedNode.objectTemplateName },
+    ];
+    refreshTree(); // ROUND 4/W2 — Undo's own refresh, so the tree is never left stale after a restore
   }
 
   // ── Scene accordion actions (D-07) ──────────────────────────────────────────────────────────
@@ -763,6 +870,20 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
                       >
                         {decoBadge.label}
                       </span>
+                      {/* D-02/D-03 — no confirm dialog; the undo toast is the guard. */}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${baseNameOf(deco.objectTemplateName)}`}
+                        data-testid="world-remove-decoration-btn"
+                        title="Remove (undo within 8s)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemove(building, deco);
+                        }}
+                        style={removeDecorationBtnStyle}
+                      >
+                        ×
+                      </button>
                     </div>
                   );
                 })}
@@ -1003,6 +1124,11 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
           Stage to project
         </button>
       </div>
+
+      {/* D-03: panel-scoped (NOT globally mounted like DeleteUndoToast, ROUND 6/X5/Z17) — a
+          project switch (key={studioDir}) forces a full unmount/remount, reusing this
+          component's own mount-time reconstruction (ROUND 10/AA2) instead of a bespoke reset. */}
+      <RemoveUndoToast key={studioDir ?? 'no-project'} onUndo={handleUndo} />
     </div>
   );
 }
@@ -1035,6 +1161,17 @@ const sceneInputStyle: React.CSSProperties = {
   borderRadius: 'var(--radius-sm)',
   font: 'var(--text-xs)/1 var(--font-mono)',
   padding: '4px 6px',
+};
+
+const removeDecorationBtnStyle: React.CSSProperties = {
+  background: 'transparent',
+  color: 'var(--color-text-faint)',
+  border: 'none',
+  cursor: 'pointer',
+  padding: '0 4px',
+  fontSize: 'var(--text-sm)',
+  lineHeight: 1,
+  flex: 'none',
 };
 
 const removeBookmarkBtnStyle: React.CSSProperties = {

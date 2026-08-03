@@ -14,6 +14,8 @@
  */
 
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -23,7 +25,13 @@ vi.mock('../../services/worldEditorScan', async (importOriginal) => {
 });
 vi.mock('../../services/decorationPersistOrchestrator', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/decorationPersistOrchestrator')>();
-  return { ...actual, makeReadVfs: vi.fn(), reconcileMirrorMode: vi.fn() };
+  return {
+    ...actual,
+    makeReadVfs: vi.fn(),
+    reconcileMirrorMode: vi.fn(),
+    removeDecorationRow: vi.fn(),
+    addBackDecorationRow: vi.fn(),
+  };
 });
 vi.mock('../../services/projectBinding', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/projectBinding')>();
@@ -42,11 +50,12 @@ import type { WorldEditorBuilding } from '../../services/worldEditorScan';
 import { useLiveStore } from '../../state/liveStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { resolveScanRoot, scanWorldEditorState } from '../../services/worldEditorScan';
-import { makeReadVfs, reconcileMirrorMode } from '../../services/decorationPersistOrchestrator';
+import { makeReadVfs, reconcileMirrorMode, removeDecorationRow, addBackDecorationRow } from '../../services/decorationPersistOrchestrator';
 import { readWorkspaceJson, updateWorkspaceMeta } from '../../services/projectBinding';
 import { log } from '../../services/logService';
 import { sendReloadCurrentScene, sendLoadEditorScene, sendTeleport } from '../../services/hostCommand';
 import { formatPersistMessage } from '../../state/worldEditorStore';
+import { useRemoveUndoStore } from '../../state/removeUndoStore';
 import type { WorkspaceBindingMeta } from '@swg/contracts';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -137,12 +146,31 @@ beforeEach(() => {
   });
   useLiveStore.setState({ status: { kind: 'idle' }, clientLabel: null });
   useWorkspaceStore.setState({ studioDir: '/fake/studio', clientPath: '/bound/client' });
+  useRemoveUndoStore.setState({ pending: [], undoErrors: new Map() });
 
   vi.mocked(resolveScanRoot).mockReturnValue('/override');
   vi.mocked(scanWorldEditorState).mockReturnValue([]);
   vi.mocked(readWorkspaceJson).mockReturnValue(defaultMeta());
   vi.mocked(makeReadVfs).mockReturnValue(vi.fn(() => Buffer.from('stub')));
   vi.mocked(reconcileMirrorMode).mockReturnValue({ failures: [] });
+  vi.mocked(removeDecorationRow).mockReturnValue({
+    rowIndex: 0,
+    cellName: 'alcove1',
+    derivedTemplateVfsPath: 'object/building/toolkit/edit_1082874.iff',
+    editedIlfVfsPath: 'interiorlayout/toolkit/edit_1082874.ilf',
+    derivedTemplateFilePath: '/override/object/building/toolkit/edit_1082874.iff',
+    editedIlfFilePath: '/override/interiorlayout/toolkit/edit_1082874.ilf',
+    stagedEntries: [],
+  });
+  vi.mocked(addBackDecorationRow).mockReturnValue({
+    rowIndex: 0,
+    cellName: 'alcove1',
+    derivedTemplateVfsPath: 'object/building/toolkit/edit_1082874.iff',
+    editedIlfVfsPath: 'interiorlayout/toolkit/edit_1082874.ilf',
+    derivedTemplateFilePath: '/override/object/building/toolkit/edit_1082874.iff',
+    editedIlfFilePath: '/override/interiorlayout/toolkit/edit_1082874.ilf',
+    stagedEntries: [],
+  });
 });
 
 afterEach(() => {
@@ -621,5 +649,207 @@ describe('WorldPanel — 019-A Scene accordion + footer (D-07, ROUND 3 R11a)', (
       expect.anything(),
       expect.stringMatching(/\d+ files? staged/i),
     );
+  });
+});
+
+describe('WorldPanel — Remove/Undo (D-02/D-03, 05.1-13)', () => {
+  function firstRemoveBtn(): HTMLElement {
+    return screen.getAllByTestId('world-remove-decoration-btn')[0];
+  }
+
+  it('clicking Remove calls removeDecorationRow with the resolved pair, correct row identity, mappingName:null, and liveNetworkId:null (never a fabricated value); no confirm dialog appears', () => {
+    seedTree();
+    renderPanel();
+
+    fireEvent.click(firstRemoveBtn());
+
+    expect(removeDecorationRow).toHaveBeenCalledWith(
+      '/fake/studio',
+      '/override',
+      expect.any(Function),
+      BUILDING_1,
+      'alcove1',
+      3,
+      null,
+      null,
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('a null resolveOverridePair() (no resolvable scan root) makes Remove a no-op — removeDecorationRow is NEVER called', () => {
+    seedTree();
+    renderPanel();
+
+    vi.mocked(resolveScanRoot).mockReturnValue(null);
+    fireEvent.click(firstRemoveBtn());
+
+    expect(removeDecorationRow).not.toHaveBeenCalled();
+  });
+
+  it('mappingName is null while offline, and the exact live mappingName when attached (ROUND 5/V5 narrowed status union)', () => {
+    seedTree();
+    renderPanel();
+    fireEvent.click(firstRemoveBtn());
+    expect(removeDecorationRow).toHaveBeenLastCalledWith(
+      expect.anything(), expect.anything(), expect.anything(), expect.anything(),
+      expect.anything(), expect.anything(), null, null,
+    );
+
+    cleanup();
+    useLiveStore.setState({ status: { kind: 'attached', pid: 1, mappingName: 'x' }, clientLabel: 'c' });
+    renderPanel();
+    fireEvent.click(firstRemoveBtn());
+    expect(removeDecorationRow).toHaveBeenLastCalledWith(
+      expect.anything(), expect.anything(), expect.anything(), expect.anything(),
+      expect.anything(), expect.anything(), null, 'x',
+    );
+  });
+
+  it('a successful Remove pushes a RemovedRowEntry, records a "warn" history entry via formatPersistMessage, and refreshes the tree (row disappears from the NEXT scan)', () => {
+    seedTree();
+    renderPanel();
+
+    fireEvent.click(firstRemoveBtn());
+
+    const pending = useRemoveUndoStore.getState().pending;
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({ buildingId: '1082874', cellName: 'alcove1', rowIndex: 3 });
+
+    const history = useWorldEditorStore.getState().history;
+    expect(history).toHaveLength(1);
+    expect(history[0].outcome).toBe('warn');
+    expect(history[0].message).toBe(formatPersistMessage('removed — reload scene to see it gone', true));
+
+    // refreshTree() re-reads readWorkspaceJson/scanWorldEditorState fresh.
+    expect(scanWorldEditorState).toHaveBeenCalledTimes(2); // mount + this refresh
+  });
+
+  it('a mirror-OFF project records the D-10 suffix on the removal history message', () => {
+    seedTree();
+    vi.mocked(readWorkspaceJson).mockReturnValue(defaultMeta({ mirrorToStockIlf: false }));
+    renderPanel();
+
+    fireEvent.click(firstRemoveBtn());
+
+    const history = useWorldEditorStore.getState().history;
+    expect(history[0].message).toBe(formatPersistMessage('removed — reload scene to see it gone', false));
+    expect(history[0].message).toContain('mirror off');
+  });
+
+  it('a throwing removeDecorationRow is caught, logged, and never pushes a RemovedRowEntry or records history', () => {
+    seedTree();
+    vi.mocked(removeDecorationRow).mockImplementationOnce(() => {
+      throw new Error("this building's stock template path isn't known yet");
+    });
+    renderPanel();
+
+    fireEvent.click(firstRemoveBtn());
+
+    expect(log).toHaveBeenCalledWith('error', 'log', expect.stringContaining("isn't known yet"));
+    expect(useRemoveUndoStore.getState().pending).toHaveLength(0);
+    expect(useWorldEditorStore.getState().history).toHaveLength(0);
+  });
+
+  it('the rendered RemoveUndoToast shows an Undo button, and clicking it drives handleUndo end-to-end: add-back BEFORE restore, then clearUndoError, then refreshTree', () => {
+    seedTree();
+    renderPanel();
+    fireEvent.click(firstRemoveBtn());
+
+    const undoBtn = screen.getByRole('button', { name: 'Undo remove' });
+    expect(undoBtn).not.toBeNull();
+
+    const callOrder: string[] = [];
+    vi.mocked(addBackDecorationRow).mockImplementationOnce((...args) => {
+      callOrder.push('addBack');
+      return {
+        rowIndex: 0, cellName: 'alcove1',
+        derivedTemplateVfsPath: 'x', editedIlfVfsPath: 'x',
+        derivedTemplateFilePath: 'x', editedIlfFilePath: 'x', stagedEntries: [],
+      };
+    });
+    const restoreSpy = vi.spyOn(useRemoveUndoStore.getState(), 'restore').mockImplementation((id: string) => {
+      callOrder.push('restore');
+      const entry = useRemoveUndoStore.getState().pending.find((e) => e.id === id);
+      useRemoveUndoStore.setState((s) => ({ pending: s.pending.filter((e) => e.id !== id) }));
+      return entry;
+    });
+
+    const scanCallsBeforeUndo = vi.mocked(scanWorldEditorState).mock.calls.length;
+    fireEvent.click(undoBtn);
+
+    expect(addBackDecorationRow).toHaveBeenCalledWith('/fake/studio', '/override', expect.any(Function), BUILDING_1, expect.objectContaining({
+      objectTemplateName: BUILDING_1.decorations[0].objectTemplateName,
+      cellName: 'alcove1',
+    }));
+    expect(callOrder).toEqual(['addBack', 'restore']); // ROUND 7/Z1 ordering
+    expect(useRemoveUndoStore.getState().pending).toHaveLength(0);
+    expect(vi.mocked(scanWorldEditorState).mock.calls.length).toBeGreaterThan(scanCallsBeforeUndo); // ROUND 4/W2 refresh
+    restoreSpy.mockRestore();
+  });
+
+  it('ROUND 6/X6: a handleUndo whose building is no longer in the tree logs + setUndoError, and calls NEITHER addBackDecorationRow NOR restore()', () => {
+    seedTree();
+    renderPanel();
+    fireEvent.click(firstRemoveBtn());
+    const entryId = useRemoveUndoStore.getState().pending[0].id;
+
+    useWorldEditorStore.setState({ tree: [] }); // building fell out of the scanned tree
+    const restoreSpy = vi.spyOn(useRemoveUndoStore.getState(), 'restore');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo remove' }));
+
+    expect(addBackDecorationRow).not.toHaveBeenCalled();
+    expect(restoreSpy).not.toHaveBeenCalled();
+    expect(useRemoveUndoStore.getState().undoErrors.get(entryId)).toMatch(/no longer in the scanned tree/);
+    expect(useRemoveUndoStore.getState().pending).toHaveLength(1); // entry stays for a retry
+    restoreSpy.mockRestore();
+  });
+
+  it('ROUND 5/V1: a null resolveOverridePair() on Undo is a words-only no-op — leaves the entry in pending, never calls addBackDecorationRow/restore', () => {
+    seedTree();
+    renderPanel();
+    fireEvent.click(firstRemoveBtn());
+    const entryId = useRemoveUndoStore.getState().pending[0].id;
+
+    vi.mocked(resolveScanRoot).mockReturnValue(null);
+    const restoreSpy = vi.spyOn(useRemoveUndoStore.getState(), 'restore');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo remove' }));
+
+    expect(addBackDecorationRow).not.toHaveBeenCalled();
+    expect(restoreSpy).not.toHaveBeenCalled();
+    expect(useRemoveUndoStore.getState().undoErrors.get(entryId)).toBeDefined();
+    expect(useRemoveUndoStore.getState().pending).toHaveLength(1);
+    restoreSpy.mockRestore();
+  });
+
+  it('ROUND 7/Z1: a throwing addBackDecorationRow never calls restore() — the entry stays in pending (no false "restored" success)', () => {
+    seedTree();
+    renderPanel();
+    fireEvent.click(firstRemoveBtn());
+    const entryId = useRemoveUndoStore.getState().pending[0].id;
+
+    vi.mocked(addBackDecorationRow).mockImplementationOnce(() => {
+      throw new Error('boom — add-back write failed');
+    });
+    const restoreSpy = vi.spyOn(useRemoveUndoStore.getState(), 'restore');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo remove' }));
+
+    expect(restoreSpy).not.toHaveBeenCalled();
+    expect(useRemoveUndoStore.getState().pending).toHaveLength(1);
+    expect(useRemoveUndoStore.getState().undoErrors.get(entryId)).toContain('boom');
+    restoreSpy.mockRestore();
+  });
+
+  it('ROUND 6/X7 static grep gate: suppressNextDiffRef.current is a spread-append and appears BEFORE refreshTree() inside handleUndo (source order, not runtime — the ref has no observable consequence until Plan 14)', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'WorldPanel.tsx'), 'utf8');
+    const spreadPushIdx = src.indexOf('suppressNextDiffRef.current = [\n      ...suppressNextDiffRef.current');
+    const handleUndoIdx = src.indexOf('function handleUndo(');
+    const refreshCallIdx = src.indexOf('refreshTree(); // ROUND 4/W2');
+    expect(spreadPushIdx).toBeGreaterThan(-1);
+    expect(handleUndoIdx).toBeGreaterThan(-1);
+    expect(refreshCallIdx).toBeGreaterThan(spreadPushIdx);
+    expect(spreadPushIdx).toBeGreaterThan(handleUndoIdx);
   });
 });
