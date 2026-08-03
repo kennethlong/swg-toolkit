@@ -427,6 +427,19 @@ Roadmap-shaping decisions affecting current work:
   package. Mitigated — not unguarded: the whole span is SEH-wrapped (__try :292 / __except :592) and
   documented as the T-05-32 accept-watch. Residual: SEH catches a UAF READ, never a silent UAF WRITE.
 
+- [LIVE-VERIFIED DEFECT FIXED 2026-08-03, plan 05.1-12] Placed decoration spawned into the WORLD
+  cell instead of the building's interior cell — reproduced twice live (Mos Eisley cantina, second
+  repro deliberately deep in the main room to rule out a doorway confound): object visible through
+  the OPEN door, disappeared the instant it CLOSED. Root cause: attemptPlacementSpawn() parented
+  wsAddObject's spawn to the BUILDING object, never reparenting into a CELL (neither
+  findCellAtWorldPosition nor setParentCell appeared in the function; the 05.1-18 teleport path
+  already proved the idiom). Fixed: after spawn + auto-arm resolution, reparent the spawned Object*
+  via findCellAtWorldPosition + setParentCell (write-then-reparent, no cell-relative pre-conversion),
+  isChildObject mount guard, setParentCell==0/unresolved-endpoint fail closed words-only, objectWarped
+  after a successful reparent (mirrors teleportPlayerToWorldPos's fallback idiom). commit 93a8a3c.
+  Agent DLL rebuilt (Release), build succeeded. **05.1-12's human-verify checkpoint is still OPEN** —
+  needs live re-verification in the cantina (door-close/open test) before the plan can close.
+
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
