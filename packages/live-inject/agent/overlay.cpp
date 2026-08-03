@@ -788,6 +788,51 @@ void attemptPlacementSpawn() {
         return;
     }
 
+    // --- LIVE-VERIFIED DEFECT FIX (05.1-12): wsAddObject above parented the spawn to the
+    //     BUILDING object, which leaves a POB's contents resident in the WORLD cell — visible
+    //     through an open doorway, culled the instant it closes. A POB's contents live in
+    //     CELLS, not at the building root, so the spawn must be reparented into the cell at the
+    //     placement point. Write-then-reparent: the transform is already written in WORLD space
+    //     by wsAddObject above (t12); do NOT pre-convert it to cell-relative here — setParentCell
+    //     converts through the source cell's transform itself (the v30 warpPlayer bug was
+    //     exactly this class of mistake, shipping cell-relative coords as world).
+    //
+    // SAFETY: mounted/child object. Refuse rather than corrupt the pose (same idiom as
+    // teleportPlayerToWorldPos's isChildObject guard below) — a freshly spawned decoration
+    // should never be mounted, but the row is a safety check, not a convenience.
+    if (swg::endpoints::isChildObject && swg::endpoints::isChildObject(spawned) != 0) {
+        std::strncpy(g_lastArmFailureReason, "spawned but object is a child/mount \xE2\x80\x94 refusing reparent", sizeof(g_lastArmFailureReason) - 1);
+        g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+        g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+        g_placementActive = false;
+        return;
+    }
+    if (!swg::endpoints::findCellAtWorldPosition || !swg::endpoints::setParentCell) {
+        std::strncpy(g_lastArmFailureReason, "endpoint unresolved (findCellAtWorldPosition/setParentCell)", sizeof(g_lastArmFailureReason) - 1);
+        g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+        g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+        g_placementActive = false;
+        return;
+    }
+    // findCellAtWorldPosition NEVER returns null (world-cell fallback), so destCell is always a
+    // legal setParentCell argument — never pass null to mean "outside", that is what
+    // getWorldCellProperty is for. Defensive null check kept only to match the existing
+    // fallback idiom in teleportPlayerToWorldPos.
+    void* const destCell = swg::endpoints::findCellAtWorldPosition(g_lastRayPt[0], g_lastRayPt[1], g_lastRayPt[2]);
+    if (destCell) {
+        const int reparentRc = swg::endpoints::setParentCell(spawned, destCell);
+        if (reparentRc == 0) {
+            std::strncpy(g_lastArmFailureReason, "spawned but reparent into cell refused", sizeof(g_lastArmFailureReason) - 1);
+            g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
+            g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+            g_placementActive = false;
+            return;
+        }
+        // Collision resync after the discontinuous move, same proven idiom
+        // teleportPlayerToWorldPos's fallback path uses immediately after its own reparent.
+        if (swg::endpoints::objectWarped) swg::endpoints::objectWarped(spawned);
+    }
+
     // Pre-move o2p of the JUST-SPAWNED transform (so the FIRST persist's "move" delta is measured
     // from the placement point, not the origin) — best-effort fallback to the spawn transform if
     // the read-back fails.
