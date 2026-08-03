@@ -357,7 +357,9 @@ typedef void*(__cdecl*    pGetWorldCellProperty)();                   // v27: wo
 typedef void(__cdecl*     pSetPortalTransitionsEnabled)(bool);        // v28: GLOBAL — see warning above
 typedef void(__cdecl*     pObjectWarped)(void* object);               // v28: collision resync after a discontinuous move
 typedef void*(__cdecl*    pFindCellAtWorldPosition)(float x, float y, float z); // v28: never null
-typedef void*(__cdecl*    pGetAttachedTo)(void* object);              // v28: parent object or 0
+typedef void*(__cdecl*    pGetAttachedTo)(void* object);              // v28: parent object or 0 — NOT a mount probe
+typedef int(__cdecl*      pIsChildObject)(void* object);              // v29: 1 = genuine child/mount. THE mount discriminator
+typedef int(__cdecl*      pWarpPlayer)(float x, float y, float z);    // v30: client-initiated SEQUENCED teleport
 pGetParentCell               getParentCell               = nullptr;
 pSetParentCell               setParentCell               = nullptr;
 pGetWorldCellProperty        getWorldCellProperty        = nullptr;
@@ -365,6 +367,8 @@ pSetPortalTransitionsEnabled setPortalTransitionsEnabled = nullptr;
 pObjectWarped                objectWarped                = nullptr;
 pFindCellAtWorldPosition     findCellAtWorldPosition     = nullptr;
 pGetAttachedTo               getAttachedTo               = nullptr;
+pIsChildObject               isChildObject               = nullptr;
+pWarpPlayer                  warpPlayer                  = nullptr;
 
 // --- Non-forcing parse-completion poll (advertised v28, provider handback 2026-08-02).
 //     1 = snapshot parse in flight (world still rebuilding), 0 = idle/complete.
@@ -466,7 +470,9 @@ Binding g_agentBindings[] = {
     {"cellProperty::setPortalTransitionsEnabled", (void**)&setPortalTransitionsEnabled}, // v28 — GLOBAL unscoped; ONE call site only (PortalTransitionGuard)
     {"collisionWorld::objectWarped",           (void**)&objectWarped},                   // v28 — refreshes m_lastTransform via storePosition; no ordering can substitute
     {"clientWorld::findCellAtWorldPosition",   (void**)&findCellAtWorldPosition},        // v28 — placement routing; never null
-    {"object::getAttachedTo",                  (void**)&getAttachedTo},                  // v28 — SAFETY: non-null => mounted => refuse reparent
+    {"object::getAttachedTo",                  (void**)&getAttachedTo},                  // v28 — reads the actual parent; NOT a mount probe (v28 guidance falsified live)
+    {"object::isChildObject",                  (void**)&isChildObject},                  // v29 — THE mount discriminator (m_childObject flag; cells attach with asChildObject=false)
+    {"playerCreatureController::warpClient",   (void**)&warpPlayer},                     // v30 — client-initiated SEQUENCED teleport; does the warp + camera retarget internally
     {"worldSnapshot::wsIsParsePending",        (void**)&wsIsParsePending},               // v28 — non-forcing completion poll (never swap for wsGetNodeCount)
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);

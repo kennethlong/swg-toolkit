@@ -95,6 +95,8 @@ namespace swg { namespace endpoints {
     typedef void(__cdecl*     pObjectWarped)(void*);
     typedef void*(__cdecl*    pFindCellAtWorldPosition)(float, float, float);
     typedef void*(__cdecl*    pGetAttachedTo)(void*);
+    typedef int(__cdecl*      pIsChildObject)(void*);              // v29: THE mount discriminator
+    typedef int(__cdecl*      pWarpPlayer)(float, float, float);   // v30: sequenced client teleport
     typedef int(__cdecl*      pWsIsParsePending)();   // 05.1-17: non-forcing completion poll
     extern pGetParentCell               getParentCell;
     extern pSetParentCell               setParentCell;
@@ -103,6 +105,8 @@ namespace swg { namespace endpoints {
     extern pObjectWarped                objectWarped;
     extern pFindCellAtWorldPosition     findCellAtWorldPosition;
     extern pGetAttachedTo               getAttachedTo;
+    extern pIsChildObject               isChildObject;
+    extern pWarpPlayer                  warpPlayer;
     extern pWsIsParsePending            wsIsParsePending;
     typedef void*(__thiscall* pGetNetworkId)(void*);
     extern pGetNetworkId      getNetworkId;
@@ -1168,31 +1172,20 @@ bool teleportPlayerToWorldPos(const float pos[3], const char* origin, char* outN
 
     // SAFETY: mounted/child object. Refuse rather than corrupt the pose.
     //
-    // ⚠ getAttachedTo is NOT a mount probe on its own — FALSIFIED LIVE 2026-08-03. Cell attachment
-    // and mount attachment share m_attachedToObject (setParentCell does
-    // attachToObject_w(&cellProperty->getOwner(), false)), so ANY player standing inside a POB
-    // reports non-null. The first cut of this guard used it raw and refused every teleport made
-    // from inside the cantina — i.e. it broke the exact workflow this plan exists to enable.
-    // The true discriminator is the m_childObject FLAG (Object::isChildObject), which no advertised
-    // row exposes; requested from the provider.
+    // Uses object::isChildObject (v29) — the m_childObject FLAG, which is set only from the
+    // asChildObject argument and which cells attach with FALSE. It is exactly what the compiled-out
+    // DEBUG_FATAL at Object.cpp:1396 tests.
     //
-    // INTERIM NARROWING: only treat an attachment as a mount when the player's parent cell is the
-    // WORLD cell. Case analysis:
-    //   mounted outdoors  -> parent=world, attached=mount  -> REFUSED   (correct; the common case)
-    //   unmounted outdoors-> parent=world, attached=null   -> allowed   (correct)
-    //   unmounted indoors -> parent=cell,  attached=owner  -> allowed   (correct; was the false positive)
-    //   mounted indoors   -> parent=cell,  attached=mount  -> allowed   (NOT guarded — same exposure
-    //                                                                    as before this plan, not worse)
-    if (swg::endpoints::getAttachedTo && swg::endpoints::getWorldCellProperty &&
-        swg::endpoints::getParentCell) {
-        void* const attached  = swg::endpoints::getAttachedTo(player);
-        void* const parent    = swg::endpoints::getParentCell(player);
-        void* const worldCell = swg::endpoints::getWorldCellProperty();
-        if (attached != nullptr && parent == worldCell) {
-            if (outNote) std::snprintf(outNote, outNoteCap, "refused — dismount first (reparent would corrupt pose)");
-            dbg("overlay: teleport REFUSED — attached in the world cell (mount/vehicle)\n");
-            return false;
-        }
+    // ⚠ Do NOT go back to getAttachedTo for this — FALSIFIED LIVE 2026-08-03. Cell parentage and
+    // mount attachment share m_attachedToObject (setParentCell does
+    // attachToObject_w(&cellProperty->getOwner(), false)), so ANY player merely standing inside a POB
+    // reports non-null and every teleport from indoors was refused. The provider's v28 guidance said
+    // "non-null means do not reparent"; they corrected it in v29 after this test. getAttachedTo
+    // remains bound for READING the actual parent — it is just not a mount probe.
+    if (swg::endpoints::isChildObject && swg::endpoints::isChildObject(player) != 0) {
+        if (outNote) std::snprintf(outNote, outNoteCap, "refused — dismount first (reparent would corrupt pose)");
+        dbg("overlay: teleport REFUSED — isChildObject (mounted/vehicle)\n");
+        return false;
     }
 
     const float t[12] = {
@@ -1211,24 +1204,50 @@ bool teleportPlayerToWorldPos(const float pos[3], const char* origin, char* outN
     if (destCell && swg::endpoints::setParentCell) {
         void* worldCell = swg::endpoints::getWorldCellProperty ? swg::endpoints::getWorldCellProperty() : nullptr;
         const int rc = swg::endpoints::setParentCell(player, destCell);
-        {
-            PortalTransitionGuard guard;              // suppress the sweep across the write
+
+        // v30: the SEQUENCED move. warpClient stamps m_previousTransform_p (so local movement
+        // reconciliation does not fight it), mints a CLIENT-side sequence number, and appends
+        // CM_netUpdateTransform with SEND|RELIABLE|DEST_AUTH_SERVER|DEST_AUTH_CLIENT — so the server
+        // is TOLD, and the local apply runs through handleNetUpdateTransform, which brings
+        // CollisionWorld::objectWarped and the FreeChaseCamera retarget with it.
+        //
+        // A raw setTransform_o2w is an UNSEQUENCED local write the server never hears about, so the
+        // next authoritative update legitimately overwrites it — measured live as a ~1s revert.
+        // Offline there is nothing to correct it, which is why editor-scene testing never showed it.
+        //
+        // ⚠ Per the provider (v30 §2a): warpClient does the warp + camera retarget internally, so we
+        // DROP setTransform_o2w, the PortalTransitionGuard bracket, and our explicit objectWarped.
+        // It does NOT reparent, which is why setParentCell above stays. Do not re-add the dropped
+        // three "for safety" — doubling them up is how the sweep/notification bugs came back.
+        //
+        // The shim takes WORLD coords and converts to parent space internally, mirroring
+        // setTransform_o2w, so a bookmark's stored x/y/z can be passed straight through.
+        int warpRc = -2;   // -2 = row unresolved
+        if (swg::endpoints::warpPlayer) {
+            warpRc = swg::endpoints::warpPlayer(pos[0], pos[1], pos[2]);
+        } else {
+            // Legacy SWGEmu / pre-v30 exe: fall back to the unsequenced write so the button still
+            // does something, and say plainly that it will not survive a live server.
+            PortalTransitionGuard guard;
             swg::endpoints::setTransform_o2w(player, t);
+            if (swg::endpoints::objectWarped) swg::endpoints::objectWarped(player);
         }
-        if (swg::endpoints::objectWarped) swg::endpoints::objectWarped(player);
 
         void* nowCell = swg::endpoints::getParentCell ? swg::endpoints::getParentCell(player) : nullptr;
-        char cb[224];
+        char cb[256];
         std::snprintf(cb, sizeof(cb),
-            "overlay: teleport cell — dest=%p world=%p setParentCell=%d after=%p suppressed=%d warped=%d\n",
-            destCell, worldCell, rc, nowCell,
-            swg::endpoints::setPortalTransitionsEnabled ? 1 : 0,
-            swg::endpoints::objectWarped ? 1 : 0);
+            "overlay: teleport cell — dest=%p world=%p setParentCell=%d after=%p warpClient=%d\n",
+            destCell, worldCell, rc, nowCell, warpRc);
         dbg(cb);
 
         if (outNote) {
-            std::snprintf(outNote, outNoteCap,
-                (worldCell && destCell == worldCell) ? "moved (outside)" : "moved (interior cell)");
+            const char* where = (worldCell && destCell == worldCell) ? "outside" : "interior cell";
+            if (warpRc == -2)
+                std::snprintf(outNote, outNoteCap, "moved (%s) — unsequenced, will revert on a live server", where);
+            else if (warpRc == 1)
+                std::snprintf(outNote, outNoteCap, "moved (%s)", where);
+            else
+                std::snprintf(outNote, outNoteCap, "reparented (%s) but warp returned %d", where, warpRc);
         }
         return true;
     }
