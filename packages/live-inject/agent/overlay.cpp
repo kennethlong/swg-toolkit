@@ -86,6 +86,24 @@ namespace swg { namespace endpoints {
     extern pGetSceneId        getSceneId;
     extern pWsRemoveNode      wsRemoveNode;
     extern pMainLoop          mainLoop;
+    // 05.1-18 (v27/v28): the engine's own authored-move idiom. setPortalTransitionsEnabled
+    // is GLOBAL unscoped state — call it ONLY through PortalTransitionGuard below.
+    typedef void*(__thiscall* pGetParentCell)(void*);
+    typedef int(__cdecl*      pSetParentCell)(void*, void*);
+    typedef void*(__cdecl*    pGetWorldCellProperty)();
+    typedef void(__cdecl*     pSetPortalTransitionsEnabled)(bool);
+    typedef void(__cdecl*     pObjectWarped)(void*);
+    typedef void*(__cdecl*    pFindCellAtWorldPosition)(float, float, float);
+    typedef void*(__cdecl*    pGetAttachedTo)(void*);
+    typedef int(__cdecl*      pWsIsParsePending)();   // 05.1-17: non-forcing completion poll
+    extern pGetParentCell               getParentCell;
+    extern pSetParentCell               setParentCell;
+    extern pGetWorldCellProperty        getWorldCellProperty;
+    extern pSetPortalTransitionsEnabled setPortalTransitionsEnabled;
+    extern pObjectWarped                objectWarped;
+    extern pFindCellAtWorldPosition     findCellAtWorldPosition;
+    extern pGetAttachedTo               getAttachedTo;
+    extern pWsIsParsePending            wsIsParsePending;
     typedef void*(__thiscall* pGetNetworkId)(void*);
     extern pGetNetworkId      getNetworkId;
     bool isAdvertisedClient();

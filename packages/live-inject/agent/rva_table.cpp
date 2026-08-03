@@ -317,6 +317,70 @@ pGetObjectTransformO2P getObjectTransformO2P = nullptr;
 typedef int64_t(__cdecl* pGetContainingBuildingId)(void* object);
 pGetContainingBuildingId getContainingBuildingId = nullptr;
 
+// --- Cell parentage + teleport-safety rows (advertised v27/v28, provider handbacks
+//     2026-08-02). Together these are the engine's OWN authored-move idiom, which
+//     GroundScene.cpp:1492-1497 performs verbatim:
+//
+//         setParentCell(C); setPortalTransitionsEnabled(false);
+//         setTransform_o2p(...); setPortalTransitionsEnabled(true); objectWarped(p);
+//
+//     Why the bracket is not optional: the portal line-sweep is a side effect of the
+//     TRANSFORM WRITE (CellPropertyNamespace::Notification hooks positionChanged at
+//     priority -100, CellProperty.cpp:150-176) — NOT of setParentCell, which only fires
+//     cellChanged. On a portal hit the sweep reparents the object itself and returns
+//     false, which ABORTS the remaining notifications (Object.cpp:240-246), silently
+//     skipping the DPVS occlusion and collision updates for that write. Measured live
+//     pre-v28: 28 DOORHIT-WAKE events per teleport.
+//
+//     ⚠ setPortalTransitionsEnabled is GLOBAL, UNSCOPED state — no RAII, no refcount
+//     (provider's explicit warning). A leaked `false` disables portal transitions for the
+//     REST OF THE SESSION and the symptom looks nothing like the cause. It is called from
+//     exactly ONE place: overlay.cpp's PortalTransitionGuard destructor-backed wrapper.
+//     Do not add a second call site.
+//
+//     getAttachedTo is a SAFETY row, not a convenience: setParentCell on a MOUNTED player
+//     silently corrupts its pose in Release (the DEBUG_FATAL at Object.cpp:1396 is #if 0'd;
+//     attachToObject_p re-enters detachFromObject(DF_none), whose :2002 overwrites the
+//     correctly-computed m_objectToParent). Non-null => refuse the reparent.
+//
+//     findCellAtWorldPosition NEVER returns null (world-cell fallback), so its result is
+//     always a legal setParentCell argument — which matters because setParentCell FATALs on
+//     null (NOT_NULL, Object.cpp:1389). Never pass null to mean "outside"; that is what
+//     getWorldCellProperty is for.
+//
+//     NOTE getParentCell deliberately walks THROUGH mount attachment to the ambient cell
+//     (shared m_attachedToObject field, Object.cpp:1372-1383), so it is NOT a mount probe.
+//     All game-thread-only. ---
+typedef void*(__thiscall* pGetParentCell)(void* object);              // CellProperty*; opaque, never deref
+typedef int(__cdecl*      pSetParentCell)(void* object, void* cell);  // v27: 1 ok / 0 refused
+typedef void*(__cdecl*    pGetWorldCellProperty)();                   // v27: world-cell sentinel
+typedef void(__cdecl*     pSetPortalTransitionsEnabled)(bool);        // v28: GLOBAL — see warning above
+typedef void(__cdecl*     pObjectWarped)(void* object);               // v28: collision resync after a discontinuous move
+typedef void*(__cdecl*    pFindCellAtWorldPosition)(float x, float y, float z); // v28: never null
+typedef void*(__cdecl*    pGetAttachedTo)(void* object);              // v28: parent object or 0
+pGetParentCell               getParentCell               = nullptr;
+pSetParentCell               setParentCell               = nullptr;
+pGetWorldCellProperty        getWorldCellProperty        = nullptr;
+pSetPortalTransitionsEnabled setPortalTransitionsEnabled = nullptr;
+pObjectWarped                objectWarped                = nullptr;
+pFindCellAtWorldPosition     findCellAtWorldPosition     = nullptr;
+pGetAttachedTo               getAttachedTo               = nullptr;
+
+// --- Non-forcing parse-completion poll (advertised v28, provider handback 2026-08-02).
+//     1 = snapshot parse in flight (world still rebuilding), 0 = idle/complete.
+//     This is the ONLY ws* row with no finishLoadNow() prologue — it is deliberately pure,
+//     and the provider shipped it so we would stop forcing. It lets the deferred Reload ack
+//     mean "world rebuilt" instead of "the call was made", with no synchronous parse.
+//
+//     ⚠ Do NOT substitute any of these; each silently reintroduces a bug we already fixed:
+//       - wsGetNodeCount  FORCE-FINISHES (WorldSnapshot.cpp:1780) -> ~1-2s client freeze per
+//         reload. This plan's earlier design did exactly that and it was retired.
+//       - wsGetGeneration bumps on load/unload only -> says nothing about the parse.
+//       - getLoadingPercent returns 0 WHILE parsing and then a preload percentage -> the 0
+//         is ambiguous (WorldSnapshot.cpp:983). ---
+typedef int(__cdecl* pWsIsParsePending)();
+pWsIsParsePending wsIsParsePending = nullptr;
+
 // --- Editor scene load (advertised 2026-06-25, engine_advertise.cpp:321). FULL offline
 //     scene-load via the SceneCreator lifecycle: sets Game::setSinglePlayer(true) then
 //     Game::setScene(true, terrain, player, nullptr). No server session -> the snapshot layer
@@ -395,6 +459,15 @@ Binding g_agentBindings[] = {
     {"game::loadScene",                     (void**)&gameLoadScene},           // offline editor scene (single-player; model-D visible-verify context)
     {"game::mainLoop",                      (void**)&mainLoop},                // 05.1-16: per-frame tick — deferred-queue drain point OUTSIDE Present
     {"game::cleanupScene",                  (void**)&gameCleanupScene},        // 05.1-16: MUST run a frame BEFORE loadScene when a scene is live (Utinni game.cpp:548-554)
+    // --- Cell parentage + teleport safety (v27/v28 handbacks 2026-08-02) — see the block comment above ---
+    {"object::getParentCell",                  (void**)&getParentCell},                  // already advertised pre-v27; NOT a mount probe
+    {"object::setParentCell",                  (void**)&setParentCell},                  // v27 — FATALs on a null cell; pass getWorldCellProperty for "outside"
+    {"cellProperty::getWorldCellProperty",     (void**)&getWorldCellProperty},           // v27 — the only legal way to say "reparent out"
+    {"cellProperty::setPortalTransitionsEnabled", (void**)&setPortalTransitionsEnabled}, // v28 — GLOBAL unscoped; ONE call site only (PortalTransitionGuard)
+    {"collisionWorld::objectWarped",           (void**)&objectWarped},                   // v28 — refreshes m_lastTransform via storePosition; no ordering can substitute
+    {"clientWorld::findCellAtWorldPosition",   (void**)&findCellAtWorldPosition},        // v28 — placement routing; never null
+    {"object::getAttachedTo",                  (void**)&getAttachedTo},                  // v28 — SAFETY: non-null => mounted => refuse reparent
+    {"worldSnapshot::wsIsParsePending",        (void**)&wsIsParsePending},               // v28 — non-forcing completion poll (never swap for wsGetNodeCount)
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 

@@ -18,7 +18,11 @@
 // Verbatim from engine_hookpoints.h:77-93.
 struct EngineHookPoint  { const char* name; void* addr; };
 struct EngineHookPoints { unsigned version; unsigned count; const EngineHookPoint* entries; };
-#define ENGINE_HOOKPOINTS_VERSION 6
+// Bumped 6 -> 28 (2026-08-02, contract v28 / 155 names). PURELY COSMETIC: resolve() binds
+// BY NAME and the mismatch branch (resolve.cpp:54) is a soft OutputDebugStringA that still
+// resolves — verified before bumping. The value of keeping it current is that a permanently
+// firing warning masks a real one.
+#define ENGINE_HOOKPOINTS_VERSION 28
 
 namespace swg {
 namespace endpoints {
