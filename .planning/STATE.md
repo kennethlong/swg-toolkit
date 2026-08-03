@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-17 + 05.1-18 (wave 3); next 05.1-11
-last_updated: "2026-08-02T19:41:12.330Z"
-last_activity: 2026-08-02
+stopped_at: Wave 3 — 05.1-11 (b18c2f0) and 05.1-12 (51fd769, c52a43a) both BUILT, both parked at blocking human-verify checkpoints. Wave 4 blocked: 05.1-13 depends_on 05.1-11.
+last_updated: "2026-08-03T17:58:59.094Z"
+last_activity: 2026-08-03 -- Phase 05.1 execution started
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 103
   completed_plans: 98
-  percent: 93
+  percent: 95
 ---
 
 # Project State
@@ -35,7 +35,7 @@ NOTE: 05.1-09 (wave 2, agent-side HOST_CMD dispatch) is now CLOSED — checkpoin
       DESPAWN_NODE) verified live; 05.1-09-SUMMARY.md written. 05.1-10 had already executed
       2026-08-02 out of sequence (parallel wave 2). Both 09 and 10 are done; per-plan
       SUMMARY.md presence, not the position counter, remains the source of truth.
-Status: Ready to execute
+Status: Executing Phase 05.1
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
         verified live 2026-07-30/31: hover-pick → Arm → gizmo move → Persist → .ilf edit +
@@ -48,7 +48,7 @@ Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decorat
       panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
       decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
       (Blender Bridge).
-Last activity: 2026-08-02
+Last activity: 2026-08-03 -- Phase 05.1 execution started
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
@@ -394,10 +394,12 @@ Roadmap-shaping decisions affecting current work:
   (a) "we skip Utinni's spatial-subdivision teardown" (unload() already does it);
   (b) "buildout vs authored split". RESIDUAL: the rebuild is ASYNC, so Plans 12/15 race it →
   Plan 05.1-17 adds a completion barrier (advertised wsGetNodeCount) so ack=1 means "world rebuilt".
+
 - [NEW REGRESSION 2026-08-02, provider-side] The reload fix INVERTED one behavior: reload now restores
   snapshot content (buildings/collision/banthas) but NO LONGER restores server-streamed NPCs (pre-fix
   it was the opposite). Reported in the 2026-08-02 toolkit report. Not a blocker — but no
   reload-based verification step may assert on NPCs, and 05.1-17 surfaces the limitation in the UI.
+
 - [UNBLOCKED 2026-08-02 — v27 shipped] Cell-aware teleport: provider commit b9363b5b0 added
   object::setParentCell + cellProperty::getWorldCellProperty in response to our change request.
   Defect now MEASURED, not inferred: our write is correct (9/9 read-backs exact), the player reaches
@@ -406,6 +408,7 @@ Roadmap-shaping decisions affecting current work:
   FOUR MORE ROWS REQUESTED (setPortalTransitionsEnabled, CollisionWorld::objectWarped, a child-object
   guard, ClientWorld::findClosestCellObjectFromWorldPosition — the last is what placement routing
   needs). setParentCell is game-thread-only: never reachable from the D-03 poll thread.
+
 - [UNREPRODUCED — do not treat as established] The "teleport does nothing after a scene change"
   defect has NEVER been captured under instrumentation. Two targeted attempts failed; in the second
   the player pointer DID change across a real scene recreate (2B018640→36C4EDD0) and all 7 writes
@@ -413,6 +416,7 @@ Roadmap-shaping decisions affecting current work:
   the replacement is built; Game::getPlayer() dynamic_casts through the freed ms_scene) but the
   trigger is scene RECREATION, not wsLoad. An earlier plan draft's N-tick stability gate was CUT for
   gating the wrong trigger; 05.1-18 ships instrumentation instead of a fix.
+
 - [PRE-EXISTING, own todo] The agent's D-03 poll thread (agent_main.cpp:145, a separate remote thread,
   Sleep(16)) reads and can WRITE the player via applyWrite (:548) with zero synchronization in the
   package. Mitigated — not unguarded: the whole span is SEH-wrapped (__try :292 / __except :592) and
