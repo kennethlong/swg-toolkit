@@ -1188,76 +1188,69 @@ bool teleportPlayerToWorldPos(const float pos[3], const char* origin, char* outN
         return false;
     }
 
-    const float t[12] = {
-        1.0f, 0.0f, 0.0f, pos[0],
-        0.0f, 1.0f, 0.0f, pos[1],
-        0.0f, 0.0f, 1.0f, pos[2],
-    };
+    void* const worldCell = swg::endpoints::getWorldCellProperty ? swg::endpoints::getWorldCellProperty() : nullptr;
+    void* const cellBefore = swg::endpoints::getParentCell ? swg::endpoints::getParentCell(player) : nullptr;
 
-    // Resolve the destination cell. findCellAtWorldPosition NEVER returns null (world-cell
-    // fallback), which matters because setParentCell FATALs on a null cell. Without the row we
-    // fall back to the pre-v28 behavior: write only, no reparent, interiors render wrong.
-    void* destCell = swg::endpoints::findCellAtWorldPosition
-        ? swg::endpoints::findCellAtWorldPosition(pos[0], pos[1], pos[2])
-        : nullptr;
-
-    if (destCell && swg::endpoints::setParentCell) {
-        void* worldCell = swg::endpoints::getWorldCellProperty ? swg::endpoints::getWorldCellProperty() : nullptr;
-        const int rc = swg::endpoints::setParentCell(player, destCell);
-
-        // v30: the SEQUENCED move. warpClient stamps m_previousTransform_p (so local movement
-        // reconciliation does not fight it), mints a CLIENT-side sequence number, and appends
-        // CM_netUpdateTransform with SEND|RELIABLE|DEST_AUTH_SERVER|DEST_AUTH_CLIENT — so the server
-        // is TOLD, and the local apply runs through handleNetUpdateTransform, which brings
-        // CollisionWorld::objectWarped and the FreeChaseCamera retarget with it.
-        //
-        // A raw setTransform_o2w is an UNSEQUENCED local write the server never hears about, so the
-        // next authoritative update legitimately overwrites it — measured live as a ~1s revert.
-        // Offline there is nothing to correct it, which is why editor-scene testing never showed it.
-        //
-        // ⚠ Per the provider (v30 §2a): warpClient does the warp + camera retarget internally, so we
-        // DROP setTransform_o2w, the PortalTransitionGuard bracket, and our explicit objectWarped.
-        // It does NOT reparent, which is why setParentCell above stays. Do not re-add the dropped
-        // three "for safety" — doubling them up is how the sweep/notification bugs came back.
-        //
-        // The shim takes WORLD coords and converts to parent space internally, mirroring
-        // setTransform_o2w, so a bookmark's stored x/y/z can be passed straight through.
-        int warpRc = -2;   // -2 = row unresolved
-        if (swg::endpoints::warpPlayer) {
-            warpRc = swg::endpoints::warpPlayer(pos[0], pos[1], pos[2]);
-        } else {
-            // Legacy SWGEmu / pre-v30 exe: fall back to the unsequenced write so the button still
-            // does something, and say plainly that it will not survive a live server.
-            PortalTransitionGuard guard;
-            swg::endpoints::setTransform_o2w(player, t);
-            if (swg::endpoints::objectWarped) swg::endpoints::objectWarped(player);
-        }
-
-        void* nowCell = swg::endpoints::getParentCell ? swg::endpoints::getParentCell(player) : nullptr;
-        char cb[256];
-        std::snprintf(cb, sizeof(cb),
-            "overlay: teleport cell — dest=%p world=%p setParentCell=%d after=%p warpClient=%d\n",
-            destCell, worldCell, rc, nowCell, warpRc);
-        dbg(cb);
-
-        if (outNote) {
-            const char* where = (worldCell && destCell == worldCell) ? "outside" : "interior cell";
-            if (warpRc == -2)
-                std::snprintf(outNote, outNoteCap, "moved (%s) — unsequenced, will revert on a live server", where);
-            else if (warpRc == 1)
-                std::snprintf(outNote, outNoteCap, "moved (%s)", where);
-            else
-                std::snprintf(outNote, outNoteCap, "reparented (%s) but warp returned %d", where, warpRc);
-        }
-        return true;
+    // ---- v31: ONE CALL. warpPlayer performs the WHOLE sequence internally ----
+    //
+    //   findClosestCellObjectFromWorldPosition -> setParentCell -> suppressed setTransform_o2p
+    //       -> CollisionWorld::objectWarped -> sendTransform(transform_p, reliable)
+    //
+    // We pass WORLD coords and do nothing else.
+    //
+    // ⚠ DO NOT call setParentCell around this (provider v31 §3). An external reparent FIGHTS the
+    // shim: sendTransform picks its message variant from parentage AT CALL TIME, so pre-reparenting
+    // changes which message is emitted. findCellAtWorldPosition/setParentCell stay bound because
+    // placement routing still needs them — they are simply not part of the teleport path any more.
+    //
+    // WHY THE v30 SHAPE FAILED, so nobody rebuilds it: warpClient sent CM_netUpdateTransform, and
+    // its handler ClientController::handleNetUpdateTransform (ClientController.cpp:433) OPENS by
+    // un-parenting — "if (getOwner()->getAttachedTo() != NULL) setParentCell(getWorldCellProperty())".
+    // The no-parent message structurally cannot place an object inside a cell; it exists to pull it
+    // out. So that primitive could never work for interiors in ANY coordinate space. The correct one
+    // is ClientController::sendTransform, which emits CM_netUpdateTransformWithParent carrying the
+    // cell id when attached.
+    int warpRc = -2;   // -2 = row unresolved
+    if (swg::endpoints::warpPlayer) {
+        warpRc = swg::endpoints::warpPlayer(pos[0], pos[1], pos[2]);
+    } else {
+        // Pre-v30 exe. Local-only move: correct visually, but the server is never told, so it will
+        // be overwritten by the next authoritative update on a live session. Say so in the note.
+        const float t[12] = {
+            1.0f, 0.0f, 0.0f, pos[0],
+            0.0f, 1.0f, 0.0f, pos[1],
+            0.0f, 0.0f, 1.0f, pos[2],
+        };
+        void* const destCell = swg::endpoints::findCellAtWorldPosition
+            ? swg::endpoints::findCellAtWorldPosition(pos[0], pos[1], pos[2]) : nullptr;
+        if (destCell && swg::endpoints::setParentCell) swg::endpoints::setParentCell(player, destCell);
+        { PortalTransitionGuard guard; swg::endpoints::setTransform_o2w(player, t); }
+        if (swg::endpoints::objectWarped) swg::endpoints::objectWarped(player);
     }
 
-    // Degraded path — no cell resolver. Honest, not silent.
-    swg::endpoints::setTransform_o2w(player, t);
-    if (outNote) std::snprintf(outNote, outNoteCap, "moved (no cell resolver — interiors may render wrong)");
-    dbg("overlay: teleport — findCellAtWorldPosition/setParentCell unresolved; wrote transform only\n");
+    // Read parentage AFTER the call. The v30 report logged it BEFORE warpPlayer's effect landed,
+    // which the provider correctly flagged as a misleading reading.
+    void* const cellAfter = swg::endpoints::getParentCell ? swg::endpoints::getParentCell(player) : nullptr;
+    {
+        char cb[256];
+        std::snprintf(cb, sizeof(cb),
+            "overlay: teleport cell — before=%p after=%p world=%p warpPlayer=%d\n",
+            cellBefore, cellAfter, worldCell, warpRc);
+        dbg(cb);
+    }
+
+    if (outNote) {
+        const char* where = (worldCell && cellAfter == worldCell) ? "outside" : "interior cell";
+        if (warpRc == -2)
+            std::snprintf(outNote, outNoteCap, "moved (%s) — local only, will revert on a live server", where);
+        else if (warpRc == 1)
+            std::snprintf(outNote, outNoteCap, "moved (%s)", where);
+        else
+            std::snprintf(outNote, outNoteCap, "warp returned %d", warpRc);
+    }
     return true;
 }
+
 
 // --- 05.1-09: HOST_CMD dispatch — the remote-trigger counterpart to the local ImGui buttons
 //     above (reload/editor-scene/teleport) plus DESPAWN_NODE (no local button exists for it).
