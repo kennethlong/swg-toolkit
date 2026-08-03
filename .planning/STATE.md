@@ -9,9 +9,9 @@ last_activity: 2026-08-02
 progress:
   total_phases: 15
   completed_phases: 10
-  total_plans: 101
+  total_plans: 103
   completed_plans: 96
-  percent: 95
+  percent: 93
 ---
 
 # Project State
@@ -26,7 +26,10 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 11 of 16 (05.1-16 inserted 2026-08-02, wave 2, runs after 05.1-08/before 05.1-09 — see 05.1-16-PLAN.md)
+Plan: 11 of 18 (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
+NOTE: WAVE 3 ORDER IS 17, 18, THEN 11, 12 — enforced by depends_on edges, not just prose.
+      05.1-17 (fix lossy reload) blocks 05.1-12 and 05.1-15; 05.1-18 (player-write stability
+      gate + cell read side) blocks 05.1-11. Both end in blocking live checkpoints.
 NOTE: 05.1-09 (wave 2, agent-side HOST_CMD dispatch) is now CLOSED — checkpoint APPROVED
       2026-08-02, all four remote actions (RELOAD_CURRENT_SCENE/LOAD_EDITOR_SCENE/TELEPORT/
       DESPAWN_NODE) verified live; 05.1-09-SUMMARY.md written. 05.1-10 had already executed
@@ -383,7 +386,37 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
 - e2e/04-workspace.spec.ts has 2 pre-existing failures (SidebarPanel title-update timing, Titlebar theme-select timeout) that will now surface in CI since 04.4-09 finally lets the lean job build+run E2E for real. Confirmed unrelated to 04.4-09 via A/B test. See deferred-items.md in 04.4 phase dir.
 - 05-12 Task 2 (checkpoint:human-verify, gate=blocking): maintainer in-world UAT pending -- attach to real advertised (swg-client-v2) and legacy (SWGEmu) clients and step through 05-12-PLAN.md how-to-verify steps 1-8 (cross-build targeting, mismatch warning, guard fail-closed, coalesced Revert ALL, clean detach incl. null-player, despawn-retarget). LIVE-03 and Phase 05 (12/12 plans) do not close until approved.
-- Plan 12/15 reload-to-confirm-persistence verification steps are invalidated by 05.1-09's finding: RELOAD_CURRENT_SCENE ack=1 is not evidence the world reloaded intact (snapshot objects can be un-registered ghosts, cantina/collision/creatures briefly missing). See .planning/todos/pending/reload-scene-is-lossy.md
+- [CLOSED 2026-08-02 — fixed upstream, VERIFIED LIVE] The lossy reload was an ENGINE defect, not our
+  usage: WorldSnapshot::loadStep() was pumped only from GroundScene::updateLoading(), which
+  early-returns unless m_loading, so an in-world load() started a parse nothing advanced. Provider
+  commit 04c3f8e11 hoists the pump into GroundScene::update() (per-frame, unconditional). Verified
+  live: world returns in 1-2s, progressively. Two earlier hypotheses FALSIFIED — do not re-derive:
+  (a) "we skip Utinni's spatial-subdivision teardown" (unload() already does it);
+  (b) "buildout vs authored split". RESIDUAL: the rebuild is ASYNC, so Plans 12/15 race it →
+  Plan 05.1-17 adds a completion barrier (advertised wsGetNodeCount) so ack=1 means "world rebuilt".
+- [NEW REGRESSION 2026-08-02, provider-side] The reload fix INVERTED one behavior: reload now restores
+  snapshot content (buildings/collision/banthas) but NO LONGER restores server-streamed NPCs (pre-fix
+  it was the opposite). Reported in the 2026-08-02 toolkit report. Not a blocker — but no
+  reload-based verification step may assert on NPCs, and 05.1-17 surfaces the limitation in the UI.
+- [UNBLOCKED 2026-08-02 — v27 shipped] Cell-aware teleport: provider commit b9363b5b0 added
+  object::setParentCell + cellProperty::getWorldCellProperty in response to our change request.
+  Defect now MEASURED, not inferred: our write is correct (9/9 read-backs exact), the player reaches
+  the target but stays cell=cantina, 28 DOORHIT-WAKE sweeps fire per teleport, and [PortalCullProbe]
+  goes 1095 lines → 0 after a loadScene. Settled: write o2w, do NOT convert. → Plan 05.1-18.
+  FOUR MORE ROWS REQUESTED (setPortalTransitionsEnabled, CollisionWorld::objectWarped, a child-object
+  guard, ClientWorld::findClosestCellObjectFromWorldPosition — the last is what placement routing
+  needs). setParentCell is game-thread-only: never reachable from the D-03 poll thread.
+- [UNREPRODUCED — do not treat as established] The "teleport does nothing after a scene change"
+  defect has NEVER been captured under instrumentation. Two targeted attempts failed; in the second
+  the player pointer DID change across a real scene recreate (2B018640→36C4EDD0) and all 7 writes
+  landed exactly. Mechanism is real in source (GameNetwork.cpp:480-505 deletes the old scene before
+  the replacement is built; Game::getPlayer() dynamic_casts through the freed ms_scene) but the
+  trigger is scene RECREATION, not wsLoad. An earlier plan draft's N-tick stability gate was CUT for
+  gating the wrong trigger; 05.1-18 ships instrumentation instead of a fix.
+- [PRE-EXISTING, own todo] The agent's D-03 poll thread (agent_main.cpp:145, a separate remote thread,
+  Sleep(16)) reads and can WRITE the player via applyWrite (:548) with zero synchronization in the
+  package. Mitigated — not unguarded: the whole span is SEH-wrapped (__try :292 / __except :592) and
+  documented as the T-05-32 accept-watch. Residual: SEH catches a UAF READ, never a silent UAF WRITE.
 
 ### Quick Tasks Completed
 
@@ -418,6 +451,8 @@ Stopped at: Completed 05.1-09-PLAN.md
   three-segment "Decoration · Cell · Building" — cell-name genuinely unresolvable in the current
   client's advertised catalog, all 150 rows checked) was explicitly approved by the maintainer to
   ship, deferred to Phase 5.2. Plan 05.1-05 is CLOSED. SUMMARY.md written and committed.
-Next session: continue with the phase's remaining plans — next up is 05.1-08 (wave 2), with 05.1-16
-  now a hard prerequisite that must land before 05.1-09.
+Next session: Wave 3, in this order — 05.1-17 (fix lossy reload), 05.1-18 (player-write stability
+  gate + cell read side), then 05.1-11 and 05.1-12. 17 and 18 were inserted 2026-08-02 after a
+  ground-truth pass against swg-client-v2 falsified the mechanisms both blocker todos had proposed;
+  both new plans end in blocking live checkpoints and can share one client session.
 Resume file: None

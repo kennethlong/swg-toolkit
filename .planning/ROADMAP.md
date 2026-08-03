@@ -387,7 +387,7 @@ Engineering ride-alongs owed by the pivot (handoff "Remaining follow-ups"):
   4. A user can ADD a new decoration end-to-end (021-A wizard pick → overlay ghost placement → persisted `.ilf` gains a new row that survives scene reload) and REMOVE a decoration with the same persistence guarantee.
   5. Rotation edits persist and reload correctly, and the agent `-1`-refused mapping fix ships (a refused rebind can never report a save-result).
 
-**Plans:** 7/16 plans executed
+**Plans:** 11/18 plans executed *(05.1-16 inserted 2026-08-02 into wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 into wave 3)*
 Plans:
 **Wave 0** *(parallel — no cross-plan dependencies)*
 - [x] 05.1-01-PLAN.md — Wave-0 gates: REBIND_REFUSED label fix, .ilf addNode/removeNode, decorationPersist kind=edit|add|remove + byte-exact round-trip tests
@@ -406,7 +406,9 @@ Plans:
 - [x] 05.1-09-PLAN.md — Agent consumes HOST_CMD (reload/editor-scene/teleport/despawn) + binds wsRemoveNode [autonomous: false]
 - [x] 05.1-10-PLAN.md — World panel shell: dockview registration + tree/mirror-toggle/live-strip/detail-card (019-A core)
 
-**Wave 3** *(blocked on Wave 2)*
+**Wave 3** *(blocked on Wave 2 — ORDER WITHIN THE WAVE IS 17, 18, THEN 11, 12; enforced by depends_on)*
+- [ ] 05.1-17-PLAN.md — Fix the lossy reload: bind the advertised wsGetNodeCount as a force-finish lever + collapse three reload call sites into one game-thread implementation [autonomous: false] — INSERTED 2026-08-02, blocks 05.1-12 and 05.1-15 (both verify persistence BY RELOADING, and an un-rebuilt world made a correctly-persisted object read as MISSING). Root cause verified against swg-client-v2: the phased snapshot parse is pumped only by the loading screen, so it never finishes in-world
+- [ ] 05.1-18-PLAN.md — Player-write stability gate (stale getPlayer() after a scene change) + object::getParentCell read binding + setParentCell slot pre-wired for provider v27 [autonomous: false] — INSERTED 2026-08-02, blocks 05.1-11 (D-07 bookmarks are built on teleport and must carry a cell reference from the start). The cell-parenting WRITE is provider-blocked: setParentCell is not in the advertised catalog
 - [ ] 05.1-11-PLAN.md — World panel: Activity + Scene accordions, teleport bookmarks, footer
 - [ ] 05.1-12-PLAN.md — Agent placement-mode: ghost/reticle/click-spawn/auto-arm + post-save temp-node despawn (021-A frame 2) [autonomous: false]
 
