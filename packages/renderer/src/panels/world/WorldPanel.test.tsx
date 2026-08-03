@@ -30,6 +30,11 @@ vi.mock('../../services/projectBinding', async (importOriginal) => {
   return { ...actual, readWorkspaceJson: vi.fn(), updateWorkspaceMeta: vi.fn() };
 });
 vi.mock('../../services/logService', () => ({ log: vi.fn() }));
+vi.mock('../../services/hostCommand', () => ({
+  sendReloadCurrentScene: vi.fn(),
+  sendLoadEditorScene: vi.fn(),
+  sendTeleport: vi.fn(),
+}));
 
 import WorldPanel from './WorldPanel';
 import { useWorldEditorStore, worldEditorRowId, worldEditorBuildingRowId } from '../../state/worldEditorStore';
@@ -40,6 +45,8 @@ import { resolveScanRoot, scanWorldEditorState } from '../../services/worldEdito
 import { makeReadVfs, reconcileMirrorMode } from '../../services/decorationPersistOrchestrator';
 import { readWorkspaceJson, updateWorkspaceMeta } from '../../services/projectBinding';
 import { log } from '../../services/logService';
+import { sendReloadCurrentScene, sendLoadEditorScene, sendTeleport } from '../../services/hostCommand';
+import { formatPersistMessage } from '../../state/worldEditorStore';
 import type { WorkspaceBindingMeta } from '@swg/contracts';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -436,5 +443,183 @@ describe('WorldPanel — 019-A tree/mirror-toggle/live-strip/detail-card spine',
     renderPanel();
 
     expect(screen.queryByText(/attached client differs/i)).toBeNull();
+  });
+});
+
+describe('WorldPanel — 019-A Activity accordion (D-06/SC1, D-10)', () => {
+  it('is collapsed by default, and expanding renders session persist history most-recent-first, styled by outcome', () => {
+    useWorldEditorStore.setState({
+      history: [
+        {
+          timestampISO: '2026-08-01T20:30:00.000Z',
+          buildingLabel: 'Cantina — Mos Eisley',
+          decorationLabel: 'x',
+          outcome: 'warn',
+          message: "couldn't match the picked table — recovered against the stock layout",
+        },
+        {
+          timestampISO: '2026-08-01T20:48:00.000Z',
+          buildingLabel: 'Guild Hall — Anchorhead',
+          decorationLabel: 'x',
+          outcome: 'error',
+          message: 'rebind failed — building not in the loaded snapshot',
+        },
+        {
+          timestampISO: '2026-08-01T21:07:00.000Z',
+          buildingLabel: 'Cantina — Mos Eisley',
+          decorationLabel: 'x',
+          outcome: 'ok',
+          message: 'Cantina Table saved — rebind OK, snapshot written',
+        },
+      ],
+    });
+    renderPanel();
+
+    // Collapsed by default — entries not in the DOM yet.
+    expect(screen.queryAllByTestId('world-activity-entry')).toHaveLength(0);
+
+    fireEvent.click(screen.getByText('Activity'));
+
+    const entries = screen.getAllByTestId('world-activity-entry');
+    expect(entries).toHaveLength(3);
+    // Most-recent-first.
+    expect(entries[0].textContent).toContain('Cantina Table saved — rebind OK, snapshot written');
+    expect(entries[0].getAttribute('data-outcome')).toBe('ok');
+    expect(entries[1].getAttribute('data-outcome')).toBe('error');
+    expect(entries[1].textContent).toContain('rebind failed — building not in the loaded snapshot');
+    expect(entries[2].getAttribute('data-outcome')).toBe('warn');
+    expect(entries[2].textContent).toContain("couldn't match the picked table — recovered against the stock layout");
+  });
+
+  it('an empty history renders a neutral placeholder line, not a blank expanded section', () => {
+    useWorldEditorStore.setState({ history: [] });
+    renderPanel();
+
+    fireEvent.click(screen.getByText('Activity'));
+
+    expect(screen.getByText('no activity yet this session')).not.toBeNull();
+    expect(screen.queryAllByTestId('world-activity-entry')).toHaveLength(0);
+  });
+
+  it('D-10: an entry carrying the full mirror-off hybrid-session detail renders that ENTIRE sentence, untruncated', () => {
+    const fullMessage = formatPersistMessage('saved', false);
+    useWorldEditorStore.setState({
+      history: [
+        {
+          timestampISO: new Date().toISOString(),
+          buildingLabel: 'Cantina — Mos Eisley',
+          decorationLabel: 'x',
+          outcome: 'ok',
+          message: fullMessage,
+        },
+      ],
+    });
+    renderPanel();
+
+    fireEvent.click(screen.getByText('Activity'));
+
+    const entries = screen.getAllByTestId('world-activity-entry');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].textContent).toContain(fullMessage);
+    expect(entries[0].textContent).toContain(
+      '— mirror off — not visible on hybrid sessions until reload into an editor scene',
+    );
+  });
+});
+
+describe('WorldPanel — 019-A Scene accordion + footer (D-07, ROUND 3 R11a)', () => {
+  it('the Editor-scene and Reload-scene buttons are disabled with a "no live session" hint offline, and never call hostCommand.ts on click', () => {
+    renderPanel();
+    fireEvent.click(screen.getByText('Scene'));
+
+    const loadBtn = screen.getByRole('button', { name: 'Load editor scene' }) as HTMLButtonElement;
+    const reloadBtn = screen.getByRole('button', { name: 'Reload scene' }) as HTMLButtonElement;
+    expect(loadBtn.disabled).toBe(true);
+    expect(reloadBtn.disabled).toBe(true);
+    expect(loadBtn.title).toBe('no live session');
+    expect(reloadBtn.title).toBe('no live session');
+
+    fireEvent.click(loadBtn);
+    fireEvent.click(reloadBtn);
+    expect(sendLoadEditorScene).not.toHaveBeenCalled();
+    expect(sendReloadCurrentScene).not.toHaveBeenCalled();
+  });
+
+  it('when attached, "Editor scene" calls sendLoadEditorScene with the overlay\'s own default terrain/avatar, and "Reload scene" calls sendReloadCurrentScene — both with the live mappingName', () => {
+    useLiveStore.setState({
+      status: { kind: 'attached', pid: 1234, mappingName: 'm' },
+      clientLabel: '/bound/client/SwgClient_r.exe',
+    });
+    renderPanel();
+    fireEvent.click(screen.getByText('Scene'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load editor scene' }));
+    expect(sendLoadEditorScene).toHaveBeenCalledWith(
+      'm',
+      'terrain/tatooine.trn',
+      'object/creature/player/shared_human_male.iff',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reload scene' }));
+    expect(sendReloadCurrentScene).toHaveBeenCalledWith('m');
+  });
+
+  it('seeded worldEditorBookmarks render as rows (name + coords) and dispatch sendTeleport with their exact coords when attached', () => {
+    vi.mocked(readWorkspaceJson).mockReturnValue(
+      defaultMeta({
+        worldEditorBookmarks: [
+          { name: 'Mos Eisley cantina', scene: '', x: 3428, y: 8, z: -4788 },
+          { name: 'Anchorhead', scene: '', x: 62, y: 0, z: -5340 },
+        ],
+      }),
+    );
+    useLiveStore.setState({
+      status: { kind: 'attached', pid: 1234, mappingName: 'm' },
+      clientLabel: '/bound/client/SwgClient_r.exe',
+    });
+    renderPanel();
+    fireEvent.click(screen.getByText('Scene'));
+
+    const rows = screen.getAllByTestId('world-bookmark-row');
+    expect(rows).toHaveLength(2);
+    expect(screen.getByText('Mos Eisley cantina')).not.toBeNull();
+    expect(screen.getByText('Anchorhead')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Teleport to Mos Eisley cantina' }));
+    expect(sendTeleport).toHaveBeenCalledWith('m', 3428, 8, -4788);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Teleport to Anchorhead' }));
+    expect(sendTeleport).toHaveBeenCalledWith('m', 62, 0, -5340);
+  });
+
+  it('a bookmark row never dispatches sendTeleport while offline (no live session)', () => {
+    vi.mocked(readWorkspaceJson).mockReturnValue(
+      defaultMeta({ worldEditorBookmarks: [{ name: 'Anchorhead', scene: '', x: 62, y: 0, z: -5340 }] }),
+    );
+    renderPanel();
+    fireEvent.click(screen.getByText('Scene'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Teleport to Anchorhead' }));
+    expect(sendTeleport).not.toHaveBeenCalled();
+  });
+
+  it('the footer renders "+ Add decoration…" and "Stage to project" with the exact 019-A labels', () => {
+    renderPanel();
+
+    expect(screen.getByText('+ Add decoration…')).not.toBeNull();
+    expect(screen.getByText('Stage to project')).not.toBeNull();
+  });
+
+  it('ROUND 3 R11a: clicking "Stage to project" shows the honest "not yet wired" message, never the sketch mock\'s success-implying staged-count copy', () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByText('Stage to project'));
+
+    expect(log).toHaveBeenCalledWith('info', 'log', expect.stringContaining('not yet wired'));
+    expect(log).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.stringMatching(/\d+ files? staged/i),
+    );
   });
 });

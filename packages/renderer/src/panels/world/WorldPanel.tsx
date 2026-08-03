@@ -2,11 +2,13 @@
  * packages/renderer/src/panels/world/WorldPanel.tsx
  * The World dockview tab (sketch 019-A, Variant A — Building Tree). 05.1-10 Task 2.
  *
- * Builds THIS plan's slice of 019-A's spine: the building-first tree (buildings own the
- * hierarchy, decorations nest under their building), the mirror-mode toggle (wired to Plan 06's
- * per-project reconcileMirrorMode), the live-session strip (mirrors StatusBar.tsx's useLiveStore
- * idiom), and a selection detail card. The Activity/Scene accordions and the footer's
- * Add-decoration/Stage buttons are Plan 11's scope (out of this file for now).
+ * Builds 019-A's full spine: the building-first tree (buildings own the hierarchy, decorations
+ * nest under their building), the mirror-mode toggle (wired to Plan 06's per-project
+ * reconcileMirrorMode), the live-session strip (mirrors StatusBar.tsx's useLiveStore idiom), and
+ * a selection detail card (all 05.1-10 Task 2) — plus (05.1-11) the Activity accordion (D-06
+ * session persist history), the Scene accordion (D-07 editor-scene launcher/reload/teleport
+ * bookmarks), and the footer's Add-decoration/Stage-to-project buttons (both intentional stubs
+ * this plan, per their own behavior specs — see handleStubClick call sites below).
  *
  * resolveOverridePair() (ROUND 4/W3, ROUND 5/V6, ROUND 6/X1) is the ONE shared, null-safe helper
  * every write/refresh call site in this file uses to resolve {overrideDir, readVfs, meta,
@@ -41,15 +43,24 @@ import {
   parseWorldEditorRowId,
   type SessionOverlayStatus,
   type PersistHistoryEntry,
+  type PersistOutcome,
 } from '../../state/worldEditorStore';
 import type { WorldEditorBuilding, WorldEditorDecoration } from '../../services/worldEditorScan';
 import { useLiveStore } from '../../state/liveStore';
 import { useWorkspaceStore } from '../../state/workspaceStore';
 import { resolveScanRoot } from '../../services/worldEditorScan';
 import { makeReadVfs, reconcileMirrorMode } from '../../services/decorationPersistOrchestrator';
-import { readWorkspaceJson } from '../../services/projectBinding';
+import { readWorkspaceJson, updateWorkspaceMeta } from '../../services/projectBinding';
 import { readInteriorLayoutFileName } from '../../services/buildingTemplate';
 import { log } from '../../services/logService';
+import { sendReloadCurrentScene, sendLoadEditorScene, sendTeleport } from '../../services/hostCommand';
+
+type WorldEditorBookmark = NonNullable<WorkspaceBindingMeta['worldEditorBookmarks']>[number];
+
+/** The overlay's own manual-fields defaults (overlay.cpp:1637-1638) — the Scene accordion's
+ *  Editor-scene launcher starts from the SAME defaults the in-game ImGui fields use. */
+const DEFAULT_EDITOR_TERRAIN = 'terrain/tatooine.trn';
+const DEFAULT_EDITOR_AVATAR = 'object/creature/player/shared_human_male.iff';
 
 // ─── Small formatting helpers ───────────────────────────────────────────────────
 
@@ -112,6 +123,74 @@ function badgeColors(kind: Badge['kind']): { background: string; color: string }
   return { background: 'var(--color-accent-dim)', color: 'var(--color-accent)' };
 }
 
+// ─── Activity accordion helpers (D-06/SC1) ───────────────────────────────────────
+
+/** Words-only outcome glyph — matches sketch 019-A's ok/err/wrn status-line idiom (never a raw
+ *  code, per SC1). */
+function outcomeGlyph(outcome: PersistOutcome): string {
+  if (outcome === 'ok') return '✓';
+  if (outcome === 'warn') return '△';
+  return '✗';
+}
+
+function outcomeColor(outcome: PersistOutcome): string {
+  if (outcome === 'ok') return 'var(--color-accent)';
+  if (outcome === 'warn') return 'var(--color-warn)';
+  return 'var(--color-danger)';
+}
+
+// ─── Shared collapsible-section header (Activity/Scene reuse the SAME primitive "Edited
+//     buildings" already established — never a second collapsible implementation) ──────────────
+
+function AccordionHeader({
+  label,
+  open,
+  onToggle,
+  chip,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  chip: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      onClick={onToggle}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '7px 12px',
+        background: 'var(--color-header)',
+        borderTop: '1px solid var(--color-border)',
+        borderBottom: '1px solid var(--color-border)',
+        fontWeight: 600,
+        cursor: 'pointer',
+      }}
+    >
+      <span aria-hidden="true" style={{ fontSize: 9, color: 'var(--color-text-faint)' }}>
+        {open ? '▾' : '▸'}
+      </span>
+      {label}
+      <span
+        style={{
+          marginLeft: 'auto',
+          font: '600 10px/1 var(--font-sans)',
+          padding: '3px 7px',
+          borderRadius: 'var(--radius-full)',
+          background: 'var(--color-widget)',
+          color: 'var(--color-text-muted)',
+        }}
+      >
+        {chip}
+      </span>
+    </div>
+  );
+}
+
 // ─── D-07b client-path mismatch check ────────────────────────────────────────────
 
 /** Same longest-prefix, case-insensitive comparison resolveRunningClientOverrideDir already uses
@@ -155,6 +234,17 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
   const [scanRootAvailable, setScanRootAvailable] = useState(false);
   const [mirrorToStockIlf, setMirrorToStockIlf] = useState(true);
   const [buildingsOpen, setBuildingsOpen] = useState(true);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [sceneOpen, setSceneOpen] = useState(false);
+
+  // ── Scene accordion state (D-07) ────────────────────────────────────────────────────────────
+  const [edTerrain, setEdTerrain] = useState(DEFAULT_EDITOR_TERRAIN);
+  const [edAvatar, setEdAvatar] = useState(DEFAULT_EDITOR_AVATAR);
+  const [bookmarks, setBookmarks] = useState<WorldEditorBookmark[]>([]);
+  const [newBookmarkName, setNewBookmarkName] = useState('');
+  const [newBookmarkX, setNewBookmarkX] = useState('');
+  const [newBookmarkY, setNewBookmarkY] = useState('');
+  const [newBookmarkZ, setNewBookmarkZ] = useState('');
 
   // ── resolveOverridePair (ROUND 4/W3, ROUND 5/V6, ROUND 6/X1) ────────────────────────────────
   // A PLAIN function (never a hook) — reads studioDir via useWorkspaceStore.getState(), the
@@ -174,8 +264,22 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
 
   // (ROUND-3-REVIEW R2) refreshTree() re-reads readWorkspaceJson FRESH on every call via
   // resolveOverridePair — never a stale mount-time meta.
+  //
+  // Bookmarks (Plan 11, D-07) are read in this SAME effect/call, per the plan's own instruction
+  // ("same effect that already loads the mirror-toggle value"). Unlike the scan-root/tree,
+  // bookmarks must stay visible even when overrideDir fails to resolve (e.g. no live session but
+  // the project is still bound) — so when resolveOverridePair() already read meta, reuse it
+  // (no extra readWorkspaceJson call); only fall back to a direct read when the pair is null but
+  // a studioDir is still bound.
   function refreshTree(): void {
     const pair = resolveOverridePair();
+    const studioDir = useWorkspaceStore.getState().studioDir;
+    if (studioDir) {
+      const meta = pair !== null ? pair.meta : readWorkspaceJson(studioDir);
+      setBookmarks(meta.worldEditorBookmarks ?? []);
+    } else {
+      setBookmarks([]);
+    }
     if (pair === null) {
       setScanRootAvailable(false);
       return;
@@ -264,6 +368,54 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
     select(rowId);
   }
 
+  // ── Scene accordion actions (D-07) ──────────────────────────────────────────────────────────
+  function handleLoadEditorScene(): void {
+    if (mappingName === null) return; // defense-in-depth no-op — button is already disabled offline
+    sendLoadEditorScene(mappingName, edTerrain, edAvatar);
+  }
+
+  function handleReloadScene(): void {
+    if (mappingName === null) return;
+    sendReloadCurrentScene(mappingName);
+  }
+
+  function handleTeleportBookmark(bookmark: WorldEditorBookmark): void {
+    if (mappingName === null) return;
+    sendTeleport(mappingName, bookmark.x, bookmark.y, bookmark.z);
+  }
+
+  // T-05.1-11a: x/y/z are parsed as numbers before ever reaching a bookmark — a non-numeric
+  // entry is rejected here, never persisted, never passed to sendTeleport.
+  function handleAddBookmark(): void {
+    const studioDir = useWorkspaceStore.getState().studioDir;
+    if (!studioDir) return;
+    const name = newBookmarkName.trim();
+    const x = Number(newBookmarkX);
+    const y = Number(newBookmarkY);
+    const z = Number(newBookmarkZ);
+    if (name === '' || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      log('warn', 'log', 'Add bookmark: a name and numeric x/y/z are required.');
+      return;
+    }
+    // scene: '' — no field anywhere in this codebase tracks the attached client's current scene
+    // (see file header); fabricating one here would violate the accuracy_requirement.
+    const next: WorldEditorBookmark[] = [...bookmarks, { name, scene: '', x, y, z }];
+    setBookmarks(next);
+    updateWorkspaceMeta(studioDir, { worldEditorBookmarks: next });
+    setNewBookmarkName('');
+    setNewBookmarkX('');
+    setNewBookmarkY('');
+    setNewBookmarkZ('');
+  }
+
+  function handleRemoveBookmark(index: number): void {
+    const studioDir = useWorkspaceStore.getState().studioDir;
+    if (!studioDir) return;
+    const next = bookmarks.filter((_, i) => i !== index);
+    setBookmarks(next);
+    updateWorkspaceMeta(studioDir, { worldEditorBookmarks: next });
+  }
+
   // ── Selection resolution ────────────────────────────────────────────────────────────────────
   const parsedSelection = useMemo(() => {
     if (!selectedRowId) return null;
@@ -314,6 +466,7 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
 
   // ── D-07b mismatch hint ─────────────────────────────────────────────────────────────────────
   const attached = liveStatus.kind === 'attached';
+  const mappingName = liveStatus.kind === 'attached' ? liveStatus.mappingName : null;
   const clientMismatch =
     attached && clientLabel !== null && boundClientPath !== null && isClientPathMismatch(clientLabel, boundClientPath);
 
@@ -497,40 +650,12 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
       </div>
 
       {/* ── Edited buildings ─────────────────────────────────────────────────────────────────── */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={buildingsOpen}
-        onClick={() => setBuildingsOpen((v) => !v)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '7px 12px',
-          background: 'var(--color-header)',
-          borderTop: '1px solid var(--color-border)',
-          borderBottom: '1px solid var(--color-border)',
-          fontWeight: 600,
-          cursor: 'pointer',
-        }}
-      >
-        <span aria-hidden="true" style={{ fontSize: 9, color: 'var(--color-text-faint)' }}>
-          {buildingsOpen ? '▾' : '▸'}
-        </span>
-        Edited buildings
-        <span
-          style={{
-            marginLeft: 'auto',
-            font: '600 10px/1 var(--font-sans)',
-            padding: '3px 7px',
-            borderRadius: 'var(--radius-full)',
-            background: 'var(--color-widget)',
-            color: 'var(--color-text-muted)',
-          }}
-        >
-          {tree.length}
-        </span>
-      </div>
+      <AccordionHeader
+        label="Edited buildings"
+        open={buildingsOpen}
+        onToggle={() => setBuildingsOpen((v) => !v)}
+        chip={tree.length}
+      />
 
       {!scanRootAvailable && (
         <div style={{ padding: '10px 12px', fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
@@ -689,6 +814,195 @@ export default function WorldPanel(props: IDockviewPanelProps<any>): React.React
           </div>
         </div>
       )}
+
+      {/* ── Activity accordion (D-06/SC1, D-10) ─────────────────────────────────────────────── */}
+      <AccordionHeader
+        label="Activity"
+        open={activityOpen}
+        onToggle={() => setActivityOpen((v) => !v)}
+        chip={history.length}
+      />
+      {activityOpen && (
+        <div style={{ padding: '6px 12px 10px' }}>
+          {history.length === 0 ? (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', padding: '4px 0' }}>
+              no activity yet this session
+            </div>
+          ) : (
+            [...history].reverse().map((entry, i) => (
+              <div
+                key={i}
+                data-testid="world-activity-entry"
+                data-outcome={entry.outcome}
+                style={{ display: 'flex', gap: 8, padding: '4px 0', alignItems: 'flex-start' }}
+              >
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text-faint)',
+                    flex: 'none',
+                  }}
+                >
+                  {entry.timestampISO.slice(11, 16)}
+                </span>
+                <span style={{ fontSize: 'var(--text-xs)', color: outcomeColor(entry.outcome), overflowWrap: 'anywhere' }}>
+                  {outcomeGlyph(entry.outcome)} {entry.message}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── Scene accordion (D-07) ───────────────────────────────────────────────────────────── */}
+      <AccordionHeader label="Scene" open={sceneOpen} onToggle={() => setSceneOpen((v) => !v)} chip="editor" />
+      {sceneOpen && (
+        <div style={{ padding: '8px 12px 12px' }}>
+          {!attached && (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginBottom: 8 }}>
+              no live session — scene actions unavailable
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <input
+              aria-label="Editor scene terrain"
+              value={edTerrain}
+              onChange={(e) => setEdTerrain(e.target.value)}
+              style={sceneInputStyle}
+            />
+            <input
+              aria-label="Editor scene avatar template"
+              value={edAvatar}
+              onChange={(e) => setEdAvatar(e.target.value)}
+              style={sceneInputStyle}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <button
+              type="button"
+              aria-label="Load editor scene"
+              title={!attached ? 'no live session' : undefined}
+              disabled={!attached}
+              onClick={handleLoadEditorScene}
+              style={{ ...stubBtnStyle, opacity: attached ? 1 : 0.5, cursor: attached ? 'pointer' : 'not-allowed' }}
+            >
+              Editor scene ▸ {edTerrain}
+            </button>
+            <button
+              type="button"
+              aria-label="Reload scene"
+              title={!attached ? 'no live session' : undefined}
+              disabled={!attached}
+              onClick={handleReloadScene}
+              style={{ ...stubBtnStyle, opacity: attached ? 1 : 0.5, cursor: attached ? 'pointer' : 'not-allowed' }}
+            >
+              Reload scene
+            </button>
+          </div>
+
+          {bookmarks.map((bookmark, i) => (
+            <div
+              key={`${bookmark.name}-${i}`}
+              role="button"
+              data-testid="world-bookmark-row"
+              aria-label={`Teleport to ${bookmark.name}`}
+              title={!attached ? 'no live session' : undefined}
+              onClick={() => attached && handleTeleportBookmark(bookmark)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '5px 0',
+                borderBottom: '1px solid var(--color-border-soft)',
+                cursor: attached ? 'pointer' : 'not-allowed',
+                opacity: attached ? 1 : 0.6,
+              }}
+            >
+              <span aria-hidden="true" style={{ color: 'var(--color-text-faint)' }}>
+                ◎
+              </span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {bookmark.name}
+              </span>
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-text-faint)',
+                }}
+              >
+                {bookmark.x.toFixed(1)}, {bookmark.y.toFixed(1)}, {bookmark.z.toFixed(1)}
+              </span>
+              <button
+                type="button"
+                aria-label={`Remove bookmark ${bookmark.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRemoveBookmark(i);
+                }}
+                style={removeBookmarkBtnStyle}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+            <input
+              aria-label="New bookmark name"
+              placeholder="name"
+              value={newBookmarkName}
+              onChange={(e) => setNewBookmarkName(e.target.value)}
+              style={{ ...sceneInputStyle, flex: 1 }}
+            />
+            <input
+              aria-label="New bookmark x"
+              placeholder="x"
+              value={newBookmarkX}
+              onChange={(e) => setNewBookmarkX(e.target.value)}
+              style={{ ...sceneInputStyle, width: 48 }}
+            />
+            <input
+              aria-label="New bookmark y"
+              placeholder="y"
+              value={newBookmarkY}
+              onChange={(e) => setNewBookmarkY(e.target.value)}
+              style={{ ...sceneInputStyle, width: 48 }}
+            />
+            <input
+              aria-label="New bookmark z"
+              placeholder="z"
+              value={newBookmarkZ}
+              onChange={(e) => setNewBookmarkZ(e.target.value)}
+              style={{ ...sceneInputStyle, width: 48 }}
+            />
+            <button type="button" aria-label="Add bookmark" onClick={handleAddBookmark} style={stubBtnStyle}>
+              + bookmark
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Footer ────────────────────────────────────────────────────────────────────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 12px',
+          borderTop: '1px solid var(--color-border)',
+          marginTop: 'auto',
+        }}
+      >
+        <button type="button" onClick={() => handleStubClick('+ Add decoration…')} style={primaryBtnStyle}>
+          + Add decoration…
+        </button>
+        <span style={{ flex: 1 }} />
+        <button type="button" onClick={() => handleStubClick('Stage to project')} style={stubBtnStyle}>
+          Stage to project
+        </button>
+      </div>
     </div>
   );
 }
@@ -703,6 +1017,34 @@ const stubBtnStyle: React.CSSProperties = {
   font: '600 var(--text-xs)/1 var(--font-sans)',
   padding: '4px 9px',
   cursor: 'pointer',
+};
+
+/** Footer's primary "+ Add decoration…" CTA — sketch 019-A's `.btn.primary` (accent-filled,
+ *  the one non-neutral button in this panel). */
+const primaryBtnStyle: React.CSSProperties = {
+  ...stubBtnStyle,
+  background: 'var(--color-accent)',
+  color: 'var(--color-accent-text)',
+  border: '1px solid transparent',
+};
+
+const sceneInputStyle: React.CSSProperties = {
+  background: 'var(--color-widget)',
+  color: 'var(--color-text)',
+  border: '1px solid var(--color-border-soft)',
+  borderRadius: 'var(--radius-sm)',
+  font: 'var(--text-xs)/1 var(--font-mono)',
+  padding: '4px 6px',
+};
+
+const removeBookmarkBtnStyle: React.CSSProperties = {
+  background: 'transparent',
+  color: 'var(--color-text-faint)',
+  border: 'none',
+  cursor: 'pointer',
+  padding: '0 4px',
+  fontSize: 'var(--text-sm)',
+  lineHeight: 1,
 };
 
 function DetailRow({ k, v }: { k: string; v: React.ReactNode }): React.ReactElement {
