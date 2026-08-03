@@ -1166,11 +1166,33 @@ bool teleportPlayerToWorldPos(const float pos[3], const char* origin, char* outN
         return false;
     }
 
-    // SAFETY: mounted/child object. Refuse rather than corrupt.
-    if (swg::endpoints::getAttachedTo && swg::endpoints::getAttachedTo(player) != nullptr) {
-        if (outNote) std::snprintf(outNote, outNoteCap, "refused — dismount first (reparent would corrupt pose)");
-        dbg("overlay: teleport REFUSED — player is a child object (mounted/vehicle)\n");
-        return false;
+    // SAFETY: mounted/child object. Refuse rather than corrupt the pose.
+    //
+    // ⚠ getAttachedTo is NOT a mount probe on its own — FALSIFIED LIVE 2026-08-03. Cell attachment
+    // and mount attachment share m_attachedToObject (setParentCell does
+    // attachToObject_w(&cellProperty->getOwner(), false)), so ANY player standing inside a POB
+    // reports non-null. The first cut of this guard used it raw and refused every teleport made
+    // from inside the cantina — i.e. it broke the exact workflow this plan exists to enable.
+    // The true discriminator is the m_childObject FLAG (Object::isChildObject), which no advertised
+    // row exposes; requested from the provider.
+    //
+    // INTERIM NARROWING: only treat an attachment as a mount when the player's parent cell is the
+    // WORLD cell. Case analysis:
+    //   mounted outdoors  -> parent=world, attached=mount  -> REFUSED   (correct; the common case)
+    //   unmounted outdoors-> parent=world, attached=null   -> allowed   (correct)
+    //   unmounted indoors -> parent=cell,  attached=owner  -> allowed   (correct; was the false positive)
+    //   mounted indoors   -> parent=cell,  attached=mount  -> allowed   (NOT guarded — same exposure
+    //                                                                    as before this plan, not worse)
+    if (swg::endpoints::getAttachedTo && swg::endpoints::getWorldCellProperty &&
+        swg::endpoints::getParentCell) {
+        void* const attached  = swg::endpoints::getAttachedTo(player);
+        void* const parent    = swg::endpoints::getParentCell(player);
+        void* const worldCell = swg::endpoints::getWorldCellProperty();
+        if (attached != nullptr && parent == worldCell) {
+            if (outNote) std::snprintf(outNote, outNoteCap, "refused — dismount first (reparent would corrupt pose)");
+            dbg("overlay: teleport REFUSED — attached in the world cell (mount/vehicle)\n");
+            return false;
+        }
     }
 
     const float t[12] = {
