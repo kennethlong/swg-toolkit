@@ -413,7 +413,7 @@ Plans:
 - [ ] 05.1-12-PLAN.md — Agent placement-mode: ghost/reticle/click-spawn/auto-arm + post-save temp-node despawn (021-A frame 2) [autonomous: false]
 
 **Wave 4** *(blocked on Wave 3)*
-- [ ] 05.1-13-PLAN.md — World panel Remove row action: removeUndoStore + RemoveUndoToast + data-only/live-despawn remove (D-02/D-03/D-04)
+- [x] 05.1-13-PLAN.md — World panel Remove row action: removeUndoStore + RemoveUndoToast + data-only/live-despawn remove (D-02/D-03/D-04)
 
 **Wave 5** *(blocked on Wave 4)*
 - [ ] 05.1-14-PLAN.md — AddDecorationModal.tsx (021-A wizard) + World panel wiring, honest cell-name-gap degrade (D-04)

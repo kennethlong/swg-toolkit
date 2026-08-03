@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 05.1-11-PLAN.md (Task 3 checkpoint APPROVED by maintainer live session, 019-A element-complete, C11 closed). Next: 05.1-12 remains separately paused mid-flight at its own blocking live checkpoint (commits 51fd769, c52a43a) -- resume Wave 3 there."
-last_updated: "2026-08-03T18:53:04.524Z"
+stopped_at: Completed 05.1-13-PLAN.md (Remove/Undo D-02/D-03 closed, both tasks committed, SUMMARY.md written). 05.1-12 remains separately paused mid-flight at its own blocking live checkpoint (commits 51fd769, c52a43a to overlay.cpp) -- untouched by this plan.
+last_updated: "2026-08-03T19:18:17.846Z"
 last_activity: 2026-08-03
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 103
-  completed_plans: 99
-  percent: 96
+  completed_plans: 100
+  percent: 97
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 12 of 18 (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
+Plan: 13 of 18 (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
 NOTE: WAVE 3 ORDER IS 17, 18, THEN 11, 12 — enforced by depends_on edges, not just prose.
       05.1-17 (fix lossy reload) blocks 05.1-12 and 05.1-15; 05.1-18 (player-write stability
       gate + cell read side) blocks 05.1-11. Both end in blocking live checkpoints.
@@ -54,7 +54,7 @@ Last activity: 2026-08-03
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [██████████] 96%
+Progress: [██████████] 97%
 
 ### 02-03 key facts (crew-verified)
 
@@ -161,6 +161,7 @@ Progress: [██████████] 96%
 | Phase 05.1 P10 | single session | 2 tasks tasks | 4 files files |
 | Phase 05.1-live-world-editor-productization P09 | multi-session | 2 tasks tasks | 2 files files |
 | Phase 05.1 P11 | multi-session | 2 tasks | 2 files |
+| Phase 05.1 P13 | single session | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -375,6 +376,7 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1]: 05.1-09 checkpoint: Plan 12's placement-container rule REVISED (commit 01869df) -- container is derived from the CLICK ray hit (getContainingBuildingId), never the player or the World-panel preselection; fail-OPEN-on-building-id-0 rule REVERSED, 0 is authoritative 'outside any building', not an ambiguous sentinel
 - [Phase 05.1]: 05.1-11: Tasks 1+2 committed as one commit (b18c2f0) -- both landed in one interleaved edit pass (shared AccordionHeader extraction, shared imports/state block); same precedent as 05.1-08's combined RED/GREEN commit
 - [Phase 05.1]: 05.1-11: Task 3's Real-Electron HOST_CMD checkpoint APPROVED by the maintainer's live session (Reload-scene round trip, LAGGING ack per 05.1-17, rapid-click coalescing, plain x/y/z bookmark restoring interiors correctly) -- closes REVIEWS.md C11 before Waves 4-5 build further on the same channel
+- [Phase 05.1]: 05.1-13: RemoveUndoToast's sticky-error guard, mount-time reconstruction, and no-clear-at-top ordering built directly against the plan's final (ROUND 10/R9) spec -- removeDecorationRow/addBackDecorationRow reuse stageDurable (named in the plan's own read_first) and both fail closed on an empty buildingTemplateVfsPath
 
 ### Pending Todos
 
@@ -441,8 +443,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-03T18:53:04.502Z
-Stopped at: Completed 05.1-11-PLAN.md (Task 3 checkpoint APPROVED by maintainer live session, 019-A element-complete, C11 closed). Next: 05.1-12 remains separately paused mid-flight at its own blocking live checkpoint (commits 51fd769, c52a43a) -- resume Wave 3 there.
+Last session: 2026-08-03T19:18:17.824Z
+Stopped at: Completed 05.1-13-PLAN.md (Remove/Undo D-02/D-03 closed, both tasks committed, SUMMARY.md written). 05.1-12 remains separately paused mid-flight at its own blocking live checkpoint (commits 51fd769, c52a43a to overlay.cpp) -- untouched by this plan.
   state machine, arm-failure CAPTURE publish for C8). Tasks 1-2 executed and committed (d9feae7,
   f18790c). Task 3's blocking in-game checkpoint was APPROVED by the maintainer 2026-08-02, but not
   cleanly on the first pass: two live defects were found and fixed mid-checkpoint (Esc KEY binding
