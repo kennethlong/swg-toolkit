@@ -326,6 +326,25 @@ bool     g_lastRebindMirrorOff = false;
 // worldEditorStore.recordArmFailure has a real source — not a dead-end local-only global (C8).
 char     g_lastArmFailureReason[256] = {};
 
+// --- Placement mode (021-A Frame 2, Plan 12): agent-side state for the "Place in game" flow.
+//     Entered by HOST_CMD_ACTION_START_PLACEMENT (handleHostCommand(), below), rendered and
+//     click-handled by renderPlacementMode() (called from renderFrame(), after the hover-tracking
+//     block so it sees THIS frame's ray sample, before the decoration strip so the placement UI
+//     takes visual precedence while active). Exclusive with g_capArmed AND with itself
+//     (re-entry — Sonnet F10); see handleHostCommand()'s START_PLACEMENT case. ---
+bool     g_placementActive = false;
+char     g_placementTemplate[256] = {};
+char     g_placementCellName[128] = {};
+int64_t  g_placementBuildingId = 0;
+float    g_placementYaw = 0.0f;   // local preview-only yaw accumulator; R key increments while active
+
+// --- ROUND 3, R2 (HIGH, Opus, source-confirmed): capture kind/cellName — net-new to this file,
+//     first introduced by the placement click-to-spawn auto-arm (kind=ADD) below. EDIT-default
+//     initializer so a normal (non-ADD) arm never inherits a stale ADD/ARM_FAILED kind before its
+//     own reset sites (renderDecorationStrip()'s F-arm-success and Esc-cancel call sites) run. ---
+uint32_t g_capKind = 0;              // DECO_CAPTURE_KIND_EDIT(0) / _ADD(1)
+char     g_capCellName[128] = {};
+
 // --- 020-A Status Strip auto-clear timers (render-thread-only, ImGui::GetTime() seconds).
 //     Distinguishes "still showing an old saved/failed/couldn't-arm message" from "a brand
 //     new one just landed this frame" so saved/failed/couldn't-arm auto-clear back to
@@ -619,6 +638,64 @@ void buildStripLabel(const char* decoTemplate, int64_t buildingId, const char* b
     else std::snprintf(out, outCap, "%s", decoLabel[0] != '\0' ? decoLabel : "(decoration)");
 }
 
+// --- 021-A Frame 2 (Plan 12): placement-mode ghost/reticle/strip render step, gated on
+//     g_placementActive. Called from renderFrame() AFTER the hover-tracking block (reuses THIS
+//     frame's g_lastRayHit/g_lastRayPt sample from collideScreenRay — no second ray-cast
+//     mechanism) and BEFORE the decoration strip, per this plan's read_first note. R rotates the
+//     ghost's local preview yaw (becomes the spawned object's initial orientation); Esc cancels
+//     placement locally (no ack owed — a local keypress, not a HOST_CMD epoch, same as the
+//     existing decoration strip's own local Esc-button-not-key precedent — SWG's DirectInput
+//     input path means hkWndProc cannot CONSUME a keystroke, only observe it, so an Esc KEY here
+//     would double-fire into the game same as the strip's documented limitation). The click-to-
+//     spawn handler itself lands in Task 2 (attemptPlacementSpawn(), defined above this function
+//     once Task 2 runs) — this Task 1 revision renders state only. ---
+void renderPlacementMode() {
+    if (!g_placementActive) return;
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    // R/Esc gated the same way the existing F/G/R hotkeys are (D-11: never hijack a keystroke
+    // meant for an ImGui text field, e.g. the Editor-scene terrain/avatar inputs).
+    if (!io.WantCaptureKeyboard && ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+        g_placementYaw += 0.5235988f;   // +30 degrees per press (Claude's discretion — sketch just says "R rotate")
+        if (g_placementYaw > 6.2831853f) g_placementYaw -= 6.2831853f;
+    }
+    if (!io.WantCaptureKeyboard && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        g_placementActive = false;
+        return;
+    }
+
+    // --- Ghost + reticle at the cursor's floor hit (021-A Frame 2 DOM: ghost-item + reticle). ---
+    if (g_lastRayHit) {
+        ImDrawList* dl = ImGui::GetBackgroundDrawList();
+        const ImVec2 cursor = io.MousePos;
+        dl->AddCircle(cursor, 22.0f, IM_COL32(155, 232, 238, 220), 24, 2.0f);
+        dl->AddLine(ImVec2(cursor.x - 10.0f, cursor.y), ImVec2(cursor.x + 10.0f, cursor.y), IM_COL32(155, 232, 238, 220), 2.0f);
+        dl->AddLine(ImVec2(cursor.x, cursor.y - 10.0f), ImVec2(cursor.x, cursor.y + 10.0f), IM_COL32(155, 232, 238, 220), 2.0f);
+        dl->AddCircleFilled(ImVec2(cursor.x, cursor.y + 34.0f), 10.0f, IM_COL32(122, 168, 116, 130));
+    }
+
+    // --- Placement strip (021-A Frame 2 DOM: place-strip): "Placing: {template}" + hint text +
+    //     "Place here" affordance. ---
+    char deco[128] = {};
+    prettifyTemplateLabel(g_placementTemplate, deco, sizeof(deco));
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, 12.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    const ImGuiWindowFlags placementFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                             ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize |
+                                             ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##placementStrip", nullptr, placementFlags)) {
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "Placing: %s", deco[0] != '\0' ? deco : "(decoration)");
+        ImGui::SameLine();
+        ImGui::TextDisabled("click floor = place \xC2\xB7 R rotate \xC2\xB7 Esc cancel");
+        if (g_lastRayHit) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Place here")) { /* Task 2 wires this to attemptPlacementSpawn() */ }
+        }
+    }
+    ImGui::End();
+}
+
 // --- 020-A Status Strip: retires the old debug-probe CollapsingHeader (raw pointers, latch
 //     buttons, a raw-integer result-code text line — the exact SC1 violation this replaces). One thin
 //     top-center ImGui window, hotkey-driven (F arm, G/R move/rotate, Esc cancel). The
@@ -655,6 +732,11 @@ void renderDecorationStrip() {
                 channelWriteCapture(&cap, ++g_captureEpoch);
 
                 g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+            } else {
+                // ROUND 3, R2 (HIGH, Opus): a successful EDIT arm always clears any stale
+                // ADD/ARM_FAILED kind left over from a prior placement/arm-failure cycle — closes
+                // the duplicate-.ilf-row risk (the next Persist must write kind=EDIT, not ADD).
+                g_capKind = 0; g_capCellName[0] = '\0';
             }
         }
         if (g_capArmed) {
@@ -736,7 +818,14 @@ void renderDecorationStrip() {
                 ImGui::SameLine();
                 if (ImGui::Button("Persist")) persistDecorationEdit();
                 ImGui::SameLine();
-                if (ImGui::Button("Esc")) g_capArmed = false;
+                if (ImGui::Button("Esc")) {
+                    g_capArmed = false;
+                    // ROUND-3-REVIEW R13 (Cursor LOW, defensive): mirrors the F-arm success
+                    // site's reset above — bounds the stale-kind window to zero instead of
+                    // "until next arm" (distinguished from applyPendingRebind's own unrelated
+                    // `g_capArmed = false` on a successful rebind, which does NOT get this reset).
+                    g_capKind = 0; g_capCellName[0] = '\0';
+                }
                 break;
             }
             case DecoStripState::Saved:
@@ -1335,12 +1424,33 @@ void handleHostCommand() {
             // else: endpoint unresolved — code stays 0.
             break;
         }
+        case HOST_CMD_ACTION_START_PLACEMENT: {
+            // Exclusive with an already-armed decoration edit AND with itself (re-entry —
+            // Sonnet F10). Both refusals still reach the central publish below (R9 review, BB10 —
+            // the "agent always-acks" clause of Plan 08's HOST_CMD ACK PROTOCOL); a literal
+            // `return;` here would strand the renderer's pending-ack slot until its timeout.
+            if (g_capArmed || g_placementActive) {
+                code = 0;   // refused — the pending ghost/template (if any) is left untouched
+            } else {
+                std::strncpy(g_placementTemplate, cmd.str1, sizeof(g_placementTemplate) - 1);
+                g_placementTemplate[sizeof(g_placementTemplate) - 1] = '\0';
+                std::strncpy(g_placementCellName, cmd.str2, sizeof(g_placementCellName) - 1);
+                g_placementCellName[sizeof(g_placementCellName) - 1] = '\0';
+                g_placementBuildingId = static_cast<int64_t>(cmd.id);
+                g_placementYaw = 0.0f;
+                g_placementActive = true;
+                code = 1;
+            }
+            break;
+        }
+        case HOST_CMD_ACTION_CANCEL_PLACEMENT: {
+            g_placementActive = false;
+            code = 1;
+            break;
+        }
         default:
-            // START_PLACEMENT/CANCEL_PLACEMENT (4/5 — Plan 12's dedicated ghost/reticle
-            // state-machine work) and any unrecognized future action value: fail-closed, never a
-            // crash or a silent drop — code stays 0 and is published below, so Plan 12's future
-            // handler can widen this same dispatch by adding cases rather than fighting over
-            // epoch tracking (T-05.1-09b).
+            // Any unrecognized future action value: fail-closed, never a crash or a silent
+            // drop — code stays 0 and is published below (T-05.1-09b).
             code = 0;
             break;
     }
@@ -1442,6 +1552,12 @@ void renderFrame() {
             g_latchedFocus = g_lastHoverObj;
         }
     }
+
+    // 021-A Frame 2 (Plan 12): placement-mode ghost/reticle/strip + click-to-spawn. Runs AFTER
+    // the hover-tracking block above so it sees THIS frame's g_lastRayHit/g_lastRayObj/g_lastRayPt
+    // (same collideScreenRay/collideScreenRayObject sample — no second ray-cast), and BEFORE the
+    // decoration strip so the placement UI takes visual precedence while active (read_first note).
+    renderPlacementMode();
 
     // 020-A Status Strip: the productized in-game half of the boundary rule ("point at the
     // world" = overlay; rows/fields/text = the World panel). 05.1-16 REORDER (Bug A fix): now
