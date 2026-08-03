@@ -819,6 +819,30 @@ int      g_deferredTail = 0;   // next slot to produce
 int      g_deferredCount = 0;
 uint32_t g_deferredDroppedCount = 0;
 
+// 05.1-17: a LoadScene that has completed frame 1 (cleanupScene) and is waiting for frame 2
+// (loadScene) is MID-SEQUENCE. A Reload must never execute in that window: it would run
+// wsUnloadSnapshot+wsLoad against a scene cleanupScene already tore down, and frame 2 would
+// then load on top of the result. Set when frame 1 re-enqueues, cleared when frame 2 runs.
+//
+// Detection is deliberately "a LoadScene with sceneCleaned == true", NOT "any LoadScene in the
+// ring": for [Reload, LoadScene(frame 1)] the Reload running first is SAFE, and deferring it
+// would be a pointless behavior change.
+bool g_loadSceneAwaitingFrame2 = false;
+
+// 05.1-17: reload completion tracking. The ack for a HOST_CMD reload is published when the
+// snapshot parse actually finishes (wsIsParsePending -> 0), not when wsLoad returns, so that
+// ack=1 means "world rebuilt" and a remote verifier can trust it.
+//
+// Exactly ONE outstanding entry by construction — a second reload arriving while one is pending
+// is coalesced (epoch-0 only) or enqueued behind it, so two epochs can never wait on one signal.
+//
+// Bounded: Plan 08's HOST_CMD timeout is 11s, so we give up well under that and ack the existing
+// "did not complete" code rather than claiming a success we cannot see.
+constexpr uint32_t kReloadAckTimeoutTicks = 600;   // ~10s at 60fps; comfortably inside Plan 08's 11s
+uint32_t g_pendingReloadAckEpoch = 0;              // 0 = nothing outstanding
+uint32_t g_pendingReloadAckTicks = 0;
+bool     g_pendingReloadSawPending = false;        // saw wsIsParsePending()==1 at least once
+
 // Called from the ImGui button handler (render thread, inside Present) — enqueues only,
 // never calls the engine directly. Fixed capacity; drops-with-log on overflow rather than
 // growing (no allocation on the render thread).
@@ -852,11 +876,29 @@ bool enqueueDeferredLoadScene(const char* terrain, const char* player, uint32_t 
     return enqueueDeferredCmd(cmd);
 }
 
-// 05.1-09: Reload's remote-only counterpart to enqueueDeferredLoadScene above. No local ImGui
-// caller — the existing "Reload current scene" button keeps calling wsUnloadSnapshot()+wsLoad()
-// synchronously inline (unchanged, per this plan's task-2 action note); this path exists ONLY for
-// the HOST_CMD RELOAD_CURRENT_SCENE dispatch, so hostCmdEpoch is not defaulted.
+// 05.1-17: ALL reload callers now come through here — the HOST_CMD dispatch AND both local ImGui
+// buttons ("Reload current scene", "Load##scene"). The buttons used to call
+// wsUnloadSnapshot()+wsLoad() inline from inside Present; routing them through the queue is what
+// brings them under the g_loadSceneAwaitingFrame2 interleave guard (an inline click during a
+// LoadScene's two-frame window hit exactly the ordering bug that guard exists to prevent), and it
+// is the only way "no reload path skips completion tracking" can hold. hostCmdEpoch is NOT
+// defaulted: local callers must pass 0 explicitly so the ack ownership is visible at the call site.
+//
+// COALESCING (05.1-17 Task 2f) — epoch-0 into epoch-0 ONLY. A remote reload's epoch is marked
+// applied BEFORE enqueue, so the renderer is already waiting on it; coalescing one away, or
+// overwriting a pending slot's epoch, strands that epoch to an 11s timeout. Dropping a duplicate
+// LOCAL click owes nobody an ack, so that is the only safe merge.
 bool enqueueDeferredReload(const char* scene, uint32_t hostCmdEpoch) {
+    if (hostCmdEpoch == 0) {
+        for (int i = 0; i < g_deferredCount; ++i) {
+            const DeferredCmd& q = g_deferredQueue[(g_deferredHead + i) % kDeferredQueueCapacity];
+            if (q.kind == DeferredCmdKind::Reload && q.hostCmdEpoch == 0 &&
+                std::strncmp(q.scene, scene, sizeof(q.scene)) == 0) {
+                dbg("overlay: deferred Reload — coalesced duplicate local request\n");
+                return true;   // no-op success: nothing is waiting on an ack
+            }
+        }
+    }
     DeferredCmd cmd;
     cmd.kind = DeferredCmdKind::Reload;
     std::strncpy(cmd.scene, scene, sizeof(cmd.scene) - 1);
@@ -947,11 +989,14 @@ void drainDeferredCommands() {
                         // Queue-overflow drop: the command will now NEVER execute. Ack 0 so the
                         // renderer's pending slot resolves immediately instead of timing out.
                         if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(0, cmd.hostCmdEpoch);
+                    } else {
+                        g_loadSceneAwaitingFrame2 = true;   // 05.1-17: block Reload until frame 2 runs
                     }
                     break;   // do NOT load this frame — ack (if any) happens on frame 2 or the drop path above
                 }
                 dbg("overlay: deferred LoadScene — frame 2: loadScene (game thread, outside Present)");
                 swg::endpoints::gameLoadScene(cmd.terrain, cmd.player);
+                g_loadSceneAwaitingFrame2 = false;
                 invalidateSceneCachedPointers("loadScene");
                 // Ack-on-execution (this plan's design decision, stated in the checkpoint return):
                 // the scene has ACTUALLY swapped by this line, so code 1 here is truthful, not a
@@ -964,14 +1009,83 @@ void drainDeferredCommands() {
                     if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(0, cmd.hostCmdEpoch);
                     break;
                 }
+                // 05.1-17 INTERLEAVE GUARD. A LoadScene is mid two-frame sequence: running the
+                // reload here would unload+load against a scene cleanupScene already tore down,
+                // and frame 2 would then load on top of the result. Defer behind it.
+                //
+                // The re-enqueue lands past this pass's toProcess bound, so it cannot livelock.
+                // The `break` is load-bearing: falling through would both execute AND double-ack.
+                if (g_loadSceneAwaitingFrame2) {
+                    if (!enqueueDeferredCmd(cmd)) {
+                        // Already dequeued and now unqueueable — the command is LOST. Ack 0 or the
+                        // epoch strands to its 11s timeout (mirrors the LoadScene precedent above).
+                        dbg("overlay: deferred Reload — re-queue FAILED behind LoadScene; request dropped");
+                        if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(0, cmd.hostCmdEpoch);
+                    } else {
+                        dbg("overlay: deferred Reload — deferred behind an in-flight LoadScene\n");
+                    }
+                    break;
+                }
+                // Invalidate BEFORE the teardown: the object graph dies at wsUnloadSnapshot, not at
+                // wsLoad. Matches the LoadScene frame-1 precedent above.
+                invalidateSceneCachedPointers("reload current scene");
                 dbg("overlay: deferred Reload — wsUnloadSnapshot+wsLoad (game thread, outside Present)");
                 if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
                 swg::endpoints::wsLoad(cmd.scene);
-                invalidateSceneCachedPointers("reload current scene (HOST_CMD)");
-                if (cmd.hostCmdEpoch != 0) channelWriteHostCommandResult(1, cmd.hostCmdEpoch);
+                // 05.1-17: do NOT ack here. wsLoad only STARTS a phased parse; the world is not
+                // rebuilt for another ~1-2s. Hand the epoch to the completion poll so ack=1 means
+                // "world rebuilt" and Plans 12/15 can trust it as a timing signal.
+                if (cmd.hostCmdEpoch != 0) {
+                    if (swg::endpoints::wsIsParsePending) {
+                        g_pendingReloadAckEpoch  = cmd.hostCmdEpoch;
+                        g_pendingReloadAckTicks  = 0;
+                        g_pendingReloadSawPending = false;
+                    } else {
+                        // Legacy SWGEmu / row unresolved: degrade honestly rather than silently.
+                        // The ack means "the call was made", NOT "the world is rebuilt".
+                        dbg("overlay: deferred Reload — wsIsParsePending unbound; acking on execution (ack != rebuilt)\n");
+                        channelWriteHostCommandResult(1, cmd.hostCmdEpoch);
+                    }
+                }
                 break;
             case DeferredCmdKind::None:
                 break;
+        }
+    }
+
+    // 05.1-17: resolve a pending reload ack once the snapshot parse actually completes.
+    //
+    // POLL, never force. wsIsParsePending is the only ws* row with no finishLoadNow() prologue
+    // — wsGetNodeCount would force-finish here and freeze the client for the whole remaining
+    // parse (~1-2s), which is exactly the design this replaced. Do not "optimise" it back.
+    //
+    // The engine advances the parse itself every frame (GroundScene::update since 04c3f8e11),
+    // so this is purely observational.
+    if (g_pendingReloadAckEpoch != 0 && swg::endpoints::wsIsParsePending) {
+        const bool parsing = swg::endpoints::wsIsParsePending() != 0;
+        if (parsing) {
+            g_pendingReloadSawPending = true;   // proves we observed the rebuild, not just a gap
+        }
+        ++g_pendingReloadAckTicks;
+
+        if (!parsing) {
+            char buf[160];
+            std::snprintf(buf, sizeof(buf),
+                "overlay: reload complete — wsIsParsePending 1->0 after %u ticks (sawPending=%d); acking rebuilt\n",
+                g_pendingReloadAckTicks, g_pendingReloadSawPending ? 1 : 0);
+            dbg(buf);
+            channelWriteHostCommandResult(1, g_pendingReloadAckEpoch);
+            g_pendingReloadAckEpoch = 0;
+        } else if (g_pendingReloadAckTicks >= kReloadAckTimeoutTicks) {
+            // Never claim success on a timeout. 0 is Plan 08's existing "did not complete" code;
+            // no new ack vocabulary is invented here.
+            char buf[160];
+            std::snprintf(buf, sizeof(buf),
+                "overlay: reload ack TIMEOUT — still parsing after %u ticks; acking not-complete\n",
+                g_pendingReloadAckTicks);
+            dbg(buf);
+            channelWriteHostCommandResult(0, g_pendingReloadAckEpoch);
+            g_pendingReloadAckEpoch = 0;
         }
     }
 }
@@ -1321,15 +1435,24 @@ void renderFrame() {
 
         // Reload the CURRENT scene (one-click, v21 getSceneId) to see just-saved .ws edits.
         // Unload first to clear the sticky ms_sceneName, else load(currentScene) early-outs.
+        //
+        // 05.1-17: these buttons ENQUEUE now — they no longer call wsUnloadSnapshot()+wsLoad()
+        // inline. Inline meant a click during a LoadScene's two-frame window ran a reload between
+        // cleanupScene and loadScene; the queue's interleave guard is what prevents that. Reasoned
+        // exception to 05.1-16's "do not route working paths through the queue" note.
+        //
+        // ⚠ DISCLOSED RESIDUAL (provider handback 0b2e9259c §2): a building with server-owned
+        // occupants is now KEPT across a reload, and the kept root collides with the re-parsed node
+        // (createObject -> CEC_objectAlreadyExists; update() strips the NEW node's sphere handle).
+        // Such a building renders its PRE-EDIT state until a zone change or relog. Per-building
+        // interior refresh is requested to retire this; see the note rendered below.
         if (swg::endpoints::wsLoad) {
             char scene[128] = {};
             const bool haveScene =
                 swg::endpoints::getSceneId && swg::endpoints::getSceneId(scene, sizeof(scene)) > 0 && scene[0] != '\0';
             if (!haveScene) ImGui::BeginDisabled();
             if (ImGui::Button("Reload current scene")) {
-                if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
-                swg::endpoints::wsLoad(scene);
-                invalidateSceneCachedPointers("reload current scene");
+                enqueueDeferredReload(scene, 0);   // 0 = local; no ack owed
             }
             if (!haveScene) ImGui::EndDisabled();
             ImGui::SameLine();
@@ -1340,10 +1463,14 @@ void renderFrame() {
             ImGui::InputText("Scene id", s_sceneName, sizeof(s_sceneName));
             ImGui::SameLine();
             if (ImGui::Button("Load##scene") && s_sceneName[0] != '\0') {
-                if (swg::endpoints::wsUnloadSnapshot) swg::endpoints::wsUnloadSnapshot();
-                swg::endpoints::wsLoad(s_sceneName);
-                invalidateSceneCachedPointers("manual scene load");
+                enqueueDeferredReload(s_sceneName, 0);
             }
+
+            // Honest disclosure of the kept-root staleness (provider handback 0b2e9259c §2).
+            // Occupied buildings survive the reload but render their PRE-EDIT state, so a modder
+            // checking their work inside a populated building sees no change. Saying so beats
+            // letting them conclude the editor dropped the edit.
+            ImGui::TextDisabled("Occupied buildings are kept — their edits show after a zone change or relog.");
         }
 
         // --- Editor scene (offline, single-player): game::loadScene builds a FULL scene via the
