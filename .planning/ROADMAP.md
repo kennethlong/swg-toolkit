@@ -409,7 +409,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 — ORDER WITHIN THE WAVE IS 17, 18, THEN 11, 12; enforced by depends_on)*
 - [x] 05.1-17-PLAN.md — Make the editor reload ATOMIC: bind the v28 non-forcing wsIsParsePending poll, defer the HOST_CMD ack until the world is rebuilt, collapse three reload call sites into one game-thread implementation, cross-kind interleave guard + epoch-0 coalescing [autonomous: false] — INSERTED 2026-08-02. The lossy reload itself was an ENGINE defect, fixed upstream (04c3f8e11) and verified live; what remained was ours: the rebuild is async and Plans 12/15 read the world immediately after. An earlier force-finish barrier design was RETIRED at the provider request (1-2s client freeze). OWED to 05.1-11: the ack-timing step needs a UI caller that Plan 11 builds.
 - [x] 05.1-18-PLAN.md — Cell-aware teleport: isChildObject mount guard + single v31 warpPlayer call (world coords) [autonomous: false] — INSERTED 2026-08-02, VERIFIED LIVE 2026-08-03 in ALL FOUR directions (interior/exterior both ways) — the provider doorway acceptance test. Drove provider contract v25 -> v31 in one day; three of those rows exist because a live test falsified a belief on one side or the other.
-- [ ] 05.1-11-PLAN.md — World panel: Activity + Scene accordions, teleport bookmarks, footer
+- [x] 05.1-11-PLAN.md — World panel: Activity + Scene accordions, teleport bookmarks, footer
 - [ ] 05.1-12-PLAN.md — Agent placement-mode: ghost/reticle/click-spawn/auto-arm + post-save temp-node despawn (021-A frame 2) [autonomous: false]
 
 **Wave 4** *(blocked on Wave 3)*

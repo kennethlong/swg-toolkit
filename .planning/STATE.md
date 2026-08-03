@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Wave 3 — 05.1-11 (b18c2f0) and 05.1-12 (51fd769, c52a43a) both BUILT, both parked at blocking human-verify checkpoints. Wave 4 blocked: 05.1-13 depends_on 05.1-11.
-last_updated: "2026-08-03T17:58:59.094Z"
-last_activity: 2026-08-03 -- Phase 05.1 execution started
+stopped_at: "Completed 05.1-11-PLAN.md (Task 3 checkpoint APPROVED by maintainer live session, 019-A element-complete, C11 closed). Next: 05.1-12 remains separately paused mid-flight at its own blocking live checkpoint (commits 51fd769, c52a43a) -- resume Wave 3 there."
+last_updated: "2026-08-03T18:53:04.524Z"
+last_activity: 2026-08-03
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 103
-  completed_plans: 98
-  percent: 95
+  completed_plans: 99
+  percent: 96
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 11 of 18 (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
+Plan: 12 of 18 (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
 NOTE: WAVE 3 ORDER IS 17, 18, THEN 11, 12 — enforced by depends_on edges, not just prose.
       05.1-17 (fix lossy reload) blocks 05.1-12 and 05.1-15; 05.1-18 (player-write stability
       gate + cell read side) blocks 05.1-11. Both end in blocking live checkpoints.
@@ -35,7 +35,7 @@ NOTE: 05.1-09 (wave 2, agent-side HOST_CMD dispatch) is now CLOSED — checkpoin
       DESPAWN_NODE) verified live; 05.1-09-SUMMARY.md written. 05.1-10 had already executed
       2026-08-02 out of sequence (parallel wave 2). Both 09 and 10 are done; per-plan
       SUMMARY.md presence, not the position counter, remains the source of truth.
-Status: Executing Phase 05.1
+Status: Ready to execute
         Phase 05 closed 2026-07-19 (12/12 plans + maintainer UAT). The 07-19→07-31
         off-roadmap pivot delivered model-D interior-decoration persistence END-TO-END,
         verified live 2026-07-30/31: hover-pick → Arm → gizmo move → Persist → .ilf edit +
@@ -48,13 +48,13 @@ Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decorat
       panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
       decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
       (Blender Bridge).
-Last activity: 2026-08-03 -- Phase 05.1 execution started
+Last activity: 2026-08-03
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [██████████] 95%
+Progress: [██████████] 96%
 
 ### 02-03 key facts (crew-verified)
 
@@ -160,6 +160,7 @@ Progress: [██████████] 95%
 | Phase 05.1 P08 | 55min | 3 tasks | 6 files |
 | Phase 05.1 P10 | single session | 2 tasks tasks | 4 files files |
 | Phase 05.1-live-world-editor-productization P09 | multi-session | 2 tasks tasks | 2 files files |
+| Phase 05.1 P11 | multi-session | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -372,6 +373,8 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1]: 05.1-09: RELOAD_CURRENT_SCENE and LOAD_EDITOR_SCENE are both routed through the 05.1-16 deferred queue (proven FATAL from inside Present); TELEPORT and DESPAWN_NODE are called directly
 - [Phase 05.1]: 05.1-09: An ack of code=1 on RELOAD_CURRENT_SCENE is NOT evidence the world reloaded intact -- the call succeeded but the world-state was measurably degraded (cantina/collision/snapshot creatures missing until moving around). Invalidates a verification assumption Plans 12 and 15 depend on (reload-to-confirm-persistence)
 - [Phase 05.1]: 05.1-09 checkpoint: Plan 12's placement-container rule REVISED (commit 01869df) -- container is derived from the CLICK ray hit (getContainingBuildingId), never the player or the World-panel preselection; fail-OPEN-on-building-id-0 rule REVERSED, 0 is authoritative 'outside any building', not an ambiguous sentinel
+- [Phase 05.1]: 05.1-11: Tasks 1+2 committed as one commit (b18c2f0) -- both landed in one interleaved edit pass (shared AccordionHeader extraction, shared imports/state block); same precedent as 05.1-08's combined RED/GREEN commit
+- [Phase 05.1]: 05.1-11: Task 3's Real-Electron HOST_CMD checkpoint APPROVED by the maintainer's live session (Reload-scene round trip, LAGGING ack per 05.1-17, rapid-click coalescing, plain x/y/z bookmark restoring interiors correctly) -- closes REVIEWS.md C11 before Waves 4-5 build further on the same channel
 
 ### Pending Todos
 
@@ -438,8 +441,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-02T19:40:57.051Z
-Stopped at: Completed 05.1-09-PLAN.md
+Last session: 2026-08-03T18:53:04.502Z
+Stopped at: Completed 05.1-11-PLAN.md (Task 3 checkpoint APPROVED by maintainer live session, 019-A element-complete, C11 closed). Next: 05.1-12 remains separately paused mid-flight at its own blocking live checkpoint (commits 51fd769, c52a43a) -- resume Wave 3 there.
   state machine, arm-failure CAPTURE publish for C8). Tasks 1-2 executed and committed (d9feae7,
   f18790c). Task 3's blocking in-game checkpoint was APPROVED by the maintainer 2026-08-02, but not
   cleanly on the first pass: two live defects were found and fixed mid-checkpoint (Esc KEY binding
