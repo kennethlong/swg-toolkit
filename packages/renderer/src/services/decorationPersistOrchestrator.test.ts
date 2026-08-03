@@ -28,6 +28,10 @@ import { serializeIlf, parseIlf, type IlfNode } from './ilf';
 import { readInteriorLayoutFileName } from './buildingTemplate';
 import { writeWorkspaceJson, readWorkspaceJson } from './projectBinding';
 import { useWorldEditorStore } from '../state/worldEditorStore';
+import type { WorldEditorBuilding } from './worldEditorScan';
+import { sendDespawnNode } from './hostCommand';
+
+vi.mock('./hostCommand', () => ({ sendDespawnNode: vi.fn() }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const addon = require('@swg/live-inject') as { writeRebind: ReturnType<typeof vi.fn> };
@@ -51,6 +55,8 @@ let handleDecorationCapture: typeof import('./decorationPersistOrchestrator').ha
 let reconcileMirrorMode: typeof import('./decorationPersistOrchestrator').reconcileMirrorMode;
 let makeReadVfs: typeof import('./decorationPersistOrchestrator').makeReadVfs;
 let _clearOverrideDirCache: typeof import('./decorationPersistOrchestrator')._clearOverrideDirCache;
+let removeDecorationRow: typeof import('./decorationPersistOrchestrator').removeDecorationRow;
+let addBackDecorationRow: typeof import('./decorationPersistOrchestrator').addBackDecorationRow;
 
 beforeAll(async () => {
   const mod = await import('./decorationPersistOrchestrator');
@@ -58,6 +64,8 @@ beforeAll(async () => {
   reconcileMirrorMode = mod.reconcileMirrorMode;
   makeReadVfs = mod.makeReadVfs;
   _clearOverrideDirCache = mod._clearOverrideDirCache;
+  removeDecorationRow = mod.removeDecorationRow;
+  addBackDecorationRow = mod.addBackDecorationRow;
 });
 
 // ── Synthetic stock building template (SBOT → DERV + interiorLayoutFileName param) ─────────────
@@ -110,6 +118,7 @@ beforeEach(() => {
   fs.mkdirSync(OVERRIDE_DIR, { recursive: true });
   _clearOverrideDirCache();
   (addon.writeRebind as ReturnType<typeof vi.fn>).mockClear();
+  vi.mocked(sendDespawnNode).mockClear();
   useWorldEditorStore.setState({ history: [], hasFailureBadge: false });
 });
 
@@ -281,6 +290,112 @@ describe('handleDecorationCapture — ROUND 3/R3: durable worldEditorBuildingTem
 describe('makeReadVfs — ROUND 3/R4 export', () => {
   it('is importable from outside this module', () => {
     expect(typeof makeReadVfs).toBe('function');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// removeDecorationRow / addBackDecorationRow (05.1-13 Task 1, D-02/D-04/C4)
+//
+// NOTE (this plan's own top comment, per the plan's Byte-exact format coverage note): this
+// suite exercises the ORCHESTRATION/store layer around removeNode/addNode — it does NOT re-prove
+// ilf.ts's byte-exact format contract (already proven by Plan 01 Task 4's CORE-05 registration,
+// packages/harness/test/ilf-roundtrip.test.ts). As of this phase, `liveNetworkId` is passed as
+// `null` by EVERY real caller in this codebase (WorldPanel.tsx) — the non-null branch below is
+// unit-proven groundwork (C4), not an exercised end-to-end capability.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeBuilding(overrides: Partial<WorldEditorBuilding> = {}): WorldEditorBuilding {
+  return {
+    buildingId: BUILDING_ID,
+    displayLabel: 'Test Building',
+    editedIlfPath: path.join(OVERRIDE_DIR, 'interiorlayout', 'toolkit', `edit_${BUILDING_ID}.ilf`),
+    derivedTemplatePath: path.join(OVERRIDE_DIR, 'object', 'building', 'toolkit', `edit_${BUILDING_ID}.iff`),
+    buildingTemplateVfsPath: BUILDING_VFS,
+    decorations: [{ cellName: CELL, rowIndex: 0, objectTemplateName: TABLE, transform: origTable }],
+    ...overrides,
+  };
+}
+
+describe('removeDecorationRow — data-only ALWAYS (D-02); live-despawn is unit-proven groundwork (C4)', () => {
+  it('liveNetworkId:null (the ONLY value any current caller ever passes) removes the row and NEVER calls sendDespawnNode', () => {
+    seedStockBuilding(OVERRIDE_DIR, BUILDING_VFS, STOCK_ILF_VFS);
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+    const readVfs = makeReadVfs(OVERRIDE_DIR);
+
+    const result = removeDecorationRow(studioDir, OVERRIDE_DIR, readVfs, makeBuilding(), CELL, 0, null, null);
+
+    expect(result.rowIndex).toBe(0);
+    expect(result.cellName).toBe(CELL);
+    expect(sendDespawnNode).not.toHaveBeenCalled();
+    const editedPath = path.join(OVERRIDE_DIR, 'interiorlayout', 'toolkit', `edit_${BUILDING_ID}.ilf`);
+    expect(parseIlf(fs.readFileSync(editedPath))).toHaveLength(0);
+  });
+
+  it('a DIRECTLY-passed non-null liveNetworkId + non-null mappingName calls sendDespawnNode with the exact pair (mechanism proof, ROUND 3/R7)', () => {
+    seedStockBuilding(OVERRIDE_DIR, BUILDING_VFS, STOCK_ILF_VFS);
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+    const readVfs = makeReadVfs(OVERRIDE_DIR);
+
+    removeDecorationRow(studioDir, OVERRIDE_DIR, readVfs, makeBuilding(), CELL, 0, 'net-123', 'map-name');
+
+    expect(sendDespawnNode).toHaveBeenCalledWith('map-name', 'net-123');
+  });
+
+  it('a sendDespawnNode failure is swallowed — the function still returns its DecorationPersistResult (the data removal already committed)', () => {
+    seedStockBuilding(OVERRIDE_DIR, BUILDING_VFS, STOCK_ILF_VFS);
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+    const readVfs = makeReadVfs(OVERRIDE_DIR);
+    vi.mocked(sendDespawnNode).mockImplementationOnce(() => { throw new Error('agent unreachable'); });
+
+    expect(() => removeDecorationRow(studioDir, OVERRIDE_DIR, readVfs, makeBuilding(), CELL, 0, 'net-123', 'map-name')).not.toThrow();
+  });
+
+  it('a non-null liveNetworkId with a NULL mappingName skips the despawn call (ROUND 3/R7)', () => {
+    seedStockBuilding(OVERRIDE_DIR, BUILDING_VFS, STOCK_ILF_VFS);
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+    const readVfs = makeReadVfs(OVERRIDE_DIR);
+
+    removeDecorationRow(studioDir, OVERRIDE_DIR, readVfs, makeBuilding(), CELL, 0, 'net-123', null);
+
+    expect(sendDespawnNode).not.toHaveBeenCalled();
+  });
+
+  it("an empty buildingTemplateVfsPath throws the words-only 'not known yet' error BEFORE any readVfs/assembleDecorationEdit call (ROUND 3/R3)", () => {
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+    const readVfsSpy = vi.fn();
+    const building = makeBuilding({ buildingTemplateVfsPath: '' });
+
+    expect(() => removeDecorationRow(studioDir, OVERRIDE_DIR, readVfsSpy, building, CELL, 0, null, null))
+      .toThrow(/stock template path isn't known yet/);
+    expect(readVfsSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('addBackDecorationRow — Undo\'s re-add path (SAME add code path, D-01)', () => {
+  it('a remove followed by an addBack restores the exact node (byte-identical template/cell/transform) — append-only, ROUND-3-REVIEW R7', () => {
+    seedStockBuilding(OVERRIDE_DIR, BUILDING_VFS, STOCK_ILF_VFS);
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+    const readVfs = makeReadVfs(OVERRIDE_DIR);
+    const building = makeBuilding();
+
+    removeDecorationRow(studioDir, OVERRIDE_DIR, readVfs, building, CELL, 0, null, null);
+    const editedPath = path.join(OVERRIDE_DIR, 'interiorlayout', 'toolkit', `edit_${BUILDING_ID}.ilf`);
+    expect(parseIlf(fs.readFileSync(editedPath))).toHaveLength(0);
+
+    const removedNode: IlfNode = { objectTemplateName: TABLE, cellName: CELL, transform: origTable };
+    const result = addBackDecorationRow(studioDir, OVERRIDE_DIR, readVfs, building, removedNode);
+
+    expect(result.rowIndex).toBe(0);
+    expect(result.cellName).toBe(CELL);
+    const restored = parseIlf(fs.readFileSync(editedPath));
+    expect(restored).toHaveLength(1);
+    expect(restored[0]).toEqual(removedNode);
   });
 });
 

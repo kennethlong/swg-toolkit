@@ -33,13 +33,16 @@ import {
   writeStockMirror,
   removeStockMirror,
   type DecorationEdit,
+  type DecorationPersistResult,
 } from './decorationPersist';
+import type { IlfNode } from './ilf';
 import { readInteriorLayoutFileName } from './buildingTemplate';
-import { scanWorldEditorState } from './worldEditorScan';
+import { scanWorldEditorState, type WorldEditorBuilding } from './worldEditorScan';
 import { readVfsEntryBytes } from './readVfsEntryBytes';
 import { resolveOverrideDir } from './looseOverrideDeploy';
 import { detectClients } from './clientLocator';
 import { readWorkspaceJson, updateWorkspaceMeta } from './projectBinding';
+import { sendDespawnNode } from './hostCommand';
 import { useTreStore } from '../state/treStore';
 import { useStagingStore } from '../state/stagingStore';
 import { useWorldEditorStore } from '../state/worldEditorStore';
@@ -246,6 +249,132 @@ export function handleDecorationCapture(
     try { addon.writeRebind(ctx.mappingName, epoch, capture.buildingInstanceId, '', F.ABORT); } catch { /* channel gone */ }
     return { mirrorToStockIlf };
   }
+}
+
+// ─── removeDecorationRow / addBackDecorationRow (05.1-13 Task 1, D-02/D-03/D-04) ───────────────
+
+/**
+ * Remove one decoration row via the SAME model-D data path as an edit/add (D-01's "one code
+ * path" mandate) — `assembleDecorationEdit({ ..., kind: 'remove' })`. ALWAYS a durable,
+ * data-only `.ilf` row removal (D-02): the optional live-despawn branch below is implemented and
+ * unit-tested as a mechanism, but as of this phase no caller in this codebase ever passes a
+ * non-null `liveNetworkId` (C4 — `worldEditorStore.sessionOverlay` carries no live-node-id
+ * association to look up).
+ *
+ * (ROUND 3, R3) `building.buildingTemplateVfsPath === ''` (Plan 04's documented "unknown"
+ * sentinel — no live capture has ever been observed for this building under the durable
+ * per-project map) fails CLOSED with a words-only message BEFORE calling `assembleDecorationEdit`
+ * or touching `readVfs` at all — never an unfriendly VFS-resolution error deep inside it.
+ *
+ * (ROUND 3, R7) `mappingName` is a REAL declared parameter (not a free variable read off some
+ * closure) — if `liveNetworkId` is non-null while `mappingName` is null, the despawn call is
+ * SKIPPED with a logged warning rather than calling `sendDespawnNode` with a null mapping name.
+ * A `sendDespawnNode` failure is swallowed (best-effort — the data removal has already
+ * committed by this point; matches D-02's "stock file never touched, removal inherently
+ * reversible" framing).
+ */
+export function removeDecorationRow(
+  studioDir: string,
+  overrideDir: string,
+  readVfs: (vfsPath: string) => Buffer,
+  building: WorldEditorBuilding,
+  cellName: string,
+  rowIndex: number,
+  liveNetworkId: string | null,
+  mappingName: string | null,
+): DecorationPersistResult {
+  if (building.buildingTemplateVfsPath === '') {
+    throw new Error(
+      "removeDecorationRow: this building's stock template path isn't known yet — hover and " +
+      'arm/persist any decoration in it once first, then Remove will work',
+    );
+  }
+
+  const row = building.decorations.find((d) => d.cellName === cellName && d.rowIndex === rowIndex);
+  if (!row) {
+    throw new Error(`removeDecorationRow: no decoration at (cell="${cellName}", rowIndex=${rowIndex})`);
+  }
+
+  const mirrorToStockIlf = readWorkspaceJson(studioDir).mirrorToStockIlf ?? true;
+
+  const result = assembleDecorationEdit(
+    {
+      buildingInstanceId: building.buildingId,
+      buildingTemplateVfsPath: building.buildingTemplateVfsPath,
+      cellName,
+      decorationTemplateName: row.objectTemplateName,
+      originalO2p: row.transform,
+      newO2p: row.transform, // unused for kind='remove'
+      kind: 'remove',
+    },
+    {
+      readVfs,
+      overrideDir,
+      log: (m) => dbg(`removeDecorationRow: ${m}`),
+      mirrorToStockIlf,
+    },
+  );
+  stageDurable(result.stagedEntries);
+
+  // (D-04 groundwork — C4) Only ever exercised with a non-null liveNetworkId by a DIRECT unit
+  // test today; every real caller in this codebase always passes null.
+  if (liveNetworkId !== null) {
+    if (mappingName !== null) {
+      try {
+        sendDespawnNode(mappingName, liveNetworkId);
+      } catch (e) {
+        dbg(`removeDecorationRow: despawn failed (non-fatal, data removal already committed): ${(e as Error).message}`);
+      }
+    } else {
+      dbg('removeDecorationRow: liveNetworkId set but mappingName is null — skipping despawn call');
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Re-add a previously-removed decoration row via the SAME `assembleDecorationEdit({ ...,
+ * kind: 'add' })` path Plan 01/06 already exercise for ADD — Undo is NOT a bespoke code path
+ * (D-01). Because `addNode` is strictly append-only, the re-added row lands at the END of its
+ * cell, not its original position — an accepted, disclosed consequence (ROUND-3-REVIEW R7),
+ * not a defect.
+ */
+export function addBackDecorationRow(
+  studioDir: string,
+  overrideDir: string,
+  readVfs: (vfsPath: string) => Buffer,
+  building: WorldEditorBuilding,
+  removedNode: IlfNode,
+): DecorationPersistResult {
+  if (building.buildingTemplateVfsPath === '') {
+    throw new Error(
+      "addBackDecorationRow: this building's stock template path isn't known yet — the removal " +
+      "this Undo is restoring should have required it already; this is unexpected.",
+    );
+  }
+
+  const mirrorToStockIlf = readWorkspaceJson(studioDir).mirrorToStockIlf ?? true;
+
+  const result = assembleDecorationEdit(
+    {
+      buildingInstanceId: building.buildingId,
+      buildingTemplateVfsPath: building.buildingTemplateVfsPath,
+      cellName: removedNode.cellName,
+      decorationTemplateName: removedNode.objectTemplateName,
+      originalO2p: removedNode.transform,
+      newO2p: removedNode.transform,
+      kind: 'add',
+    },
+    {
+      readVfs,
+      overrideDir,
+      log: (m) => dbg(`addBackDecorationRow: ${m}`),
+      mirrorToStockIlf,
+    },
+  );
+  stageDurable(result.stagedEntries);
+  return result;
 }
 
 // ─── reconcileMirrorMode (D-09) ─────────────────────────────────────────────────
