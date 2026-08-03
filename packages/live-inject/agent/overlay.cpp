@@ -829,6 +829,14 @@ uint32_t g_deferredDroppedCount = 0;
 // would be a pointless behavior change.
 bool g_loadSceneAwaitingFrame2 = false;
 
+// 05.1-18: scene-epoch counter, bumped at OUR OWN cleanupScene/loadScene call sites — the only
+// signal that increments exactly once per scene swap. getSceneId() cannot substitute: it is keyed
+// on the terrain appearance template name, so reloading the SAME terrain leaves it unchanged while
+// ms_scene is destroyed and rebuilt, and a "pointer differed but scene id did not" reading would
+// misclassify that as NOT a scene boundary. Declared here (above drainDeferredCommands) because
+// the drain bumps it; the teleport logger below reads it.
+uint32_t g_sceneEpoch = 0;
+
 // 05.1-17: reload completion tracking. The ack for a HOST_CMD reload is published when the
 // snapshot parse actually finishes (wsIsParsePending -> 0), not when wsLoad returns, so that
 // ack=1 means "world rebuilt" and a remote verifier can trust it.
@@ -981,6 +989,7 @@ void drainDeferredCommands() {
                     // frame-2 invalidation stays as the belt-and-braces pass for anything loadScene
                     // itself creates and then discards.
                     invalidateSceneCachedPointers("cleanupScene (frame 1)");
+                    ++g_sceneEpoch;   // 05.1-18: the ONLY signal that bumps once per scene swap
                     swg::endpoints::gameCleanupScene();
                     DeferredCmd next = cmd;          // hostCmdEpoch carries forward with the copy
                     next.sceneCleaned = true;
@@ -996,6 +1005,7 @@ void drainDeferredCommands() {
                 }
                 dbg("overlay: deferred LoadScene — frame 2: loadScene (game thread, outside Present)");
                 swg::endpoints::gameLoadScene(cmd.terrain, cmd.player);
+                ++g_sceneEpoch;
                 g_loadSceneAwaitingFrame2 = false;
                 invalidateSceneCachedPointers("loadScene");
                 // Ack-on-execution (this plan's design decision, stated in the checkpoint return):
@@ -1090,6 +1100,124 @@ void drainDeferredCommands() {
     }
 }
 
+// --- 05.1-18: PortalTransitionGuard — the ONLY permitted caller of setPortalTransitionsEnabled.
+//
+//     That endpoint is GLOBAL, UNSCOPED engine state: no RAII, no refcount (provider's explicit
+//     warning, v28 handback §1.1). A leaked `false` disables portal transitions for the REST OF
+//     THE SESSION, and the resulting symptom — doors stop reparenting you, interiors render wrong
+//     everywhere — looks nothing like its cause. A destructor is therefore mandatory rather than
+//     stylistic: this overlay wraps regions in SEH, and an unwind past a manual re-enable would
+//     leak the flag silently.
+//
+//     Null-safe: if the row is unresolved the guard is inert and the caller still works, just
+//     without suppression (the pre-v28 behavior).
+struct PortalTransitionGuard {
+    bool engaged = false;
+    PortalTransitionGuard() {
+        if (swg::endpoints::setPortalTransitionsEnabled) {
+            swg::endpoints::setPortalTransitionsEnabled(false);
+            engaged = true;
+        }
+    }
+    ~PortalTransitionGuard() {
+        if (engaged) swg::endpoints::setPortalTransitionsEnabled(true);
+    }
+    PortalTransitionGuard(const PortalTransitionGuard&) = delete;
+    PortalTransitionGuard& operator=(const PortalTransitionGuard&) = delete;
+};
+
+// --- 05.1-18: cell-aware teleport, shared by the local button and the HOST_CMD action.
+//
+//     Implements the engine's own authored-move idiom verbatim (GroundScene.cpp:1492-1497), which
+//     the provider handed us and which ClientInteriorLayoutManager::applyInteriorLayout also uses
+//     internally:
+//
+//         setParentCell(C); { suppress } setTransform_o2p(...); { restore } objectWarped(player);
+//
+//     Why not "write o2w then reparent": that ordering was correct only while suppression was
+//     UNAVAILABLE. The portal sweep is a side effect of the transform write, so an unsuppressed
+//     write in the wrong cell can silently reparent the player mid-teleport and abort the DPVS +
+//     collision notifications. With the bracket the question is moot — do not reintroduce it.
+//
+//     Returns true if the player moved. Refuses (false) when mounted: setParentCell on a child
+//     object silently corrupts its pose in Release builds (the DEBUG_FATAL at Object.cpp:1396 is
+//     #if 0'd out), and getParentCell cannot detect it — it walks THROUGH mount attachment by
+//     design. getAttachedTo is the correct probe and is why v28 shipped it.
+//
+//     GAME-THREAD ONLY. setParentCell is a game-thread-only row; never reach this from the D-03
+//     poll thread in agent_main.cpp.
+bool teleportPlayerToWorldPos(const float pos[3], const char* origin, char* outNote, size_t outNoteCap) {
+    void* player = swg::endpoints::getPlayer ? swg::endpoints::getPlayer() : nullptr;
+
+    // One structured record per attempt, null included as a field rather than a separate line, so a
+    // capture can answer "did this click land in the cleanupScene->loadScene gap?" mechanically.
+    // The corrected mechanism is a transient NULL player in that window — not a stale pointer.
+    {
+        char tb[224];
+        std::snprintf(tb, sizeof(tb),
+            "overlay: teleport click — origin=%s player=%p sceneEpoch=%u target=(%.1f, %.1f, %.1f)\n",
+            origin, player, g_sceneEpoch, pos[0], pos[1], pos[2]);
+        dbg(tb);
+    }
+
+    if (!player || !swg::endpoints::setTransform_o2w) {
+        if (outNote) std::snprintf(outNote, outNoteCap, "no player — reload/scene-swap in progress?");
+        dbg("overlay: teleport refused — no player (likely inside the cleanupScene->loadScene window)\n");
+        return false;
+    }
+
+    // SAFETY: mounted/child object. Refuse rather than corrupt.
+    if (swg::endpoints::getAttachedTo && swg::endpoints::getAttachedTo(player) != nullptr) {
+        if (outNote) std::snprintf(outNote, outNoteCap, "refused — dismount first (reparent would corrupt pose)");
+        dbg("overlay: teleport REFUSED — player is a child object (mounted/vehicle)\n");
+        return false;
+    }
+
+    const float t[12] = {
+        1.0f, 0.0f, 0.0f, pos[0],
+        0.0f, 1.0f, 0.0f, pos[1],
+        0.0f, 0.0f, 1.0f, pos[2],
+    };
+
+    // Resolve the destination cell. findCellAtWorldPosition NEVER returns null (world-cell
+    // fallback), which matters because setParentCell FATALs on a null cell. Without the row we
+    // fall back to the pre-v28 behavior: write only, no reparent, interiors render wrong.
+    void* destCell = swg::endpoints::findCellAtWorldPosition
+        ? swg::endpoints::findCellAtWorldPosition(pos[0], pos[1], pos[2])
+        : nullptr;
+
+    if (destCell && swg::endpoints::setParentCell) {
+        void* worldCell = swg::endpoints::getWorldCellProperty ? swg::endpoints::getWorldCellProperty() : nullptr;
+        const int rc = swg::endpoints::setParentCell(player, destCell);
+        {
+            PortalTransitionGuard guard;              // suppress the sweep across the write
+            swg::endpoints::setTransform_o2w(player, t);
+        }
+        if (swg::endpoints::objectWarped) swg::endpoints::objectWarped(player);
+
+        void* nowCell = swg::endpoints::getParentCell ? swg::endpoints::getParentCell(player) : nullptr;
+        char cb[224];
+        std::snprintf(cb, sizeof(cb),
+            "overlay: teleport cell — dest=%p world=%p setParentCell=%d after=%p suppressed=%d warped=%d\n",
+            destCell, worldCell, rc, nowCell,
+            swg::endpoints::setPortalTransitionsEnabled ? 1 : 0,
+            swg::endpoints::objectWarped ? 1 : 0);
+        dbg(cb);
+
+        if (outNote) {
+            std::snprintf(outNote, outNoteCap,
+                (worldCell && destCell == worldCell) ? "moved (outside)" : "moved (interior cell)");
+        }
+        return true;
+    }
+
+    // Degraded path — no cell resolver. Honest, not silent.
+    swg::endpoints::setTransform_o2w(player, t);
+    if (outNote) std::snprintf(outNote, outNoteCap, "moved (no cell resolver — interiors may render wrong)");
+    dbg("overlay: teleport — findCellAtWorldPosition/setParentCell unresolved; wrote transform only\n");
+    return true;
+}
+
 // --- 05.1-09: HOST_CMD dispatch — the remote-trigger counterpart to the local ImGui buttons
 //     above (reload/editor-scene/teleport) plus DESPAWN_NODE (no local button exists for it).
 //     Structural analog: applyPendingRebind()'s per-frame consume-once-per-epoch shape (torn-read
@@ -1158,20 +1286,9 @@ void handleHostCommand() {
             // vec3 as world position) — inlined here rather than extracted into a shared helper
             // so the existing button's own instrumentation (click trace + read-back log, added by
             // 05.1-16 to diagnose the stale-player-after-reload defect) stays untouched.
-            if (swg::endpoints::getPlayer && swg::endpoints::setTransform_o2w) {
-                void* player = swg::endpoints::getPlayer();
-                if (player) {
-                    const float t[12] = {
-                        1.0f, 0.0f, 0.0f, cmd.vec3[0],
-                        0.0f, 1.0f, 0.0f, cmd.vec3[1],
-                        0.0f, 0.0f, 1.0f, cmd.vec3[2],
-                    };
-                    swg::endpoints::setTransform_o2w(player, t);
-                    code = 1;
-                }
-                // else: no player (mid reload/scene-swap) — code stays 0.
-            }
-            // else: endpoint(s) unresolved — code stays 0.
+            // 05.1-18: shared cell-aware implementation. Returns false for "no player" (the
+            // cleanupScene->loadScene window) and for a mounted refusal; both correctly ack 0.
+            if (teleportPlayerToWorldPos(cmd.vec3, "HOST_CMD", nullptr, 0)) code = 1;
             break;
         }
         case HOST_CMD_ACTION_DESPAWN_NODE: {
@@ -1502,57 +1619,15 @@ void renderFrame() {
             ImGui::SameLine();
             static const char* s_tpNote = nullptr;
             if (ImGui::Button("Go##teleport")) {
-                void* player = swg::endpoints::getPlayer();
-                // Unconditional trace: the in-UI note proved unreliable (long SameLine text clips off
-                // the right edge of the window), so the LOG is the authoritative signal for whether a
-                // teleport click registered at all and what the engine handed back.
-                {
-                    char tb[192];
-                    std::snprintf(tb, sizeof(tb),
-                        "overlay: teleport click — player=%p target=(%.1f, %.1f, %.1f)\n",
-                        player, s_tpPos[0], s_tpPos[1], s_tpPos[2]);
-                    dbg(tb);
-                }
-                if (player) {
-                    const float t[12] = {
-                        1.0f, 0.0f, 0.0f, s_tpPos[0],
-                        0.0f, 1.0f, 0.0f, s_tpPos[1],
-                        0.0f, 0.0f, 1.0f, s_tpPos[2],
-                    };
-                    swg::endpoints::setTransform_o2w(player, t);
-                    // Read the transform straight back. This discriminates the two failure modes the
-                    // 05.1-16 checkpoint could not tell apart from in-game observation alone:
-                    //   read-back == target  -> the write LANDED; something later moves the player
-                    //                           back (collision/authority/movement re-assert), or the
-                    //                           camera is what did not follow.
-                    //   read-back != target  -> the write itself did not take.
-                    if (swg::endpoints::getTransform_o2w) {
-                        // Same read idiom drawGizmo() uses: returns a Transform*, copy 12 floats
-                        // (row-major 3x4, translation in column 3).
-                        void* backPtr = swg::endpoints::getTransform_o2w(player);
-                        if (backPtr != nullptr) {
-                            float back[12] = {};
-                            std::memcpy(back, backPtr, sizeof(back));
-                            char rb[192];
-                            std::snprintf(rb, sizeof(rb),
-                                "overlay: teleport read-back — now=(%.1f, %.1f, %.1f) wanted=(%.1f, %.1f, %.1f)\n",
-                                back[3], back[7], back[11], s_tpPos[0], s_tpPos[1], s_tpPos[2]);
-                            dbg(rb);
-                        }
-                    }
-                    // KNOWN LIMITATION (05.1-16 checkpoint): this writes the WORLD transform only
-                    // and does not reparent the player's cell — object::setParentCell is not bound.
-                    // Teleporting to coords INSIDE a POB therefore leaves the player parented to the
-                    // world cell, so portal culling renders the interior wrong (walls read as
-                    // see-through). Outdoor teleports are unaffected. See the cell-aware-teleport todo.
-                    s_tpNote = "moved (interiors render wrong — world-cell parent, see todo)";
-                } else {
-                    // Previously a SILENT no-op: after a scene reload getPlayer() can return null and
-                    // the button appeared simply not to work, which is indistinguishable from a broken
-                    // build. Say so instead.
-                    s_tpNote = "no player — reload/scene-swap in progress?";
-                    dbg("overlay: teleport requested but getPlayer() returned null\n");
-                }
+                // 05.1-18: shared cell-aware implementation (RAII-suppressed bracket + objectWarped).
+                // The read-back trace that discriminated "write landed" from "write did not take"
+                // has served its purpose -- the write is proven correct (9/9 exact across two
+                // sessions) and the defect was cell parentage, not the transform. The cell-decision
+                // log line inside teleportPlayerToWorldPos supersedes it.
+                static char s_tpNoteBuf[128];
+                s_tpNoteBuf[0] = '\0';
+                teleportPlayerToWorldPos(s_tpPos, "button", s_tpNoteBuf, sizeof(s_tpNoteBuf));
+                s_tpNote = s_tpNoteBuf[0] ? s_tpNoteBuf : nullptr;
             }
             // OWN LINE, not SameLine — appended after the wide InputFloat3 + button this clipped off
             // the right edge of the window and read as "no message at all" during the 05.1-16 checkpoint.
