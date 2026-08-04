@@ -266,14 +266,10 @@ int   g_gizmoOp      = 0;   // 0=translate 1=rotate 2=scale
 int   g_gizmoMode    = 1;   // 0=world 1=local (default local: handles align to the object)
 bool  g_gizmoWasUsing = false;
 float g_gizmoOriginal34[12] = {};
-bool  g_allowTargetAnything = false;   // let the reticle lock onto any object
 
 // --- Ray-pick state. g_pickedId is a NetworkId VALUE (re-resolved to an Object*
-//     every frame via getObjectById — ABA-safe, never a cached raw pointer).
-//     g_pickPoint is the last world hit point (for cursor placement). ---
+//     every frame via getObjectById — ABA-safe, never a cached raw pointer). ---
 int64_t g_pickedId = 0;
-bool    g_havePickPoint = false;
-float   g_pickPoint[3] = {};
 
 // --- Id-less .ilf decoration reach: can the hover pointer reach an id-less .ilf
 //     decoration and can the gizmo move it? g_lastHoverObj tracks the most recent
@@ -1857,232 +1853,12 @@ void renderFrame() {
     // a bad pointer costs this label for one frame, never the rest of the overlay.
     renderDecorationStripGuarded();
 
-    // --- STATIC overlay (step 2): proof-of-life only, no engine interaction. ---
-    ImGui::SetNextWindowPos(ImVec2(24, 24), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowBgAlpha(0.75f);   // ~25% see-through onto the live scene
-    if (ImGui::Begin("SWG Toolkit — Live World Editor (Slice-0)")) {
-        const ImGuiIO& io = ImGui::GetIO();
-        ImGui::Text("In-game overlay is ALIVE.");
-        ImGui::Separator();
-        ImGui::Text("ImGui %s", ImGui::GetVersion());
-        ImGui::Text("%.1f FPS  (%.2f ms/frame)", io.Framerate, 1000.0f / (io.Framerate > 0 ? io.Framerate : 1.0f));
-        ImGui::Text("Backbuffer: %.0f x %.0f", io.DisplaySize.x, io.DisplaySize.y);
-        ImGui::Separator();
-
-        // --- Input proof (step 3): if these respond, the WndProc subclass works. ---
-        static int s_clicks = 0;
-        if (ImGui::Button("Click me")) s_clicks++;
-        ImGui::SameLine();
-        ImGui::Text("clicks: %d", s_clicks);
-        ImGui::Text("mouse: %.0f, %.0f", io.MousePos.x, io.MousePos.y);
-        ImGui::Text("WantCaptureMouse: %d  WantCaptureKeyboard: %d",
-                    io.WantCaptureMouse ? 1 : 0, io.WantCaptureKeyboard ? 1 : 0);
-        ImGui::Separator();
-
-        // --- Selection: let the reticle target ANY object, not just creatures/NPCs.
-        //     Advertised-only engine call; runs here on the game thread. ---
-        static bool s_allowAnyPrev = false;
-        const bool haveAllowAny = (swg::endpoints::setAllowTargetAnything != nullptr);
-        if (!haveAllowAny) ImGui::BeginDisabled();
-        ImGui::Checkbox("Allow target anything (select any object)", &g_allowTargetAnything);
-        if (!haveAllowAny) {
-            ImGui::EndDisabled();
-            ImGui::SameLine(); ImGui::TextDisabled("(unresolved)");
-        }
-        if (g_allowTargetAnything != s_allowAnyPrev) {
-            s_allowAnyPrev = g_allowTargetAnything;
-            if (swg::endpoints::setAllowTargetAnything)
-                swg::endpoints::setAllowTargetAnything(g_allowTargetAnything);
-        }
-        ImGui::Separator();
-
-        // --- Gizmo controls (step 4). Edits the current target, else the player. ---
-        ImGui::Checkbox("Enable transform gizmo", &g_gizmoEnabled);
-        if (g_gizmoEnabled) {
-            ImGui::TextDisabled("target-else-player · drag axes to move the live object");
-            ImGui::RadioButton("Translate", &g_gizmoOp, 0); ImGui::SameLine();
-            ImGui::RadioButton("Rotate", &g_gizmoOp, 1);    ImGui::SameLine();
-            ImGui::RadioButton("Scale", &g_gizmoOp, 2);
-            ImGui::RadioButton("World", &g_gizmoMode, 0);   ImGui::SameLine();
-            ImGui::RadioButton("Local", &g_gizmoMode, 1);
-            ImGui::TextDisabled("Esc while dragging = revert");
-        }
-        ImGui::Separator();
-
-        // --- World edit: insert an object at the player, then save to .ws (advertised
-        //     worldSnapshot editor). All calls run HERE on the game thread. ---
-        ImGui::TextDisabled("World edit (advertised snapshot)");
-        static char s_insertTemplate[256] = "";
-        static long long s_lastInsertId = 0;
-        static int s_lastSaveResult = -1;
-
-        const bool haveInsert = (swg::endpoints::wsAddObject != nullptr);
-        if (!haveInsert) ImGui::BeginDisabled();
-
-        // Grab the current selection's template so Insert spawns a known-valid copy.
-        if (ImGui::Button("Copy template from selection")) {
-            void* sel = resolveFocusObject();
-            if (sel && swg::endpoints::getTemplateFilename) {
-                const char* tn = swg::endpoints::getTemplateFilename(sel);
-                if (tn) {
-                    std::strncpy(s_insertTemplate, tn, sizeof(s_insertTemplate) - 1);
-                    s_insertTemplate[sizeof(s_insertTemplate) - 1] = '\0';
-                }
-            }
-        }
-        ImGui::InputText("Template", s_insertTemplate, sizeof(s_insertTemplate));
-        if (ImGui::Button("Insert at player") && s_insertTemplate[0] != '\0') {
-            void* player = swg::endpoints::getPlayer ? swg::endpoints::getPlayer() : nullptr;
-            if (player && swg::endpoints::getTransform_o2w && swg::endpoints::wsAddObject) {
-                void* xf = swg::endpoints::getTransform_o2w(player);
-                if (xf) {
-                    float t12[12];
-                    std::memcpy(t12, xf, sizeof(t12));            // player o2w = row-major 3x4
-                    s_lastInsertId = static_cast<long long>(
-                        swg::endpoints::wsAddObject(s_insertTemplate, t12, 0));  // containedById 0 = world
-                }
-            }
-        }
-        if (g_havePickPoint) {
-            ImGui::SameLine();
-            if (ImGui::Button("Insert at cursor") && s_insertTemplate[0] != '\0') {
-                float t12[12];
-                void* player = swg::endpoints::getPlayer ? swg::endpoints::getPlayer() : nullptr;
-                void* pxf = (player && swg::endpoints::getTransform_o2w) ? swg::endpoints::getTransform_o2w(player) : nullptr;
-                if (pxf) std::memcpy(t12, pxf, sizeof(t12));   // player facing
-                else { std::memset(t12, 0, sizeof(t12)); t12[0] = t12[5] = t12[10] = 1.0f; }
-                t12[3] = g_pickPoint[0]; t12[7] = g_pickPoint[1]; t12[11] = g_pickPoint[2];  // col3 = position
-                if (swg::endpoints::wsAddObject)
-                    s_lastInsertId = static_cast<long long>(swg::endpoints::wsAddObject(s_insertTemplate, t12, 0));
-            }
-        }
-        if (!haveInsert) { ImGui::EndDisabled(); ImGui::SameLine(); ImGui::TextDisabled("(unresolved)"); }
-        if (s_lastInsertId != 0) ImGui::Text("Inserted node id: %lld", s_lastInsertId);
-
-        // Ray-pick status + selection control.
-        if (g_havePickPoint)
-            ImGui::Text("Pick point: %.1f, %.1f, %.1f", g_pickPoint[0], g_pickPoint[1], g_pickPoint[2]);
-        if (g_pickedId != 0) {
-            ImGui::Text("Picked selection id: %lld", static_cast<long long>(g_pickedId));
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Clear")) g_pickedId = 0;
-        } else {
-            ImGui::TextDisabled("Left-click an object in-world to select it");
-        }
-
-        // Persist the authored snapshot to its .ws on disk.
-        if (swg::endpoints::wsSaveSnapshot) {
-            if (ImGui::Button("Save .ws")) s_lastSaveResult = swg::endpoints::wsSaveSnapshot();
-            if (s_lastSaveResult >= 0) {
-                static const char* kSave[] = { "ok", "no-snapshot", "no-loose-search-path",
-                    "destination-shadowed", "id-int32-overflow", "buildout-set-integrity", "write-failure" };
-                const char* m = (s_lastSaveResult >= 0 && s_lastSaveResult <= 6) ? kSave[s_lastSaveResult] : "?";
-                ImGui::SameLine(); ImGui::Text("[%d %s]", s_lastSaveResult, m);
-            }
-            // Show the resolved save root so you can find the .ws (and see up front
-            // whether a writable loose SearchPath even exists — 0 = save will fail).
-            if (swg::endpoints::wsGetSavePath) {
-                char pathBuf[512] = {};
-                const int n = swg::endpoints::wsGetSavePath(pathBuf, sizeof(pathBuf));
-                if (n > 0 && pathBuf[0] != '\0') ImGui::TextWrapped("Save path: %s", pathBuf);
-                else ImGui::TextDisabled("Save path: none (no loose SearchPath — save fails with 2)");
-            }
-        }
-
-        // Reload the CURRENT scene (one-click, v21 getSceneId) to see just-saved .ws edits.
-        // Unload first to clear the sticky ms_sceneName, else load(currentScene) early-outs.
-        //
-        // 05.1-17: these buttons ENQUEUE now — they no longer call wsUnloadSnapshot()+wsLoad()
-        // inline. Inline meant a click during a LoadScene's two-frame window ran a reload between
-        // cleanupScene and loadScene; the queue's interleave guard is what prevents that. Reasoned
-        // exception to 05.1-16's "do not route working paths through the queue" note.
-        //
-        // ⚠ DISCLOSED RESIDUAL (provider handback 0b2e9259c §2): a building with server-owned
-        // occupants is now KEPT across a reload, and the kept root collides with the re-parsed node
-        // (createObject -> CEC_objectAlreadyExists; update() strips the NEW node's sphere handle).
-        // Such a building renders its PRE-EDIT state until a zone change or relog. Per-building
-        // interior refresh is requested to retire this; see the note rendered below.
-        if (swg::endpoints::wsLoad) {
-            char scene[128] = {};
-            const bool haveScene =
-                swg::endpoints::getSceneId && swg::endpoints::getSceneId(scene, sizeof(scene)) > 0 && scene[0] != '\0';
-            if (!haveScene) ImGui::BeginDisabled();
-            if (ImGui::Button("Reload current scene")) {
-                enqueueDeferredReload(scene, 0);   // 0 = local; no ack owed
-            }
-            if (!haveScene) ImGui::EndDisabled();
-            ImGui::SameLine();
-            ImGui::TextDisabled(haveScene ? scene : "(no scene loaded)");
-
-            // Manual: load a DIFFERENT scene by id (advanced).
-            static char s_sceneName[128] = "";
-            ImGui::InputText("Scene id", s_sceneName, sizeof(s_sceneName));
-            ImGui::SameLine();
-            if (ImGui::Button("Load##scene") && s_sceneName[0] != '\0') {
-                enqueueDeferredReload(s_sceneName, 0);
-            }
-
-            // Honest disclosure of the kept-root staleness (provider handback 0b2e9259c §2).
-            // Occupied buildings survive the reload but render their PRE-EDIT state, so a modder
-            // checking their work inside a populated building sees no change. Saying so beats
-            // letting them conclude the editor dropped the edit.
-            ImGui::TextDisabled("Occupied buildings are kept — their edits show after a zone change or relog.");
-        }
-
-        // --- Editor scene (offline, single-player): game::loadScene builds a FULL scene via the
-        //     SceneCreator lifecycle with no server session, so the snapshot layer spawns every
-        //     building itself — the canonical context to SEE a model-D rebind (derived template +
-        //     edited .ilf) in-world, free of the hybrid server-stream replacement (§4).
-        //     05.1-16 Bug B fix: this DESTROYS AND RECREATES the player/scene — calling it
-        //     synchronously here (inside Present) re-entrantly FATALs (see plan evidence). The
-        //     button now ENQUEUES only; the deferred queue executes it outside Present. ---
-        if (swg::endpoints::gameLoadScene) {
-            ImGui::Separator();
-            ImGui::TextDisabled("Editor scene (OFFLINE single-player — replaces any live session!)");
-            static char s_edTerrain[128] = "terrain/tatooine.trn";
-            static char s_edPlayer[160]  = "object/creature/player/shared_human_male.iff";
-            ImGui::InputText("Terrain##edscene", s_edTerrain, sizeof(s_edTerrain));
-            ImGui::InputText("Avatar##edscene",  s_edPlayer,  sizeof(s_edPlayer));
-            if (ImGui::Button("Load editor scene") && s_edTerrain[0] != '\0' && s_edPlayer[0] != '\0') {
-                enqueueDeferredLoadScene(s_edTerrain, s_edPlayer);
-            }
-        }
-
-        // --- Teleport player (identity rotation, world coords). The offline editor scene drops the
-        //     avatar at the engine default; this jumps straight to the verify site. Same 12-float
-        //     row-major 3x4 write the gizmo uses. Default = Mos Eisley cantina front door (approx;
-        //     tweak Y if you land under/over terrain). ---
-        if (swg::endpoints::getPlayer && swg::endpoints::setTransform_o2w) {
-            static float s_tpPos[3] = { 3428.0f, 8.0f, -4788.0f };
-            ImGui::InputFloat3("Teleport x/y/z", s_tpPos, "%.1f");
-            ImGui::SameLine();
-            static const char* s_tpNote = nullptr;
-            if (ImGui::Button("Go##teleport")) {
-                // 05.1-18: shared cell-aware implementation (RAII-suppressed bracket + objectWarped).
-                // The read-back trace that discriminated "write landed" from "write did not take"
-                // has served its purpose -- the write is proven correct (9/9 exact across two
-                // sessions) and the defect was cell parentage, not the transform. The cell-decision
-                // log line inside teleportPlayerToWorldPos supersedes it.
-                static char s_tpNoteBuf[128];
-                s_tpNoteBuf[0] = '\0';
-                teleportPlayerToWorldPos(s_tpPos, "button", s_tpNoteBuf, sizeof(s_tpNoteBuf));
-                s_tpNote = s_tpNoteBuf[0] ? s_tpNoteBuf : nullptr;
-            }
-            // OWN LINE, not SameLine — appended after the wide InputFloat3 + button this clipped off
-            // the right edge of the window and read as "no message at all" during the 05.1-16 checkpoint.
-            if (s_tpNote != nullptr) ImGui::TextDisabled("teleport: %s", s_tpNote);
-        }
-        ImGui::Separator();
-
-        ImGui::TextDisabled("DXGI Present hook · advertised gl11 · input live");
-    }
-    ImGui::End();
-
     // --- World ray-pick: a left-click NOT over the overlay casts a ray from the
-    //     cursor. objectsOnly=0 so we always get the ground/surface point (for
-    //     placement); if an object is hit its id also becomes the gizmo selection.
-    //     Game-thread call (Present hook). Skipped while ImGui wants the mouse. ---
+    //     cursor. objectsOnly=0 so we always get the ground/surface point (required
+    //     out-param, unused past this call now that the legacy Slice-0 "Insert at
+    //     cursor"/pick-point readout are retired); if an object is hit its id also
+    //     becomes the gizmo selection. Game-thread call (Present hook). Skipped while
+    //     ImGui wants the mouse. ---
     {
         ImGuiIO& io = ImGui::GetIO();
         if (swg::endpoints::collideScreenRay && !io.WantCaptureMouse &&
@@ -2091,8 +1867,6 @@ void renderFrame() {
             float pt[3] = {};
             if (swg::endpoints::collideScreenRay(static_cast<int>(io.MousePos.x),
                                                  static_cast<int>(io.MousePos.y), 0, &hitId, pt)) {
-                g_pickPoint[0] = pt[0]; g_pickPoint[1] = pt[1]; g_pickPoint[2] = pt[2];
-                g_havePickPoint = true;
                 if (hitId != 0) g_pickedId = hitId;   // object hit → select it (terrain id 0 leaves selection)
             }
         }
