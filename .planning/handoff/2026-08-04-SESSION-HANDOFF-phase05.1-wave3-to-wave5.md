@@ -17,11 +17,13 @@ execute session. Everything below is committed unless explicitly marked otherwis
 
 `05.1-14` is fully unblocked: its `depends_on` are `13, 03, 12, 08, 04` and all are complete.
 
-**Untracked and deliberate:** `.planning/research/captures/` holds the `[PortalCullProbe]` walk log.
-An agent was in flight at handoff time writing
-`.planning/handoff/2026-08-04-TOOLKIT-REPORT-portalcullprobe-server-connected.md` and committing that
-log with it. **Verify that landed** (`git log --oneline -3`); if it did not, the capture is still on
-disk and the report needs writing — see §5.
+**`[PortalCullProbe]` capture — delivered.** `6ff6a3e` committed
+`.planning/handoff/2026-08-04-TOOLKIT-REPORT-portalcullprobe-server-connected.md` plus the raw
+1031-line walk log at `.planning/research/captures/`. That was the last thing we owed the provider.
+
+Note when reading that report: the committed log spans **16:23:36–16:24:40 UTC only** (the deliberate
+walk). An earlier stretch of the same session — the one that prompted the hypothesis in §4 of that
+report — was filtered out and is **not** citable from the committed file.
 
 ---
 
@@ -129,7 +131,9 @@ two visible copies, and a *forgotten* node can no longer be removed. Keep them a
    that closes the phase. Same stale warning appears on 05.1-12.
 2. **Plan 05.1-12's SUMMARY carve-out #1** (ADD-persist visual continuity / the vanish) is
    **resolved** by `wsForgetNode` but still reads as an open defect. Amend it.
-3. **`.planning/research/captures/` is untracked** — see §1; confirm the in-flight report committed it.
+3. ~~`.planning/research/captures/` is untracked~~ — **RESOLVED.** Landed as `6ff6a3e` together with
+   `.planning/handoff/2026-08-04-TOOLKIT-REPORT-portalcullprobe-server-connected.md`. Nothing owed to
+   the provider now except their own open `findCellAtWorldPosition` item.
 4. **05.1-14** — the Add-decoration wizard modal. Note it no longer needs to collect a cell name:
    `getCellName` derives it from the placement point, so the wizard's job is template selection and
    triggering `START_PLACEMENT`.
