@@ -462,6 +462,30 @@ Roadmap-shaping decisions affecting current work:
   Agent DLL rebuilt (Release), build succeeded. **05.1-12's human-verify checkpoint is still OPEN** —
   needs live re-verification in the cantina (door-close/open test) before the plan can close.
 
+- [CONTRACT v32 CONSUMED 2026-08-04, BUILD-ONLY — no live verification yet] The provider shipped all
+  three requested rows (handback `.planning/handoff/2026-08-04-PROVIDER-HANDBACK-v32-forgetNode-cellName-interiorRefresh.md`,
+  157 → 160 names, append-only). Bound and wired in three commits (9274e42 rows, f1c8025 consume,
+  94f50d5 HOST_CMD action 7); agent DLL rebuilt Release, renderer tests green. **All three are
+  BUILD-verified only on BOTH sides** — the provider has not exercised them live either. Owed live
+  acceptance, the maintainer's:
+    1. `wsForgetNode` — place, Persist, the object must STAY; then confirm the `.ws` has no runtime
+       child node for it. This replaces the interim pre-save `wsRemoveNode` that made the placed
+       object vanish on Persist.
+    2. `getCellName` — the `.ilf` row's cell name is now DERIVED from the placement point's
+       CellProperty rather than the operator-typed HOST_CMD string. The doorway is the interesting
+       case: that is where typed and derived names diverge.
+    3. `refreshInteriorLayout` — exposed ONLY as HOST_CMD action 7 (`-Action refreshinterior -Id
+       <buildingId>` via drive-host-command.ps1). Edit a decoration in an OCCUPIED building, refresh,
+       the change should appear with no reload and without disturbing the NPCs. Its failure mode is a
+       silent no-op, not an error, so a null result needs interpreting rather than trusting.
+  **Design constraint recorded so it is not "simplified" later:** `refreshInteriorLayout` is
+  deliberately NOT auto-called anywhere on the persist path. A refresh recreates the building's
+  `.ilf`-sourced decorations but does NOT remove a forgotten-but-live preview object (layout objects
+  never receive a NetworkId, our `wsAddObject` placements always do — disjoint by construction), so
+  forget-then-refresh would leave TWO visible copies, and the forgotten one is past `wsRemoveNode`'s
+  reach forever. The agent additionally refuses a refresh while `wsIsParsePending` or while a
+  decoration is armed. Unrelated to 05.1-14 / 05.1-15, both of which remain open.
+
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
