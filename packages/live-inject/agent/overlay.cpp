@@ -615,9 +615,31 @@ void applyPendingRebind() {
     // design. Runs alongside the disarm above: never for a plain edit (no temp node exists there
     // — g_pendingRebindWasAdd is false), and never on a failed/refused ADD persist (the user may
     // still be iterating; leave the preview live so they can retry Persist without re-placing).
-    if (code == DECO_RESULT_OK && committedMatchesArmed && g_pendingRebindWasAdd) {
-        if (swg::endpoints::wsRemoveNode) swg::endpoints::wsRemoveNode(g_pendingRebindSpawnedId);
-        g_pendingRebindWasAdd = false;
+    //
+    // TEMPORARY PROBE (05.1-12 checkpoint, log-only — see plan for removal): wasAdd/spawnedId are
+    // latched into locals BEFORE the branch runs (g_pendingRebindWasAdd is cleared inside it), and
+    // removeCalled/removeRc report exactly what the despawn attempt did — the direct evidence for
+    // "did wsRemoveNode actually fire" on the Persist-disappears question.
+    if (code == DECO_RESULT_OK) {
+        const bool wasAdd = g_pendingRebindWasAdd;
+        const int64_t spawnedId = g_pendingRebindSpawnedId;
+        bool removeCalled = false;
+        int removeRc = -1;
+        if (committedMatchesArmed && wasAdd) {
+            removeCalled = swg::endpoints::wsRemoveNode != nullptr;
+            if (removeCalled) removeRc = swg::endpoints::wsRemoveNode(spawnedId);
+            g_pendingRebindWasAdd = false;
+        }
+        char pb[288];
+        std::snprintf(pb, sizeof(pb),
+            "overlay: PROBE-B rebind OK — wasAdd=%d spawnedId=%lld committedMatchesArmed=%d removeNodeCalled=%d removeNodeRc=%d\n",
+            wasAdd ? 1 : 0, static_cast<long long>(spawnedId), committedMatchesArmed ? 1 : 0,
+            removeCalled ? 1 : 0, removeRc);
+        dbg(pb);
+    } else {
+        char pb[160];
+        std::snprintf(pb, sizeof(pb), "overlay: PROBE-B rebind non-OK — code=%d\n", code);
+        dbg(pb);
     }
 }
 
@@ -693,6 +715,17 @@ void attemptPlacementSpawn() {
     // disagree — a click legitimately lands in a DIFFERENT building than the preselection.
     int64_t clickBuildingId = 0;
     if (!swg::endpoints::getContainingBuildingId) {
+        // TEMPORARY PROBE (05.1-12 checkpoint, log-only — see plan for removal): endpoint-unresolved
+        // variant of the per-click record below; nothing else to report since we can't resolve.
+        {
+            char pb[288];
+            std::snprintf(pb, sizeof(pb),
+                "overlay: PROBE-A click — rayObjNull=%d clickBuildingId=UNRESOLVED hit=(%.1f, %.1f, %.1f) placementBuildingId=%lld\n",
+                g_lastRayObj == nullptr ? 1 : 0,
+                g_lastRayPt[0], g_lastRayPt[1], g_lastRayPt[2],
+                static_cast<long long>(g_placementBuildingId));
+            dbg(pb);
+        }
         // Genuinely "cannot answer" — distinct from a resolved 0 (do NOT collapse the two, per
         // ROUND 3/R10's superseding note). Leave placement mode active; refuse this click only.
         std::strncpy(g_lastArmFailureReason, "endpoint unresolved (getContainingBuildingId)", sizeof(g_lastArmFailureReason) - 1);
@@ -705,6 +738,21 @@ void attemptPlacementSpawn() {
     }
     // g_lastRayObj == nullptr (bare terrain / no object under the click) carries the SAME
     // authoritative answer as a resolved 0 — there is nothing here for the resolver to walk.
+
+    // TEMPORARY PROBE (05.1-12 checkpoint, log-only — see plan for removal): one line per click
+    // attempt, BEFORE the fail-closed guard below, so refused clicks are captured too. Answers
+    // "does the ray hit building-owned geometry and make clickBuildingId non-zero when the
+    // maintainer clicks what looks like open air?"
+    {
+        char pb[288];
+        std::snprintf(pb, sizeof(pb),
+            "overlay: PROBE-A click — rayObjNull=%d clickBuildingId=%lld hit=(%.1f, %.1f, %.1f) placementBuildingId=%lld\n",
+            g_lastRayObj == nullptr ? 1 : 0,
+            static_cast<long long>(clickBuildingId),
+            g_lastRayPt[0], g_lastRayPt[1], g_lastRayPt[2],
+            static_cast<long long>(g_placementBuildingId));
+        dbg(pb);
+    }
 
     if (clickBuildingId == 0) {
         // FAIL CLOSED (ROUND 3/R10 SUPERSEDED 2026-08-02): 0 is the client catalog's authoritative
@@ -800,7 +848,8 @@ void attemptPlacementSpawn() {
     // SAFETY: mounted/child object. Refuse rather than corrupt the pose (same idiom as
     // teleportPlayerToWorldPos's isChildObject guard below) — a freshly spawned decoration
     // should never be mounted, but the row is a safety check, not a convenience.
-    if (swg::endpoints::isChildObject && swg::endpoints::isChildObject(spawned) != 0) {
+    const bool isChildFired = swg::endpoints::isChildObject && swg::endpoints::isChildObject(spawned) != 0;
+    if (isChildFired) {
         std::strncpy(g_lastArmFailureReason, "spawned but object is a child/mount \xE2\x80\x94 refusing reparent", sizeof(g_lastArmFailureReason) - 1);
         g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
         g_stripArmFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
@@ -821,6 +870,22 @@ void attemptPlacementSpawn() {
     void* const destCell = swg::endpoints::findCellAtWorldPosition(g_lastRayPt[0], g_lastRayPt[1], g_lastRayPt[2]);
     if (destCell) {
         const int reparentRc = swg::endpoints::setParentCell(spawned, destCell);
+
+        // TEMPORARY PROBE (05.1-12 checkpoint, log-only — see plan for removal): the reparent-site
+        // record. destCell==worldCellSentinel is THE measurement that confirms/refutes the "did
+        // findCellAtWorldPosition's world-cell fallback fire" hypothesis for the exterior-spawn
+        // question.
+        {
+            void* const worldCellSentinel = swg::endpoints::getWorldCellProperty
+                ? swg::endpoints::getWorldCellProperty() : nullptr;
+            char pb[288];
+            std::snprintf(pb, sizeof(pb),
+                "overlay: PROBE-A reparent — destCell=%p worldCell=%p destIsWorldCell=%d setParentCellRc=%d isChildFired=%d\n",
+                destCell, worldCellSentinel, (destCell == worldCellSentinel) ? 1 : 0, reparentRc,
+                isChildFired ? 1 : 0);
+            dbg(pb);
+        }
+
         if (reparentRc == 0) {
             std::strncpy(g_lastArmFailureReason, "spawned but reparent into cell refused", sizeof(g_lastArmFailureReason) - 1);
             g_lastArmFailureReason[sizeof(g_lastArmFailureReason) - 1] = '\0';
