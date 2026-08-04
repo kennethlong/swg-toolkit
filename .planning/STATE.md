@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05.1-13-PLAN.md (Remove/Undo D-02/D-03 closed, both tasks committed, SUMMARY.md written). 05.1-12 remains separately paused mid-flight at its own blocking live checkpoint (commits 51fd769, c52a43a to overlay.cpp) -- untouched by this plan.
-last_updated: "2026-08-03T19:18:17.846Z"
-last_activity: 2026-08-03
+stopped_at: "Closed 05.1-12-PLAN.md: blocking checkpoint APPROVED via extended live session; probes removed (0c4d759), driver script promoted (1ad5d8f), SUMMARY.md written (1a1c550). Phase 05.1 NOT complete -- 05.1-14 and 05.1-15 remain."
+last_updated: "2026-08-04T11:43:43.478Z"
+last_activity: 2026-08-04
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 103
-  completed_plans: 100
-  percent: 97
+  completed_plans: 101
+  percent: 98
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 13 of 18 (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
+Plan: 14 of 18 (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
 NOTE: WAVE 3 ORDER IS 17, 18, THEN 11, 12 — enforced by depends_on edges, not just prose.
       05.1-17 (fix lossy reload) blocks 05.1-12 and 05.1-15; 05.1-18 (player-write stability
       gate + cell read side) blocks 05.1-11. Both end in blocking live checkpoints.
@@ -48,13 +48,13 @@ Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decorat
       panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
       decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
       (Blender Bridge).
-Last activity: 2026-08-03
+Last activity: 2026-08-04
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real
   process-cached addon object instead — same fix already documented for @swg/live-inject).
 
-Progress: [██████████] 97%
+Progress: [██████████] 98%
 
 ### 02-03 key facts (crew-verified)
 
@@ -162,6 +162,7 @@ Progress: [██████████] 97%
 | Phase 05.1-live-world-editor-productization P09 | multi-session | 2 tasks tasks | 2 files files |
 | Phase 05.1 P11 | multi-session | 2 tasks | 2 files |
 | Phase 05.1 P13 | single session | 2 tasks | 8 files |
+| Phase 05.1 P12 | multi-session | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -377,6 +378,10 @@ Roadmap-shaping decisions affecting current work:
 - [Phase 05.1]: 05.1-11: Tasks 1+2 committed as one commit (b18c2f0) -- both landed in one interleaved edit pass (shared AccordionHeader extraction, shared imports/state block); same precedent as 05.1-08's combined RED/GREEN commit
 - [Phase 05.1]: 05.1-11: Task 3's Real-Electron HOST_CMD checkpoint APPROVED by the maintainer's live session (Reload-scene round trip, LAGGING ack per 05.1-17, rapid-click coalescing, plain x/y/z bookmark restoring interiors correctly) -- closes REVIEWS.md C11 before Waves 4-5 build further on the same channel
 - [Phase 05.1]: 05.1-13: RemoveUndoToast's sticky-error guard, mount-time reconstruction, and no-clear-at-top ordering built directly against the plan's final (ROUND 10/R9) spec -- removeDecorationRow/addBackDecorationRow reuse stageDurable (named in the plan's own read_first) and both fail closed on an empty buildingTemplateVfsPath
+- [Phase 05.1-12]: 05.1-12: Container resolution is click-derived (getContainingBuildingId on the click's own ray hit), never preselection- or player-position-validated -- a doorway makes the three disagree; resolved id 0 fails CLOSED as outside-a-building, not an ambiguous fallback (ROUND 3/R10 superseded, live-verified both doorway directions)
+- [Phase 05.1-12]: 05.1-12: The maintainer's original 'renders in world space' checkpoint report does NOT validate the 93a8a3c cell-containment fix -- it traced to the retired legacy Insert-at-cursor button's wsAddObject(...,0) hardcode, a different code path; the fix is justified by containedById semantics, the provider's v27 handback statement, and the verified door-close/open after-state
+- [Phase 05.1-12]: 05.1-12: drive-host-command.cjs deleted (not kept as a documented counter-example) -- its addon.openChannel path unconditionally memsets the live channel and is actively unsafe against a running session; drive-host-command.ps1 promoted as the reusable external HOST_CMD driver, paired with new find-live-mapping.ps1 (NtOpenDirectoryObject/NtQueryDirectoryObject P/Invoke to discover the per-attach Local\SwgToolkitLive_<random8> mapping name)
+- [Phase 05.1-12]: 05.1-12: Plan 15's cell-name change-request is reshaped and much smaller -- CellProperty::getCellName() already exists (inline, CellProperty.h:120/249) and findCellAtWorldPosition already resolves the CellProperty*; the remaining ask collapses to advertising a one-line getCellName wrapper, not a new resolution shim
 
 ### Pending Todos
 
@@ -456,8 +461,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-03T19:18:17.824Z
-Stopped at: Completed 05.1-13-PLAN.md (Remove/Undo D-02/D-03 closed, both tasks committed, SUMMARY.md written). 05.1-12 remains separately paused mid-flight at its own blocking live checkpoint (commits 51fd769, c52a43a to overlay.cpp) -- untouched by this plan.
+Last session: 2026-08-04T11:43:43.455Z
+Stopped at: Closed 05.1-12-PLAN.md: blocking checkpoint APPROVED via extended live session; probes removed (0c4d759), driver script promoted (1ad5d8f), SUMMARY.md written (1a1c550). Phase 05.1 NOT complete -- 05.1-14 and 05.1-15 remain.
   state machine, arm-failure CAPTURE publish for C8). Tasks 1-2 executed and committed (d9feae7,
   f18790c). Task 3's blocking in-game checkpoint was APPROVED by the maintainer 2026-08-02, but not
   cleanly on the first pass: two live defects were found and fixed mid-checkpoint (Esc KEY binding
