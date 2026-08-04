@@ -681,7 +681,64 @@ void applyPendingRebind() {
     channelWriteResult(code, rb.epoch);
     // Disarm only when the commit matches the edit currently armed (multi-arm safe).
     // (committedMatchesArmed is computed above the chain — the pre-save despawn needs it.)
-    if (code == DECO_RESULT_OK && committedMatchesArmed) g_capArmed = false;
+    if (code == DECO_RESULT_OK && committedMatchesArmed) {
+        g_capArmed = false;
+        // --- LIVE-REPORTED DEFECT, 2026-08-04 (maintainer, in-session): "the gizmo stays active
+        //     after the persist, it should require you to re-arm."  ⚠ DO NOT "TIDY" THIS AWAY.
+        //
+        // Before this, `g_capArmed = false` above was the ONLY thing a successful rebind cleared,
+        // and g_gizmoEnabled had no reset site anywhere in this file — it was set true by the G/R
+        // hotkeys and stayed true for the life of the process. resolveFocusObject() returns
+        // g_latchedFocus first and never consults g_capArmed, so the gizmo kept drawing on the
+        // still-latched decoration after the arm had already been consumed.
+        //
+        // The failure mode is worse than a stray widget: the user can keep DRAGGING. Nothing
+        // re-arms, so no new baseline is captured (g_capOriginalO2p is still the pre-persist one)
+        // and no new capture is ever sent — persistDecorationEdit() refuses outright on
+        // !g_capArmed. The object therefore looks moved on screen while the .ilf on disk holds the
+        // PRE-drag position, and the next interior rebuild snaps it back. Silent divergence
+        // between the screen and the file, on the one gesture this phase exists to deliver.
+        // It also contradicts sketch 020-A's state model, where `saved` returns the strip to
+        // idle/hover — which a live gizmo plainly is not.
+        //
+        // SUCCESS PATH ONLY. A FAILED rebind deliberately keeps both the arm and the gizmo so the
+        // user can nudge and retry without re-arming; that is why this sits inside the existing
+        // `code == DECO_RESULT_OK && committedMatchesArmed` gate rather than after the chain.
+        //
+        // What each clear is for:
+        //   g_gizmoEnabled  — the only gate on drawGizmo() (see renderFrame()). Clearing it is
+        //                     what actually makes a further edit REQUIRE a re-arm: G/R are
+        //                     themselves gated on g_capArmed, so the gizmo cannot come back
+        //                     without F re-arming first.
+        //   g_latchedFocus  — a borrowed Object* with no liveness signal, and after a successful
+        //                     persist the decoration's authoritative home is the .ilf. Leaving it
+        //                     set would (a) let the follow-hover block re-latch it every frame now
+        //                     that !g_capArmed, and (b) leave it dangling across the refresh-
+        //                     interior action, whose only guard is g_capArmed — false by here —
+        //                     and which frees and recreates exactly these objects.
+        //   g_gizmoWasUsing — the drag latch. A REBIND lands asynchronously and can arrive
+        //                     mid-drag; with drawGizmo() no longer running, nothing would ever
+        //                     reset it, permanently disabling the follow-hover block (which gates
+        //                     on !g_gizmoWasUsing) and skipping the next drag's Esc baseline.
+        //
+        // Deliberately NOT cleared:
+        //   g_gizmoOp    — a mode PREFERENCE (translate/rotate), not focus state; re-set by
+        //                  whichever of G/R the user presses on the next arm. Resetting it would
+        //                  silently drop back to translate for no benefit.
+        //   g_pickedId   — the user's general left-click world selection, not decoration-edit
+        //                  state. It is an id VALUE re-resolved every frame (ABA-safe, never a
+        //                  cached pointer), and it still feeds the strip's Hover-state building
+        //                  label and armDecorationEdit()'s pre-shim building-id fallback.
+        //   g_capFocus / g_capBuildingId / g_capDecorationTemplate / g_capBuildingTemplate —
+        //                  the strip's Saved and Failed states read the capture fields to keep
+        //                  showing the LAST edit (see renderDecorationStrip()'s Armed/Saved/Failed
+        //                  label case). Clearing any of them would blank the "saved" line that
+        //                  confirms the persist. g_capFocus's own two readers are both gated on
+        //                  g_capArmed, so it is inert here rather than load-bearing.
+        g_gizmoEnabled  = false;
+        g_latchedFocus  = nullptr;
+        g_gizmoWasUsing = false;
+    }
 
     // (The kind=ADD temp-preview teardown used to live here, gated on code==DECO_RESULT_OK. It
     //  moved AHEAD of wsSaveSnapshot on 2026-08-04 — a post-save removal is too late to keep the
