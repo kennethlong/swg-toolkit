@@ -21,6 +21,23 @@ execute session. Everything below is committed unless explicitly marked otherwis
 `.planning/handoff/2026-08-04-TOOLKIT-REPORT-portalcullprobe-server-connected.md` plus the raw
 1031-line walk log at `.planning/research/captures/`. That was the last thing we owed the provider.
 
+**FILED TO THE PROVIDER INBOX 2026-08-04.** Committing them here is not the same as sending them —
+the provider reads `swg-client-v2/.planning/handoff/`, and their `2026-08-04-SESSION-CLOSE-v25-to-v32-arc.md`
+(written 11:28, *after* both of ours) still listed the v32 rows as build-verified-only in §6a and
+still recorded "they owe a re-run from a server-connected session" in §6b. Both are now in their
+inbox, **untracked** per convention — the maintainer relays:
+
+| Ours | Filed as |
+| --- | --- |
+| `2026-08-04-TOOLKIT-CONFIRM-v32-live.md` | `2026-08-04-toolkit-v32-CONFIRMED-live.md` |
+| `2026-08-04-TOOLKIT-REPORT-portalcullprobe-server-connected.md` | `2026-08-04-toolkit-portalcullprobe-server-connected-REPORT.md` |
+
+Two provider-side corrections were applied to the filed copies only (our originals are untouched):
+the raw-log path was made **absolute** (`.planning/research/captures/…` resolves to *their* repo when
+read from their side), and the v32 confirm's "Still owed by us" section — which said the
+PortalCullProbe re-run was still outstanding — was rewritten, since both files now land together.
+Each filed copy points at the other and names the session-close section it answers.
+
 Note when reading that report: the committed log spans **16:23:36–16:24:40 UTC only** (the deliberate
 walk). An earlier stretch of the same session — the one that prompted the hypothesis in §4 of that
 report — was filtered out and is **not** citable from the committed file.
@@ -124,13 +141,22 @@ two visible copies, and a *forgotten* node can no longer be removed. Keep them a
 
 **Ours, and 15 is blocked on the first two being right:**
 
-1. **Plan 05.1-15's `verification_instrument_changed` frontmatter is now WRONG.** It tells whoever
-   executes it to avoid reloading an occupied building and to use an unoccupied one or accept a relog.
-   `refreshInteriorLayout` has landed and is live-verified in the occupied cantina — it is now the
-   correct instrument. **Rewrite that block before executing 05.1-15**, or it will misdirect the plan
-   that closes the phase. Same stale warning appears on 05.1-12.
-2. **Plan 05.1-12's SUMMARY carve-out #1** (ADD-persist visual continuity / the vanish) is
-   **resolved** by `wsForgetNode` but still reads as an open defect. Amend it.
+1. ~~**Plan 05.1-15's `verification_instrument_changed` frontmatter is now WRONG.**~~ — **RESOLVED
+   2026-08-04.** Both blocks (05.1-15 and 05.1-12) rewritten: the occupied-building restriction is
+   marked SUPERSEDED, `refreshInteriorLayout` named as the correct instrument with the
+   `drive-host-command.ps1 -Action refreshinterior` invocation, and the superseded text kept inline
+   for history. The two constraints that *replace* the old one (refresh does not compose with a live
+   preview; never call while armed / gate on `wsIsParsePending`) and the false-pass trap are recorded
+   in the same blocks, so they travel with the plan.
+2. ~~**Plan 05.1-12's SUMMARY carve-out #1**~~ — **RESOLVED 2026-08-04**, and **carve-out #2 was
+   stale too** — this handoff only flagged #1. `getCellName` closed #2 (cell name is derived, not
+   operator-supplied; the adversarial `WRONGCELL_SENTINEL` test proves the derive overrides the
+   caller string). Both are now marked RESOLVED with their caller obligations attached.
+   **The cascade that fell out of #2, all fixed:** 05.1-12's `affects:` line, its "four carve-outs"
+   readiness note (now two — 3 and 4), 05.1-15's `must_have` requiring the cell-name gap be *filed*
+   as a change-request (there is no gap left to file), and 05.1-15's `files_modified` entry for
+   `2026-XX-XX-CHANGE-REQUEST-getContainingCellName.md` (commented out — never create it).
+   Only carve-outs **3** (stale ray sample) and **4** (gizmo mode radios) remain open.
 3. ~~`.planning/research/captures/` is untracked~~ — **RESOLVED.** Landed as `6ff6a3e` together with
    `.planning/handoff/2026-08-04-TOOLKIT-REPORT-portalcullprobe-server-connected.md`. Nothing owed to
    the provider now except their own open `findCellAtWorldPosition` item.

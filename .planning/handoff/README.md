@@ -8,10 +8,14 @@ Active handoffs (newest first). One file per workstream; read the active one bef
   new rows (`wsForgetNode`, `getCellName`, `refreshInteriorLayout`) consumed AND live-verified.
   **The placement feature now works end to end:** a placed decoration stays visible through Persist,
   its cell name is derived from the placement point rather than operator-supplied, and an occupied
-  building can be refreshed in place. **⚠ TWO STALE ARTIFACTS to fix before executing 05.1-15:**
-  its `verification_instrument_changed` frontmatter still forbids verifying in an occupied building
-  (obsolete — `refreshInteriorLayout` is now the correct instrument), and 05.1-12's SUMMARY carve-out
-  #1 still reads as an open defect though `wsForgetNode` resolved it. Also documents a real defect
+  building can be refreshed in place. **✅ The stale artifacts are FIXED (2026-08-04)** — and there
+  were **three**, not the two originally flagged: both `verification_instrument_changed` blocks
+  (05.1-15 and 05.1-12) now name `refreshInteriorLayout` as the correct instrument in an occupied
+  building, and 05.1-12's SUMMARY carve-outs **#1 AND #2** are marked RESOLVED (`wsForgetNode`,
+  `getCellName`) along with the downstream cascade — 05.1-15 no longer requires filing a cell-name
+  change-request that has no gap left to file. Only carve-outs 3 and 4 remain open.
+  **Both outbound handoffs are filed to the provider inbox** (untracked; maintainer relays).
+  Also documents a real defect
   found live: every placement was being written TWICE (`.ilf` row **and** a malformed world-space
   `.ws` node), root-caused, fixed, and the two stale nodes pruned from the maintainer's snapshot.
   Supersedes the wave-2 handoff below.
