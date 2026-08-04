@@ -561,3 +561,4 @@ Next session: Wave 3, in this order — 05.1-17 (fix lossy reload), 05.1-18 (pla
   ground-truth pass against swg-client-v2 falsified the mechanisms both blocker todos had proposed;
   both new plans end in blocking live checkpoints and can share one client session.
 Resume file: None
+Note (2026-08-04): The `[PortalCullProbe]` server-connected re-run owed to the provider since the v27 caveat is DELIVERED — healthy baseline, full root-cell arc, no editor-scene half. Handoff `.planning/handoff/2026-08-04-TOOLKIT-REPORT-portalcullprobe-server-connected.md`, raw log `.planning/research/captures/2026-08-04-portalcullprobe-server-connected-walk.log`. 05.1-14 and 05.1-15 remain open, untouched.
