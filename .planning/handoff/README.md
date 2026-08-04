@@ -2,7 +2,21 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-08-02-phase05.1-wave2-complete-live-findings.md](2026-08-02-phase05.1-wave2-complete-live-findings.md)** — ACTIVE. ← start here.
+- **[2026-08-04-SESSION-HANDOFF-phase05.1-wave3-to-wave5.md](2026-08-04-SESSION-HANDOFF-phase05.1-wave3-to-wave5.md)** — ACTIVE. ← start here.
+  Phase **05.1 is 16/18**; waves 3-4 closed (plans 11, 12, 13), resume at **Wave 5 (plan 05.1-14,
+  the Add-decoration wizard)** via `/gsd:execute-phase 05.1`. Provider contract **v32** — all three
+  new rows (`wsForgetNode`, `getCellName`, `refreshInteriorLayout`) consumed AND live-verified.
+  **The placement feature now works end to end:** a placed decoration stays visible through Persist,
+  its cell name is derived from the placement point rather than operator-supplied, and an occupied
+  building can be refreshed in place. **⚠ TWO STALE ARTIFACTS to fix before executing 05.1-15:**
+  its `verification_instrument_changed` frontmatter still forbids verifying in an occupied building
+  (obsolete — `refreshInteriorLayout` is now the correct instrument), and 05.1-12's SUMMARY carve-out
+  #1 still reads as an open defect though `wsForgetNode` resolved it. Also documents a real defect
+  found live: every placement was being written TWICE (`.ilf` row **and** a malformed world-space
+  `.ws` node), root-caused, fixed, and the two stale nodes pruned from the maintainer's snapshot.
+  Supersedes the wave-2 handoff below.
+
+- **[2026-08-02-phase05.1-wave2-complete-live-findings.md](2026-08-02-phase05.1-wave2-complete-live-findings.md)** — superseded by the above; kept for its defect history.
   Phase **05.1 Waves 1-2 COMPLETE (11/16)**; resume at **Wave 3 (plans 11, 12)** via
   `/gsd:execute-phase 05.1`. **Plan 05.1-16 was INSERTED** this session (phase is 16 plans now) after a
   live checkpoint CRASHED the client — re-entrant `loadScene` from the Present hook; fixed with a
