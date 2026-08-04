@@ -486,6 +486,43 @@ Roadmap-shaping decisions affecting current work:
   reach forever. The agent additionally refuses a refresh while `wsIsParsePending` or while a
   decoration is armed. Unrelated to 05.1-14 / 05.1-15, both of which remain open.
 
+- **v32 CONFIRMED LIVE 2026-08-04 — all three rows.** The owed acceptance above is DISCHARGED;
+  handback `.planning/handoff/2026-08-04-TOOLKIT-CONFIRM-v32-live.md`. One server-connected session
+  against Mos Eisley cantina building 1082874. (1) `wsForgetNode` — weapon placed into the foyer from
+  OUTSIDE the building STAYED after Persist and survived the door closing; `tatooine.ws` was
+  1,400,272 bytes before and after (no runtime child node written) while
+  `shared_cantina_mos_eisley_tatooine.ilf` grew 33,641 → 33,753 (+112 = one `NODE`, 8B framing over a
+  `0x68` payload). **First placement in this project's history that survives its own Persist.**
+  (2) `getCellName` — tested adversarially: the placement payload carried `WRONGCELL_SENTINEL`, and
+  the derive overrode it — the `.ilf` row at offset 33,641 reads `foyer1` and the sentinel appears in
+  neither file. Resolved the FOYER from the placement point while the player stood outside, i.e. the
+  doorway discrimination. The world-cell `"world"` return was NOT exercised. (3)
+  `refreshInteriorLayout` — ack code 1 in the OCCUPIED cantina; moved decoration stayed at its new
+  position, all 54 server-owned NPCs undisturbed, rest of the interior correct with no duplicates.
+  **This retires the standing "do not verify by reloading an occupied building" warning from our
+  plans** — a kept root renders pre-edit state and reports a FALSE FAILURE exactly where the work
+  happens, and the cantina is our primary decorating target. *Persist → refresh → confirm it took* is
+  now a correct instrument. **Still owed by us:** the `[PortalCullProbe]` re-run from a
+  server-connected session (the provider's requested input for their open `findCellAtWorldPosition`
+  returns-world-cell-after-`game::loadScene` defect). **Binding constraint recorded:** we bind by
+  CATALOG NAME, never by exported C symbol — symbol renames are free, but a changed catalog string
+  breaks the row SILENTLY (unresolved rows are null-guarded and degrade to a words-only no-op, not an
+  error). Provider asked to keep catalog strings stable or hand over an old→new list.
+
+- **Gizmo outlived its arm — FIXED 2026-08-04** (maintainer live report: *"the gizmo stays active
+  after the persist, it should require you to re-arm."*). `g_gizmoEnabled` had no reset site anywhere
+  in `overlay.cpp` and `resolveFocusObject()` never consulted `g_capArmed`, so a successful rebind
+  cleared the arm while the gizmo kept drawing on the still-latched decoration. The user could keep
+  dragging with no new baseline captured and no new capture sent (`persistDecorationEdit` refuses on
+  `!g_capArmed`) — the object looks moved on screen while the `.ilf` holds the pre-drag position, and
+  the next interior rebuild snaps it back. Silent screen-vs-disk divergence, and contrary to sketch
+  020-A's state model (`saved` returns the strip to idle/hover). Now `g_gizmoEnabled`,
+  `g_latchedFocus` and `g_gizmoWasUsing` are cleared at the existing
+  `code == DECO_RESULT_OK && committedMatchesArmed` site. **SUCCESS PATH ONLY** — a failed rebind
+  deliberately keeps arm + gizmo so the user can retry without re-arming. `g_gizmoOp` (a mode
+  preference), `g_pickedId` (the general world selection) and the `g_cap*` capture fields (the strip's
+  saved/failed states read them to show the last edit) are deliberately NOT cleared.
+
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
