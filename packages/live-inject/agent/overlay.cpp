@@ -618,7 +618,8 @@ void applyPendingRebind() {
             // VANISHES on Persist, because wsRemoveNode is a teardown primitive — its step 5 does
             // removeFromWorld() + delete on the whole subtree, not just the snapshot row. The
             // vanish goes away when the provider lands wsForgetNode (forget the node, keep the
-            // Object) — see .planning/handoff/2026-08-04-CHANGE-REQUEST-wsForgetNode.md. At that
+            // Object) — see Item 1 of
+            // .planning/handoff/2026-08-04-CHANGE-REQUEST-consolidated-placement-and-cellname.md. At that
             // point this call site swaps wsRemoveNode -> wsForgetNode and nothing else changes.
             //
             // GUARD CHANGE (unavoidable, and the reason this is not a pure move): the old site

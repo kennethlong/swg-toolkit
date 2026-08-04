@@ -405,8 +405,9 @@ Roadmap-shaping decisions affecting current work:
   and lives outside this repo). **Residual:** `wsRemoveNode` is a teardown primitive, so a
   just-placed decoration still VANISHES at Persist. Closing that needs the provider to advertise
   `utinni_wsForgetNode` (a shim over the existing `WorldSnapshot::removeObject` static) — requested in
-  `.planning/handoff/2026-08-04-CHANGE-REQUEST-wsForgetNode.md`. Independent of, and does not
-  supersede, the accepted per-building interior-refresh work.
+  `.planning/handoff/2026-08-04-CHANGE-REQUEST-consolidated-placement-and-cellname.md` (Item 1 of the
+  consolidated request; Item 2 = the cell-name accessor, Item 3 = interior-refresh status). Independent
+  of, and does not supersede, the accepted per-building interior-refresh work.
 - [Standing risk]: Every binary format layout in `docs/` is an AI-proposed hypothesis (rated LOW—VERIFY). No parser merges without a cited `swg-client-v2` source + byte-exact round-trip on a real asset.
 - [Phase 3/5]: Live-injection pointer/offset discovery is per-client-build and effort-unbounded — mine Utinni, use runtime AOB resolution; treat magnitude as a planning unknown.
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
