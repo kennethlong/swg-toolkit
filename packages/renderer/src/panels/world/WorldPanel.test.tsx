@@ -16,7 +16,7 @@
 import React from 'react';
 import fs from 'fs';
 import path from 'path';
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../services/worldEditorScan', async (importOriginal) => {
@@ -42,6 +42,7 @@ vi.mock('../../services/hostCommand', () => ({
   sendReloadCurrentScene: vi.fn(),
   sendLoadEditorScene: vi.fn(),
   sendTeleport: vi.fn(),
+  sendStartPlacement: vi.fn(),
 }));
 
 import WorldPanel from './WorldPanel';
@@ -53,7 +54,8 @@ import { resolveScanRoot, scanWorldEditorState } from '../../services/worldEdito
 import { makeReadVfs, reconcileMirrorMode, removeDecorationRow, addBackDecorationRow } from '../../services/decorationPersistOrchestrator';
 import { readWorkspaceJson, updateWorkspaceMeta } from '../../services/projectBinding';
 import { log } from '../../services/logService';
-import { sendReloadCurrentScene, sendLoadEditorScene, sendTeleport } from '../../services/hostCommand';
+import { sendReloadCurrentScene, sendLoadEditorScene, sendTeleport, sendStartPlacement } from '../../services/hostCommand';
+import { useTreStore, type VfsEntry } from '../../state/treStore';
 import { formatPersistMessage } from '../../state/worldEditorStore';
 import { useRemoveUndoStore } from '../../state/removeUndoStore';
 import type { WorkspaceBindingMeta } from '@swg/contracts';
@@ -851,5 +853,693 @@ describe('WorldPanel — Remove/Undo (D-02/D-03, 05.1-13)', () => {
     expect(handleUndoIdx).toBeGreaterThan(-1);
     expect(refreshCallIdx).toBeGreaterThan(spreadPushIdx);
     expect(spreadPushIdx).toBeGreaterThan(handleUndoIdx);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 05.1-14 — ADD-decoration flow (Task 2 wiring + "(NEW)" diff, Task 3 ack protocol)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const TPL_TABLE = 'object/tangible/furniture/tatooine/shared_frn_tatt_table_cantina_table_3.iff';
+const TPL_LAMP = 'object/tangible/furniture/tatooine/shared_frn_tatt_lamp_floor.iff';
+
+const CANONICAL_REFUSED =
+  'Placement request was refused — an edit or placement may already be active in-game, possibly an earlier request that timed out here but was accepted late. Cancel it in-game, then try again.';
+const CANONICAL_TIMEOUT =
+  'Placement request got no response from the game (it may be loading, zoning, or busy) — if the placement ghost is active in-game, placing and persisting will still work; otherwise try again.';
+const CANONICAL_DETACHED = 'client detached before the placement was acknowledged';
+
+function makeVfsEntry(p: string): VfsEntry {
+  return {
+    path: p,
+    name: p.split('/').pop() ?? p,
+    segments: p.split('/'),
+    winnerArchivePath: 'C:/swg/patch_00.tre',
+    winnerArchiveFilename: 'patch_00.tre',
+    isOverride: false,
+    isTombstone: false,
+    shadowCount: 0,
+  } as VfsEntry;
+}
+
+/** Attach a live session — the ADD flow is live-gated (placement happens in-game). */
+function attachLive(): void {
+  useLiveStore.setState({ status: { kind: 'attached', pid: 1234, mappingName: 'm' }, clientLabel: null });
+}
+
+/** Clone a building with a different decoration set — the shape refreshTree() observes. */
+function buildingWith(
+  base: WorldEditorBuilding,
+  decorations: WorldEditorBuilding['decorations'],
+): WorldEditorBuilding {
+  return { ...base, decorations };
+}
+
+function newDeco(cellName: string, rowIndex: number, objectTemplateName: string) {
+  return { cellName, rowIndex, objectTemplateName, transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] };
+}
+
+/** Grow history the way Plan 08 Task 3's poll-loop wiring does. */
+function recordPersist(buildingLabel: string, decorationLabel: string): void {
+  useWorldEditorStore.getState().recordPersistResult({
+    timestampISO: new Date().toISOString(),
+    buildingLabel,
+    decorationLabel,
+    outcome: 'ok',
+    message: 'saved',
+  });
+}
+
+/** Select a decoration row so addContext resolves, then open the modal and pick a template. */
+function openModalAndPlace(templatePath = TPL_TABLE): void {
+  fireEvent.click(screen.getAllByTestId('world-decoration-row')[0]);
+  fireEvent.click(screen.getByTestId('world-add-decoration-btn'));
+  const tile = screen
+    .getAllByTestId('add-decoration-tile')
+    .find((t) => t.textContent?.includes(templatePath));
+  fireEvent.click(tile as HTMLElement);
+  fireEvent.click(screen.getByRole('button', { name: 'Place in game' }));
+}
+
+function addBtn(): HTMLButtonElement {
+  return screen.getByTestId('world-add-decoration-btn') as HTMLButtonElement;
+}
+
+describe('WorldPanel — ADD trigger gating (D-04 honest degrade, C6 scope disclosure)', () => {
+  beforeEach(() => {
+    useTreStore.setState({ vfsEntries: [makeVfsEntry(TPL_TABLE), makeVfsEntry(TPL_LAMP)] });
+  });
+  afterEach(() => {
+    useTreStore.setState({ vfsEntries: [] });
+  });
+
+  it('disables the trigger with a words-only hint when nothing is selected', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+
+    expect(addBtn().disabled).toBe(true);
+    expect(screen.getByTestId('world-add-decoration-hint').textContent).toBe(
+      "select a decorated building first — placing into a brand-new cell isn't supported yet",
+    );
+  });
+
+  it('disables the trigger when a building with ZERO decorations is selected (D-04)', () => {
+    vi.mocked(scanWorldEditorState).mockReturnValue([buildingWith(BUILDING_2, [])]);
+    attachLive();
+    renderPanel();
+
+    fireEvent.click(screen.getByText('Guild Hall — Anchorhead'));
+    expect(addBtn().disabled).toBe(true);
+    expect(screen.getByTestId('world-add-decoration-hint').textContent).toMatch(
+      /select a decorated building first/,
+    );
+  });
+
+  it('disables the trigger with a live-gating hint when no client is attached', () => {
+    seedTree();
+    renderPanel(); // liveStore stays 'idle'
+
+    fireEvent.click(screen.getAllByTestId('world-decoration-row')[0]);
+    expect(addBtn().disabled).toBe(true);
+    expect(screen.getByTestId('world-add-decoration-hint').textContent).toMatch(
+      /attach to a running client first/,
+    );
+  });
+
+  it('enables the trigger and opens the modal with the resolved building/cell context', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+
+    fireEvent.click(screen.getAllByTestId('world-decoration-row')[0]);
+    expect(addBtn().disabled).toBe(false);
+    expect(screen.queryByTestId('world-add-decoration-hint')).toBeNull();
+
+    fireEvent.click(addBtn());
+    expect(screen.getByTestId('add-decoration-modal')).not.toBeNull();
+    expect(screen.getByTestId('add-decoration-context').textContent).toBe(
+      'to Cantina — Mos Eisley (alcove1)',
+    );
+  });
+
+  it('borrows the FIRST decoration cellName when a BUILDING row (not a decoration) is selected', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+
+    fireEvent.click(screen.getByText('Cantina — Mos Eisley'));
+    fireEvent.click(addBtn());
+    expect(screen.getByTestId('add-decoration-context').textContent).toBe(
+      'to Cantina — Mos Eisley (alcove1)',
+    );
+  });
+});
+
+describe('WorldPanel — placement send (Task 2: no toast at send time, R9 BB1)', () => {
+  beforeEach(() => {
+    useTreStore.setState({ vfsEntries: [makeVfsEntry(TPL_TABLE), makeVfsEntry(TPL_LAMP)] });
+    vi.mocked(sendStartPlacement).mockReturnValue(7);
+  });
+  afterEach(() => {
+    useTreStore.setState({ vfsEntries: [] });
+  });
+
+  it('calls sendStartPlacement with the BORROWED cellName and buildingId, never a fabricated one', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+
+    openModalAndPlace(TPL_LAMP);
+
+    expect(sendStartPlacement).toHaveBeenCalledTimes(1);
+    expect(sendStartPlacement).toHaveBeenCalledWith('m', TPL_LAMP, 'alcove1', '1082874');
+  });
+
+  it('shows NO toast at send time — display timing belongs to the ack correlation', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+
+    openModalAndPlace();
+
+    expect(screen.queryByTestId('world-placement-toast')).toBeNull();
+    expect(screen.queryByTestId('add-decoration-modal')).toBeNull(); // modal closed on send
+  });
+});
+
+describe('WorldPanel — HOST_CMD ACK PROTOCOL consumer (Task 3, Plan 08 canonical spec)', () => {
+  beforeEach(() => {
+    useTreStore.setState({ vfsEntries: [makeVfsEntry(TPL_TABLE), makeVfsEntry(TPL_LAMP)] });
+    vi.mocked(sendStartPlacement).mockReturnValue(7);
+  });
+  afterEach(() => {
+    useTreStore.setState({ vfsEntries: [] });
+    vi.useRealTimers();
+  });
+
+  it('row 5 — a matching epoch with code 1 shows the success + wrong-room-warning copy', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    act(() => {
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 7, code: 1 } });
+    });
+
+    const toast = screen.getByTestId('world-placement-toast');
+    expect(toast.textContent).toContain('Placement mode active in-game');
+    expect(toast.textContent).toContain('SAME ROOM as the decoration you selected in alcove1');
+    // Row 5 records NO history entry — the eventual persist RESULT records its own.
+    expect(useWorldEditorStore.getState().history).toHaveLength(0);
+  });
+
+  it('row 6 — any other code shows canonical string 1 EXACTLY and records a durable failure', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    act(() => {
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 7, code: 0 } });
+    });
+
+    // CC8 — full-string equality, so cross-plan wording drift is caught.
+    const toast = screen.getByTestId('world-placement-toast');
+    expect(toast.textContent).toContain(CANONICAL_REFUSED);
+    // Never the false "active" claim on a silent agent-side refusal.
+    expect(toast.textContent).not.toContain('Placement mode active in-game');
+
+    const st = useWorldEditorStore.getState();
+    expect(st.history).toHaveLength(1);
+    expect(st.history[0].outcome).toBe('error');
+    expect(st.history[0].message).toBe(CANONICAL_REFUSED);
+    expect(st.history[0].buildingLabel).toBe('Cantina — Mos Eisley');
+    expect(st.history[0].decorationLabel).toBe('shared_frn_tatt_table_cantina_table_3.iff');
+    expect(st.hasFailureBadge).toBe(true);
+  });
+
+  it('row 8 — an UNRELATED epoch never triggers any toast', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    act(() => {
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 999, code: 1 } });
+    });
+
+    expect(screen.queryByTestId('world-placement-toast')).toBeNull();
+    expect(useWorldEditorStore.getState().history).toHaveLength(0);
+  });
+
+  it('row 13 (BB7) — a second Place in the same commit refuses locally and never re-sends', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+
+    fireEvent.click(screen.getAllByTestId('world-decoration-row')[0]);
+    fireEvent.click(addBtn());
+    fireEvent.click(
+      screen.getAllByTestId('add-decoration-tile').find((t) => t.textContent?.includes(TPL_TABLE)) as HTMLElement,
+    );
+    const placeBtn = screen.getByRole('button', { name: 'Place in game' });
+
+    // A real fast double-click: both native events dispatch before React re-renders. The pending
+    // slot is a REF, so the first handler occupies it synchronously.
+    act(() => {
+      placeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      placeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(sendStartPlacement).toHaveBeenCalledTimes(1);
+    // Descriptive reference to canonical string 4 (it NAMES the pending request).
+    const toast = screen.getByTestId('world-placement-toast');
+    expect(toast.textContent).toContain('shared_frn_tatt_table_cantina_table_3.iff');
+    expect(toast.textContent).toContain('Cantina — Mos Eisley');
+    expect(toast.textContent).toContain('still waiting');
+
+    // The slot was never overwritten — the FIRST request's ack still resolves.
+    act(() => {
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 7, code: 1 } });
+    });
+    expect(screen.getByTestId('world-placement-toast').textContent).toContain(
+      'Placement mode active in-game',
+    );
+  });
+
+  it('CC17 — the trigger is disabled while pending and re-enables after the ack resolves', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    expect(addBtn().disabled).toBe(true);
+    expect(screen.getByTestId('world-add-decoration-hint').textContent).toBe(
+      'waiting for the game to acknowledge the last placement request',
+    );
+
+    act(() => {
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 7, code: 1 } });
+    });
+    expect(addBtn().disabled).toBe(false);
+  });
+
+  it('row 9 (BB6) — an un-acked request times out with canonical string 2, a durable entry, and a re-enabled trigger; a LATE ack shows nothing', () => {
+    vi.useFakeTimers();
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    act(() => {
+      vi.advanceTimersByTime(11_000);
+    });
+
+    expect(screen.getByTestId('world-placement-toast').textContent).toContain(CANONICAL_TIMEOUT);
+    const st = useWorldEditorStore.getState();
+    expect(st.history).toHaveLength(1);
+    expect(st.history[0].outcome).toBe('error');
+    expect(st.history[0].message).toBe(CANONICAL_TIMEOUT);
+    expect(st.hasFailureBadge).toBe(true);
+    expect(addBtn().disabled).toBe(false);
+
+    // Late-ack rule (Plan 08 rows 2/12): the slot is gone, so nothing resolves.
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss placement message' }));
+    act(() => {
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 7, code: 1 } });
+    });
+    expect(screen.queryByTestId('world-placement-toast')).toBeNull();
+    expect(useWorldEditorStore.getState().history).toHaveLength(1); // no second entry
+  });
+
+  it('row 10 (BB6) — a detach records the durable detached entry and clears the pending lock', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    act(() => {
+      useLiveStore.setState({ status: { kind: 'idle' } });
+    });
+
+    const st = useWorldEditorStore.getState();
+    expect(st.history).toHaveLength(1);
+    expect(st.history[0].message).toBe(CANONICAL_DETACHED);
+    expect(st.history[0].outcome).toBe('error');
+    // The live-gate disables the trigger now, but the PENDING lock is cleared — proven by
+    // re-attaching and finding it enabled rather than wedged.
+    act(() => {
+      attachLive();
+    });
+    expect(addBtn().disabled).toBe(false);
+  });
+
+  it('row 7 (CC2) — a matching ack observed after a same-commit project switch aborts silently', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    act(() => {
+      // The overdue ~1 Hz poll tick lands project A's refusal in the just-reset store BEFORE the
+      // passive-effect flush — CC2's exact sequence.
+      useWorkspaceStore.setState({ studioDir: '/fake/studio-b' });
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 7, code: 0 } });
+    });
+
+    expect(screen.queryByTestId('world-placement-toast')).toBeNull();
+    expect(useWorldEditorStore.getState().history).toHaveLength(0);
+    expect(useWorldEditorStore.getState().hasFailureBadge).toBe(false);
+    // The switch reset selectedRowId, so re-select before asserting the trigger — otherwise this
+    // would pass on "nothing is selected" rather than on the pending lock being cleared.
+    fireEvent.click(screen.getAllByTestId('world-decoration-row')[0]);
+    expect(addBtn().disabled).toBe(false);
+  });
+
+  it('row 10 + EE2 — a detach observed AFTER a project switch records nothing in the new project', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    act(() => {
+      useWorkspaceStore.setState({ studioDir: '/fake/studio-b' });
+      useLiveStore.setState({ status: { kind: 'idle' } });
+    });
+
+    expect(useWorldEditorStore.getState().history).toHaveLength(0);
+    expect(useWorldEditorStore.getState().hasFailureBadge).toBe(false);
+    expect(screen.queryByTestId('world-placement-toast')).toBeNull();
+  });
+
+  it('row 12 (CC1) — an unmount mid-pending clears the orphan timer; a post-remount late ack shows nothing', () => {
+    vi.useFakeTimers();
+    seedTree();
+    attachLive();
+    const view = renderPanel();
+    openModalAndPlace();
+
+    view.unmount();
+    act(() => {
+      vi.advanceTimersByTime(11_000);
+    });
+
+    // The orphan callback never ran — nothing recorded, nothing thrown.
+    expect(useWorldEditorStore.getState().history).toHaveLength(0);
+    expect(useWorldEditorStore.getState().hasFailureBadge).toBe(false);
+
+    renderPanel();
+    act(() => {
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 7, code: 1 } });
+    });
+    expect(screen.queryByTestId('world-placement-toast')).toBeNull();
+    // The pending lock never survives the component — the remount's fresh state re-enables it.
+    fireEvent.click(screen.getAllByTestId('world-decoration-row')[0]);
+    expect(addBtn().disabled).toBe(false);
+  });
+});
+
+describe('WorldPanel — project-switch lifecycle (AA5, BB2/BB5/BB11)', () => {
+  beforeEach(() => {
+    useTreStore.setState({ vfsEntries: [makeVfsEntry(TPL_TABLE)] });
+    vi.mocked(sendStartPlacement).mockReturnValue(7);
+  });
+  afterEach(() => {
+    useTreStore.setState({ vfsEntries: [] });
+  });
+
+  it('aborts a pending placement with NO record, re-enables the trigger, and refreshes for the new project', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    openModalAndPlace();
+
+    const scansBefore = vi.mocked(scanWorldEditorState).mock.calls.length;
+
+    act(() => {
+      useWorkspaceStore.setState({ studioDir: '/fake/studio-b' });
+    });
+
+    // BB5 — aborted-switch: no toast, no cross-project history entry.
+    expect(screen.queryByTestId('world-placement-toast')).toBeNull();
+    expect(useWorldEditorStore.getState().history).toHaveLength(0);
+    // BB11 — the new project's first scan is issued by THIS effect (nothing else schedules it).
+    expect(vi.mocked(scanWorldEditorState).mock.calls.length).toBeGreaterThan(scansBefore);
+    // R11/EE1 — the trigger starts the new project enabled, never wedged.
+    fireEvent.click(screen.getAllByTestId('world-decoration-row')[0]);
+    expect(addBtn().disabled).toBe(false);
+
+    // A late ack for the aborted request resolves nothing.
+    act(() => {
+      useWorldEditorStore.setState({ lastHostCommandResult: { epoch: 7, code: 0 } });
+    });
+    expect(screen.queryByTestId('world-placement-toast')).toBeNull();
+  });
+
+  it('does NOT fire the switch behavior on initial mount', () => {
+    seedTree();
+    attachLive();
+    renderPanel();
+    // Mount performs exactly one scan (Plan 10's mount effect) — the switch effect adds none.
+    expect(vi.mocked(scanWorldEditorState)).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WorldPanel — "(NEW)" content-identity marker (W2, V2, V3, X3, X7, Z5)', () => {
+  beforeEach(() => {
+    useTreStore.setState({ vfsEntries: [makeVfsEntry(TPL_TABLE)] });
+  });
+  afterEach(() => {
+    useTreStore.setState({ vfsEntries: [] });
+  });
+
+  it('V3 — a fresh mount over a non-empty tree marks NOTHING', () => {
+    seedTree(); // 2 buildings, 3 decorations
+    renderPanel();
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
+  });
+
+  it('marks a genuinely-new row after a persist-triggered refresh', () => {
+    seedTree();
+    renderPanel();
+
+    const withNewRow = buildingWith(BUILDING_1, [
+      ...BUILDING_1.decorations,
+      newDeco('alcove1', 21, TPL_LAMP),
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([withNewRow, BUILDING_2]);
+
+    // Simulate Plan 08 Task 3's recordPersistResult wiring firing (history growth).
+    act(() => {
+      recordPersist('Cantina — Mos Eisley', 'lamp');
+    });
+
+    const markers = screen.getAllByTestId('world-decoration-new-marker');
+    expect(markers).toHaveLength(1);
+    // The marker sits on the NEW row, not on a pre-existing one.
+    expect(markers[0].closest('[data-testid="world-decoration-row"]')?.textContent).toContain(
+      'shared_frn_tatt_lamp_floor.iff',
+    );
+  });
+
+  it('W2 — a PURE REINDEX (same content, shifted rowIndex) marks NOTHING', () => {
+    seedTree();
+    renderPanel();
+
+    // Identical content, different row numbers — exactly the shape Plan 13's append-only Undo
+    // produces. A raw positional-id diff would mislabel both of these.
+    const reindexed = buildingWith(BUILDING_1, [
+      { ...BUILDING_1.decorations[0], rowIndex: 11 },
+      { ...BUILDING_1.decorations[1], rowIndex: 12 },
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([reindexed, BUILDING_2]);
+
+    act(() => {
+      recordPersist('Cantina — Mos Eisley', 'x');
+    });
+
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
+  });
+
+  it('W2 — a reindex ALONGSIDE a genuine add marks ONLY the genuinely-new row', () => {
+    seedTree();
+    renderPanel();
+
+    const mixed = buildingWith(BUILDING_1, [
+      { ...BUILDING_1.decorations[0], rowIndex: 11 }, // reindexed, not new
+      { ...BUILDING_1.decorations[1], rowIndex: 12 }, // reindexed, not new
+      newDeco('alcove1', 13, TPL_LAMP),
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([mixed, BUILDING_2]);
+
+    act(() => {
+      recordPersist('Cantina — Mos Eisley', 'x');
+    });
+
+    const markers = screen.getAllByTestId('world-decoration-new-marker');
+    expect(markers).toHaveLength(1);
+    expect(markers[0].closest('[data-testid="world-decoration-row"]')?.textContent).toContain(
+      'shared_frn_tatt_lamp_floor.iff',
+    );
+  });
+
+  it('V3 — a BRAND-NEW building appearing whole marks ZERO rows (first observation, not placements)', () => {
+    vi.mocked(scanWorldEditorState).mockReturnValue([BUILDING_1]);
+    renderPanel();
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
+
+    // BUILDING_2 was absent from the prior snapshot — its whole row set surfaces at once.
+    vi.mocked(scanWorldEditorState).mockReturnValue([BUILDING_1, BUILDING_2]);
+    act(() => {
+      recordPersist('Guild Hall — Anchorhead', 'x');
+    });
+
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
+  });
+
+  it('V2 — the diff advances on a tree update with NO history growth (mirror toggle)', () => {
+    seedTree();
+    renderPanel();
+
+    // A mirror toggle triggers refreshTree() without growing history. If the diff were keyed on
+    // history growth, prevTreeRef would go stale here and the NEXT unrelated event would
+    // misattribute these rows.
+    const withNewRow = buildingWith(BUILDING_1, [
+      ...BUILDING_1.decorations,
+      newDeco('alcove1', 21, TPL_LAMP),
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([withNewRow, BUILDING_2]);
+    fireEvent.click(screen.getByLabelText('Mirror to stock layout'));
+
+    // The mirror-toggle refresh itself observed the new row and marked it.
+    expect(screen.getAllByTestId('world-decoration-new-marker')).toHaveLength(1);
+
+    // A LATER, unrelated refresh adds a row in the OTHER building. If prevTreeRef had gone stale
+    // at the mirror toggle (the ROUND 4 history-growth-keyed design), the lamp row would be
+    // diffed against the pre-toggle baseline and re-marked here. It must not be: only the
+    // genuinely-new BUILDING_2 row is marked.
+    const b2WithNew = buildingWith(BUILDING_2, [
+      ...BUILDING_2.decorations,
+      newDeco('main', 9, TPL_LAMP),
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([withNewRow, b2WithNew]);
+    act(() => {
+      recordPersist('Guild Hall — Anchorhead', 'x');
+    });
+
+    const markers = screen.getAllByTestId('world-decoration-new-marker');
+    expect(markers).toHaveLength(1);
+    const markedRow = markers[0].closest('[data-testid="world-decoration-row"]');
+    expect(markedRow?.textContent).toContain('main · row 9');
+  });
+
+  it('X7 — a REAL Undo through the rendered toast marks ZERO rows for the restored row', () => {
+    seedTree();
+    renderPanel();
+
+    // Remove a row (drives the real handleRemove -> push -> toast).
+    fireEvent.click(screen.getAllByTestId('world-remove-decoration-btn')[0]);
+
+    // The restored tree: the removed row comes back APPENDED (D-01's append-only mandate), so its
+    // rowIndex differs from where it was.
+    const restored = buildingWith(BUILDING_1, [
+      BUILDING_1.decorations[1],
+      { ...BUILDING_1.decorations[0], rowIndex: 21 },
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([restored, BUILDING_2]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo remove' }));
+
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
+  });
+
+  it('X3 — a genuinely-new row landing in the refresh AFTER an Undo is still marked', () => {
+    seedTree();
+    renderPanel();
+
+    fireEvent.click(screen.getAllByTestId('world-remove-decoration-btn')[0]);
+    const restored = buildingWith(BUILDING_1, [
+      BUILDING_1.decorations[1],
+      { ...BUILDING_1.decorations[0], rowIndex: 21 },
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([restored, BUILDING_2]);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo remove' }));
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
+
+    // A SECOND, unrelated refresh adds a genuinely-new row in a DIFFERENT building.
+    const b2WithNew = buildingWith(BUILDING_2, [
+      ...BUILDING_2.decorations,
+      newDeco('main', 9, TPL_LAMP),
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([restored, b2WithNew]);
+    act(() => {
+      recordPersist('Guild Hall — Anchorhead', 'lamp');
+    });
+
+    // The suppression pre-consumed ONLY the restored row's tuple — it never blanket-skipped the
+    // diff, so this unrelated new row is still caught.
+    const markers = screen.getAllByTestId('world-decoration-new-marker');
+    expect(markers).toHaveLength(1);
+    expect(markers[0].closest('[data-testid="world-decoration-row"]')?.textContent).toContain(
+      'shared_frn_tatt_lamp_floor.iff',
+    );
+  });
+
+  it('AA8 — the suppression generalizes across SEQUENTIAL Undos in different buildings', () => {
+    seedTree();
+    renderPanel();
+
+    // First Undo (BUILDING_1).
+    fireEvent.click(screen.getAllByTestId('world-remove-decoration-btn')[0]);
+    const restored1 = buildingWith(BUILDING_1, [
+      BUILDING_1.decorations[1],
+      { ...BUILDING_1.decorations[0], rowIndex: 21 },
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([restored1, BUILDING_2]);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo remove' }));
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
+
+    // Second Undo (BUILDING_2) — its own remove/restore cycle.
+    vi.mocked(removeDecorationRow).mockReturnValue({
+      rowIndex: 0,
+      cellName: 'main',
+      derivedTemplateVfsPath: 'object/building/toolkit/edit_1084112.iff',
+      editedIlfVfsPath: 'interiorlayout/toolkit/edit_1084112.ilf',
+      derivedTemplateFilePath: '/override/object/building/toolkit/edit_1084112.iff',
+      editedIlfFilePath: '/override/interiorlayout/toolkit/edit_1084112.ilf',
+      stagedEntries: [],
+    });
+    const removeBtns = screen.getAllByTestId('world-remove-decoration-btn');
+    fireEvent.click(removeBtns[removeBtns.length - 1]);
+
+    const restored2 = buildingWith(BUILDING_2, [{ ...BUILDING_2.decorations[0], rowIndex: 14 }]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([restored1, restored2]);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo remove' }));
+
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
+  });
+
+  it('clears an individual "(NEW)" marker when its row is explicitly selected', () => {
+    seedTree();
+    renderPanel();
+
+    const withNewRow = buildingWith(BUILDING_1, [
+      ...BUILDING_1.decorations,
+      newDeco('alcove1', 21, TPL_LAMP),
+    ]);
+    vi.mocked(scanWorldEditorState).mockReturnValue([withNewRow, BUILDING_2]);
+    act(() => {
+      recordPersist('Cantina — Mos Eisley', 'lamp');
+    });
+    expect(screen.getAllByTestId('world-decoration-new-marker')).toHaveLength(1);
+
+    const markedRow = screen
+      .getAllByTestId('world-decoration-row')
+      .find((r) => r.textContent?.includes('shared_frn_tatt_lamp_floor.iff'));
+    fireEvent.click(markedRow as HTMLElement);
+
+    expect(screen.queryAllByTestId('world-decoration-new-marker')).toHaveLength(0);
   });
 });
