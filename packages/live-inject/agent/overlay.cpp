@@ -575,6 +575,13 @@ void applyPendingRebind() {
     // Apply the REBIND's OWN payload — it is self-contained (the toolkit derived the template
     // FOR rb.buildingId and echoes it) and epoch-gated, so it need not match the currently-armed
     // edit (the user may have armed another since). rb.buildingId==0 is a malformed directive.
+    //
+    // HOISTED (was computed after this chain, at the disarm site below): the pre-save despawn
+    // added below needs this guard, and it must be evaluated before the save runs. Pure function
+    // of rb.buildingId and g_capBuildingId — nothing in the chain mutates either, so evaluating
+    // it earlier is value-identical.
+    const bool committedMatchesArmed = (rb.buildingId == static_cast<uint64_t>(g_capBuildingId));
+
     int32_t code;
     if ((rb.flags & DECO_REBIND_FLAG_ABORT) || !(rb.flags & DECO_REBIND_FLAG_APPLY)) {
         code = DECO_RESULT_ABORTED;
@@ -593,6 +600,43 @@ void applyPendingRebind() {
             // would masquerade as the rebind outcome (even a false OK).
             code = DECO_RESULT_REBIND_REFUSED;
         } else if (swg::endpoints::wsSaveSnapshot) {
+            // Task 2, REORDERED 2026-08-04: despawn the wsAddObject-minted temp preview node
+            // BEFORE the save, not after it.
+            //
+            // WHY: wsSaveSnapshot -> ms_reader.saveFiltered(dest, wsSaveIncludeTopLevelNode, 0),
+            // and that filter only excludes buildout TOP-LEVEL nodes; child recursion applies
+            // only the tombstone skip. So while the preview node is still live in ms_reader it
+            // SERIALIZES — as a child of the building, cellIndex=0, radius 512
+            // (cs_wsDefaultAddRadius), carrying WORLD-space coords. That is a malformed duplicate
+            // of the .ilf row we just wrote, and the engine cannot dedupe it: .ilf-created objects
+            // are never given a NetworkId, so createObject's CEC_objectAlreadyExists guard cannot
+            // fire. A scene load then instantiates a phantom second copy. Measured live: two such
+            // nodes (ids 9995372/9995373) in stage/override/snapshot/tatooine.ws. Removing the
+            // node first tombstones it, and the tombstone skip keeps it out of the file.
+            //
+            // *** INTERIM ORDERING FIX. *** This stops us POLLUTING the .ws, but the object still
+            // VANISHES on Persist, because wsRemoveNode is a teardown primitive — its step 5 does
+            // removeFromWorld() + delete on the whole subtree, not just the snapshot row. The
+            // vanish goes away when the provider lands wsForgetNode (forget the node, keep the
+            // Object) — see .planning/handoff/2026-08-04-CHANGE-REQUEST-wsForgetNode.md. At that
+            // point this call site swaps wsRemoveNode -> wsForgetNode and nothing else changes.
+            //
+            // GUARD CHANGE (unavoidable, and the reason this is not a pure move): the old site
+            // required code==DECO_RESULT_OK, i.e. the SAVE succeeded — which cannot be known
+            // before the save. The precondition here is therefore "the REBIND succeeded" (we are
+            // inside the reb>0 branch) instead of "the save succeeded"; committedMatchesArmed and
+            // g_pendingRebindWasAdd are unchanged. Net effect: every path that does NOT reach the
+            // save (ABORT, buildingId==0, endpoint unresolved, rebind miss, rebind refused) still
+            // leaves the preview live for the user to retry — that is the bulk of the "user may
+            // still be iterating" case the old comment protected. The one newly-covered case is
+            // rebind-OK-then-save-failed (codes 1..6), which now also despawns. Accepted: the
+            // rebind has already re-pointed the building at the derived template by then, so the
+            // user is mid-commit rather than iterating, and the alternative is writing the
+            // duplicate node on every save attempt.
+            if (committedMatchesArmed && g_pendingRebindWasAdd) {
+                if (swg::endpoints::wsRemoveNode) swg::endpoints::wsRemoveNode(g_pendingRebindSpawnedId);
+                g_pendingRebindWasAdd = false;
+            }
             code = static_cast<int32_t>(swg::endpoints::wsSaveSnapshot());  // 0 ok / 1..6 save reason
         } else {
             code = DECO_RESULT_SAVE_NO_SNAPSHOT;
@@ -603,18 +647,13 @@ void applyPendingRebind() {
     g_lastDecoResultEpoch = rb.epoch;
     channelWriteResult(code, rb.epoch);
     // Disarm only when the commit matches the edit currently armed (multi-arm safe).
-    const bool committedMatchesArmed = (rb.buildingId == static_cast<uint64_t>(g_capBuildingId));
+    // (committedMatchesArmed is computed above the chain — the pre-save despawn needs it.)
     if (code == DECO_RESULT_OK && committedMatchesArmed) g_capArmed = false;
 
-    // Task 2: post-save despawn of the wsAddObject-minted temp preview node, for a kind=ADD
-    // rebind that succeeded — matches RESEARCH.md's own stated "after a successful rebind+save"
-    // design. Runs alongside the disarm above: never for a plain edit (no temp node exists there
-    // — g_pendingRebindWasAdd is false), and never on a failed/refused ADD persist (the user may
-    // still be iterating; leave the preview live so they can retry Persist without re-placing).
-    if (code == DECO_RESULT_OK && committedMatchesArmed && g_pendingRebindWasAdd) {
-        if (swg::endpoints::wsRemoveNode) swg::endpoints::wsRemoveNode(g_pendingRebindSpawnedId);
-        g_pendingRebindWasAdd = false;
-    }
+    // (The kind=ADD temp-preview despawn used to live here, gated on code==DECO_RESULT_OK. It
+    //  moved AHEAD of wsSaveSnapshot on 2026-08-04 — a post-save despawn is too late to keep the
+    //  preview node out of the serialized .ws. See the block at the save call site for the full
+    //  rationale and the guard change it forced.)
 }
 
 // --- 020-A Status Strip label helpers ----------------------------------------------------
