@@ -70,6 +70,13 @@ public static class ObjDir {
     const uint OBJ_CASE_INSENSITIVE = 0x40;
     const int BUFFER_SIZE = 65536;
     const int STATUS_NO_MORE_ENTRIES = unchecked((int)0x8000001A);
+    // 2026-08-04: STATUS_MORE_ENTRIES has the high bit CLEAR, so it is a SUCCESS status meaning
+    // "this batch is partial, call again with the returned context" -- not an error. The original
+    // code treated every non-zero status as fatal, which worked only while the whole directory
+    // happened to fit one 64 KB buffer. Several client restarts in one session grow
+    // \Sessions\<id>\BaseNamedObjects past that, and the script then died with 0x00000105 instead
+    // of paging through the rest -- exactly where the wanted mapping usually is (newest entries).
+    const int STATUS_MORE_ENTRIES = 0x00000105;
 
     public static List<string> ListSectionsByPrefix(string directoryPath, string namePrefix) {
         var results = new List<string>();
@@ -111,7 +118,7 @@ public static class ObjDir {
                 status = NtQueryDirectoryObject(dirHandle, buffer, BUFFER_SIZE, false, restart, ref ctx, out returnLength);
                 restart = false;
                 if (status == STATUS_NO_MORE_ENTRIES) break;
-                if (status != 0) {
+                if (status != 0 && status != STATUS_MORE_ENTRIES) {
                     throw new Exception(string.Format("NtQueryDirectoryObject failed, NTSTATUS=0x{0:X8}", status));
                 }
 
