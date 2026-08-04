@@ -9,8 +9,8 @@ execute session. Everything below is committed unless explicitly marked otherwis
 
 | | |
 | --- | --- |
-| Phase | `05.1-live-world-editor-productization` — **16 of 18 plans complete** |
-| Remaining | **05.1-14** (Add-decoration wizard modal, wave 5), **05.1-15** (phase close, wave 6) |
+| Phase | `05.1-live-world-editor-productization` — **17 of 18 plans complete** |
+| Remaining | **05.1-15** (phase close, wave 6) — the last one. **05.1-14 CLOSED 2026-08-04**: wizard modal `5dce4c9`, ADD wiring + "(NEW)" diff + ack-protocol consumer `ed0921e`, SUMMARY `90b6860`. Renderer 828 pass, root aggregate 742 + 2 skipped, `tsc --noEmit` clean. |
 | Branch | `main`, working tree clean except one untracked capture dir (below) |
 | Provider contract | **v32** (157 → 160 names). Client exe restaged by the provider; re-sync if rebuilding. |
 | Agent DLL | `packages/live-inject/agent/build-agent/Release/swg_toolkit_agent.dll`, built 11:14:51 local |
@@ -160,9 +160,15 @@ two visible copies, and a *forgotten* node can no longer be removed. Keep them a
 3. ~~`.planning/research/captures/` is untracked~~ — **RESOLVED.** Landed as `6ff6a3e` together with
    `.planning/handoff/2026-08-04-TOOLKIT-REPORT-portalcullprobe-server-connected.md`. Nothing owed to
    the provider now except their own open `findCellAtWorldPosition` item.
-4. **05.1-14** — the Add-decoration wizard modal. Note it no longer needs to collect a cell name:
-   `getCellName` derives it from the placement point, so the wizard's job is template selection and
-   triggering `START_PLACEMENT`.
+4. ~~**05.1-14** — the Add-decoration wizard modal.~~ — **DONE 2026-08-04.** Built as specced: the
+   wizard collects no cell name (it borrows one from the target building's existing tree row, and
+   `getCellName` derives the real one agent-side at the placement point). Its job is template
+   selection + `START_PLACEMENT`, and it now also owns the full HOST_CMD ack protocol — the
+   placement toast reflects the agent's real ack instead of an unconditional "active" claim.
+   **Four new carve-outs for 05.1-15's gap ledger** (all in `05.1-14-SUMMARY.md`): the X8 mid-flow
+   remount, C6's tree-visible-buildings-only scope, C6's same-building wrong-room residual, and the
+   disclosed 200-tile grid cap. Plus one deliberate sketch divergence — the modal's preview note,
+   authorized by Task 1's own discretion clause because no mesh preview is wired.
 
 **Carve-outs that remain genuinely open** (recorded in 05.1-12's SUMMARY):
 

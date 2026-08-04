@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Closed 05.1-12-PLAN.md: blocking checkpoint APPROVED via extended live session; probes removed (0c4d759), driver script promoted (1ad5d8f), SUMMARY.md written (1a1c550). Phase 05.1 NOT complete -- 05.1-14 and 05.1-15 remain."
-last_updated: "2026-08-04T11:43:43.478Z"
+stopped_at: "Closed 05.1-14-PLAN.md: all 3 tasks autonomous, no checkpoint. AddDecorationModal (5dce4c9), ADD wiring + '(NEW)' diff + HOST_CMD ACK PROTOCOL consumer (ed0921e), SUMMARY (90b6860). Renderer 828 pass, root aggregate 742+2 skipped, tsc clean. Phase 05.1 is 17/18 -- ONLY 05.1-15 (phase close, wave 6) remains."
+last_updated: "2026-08-04T12:10:00.000Z"
 last_activity: 2026-08-04
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 103
-  completed_plans: 101
-  percent: 98
+  completed_plans: 102
+  percent: 99
 ---
 
 # Project State
@@ -26,7 +26,15 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 14 of 18 (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
+Plan: 15 of 18 — the LAST one (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
+NOTE (2026-08-04): 05.1-14 is CLOSED — the 021-A wizard modal, the ADD-flow wiring, the
+      content-identity "(NEW)" marker, and the full HOST_CMD ACK PROTOCOL consumer are built and
+      green (renderer 828, root 742+2 skipped, tsc clean). Only 05.1-15 (phase close) remains.
+      ⚠ Before executing 05.1-15: its `verification_instrument_changed` block was REWRITTEN
+      2026-08-04 (a136541) — `refreshInteriorLayout` in the OCCUPIED cantina is now the correct
+      instrument, and the cell-name change-request it once required must NOT be filed (v32's
+      `getCellName` closed that gap). Its gap ledger inherits 05.1-12's carve-outs 3 and 4 plus
+      05.1-14's four (X8 remount, C6 scope, C6 wrong-room residual, disclosed grid cap).
 NOTE: WAVE 3 ORDER IS 17, 18, THEN 11, 12 — enforced by depends_on edges, not just prose.
       05.1-17 (fix lossy reload) blocks 05.1-12 and 05.1-15; 05.1-18 (player-write stability
       gate + cell read side) blocks 05.1-11. Both end in blocking live checkpoints.
