@@ -124,6 +124,29 @@ export function sendDespawnNode(mappingName: string, networkId: string): void {
   );
 }
 
+/**
+ * (contract v32) Rebuild ONE building's interior from its current `.ilf`, in place, with no scene
+ * reload — the edit-visibility instrument for an occupied building, which is kept across a reload
+ * and keeps rendering its pre-edit interior until a zone change or relog.
+ *
+ * DELIBERATELY-TRIGGERED ONLY. Never call this as part of a persist: the refresh recreates the
+ * building's `.ilf`-sourced decorations but does NOT remove a just-persisted preview object (the
+ * agent forgets that node rather than despawning it, so the object stays live), which would leave
+ * two visible copies of the same decoration. The agent also refuses while a snapshot parse is in
+ * flight or while a decoration is armed — both surface as code 0.
+ */
+export function sendRefreshInterior(mappingName: string, buildingId: string): void {
+  addon.writeHostCommand(
+    mappingName,
+    ++hostCmdEpoch,
+    LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR,
+    '',
+    '',
+    buildingId,
+    ZERO_VEC3,
+  );
+}
+
 /** Read the HOST_CMD RESULT words. `epoch === 0` means no result yet; `code` is a signed int32 —
  *  the DESPAWN_NODE-specific 1/0/-1 contract, or the generic 1=ok/0=endpoint-unresolved-or-failed
  *  contract every other action uses (see `describeHostCommandResult`). */
@@ -137,10 +160,12 @@ export function parseHostCommandResult(buf: ArrayBuffer): { epoch: number; code:
 
 /**
  * (C9) A words-only per-action outcome describer — mirrors `decorationResultLabel`'s idiom for a
- * DIFFERENT result space (HOST_CMD_RESULT_CODE, not LIVE_DECORATION_RESULT). DESPAWN_NODE has its
- * own 1/0/-1 contract (mirrors utinni_wsRemoveNode); every other action uses 1=ok / 0=endpoint-
- * unresolved-or-failed. An unrecognized `action` value fails closed with 'unknown action' rather
- * than throwing, matching the agent-side dispatch's own fail-closed discipline (Plan 09).
+ * DIFFERENT result space (HOST_CMD_RESULT_CODE, not LIVE_DECORATION_RESULT). DESPAWN_NODE and
+ * REFRESH_INTERIOR each have their own 1/0/-1 contract (mirroring the advertised
+ * `worldSnapshot::wsRemoveNode` and `clientInteriorLayoutManager::refreshInteriorLayout`
+ * respectively); every other action uses 1=ok / 0=endpoint-unresolved-or-failed. An unrecognized
+ * `action` value fails closed with 'unknown action' rather than throwing, matching the agent-side
+ * dispatch's own fail-closed discipline (Plan 09).
  */
 export function describeHostCommandResult(action: number, code: number): string {
   if (action === LIVE_HOST_CMD_ACTION.DESPAWN_NODE) {
@@ -148,6 +173,19 @@ export function describeHostCommandResult(action: number, code: number): string 
       case 1: return 'despawned';
       case 0: return 'not found (already gone or buildout-provenance)';
       case -1: return 'occupied — try again';
+      default: return 'unknown outcome';
+    }
+  }
+
+  if (action === LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR) {
+    switch (code) {
+      case 1: return 'interior rebuilt';
+      // The agent folds its own two refusals into the engine's 0 — a parse still in flight, and a
+      // decoration currently armed (a refresh frees and recreates the layout objects, so it must
+      // not run while the overlay holds one). Neither is distinguishable from the engine's own
+      // "no such object / not a POB / not a building template", so the words cover all of them.
+      case 0: return 'not refreshed (no such building, not a POB, still loading, or an edit is armed)';
+      case -1: return 'layout reload failed';
       default: return 'unknown outcome';
     }
   }

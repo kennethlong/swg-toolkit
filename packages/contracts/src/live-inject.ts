@@ -353,10 +353,10 @@ export const LIVE_DECORATION_RESULT = {
 /**
  * One new, single, reusable host → agent one-shot action-request region, riding the SAME
  * single named mapping (still no second CreateFileMappingA — the mapping grows from 1440
- * to LIVE_CHANNEL_TOTAL_SIZE=1864 bytes). Carries all SIX host → agent actions this phase
+ * to LIVE_CHANNEL_TOTAL_SIZE=1864 bytes). Carries all SEVEN host → agent actions this phase
  * needs (reload scene / load editor scene / teleport / start placement / cancel placement /
- * despawn a node), discriminated by HOST_CMD_ACTION, rather than six separate channel
- * regions — per the file's own "extend, don't fork" doctrine.
+ * despawn a node / refresh a building's interior), discriminated by HOST_CMD_ACTION, rather
+ * than seven separate channel regions — per the file's own "extend, don't fork" doctrine.
  *
  * Same request/response idiom as REBIND/RESULT above, generalized: the host writes a
  * seqlocked request under HOST_CMD_SEQ_COUNTER and bumps HOST_CMD_EPOCH; the agent applies
@@ -370,8 +370,12 @@ export const LIVE_DECORATION_RESULT = {
  *   TELEPORT(3)              — VEC3 xyz.
  *   START_PLACEMENT(4)       — STR1 decoration template, STR2 cellName, ID building id.
  *   CANCEL_PLACEMENT(5)      — no payload.
- *   DESPAWN_NODE(6)          — ID networkId to remove. Result code mirrors
- *                               utinni_wsRemoveNode: 1=removed / 0=miss / -1=occupied.
+ *   DESPAWN_NODE(6)          — ID networkId to remove. Result code mirrors the advertised
+ *                               worldSnapshot::wsRemoveNode: 1=removed / 0=miss / -1=occupied.
+ *   REFRESH_INTERIOR(7)      — ID building networkId. No strings, no vec3. Result code mirrors
+ *                               the advertised clientInteriorLayoutManager::refreshInteriorLayout:
+ *                               1=ok / 0=no such object, not a POB, not a building template, or a
+ *                               snapshot parse is in flight / -1=layout reload failed.
  *                               All OTHER actions use 1=ok / 0=endpoint-unresolved-or-failed.
  */
 export const LIVE_HOST_CMD_LAYOUT = {
@@ -391,7 +395,9 @@ export const LIVE_HOST_CMD_LAYOUT = {
   HOST_CMD_RESULT_EPOCH:  { offset: 1860, length: 4   },
 } as const;
 
-/** LIVE_HOST_CMD_ACTION — the six host → agent one-shot actions this phase needs. */
+/** LIVE_HOST_CMD_ACTION — the seven host → agent one-shot actions this phase needs.
+ *  Append-only: the agent's dispatch fails closed (result 0) on any value it does not
+ *  recognize, so a newer host never crashes an older agent. */
 export const LIVE_HOST_CMD_ACTION = {
   RELOAD_CURRENT_SCENE: 1,
   LOAD_EDITOR_SCENE:    2,
@@ -399,6 +405,14 @@ export const LIVE_HOST_CMD_ACTION = {
   START_PLACEMENT:      4,
   CANCEL_PLACEMENT:     5,
   DESPAWN_NODE:         6,
+  /** Contract v32. DELIBERATELY-TRIGGERED ONLY — never issued automatically as part of a
+   *  persist. A refresh recreates the building's .ilf-sourced decorations, but it does NOT
+   *  touch a wsForgetNode'd preview object (layout objects never get a NetworkId, our
+   *  placements always do — the two populations are disjoint by construction), so firing it
+   *  after a persist would leave TWO visible copies of the same decoration, one of them past
+   *  wsRemoveNode's reach forever. The agent additionally refuses while a snapshot parse is
+   *  pending or while a decoration is armed. */
+  REFRESH_INTERIOR:     7,
 } as const;
 
 // ---------------------------------------------------------------------------

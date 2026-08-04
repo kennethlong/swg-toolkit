@@ -1699,7 +1699,9 @@ bool teleportPlayerToWorldPos(const float pos[3], const char* origin, char* outN
 //     this function itself runs inside Present. TELEPORT is proven safe from Present (05.1-05
 //     checkpoint) and is called directly, matching the existing teleport button. DESPAWN_NODE
 //     mutates snapshot state but does not recreate the player/scene, so it is also called directly
-//     (UNKNOWN-verified-live per the handoff table — Task 3 smoke-tests it).
+//     (UNKNOWN-verified-live per the handoff table — Task 3 smoke-tests it). REFRESH_INTERIOR
+//     (v32) likewise mutates client-side interior state without recreating the player/scene, so it
+//     too is called directly — with its own two pre-call refusals, documented at its case.
 //
 //     ACK-TIMING DESIGN DECISION (required by this plan, not pre-decided by 05.1-16 or Plan 08):
 //     deferred actions ack ON EXECUTION, not on enqueue. Enqueue-time acking would tell the
@@ -1792,6 +1794,39 @@ void handleHostCommand() {
         case HOST_CMD_ACTION_CANCEL_PLACEMENT: {
             g_placementActive = false;
             code = 1;
+            break;
+        }
+        case HOST_CMD_ACTION_REFRESH_INTERIOR: {
+            // v32. THE ONLY call site for refreshInteriorLayout, and it is deliberate-only by
+            // design — it is never invoked from applyPendingRebind() or anywhere else on the
+            // persist path (see the block at that save call site, and rva_table.cpp's row comment,
+            // for the two-visible-copies hazard that rules it out there).
+            //
+            // Two refusals before the call, both publishing 0 rather than calling:
+            //
+            //   1. A snapshot parse in flight. The engine ALSO returns 0 mid-parse, which is
+            //      indistinguishable from a genuine miss, so gate rather than call and guess.
+            //      wsIsParsePending is the one non-forcing ws* row — polling it costs nothing and
+            //      never triggers a finishLoadNow() freeze.
+            //   2. A decoration currently ARMED. The refresh frees the building's client-only
+            //      interior objects and recreates them, which would leave g_capFocus /
+            //      g_latchedFocus dangling at a freed Object.
+            //
+            // Everything else is the engine's verbatim return (1 ok / 0 miss-or-not-a-POB /
+            // -1 layout reload failed) — the CALLER interprets it (hostCommand.ts's
+            // describeHostCommandResult), never remapped here, same as DESPAWN_NODE above.
+            //
+            // Every branch falls through to the central publish below — no bare `return`, per the
+            // agent-always-acks clause of Plan 08's HOST_CMD ACK PROTOCOL (a missing ack strands
+            // the renderer's pending slot until its timeout).
+            if (swg::endpoints::wsIsParsePending && swg::endpoints::wsIsParsePending() != 0) {
+                code = 0;   // parse in flight — refuse rather than read a mid-parse 0 as a miss
+            } else if (g_capArmed) {
+                code = 0;   // an armed edit's focus pointer would not survive the rebuild
+            } else if (swg::endpoints::refreshInteriorLayout) {
+                code = swg::endpoints::refreshInteriorLayout(static_cast<int64_t>(cmd.id));
+            }
+            // else: endpoint unresolved (pre-v32 exe) — code stays 0.
             break;
         }
         default:

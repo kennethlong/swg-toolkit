@@ -30,6 +30,12 @@
 #   .\packages\harness\scripts\drive-host-command.ps1 -Name '...' -Action cancel
 #   .\packages\harness\scripts\drive-host-command.ps1 -Name '...' -Action reload
 #   .\packages\harness\scripts\drive-host-command.ps1 -Name '...' -Action teleport -Vec3 512,0,-1340
+#   .\packages\harness\scripts\drive-host-command.ps1 -Name '...' -Action refreshinterior -Id 1082874
+#
+# refreshinterior (contract v32) rebuilds ONE building's interior from its current .ilf with no
+# scene reload - the way to see an edit land in an OCCUPIED building, which is kept across a
+# reload and otherwise keeps rendering its pre-edit interior until a zone change or relog. The
+# agent refuses (code 0) while a snapshot parse is in flight or while a decoration is armed.
 #
 # The mapping name is regenerated on every attach (Local\SwgToolkitLive_<random8>,
 # useLiveService.ts) and is not shown in the UI; find-live-mapping.ps1 enumerates it from the
@@ -41,7 +47,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Name,
-    [ValidateSet('reload', 'editorscene', 'teleport', 'start', 'cancel', 'despawn')][string]$Action,
+    [ValidateSet('reload', 'editorscene', 'teleport', 'start', 'cancel', 'despawn', 'refreshinterior')][string]$Action,
     [string]$Template = '',
     [string]$Cell = '',
     [string]$Avatar = '',
@@ -136,8 +142,8 @@ public static class HostCmd {
 
 Add-Type -TypeDefinition $src -Language CSharp | Out-Null
 
-$ActionMap = @{ reload = 1; editorscene = 2; teleport = 3; start = 4; cancel = 5; despawn = 6 }
-$ActionNameMap = @{ 1 = 'reload'; 2 = 'editorscene'; 3 = 'teleport'; 4 = 'start'; 5 = 'cancel'; 6 = 'despawn' }
+$ActionMap = @{ reload = 1; editorscene = 2; teleport = 3; start = 4; cancel = 5; despawn = 6; refreshinterior = 7 }
+$ActionNameMap = @{ 1 = 'reload'; 2 = 'editorscene'; 3 = 'teleport'; 4 = 'start'; 5 = 'cancel'; 6 = 'despawn'; 7 = 'refreshinterior' }
 
 # Mirrors describeHostCommandResult() in packages/renderer/src/services/hostCommand.ts
 function Get-ResultText([int]$action, [int]$code) {
@@ -146,6 +152,14 @@ function Get-ResultText([int]$action, [int]$code) {
             1 { return 'despawned' }
             0 { return 'not found (already gone or buildout-provenance)' }
             -1 { return 'occupied - try again' }
+            default { return 'unknown outcome' }
+        }
+    }
+    if ($action -eq 7) {
+        switch ($code) {
+            1 { return 'interior rebuilt' }
+            0 { return 'not refreshed (no such building, not a POB, still loading, or an edit is armed)' }
+            -1 { return 'layout reload failed' }
             default { return 'unknown outcome' }
         }
     }

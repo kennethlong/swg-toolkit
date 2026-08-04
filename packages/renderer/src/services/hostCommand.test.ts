@@ -25,6 +25,7 @@ let sendTeleport: typeof import('./hostCommand').sendTeleport;
 let sendStartPlacement: typeof import('./hostCommand').sendStartPlacement;
 let sendCancelPlacement: typeof import('./hostCommand').sendCancelPlacement;
 let sendDespawnNode: typeof import('./hostCommand').sendDespawnNode;
+let sendRefreshInterior: typeof import('./hostCommand').sendRefreshInterior;
 let parseHostCommandResult: typeof import('./hostCommand').parseHostCommandResult;
 let describeHostCommandResult: typeof import('./hostCommand').describeHostCommandResult;
 
@@ -36,6 +37,7 @@ beforeAll(async () => {
   sendStartPlacement = mod.sendStartPlacement;
   sendCancelPlacement = mod.sendCancelPlacement;
   sendDespawnNode = mod.sendDespawnNode;
+  sendRefreshInterior = mod.sendRefreshInterior;
   parseHostCommandResult = mod.parseHostCommandResult;
   describeHostCommandResult = mod.describeHostCommandResult;
 });
@@ -93,6 +95,17 @@ describe('hostCommand send* wrappers', () => {
     const call = (addon.writeHostCommand as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[2]).toBe(LIVE_HOST_CMD_ACTION.DESPAWN_NODE);
     expect(call[5]).toBe('9999999999999');
+  });
+
+  it('sendRefreshInterior sends REFRESH_INTERIOR with id=buildingId, no strings, zeroed vec3', () => {
+    sendRefreshInterior(MAPPING, '1082874');
+    const call = (addon.writeHostCommand as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0]).toBe(MAPPING);
+    expect(call[2]).toBe(LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR);
+    expect(call[3]).toBe('');
+    expect(call[4]).toBe('');
+    expect(call[5]).toBe('1082874');
+    expect(Array.from(call[6] as number[])).toEqual([0, 0, 0]);
   });
 
   it('consecutive sends across DIFFERENT actions use strictly increasing epochs', () => {
@@ -165,6 +178,28 @@ describe('describeHostCommandResult — words only, never a bare digit matching 
     expect(describeHostCommandResult(LIVE_HOST_CMD_ACTION.DESPAWN_NODE, 42)).toBe('unknown outcome');
   });
 
+  it('describes REFRESH_INTERIOR with its OWN 1/0/-1 contract, distinct from DESPAWN_NODE', () => {
+    expect(describeHostCommandResult(LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR, 1)).toBe('interior rebuilt');
+    expect(describeHostCommandResult(LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR, 0)).toBe(
+      'not refreshed (no such building, not a POB, still loading, or an edit is armed)',
+    );
+    expect(describeHostCommandResult(LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR, -1)).toBe('layout reload failed');
+    expect(describeHostCommandResult(LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR, 42)).toBe('unknown outcome');
+    // Same codes, DIFFERENT words from the despawn contract — the two must never collapse.
+    for (const code of [1, 0, -1]) {
+      expect(describeHostCommandResult(LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR, code)).not.toBe(
+        describeHostCommandResult(LIVE_HOST_CMD_ACTION.DESPAWN_NODE, code),
+      );
+    }
+  });
+
+  it('covers every action in LIVE_HOST_CMD_ACTION — a new action must never fall through to "unknown action"', () => {
+    for (const action of Object.values(LIVE_HOST_CMD_ACTION)) {
+      expect(describeHostCommandResult(action, 1)).not.toBe('unknown action');
+      expect(describeHostCommandResult(action, 0)).not.toBe('unknown action');
+    }
+  });
+
   it('fails closed on an unrecognized action, never throws', () => {
     expect(() => describeHostCommandResult(999, 1)).not.toThrow();
     expect(describeHostCommandResult(999, 1)).toBe('unknown action');
@@ -177,6 +212,9 @@ describe('describeHostCommandResult — words only, never a bare digit matching 
       [LIVE_HOST_CMD_ACTION.DESPAWN_NODE, -1],
       [LIVE_HOST_CMD_ACTION.DESPAWN_NODE, 0],
       [LIVE_HOST_CMD_ACTION.DESPAWN_NODE, 1],
+      [LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR, -1],
+      [LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR, 0],
+      [LIVE_HOST_CMD_ACTION.REFRESH_INTERIOR, 1],
       [999, 7],
     ] as const) {
       const label = describeHostCommandResult(action, code);

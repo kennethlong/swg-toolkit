@@ -169,6 +169,10 @@ static constexpr uint32_t HOST_CMD_ACTION_TELEPORT             = 3;
 static constexpr uint32_t HOST_CMD_ACTION_START_PLACEMENT      = 4;
 static constexpr uint32_t HOST_CMD_ACTION_CANCEL_PLACEMENT     = 5;
 static constexpr uint32_t HOST_CMD_ACTION_DESPAWN_NODE         = 6;
+// v32 — ID carries the building networkId; no strings, no vec3. Deliberately-triggered only:
+// NEVER issued as part of a persist (a refresh does not remove a forgotten-but-live preview, so
+// it would leave two visible copies). See handleHostCommand()'s case for the two extra refusals.
+static constexpr uint32_t HOST_CMD_ACTION_REFRESH_INTERIOR      = 7;
 
 // ---------------------------------------------------------------------------
 // LiveCommand — plain-data snapshot of one command-region read
