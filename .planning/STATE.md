@@ -391,6 +391,22 @@ Roadmap-shaping decisions affecting current work:
 
 ### Blockers/Concerns
 
+- [2026-08-04 — PARTIALLY FIXED, awaiting a provider row] **The ADD persist path was writing the temp
+  preview into the `.ws` as a malformed world-space duplicate of the `.ilf` row.** Cause:
+  `wsSaveSnapshot` ran BEFORE `wsRemoveNode(g_pendingRebindSpawnedId)`, and `saveFiltered`'s filter
+  excludes only buildout TOP-LEVEL nodes (child recursion applies only the tombstone skip), so a
+  runtime child of an authored building always serializes. Measured in
+  `swg-client-v2/stage/override/snapshot/tatooine.ws`: ids 9995372/9995373, children of building
+  1082874, `cellIndex=0`, `radius=512` (`cs_wsDefaultAddRadius`), world-space coords whose Y is
+  exactly building-world-Y + ilf-cell-relative-Y. **Not dedupable by the engine** — `.ilf`-created
+  objects get no NetworkId, so `CEC_objectAlreadyExists` never fires and a scene load makes a phantom
+  second copy. Fixed by reordering (commit `47d7561`) and the two stale nodes were pruned from the
+  maintainer's `.ws` (1,400,440 → 1,400,272 bytes, `.bak` retained; that file is untracked/generated
+  and lives outside this repo). **Residual:** `wsRemoveNode` is a teardown primitive, so a
+  just-placed decoration still VANISHES at Persist. Closing that needs the provider to advertise
+  `utinni_wsForgetNode` (a shim over the existing `WorldSnapshot::removeObject` static) — requested in
+  `.planning/handoff/2026-08-04-CHANGE-REQUEST-wsForgetNode.md`. Independent of, and does not
+  supersede, the accepted per-building interior-refresh work.
 - [Standing risk]: Every binary format layout in `docs/` is an AI-proposed hypothesis (rated LOW—VERIFY). No parser merges without a cited `swg-client-v2` source + byte-exact round-trip on a real asset.
 - [Phase 3/5]: Live-injection pointer/offset discovery is per-client-build and effort-unbounded — mine Utinni, use runtime AOB resolution; treat magnitude as a planning unknown.
 - [Phase 2]: Mesh/appearance binary layouts (.msh/.mgn/.apt/.sat) in `docs/` are AI-proposed — verify against `swg-client-v2` + real asset bytes before the parser merges (the standing round-trip gate applies).
