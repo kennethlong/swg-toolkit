@@ -1085,6 +1085,14 @@ void renderDecorationStrip() {
 
         switch (state) {
             case DecoStripState::Idle:
+                // 020-A specs the idle strip as a dimmed hint, NOT an empty window:
+                //   if (s === 'idle') { obj.innerHTML = '<span class="im-dim">hover a decoration
+                //   to pick it</span>'; st.textContent = ''; }
+                // Rendering nothing here was a sketch divergence that went unnoticed while the
+                // Slice-0 probe window still provided an always-visible surface; d82f659 retired
+                // that window and left the overlay with no idle presence at all, which reads as
+                // "the agent didn't inject". The hint is also the overlay's proof-of-life.
+                ImGui::TextDisabled("hover a decoration to pick it");
                 break;
             case DecoStripState::Hover:
                 if (showArmFail) ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "couldn't arm \xE2\x80\x94 see World panel");
