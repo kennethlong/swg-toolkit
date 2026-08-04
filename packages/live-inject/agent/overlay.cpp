@@ -2011,6 +2011,24 @@ bool tryInstall() {
 
     InterlockedExchange(&g_installed, 1);
     dbg("overlay: D3D11 overlay installed (advertised swapchain latched)");
+
+    // --- Editing sessions ALWAYS want the NGE targeting filter open: without it the reticle only
+    //     locks creatures/NPCs, so scenery/props/structures (i.e. every decoration this tool edits)
+    //     cannot be hovered. It was previously a checkbox on the Slice-0 probe window, which
+    //     d82f659 retired; the maintainer turned it on by hand every session, so enabling it here
+    //     removes a manual setup step rather than changing the effective workflow.
+    //
+    //     Session-scoped by construction, so no restore-on-close is needed for safety:
+    //     CuiPreferences::setAllowTargetAnything only assigns the in-memory static
+    //     ms_allowTargetAnything, which is seeded from ConfigClientUserInterface at startup and has
+    //     no write-back path (verified in swg-client-v2 CuiPreferences.cpp:1051/:467). The flag dies
+    //     with the process and cannot leak into a normal play session.
+    if (swg::endpoints::setAllowTargetAnything != nullptr) {
+        swg::endpoints::setAllowTargetAnything(true);
+        dbg("overlay: allowTargetAnything ON (editing session; session-scoped, not persisted)");
+    } else {
+        dbg("overlay: allowTargetAnything row unresolved — decoration hover-pick may not work");
+    }
     return true;
 }
 
