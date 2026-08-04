@@ -58,6 +58,10 @@ namespace swg { namespace endpoints {
     typedef void(__cdecl*     pWsVoid)();
     typedef int(__cdecl*      pGetSceneId)(char* buf, int cap);
     typedef int(__cdecl*      pWsRemoveNode)(int64_t networkIdInt);   // 05.1-09: 1 removed/0 miss/-1 occupied
+    // v32: forget the snapshot node, KEEP the live Object. 1 = forgotten / 0 = no live node.
+    // Only ever on a SUCCESSFUL persist — a forgotten node is invisible to ms_reader, so
+    // wsRemoveNode can never tear it down afterwards (rva_table.cpp carries the full obligations).
+    typedef int(__cdecl*      pWsForgetNode)(int64_t networkId);
     // 05.1-16: the real per-frame tick ("game::mainLoop" -> &Game::runGameLoopOnce), DISTINCT
     // from g_mainLoopCounter's getMainLoopCount accessor below — see rva_table.cpp for the full
     // provenance note. Preferred drain point for the deferred scene-swap command queue.
@@ -86,6 +90,7 @@ namespace swg { namespace endpoints {
     extern pWsVoid            wsUnloadSnapshot;
     extern pGetSceneId        getSceneId;
     extern pWsRemoveNode      wsRemoveNode;
+    extern pWsForgetNode      wsForgetNode;   // v32
     extern pMainLoop          mainLoop;
     // 05.1-18 (v27/v28): the engine's own authored-move idiom. setPortalTransitionsEnabled
     // is GLOBAL unscoped state — call it ONLY through PortalTransitionGuard below.
@@ -99,6 +104,14 @@ namespace swg { namespace endpoints {
     typedef int(__cdecl*      pIsChildObject)(void*);              // v29: THE mount discriminator
     typedef int(__cdecl*      pWarpPlayer)(float, float, float);   // v30: sequenced client teleport
     typedef int(__cdecl*      pWsIsParsePending)();   // 05.1-17: non-forcing completion poll
+    // v32: copy-out cell name. Returns the NEEDED length INCLUDING NUL (wsGetSavePath
+    // convention — a too-small cap still returns the needed length); 0 = null input / no name.
+    // The world cell answers the literal "world", never null.
+    typedef int(__cdecl*      pGetCellName)(void* cellProperty, char* buf, int cap);
+    // v32: per-building interior rebuild from the current .ilf. 1 ok / 0 no such object, not a
+    // POB, not a building template, or a parse is in flight / -1 layout reload failed.
+    // ⚠ NEVER auto-called on the persist path — see the HOST_CMD dispatch case for why.
+    typedef int(__cdecl*      pRefreshInteriorLayout)(int64_t buildingNetworkId);
     extern pGetParentCell               getParentCell;
     extern pSetParentCell               setParentCell;
     extern pGetWorldCellProperty        getWorldCellProperty;
@@ -109,6 +122,8 @@ namespace swg { namespace endpoints {
     extern pIsChildObject               isChildObject;
     extern pWarpPlayer                  warpPlayer;
     extern pWsIsParsePending            wsIsParsePending;
+    extern pGetCellName                 getCellName;             // v32
+    extern pRefreshInteriorLayout       refreshInteriorLayout;   // v32
     typedef void*(__thiscall* pGetNetworkId)(void*);
     extern pGetNetworkId      getNetworkId;
     bool isAdvertisedClient();
@@ -600,8 +615,8 @@ void applyPendingRebind() {
             // would masquerade as the rebind outcome (even a false OK).
             code = DECO_RESULT_REBIND_REFUSED;
         } else if (swg::endpoints::wsSaveSnapshot) {
-            // Task 2, REORDERED 2026-08-04: despawn the wsAddObject-minted temp preview node
-            // BEFORE the save, not after it.
+            // Task 2, REORDERED 2026-08-04: drop the wsAddObject-minted temp preview node from the
+            // snapshot BEFORE the save, not after it.
             //
             // WHY: wsSaveSnapshot -> ms_reader.saveFiltered(dest, wsSaveIncludeTopLevelNode, 0),
             // and that filter only excludes buildout TOP-LEVEL nodes; child recursion applies
@@ -614,28 +629,45 @@ void applyPendingRebind() {
             // nodes (ids 9995372/9995373) in stage/override/snapshot/tatooine.ws. Removing the
             // node first tombstones it, and the tombstone skip keeps it out of the file.
             //
-            // *** INTERIM ORDERING FIX. *** This stops us POLLUTING the .ws, but the object still
-            // VANISHES on Persist, because wsRemoveNode is a teardown primitive — its step 5 does
+            // *** PERMANENT DESIGN as of contract v32 (2026-08-04). *** This was an interim
+            // ordering fix using wsRemoveNode, which stopped us POLLUTING the .ws but made the
+            // object VANISH on Persist — wsRemoveNode is a TEARDOWN primitive, its step 5 does
             // removeFromWorld() + delete on the whole subtree, not just the snapshot row. The
-            // vanish goes away when the provider lands wsForgetNode (forget the node, keep the
-            // Object) — see Item 1 of
-            // .planning/handoff/2026-08-04-CHANGE-REQUEST-consolidated-placement-and-cellname.md. At that
-            // point this call site swaps wsRemoveNode -> wsForgetNode and nothing else changes.
+            // provider has now landed wsForgetNode (handback
+            // .planning/handoff/2026-08-04-PROVIDER-HANDBACK-v32-forgetNode-cellName-interiorRefresh.md,
+            // Item 1): same tombstone, sphere handle dropped, but THE LIVE Object IS UNTOUCHED. So
+            // the preview the modder just placed now STAYS where they put it for the rest of the
+            // session, and the .ilf row takes over on the next interior rebuild. That is the fix
+            // for the vanish, and it is the whole fix — nothing else changes at this call site.
             //
-            // GUARD CHANGE (unavoidable, and the reason this is not a pure move): the old site
+            // ⚠ We deliberately do NOT call refreshInteriorLayout here (or anywhere else on the
+            // persist path). A refresh recreates the decoration from the .ilf while this
+            // forgotten-but-live preview is STILL VISIBLE — two copies — and the forgotten one is
+            // past wsRemoveNode's reach forever, so the duplicate would be unremovable. The
+            // refresh is exposed only as the deliberate HOST_CMD_ACTION_REFRESH_INTERIOR action.
+            //
+            // GUARD CHANGE (from the interim commit, retained): the ORIGINAL post-save site
             // required code==DECO_RESULT_OK, i.e. the SAVE succeeded — which cannot be known
             // before the save. The precondition here is therefore "the REBIND succeeded" (we are
             // inside the reb>0 branch) instead of "the save succeeded"; committedMatchesArmed and
-            // g_pendingRebindWasAdd are unchanged. Net effect: every path that does NOT reach the
-            // save (ABORT, buildingId==0, endpoint unresolved, rebind miss, rebind refused) still
-            // leaves the preview live for the user to retry — that is the bulk of the "user may
-            // still be iterating" case the old comment protected. The one newly-covered case is
-            // rebind-OK-then-save-failed (codes 1..6), which now also despawns. Accepted: the
-            // rebind has already re-pointed the building at the derived template by then, so the
-            // user is mid-commit rather than iterating, and the alternative is writing the
-            // duplicate node on every save attempt.
+            // g_pendingRebindWasAdd are unchanged. Every path that does NOT reach the save (ABORT,
+            // buildingId==0, endpoint unresolved, rebind miss, rebind refused) still leaves the
+            // preview node in the snapshot for the user to retry.
+            //
+            // The rebind-OK-then-save-failed caveat the interim comment carried is RESOLVED by the
+            // swap, not merely accepted: forgetting is not destructive, so whether or not the save
+            // then succeeds, the node is out of the snapshot AND the object stays visible. The old
+            // "we despawn the user's object even though the save failed" cost is simply gone.
+            //
+            // FALLBACK (older exe, pre-v32 catalog): if the wsForgetNode row did not resolve, fall
+            // back to the interim wsRemoveNode behavior — correct .ws, object vanishes — rather
+            // than skipping the removal and writing the duplicate node.
             if (committedMatchesArmed && g_pendingRebindWasAdd) {
-                if (swg::endpoints::wsRemoveNode) swg::endpoints::wsRemoveNode(g_pendingRebindSpawnedId);
+                if (swg::endpoints::wsForgetNode) {
+                    swg::endpoints::wsForgetNode(g_pendingRebindSpawnedId);
+                } else if (swg::endpoints::wsRemoveNode) {
+                    swg::endpoints::wsRemoveNode(g_pendingRebindSpawnedId);
+                }
                 g_pendingRebindWasAdd = false;
             }
             code = static_cast<int32_t>(swg::endpoints::wsSaveSnapshot());  // 0 ok / 1..6 save reason
@@ -651,10 +683,11 @@ void applyPendingRebind() {
     // (committedMatchesArmed is computed above the chain — the pre-save despawn needs it.)
     if (code == DECO_RESULT_OK && committedMatchesArmed) g_capArmed = false;
 
-    // (The kind=ADD temp-preview despawn used to live here, gated on code==DECO_RESULT_OK. It
-    //  moved AHEAD of wsSaveSnapshot on 2026-08-04 — a post-save despawn is too late to keep the
-    //  preview node out of the serialized .ws. See the block at the save call site for the full
-    //  rationale and the guard change it forced.)
+    // (The kind=ADD temp-preview teardown used to live here, gated on code==DECO_RESULT_OK. It
+    //  moved AHEAD of wsSaveSnapshot on 2026-08-04 — a post-save removal is too late to keep the
+    //  preview node out of the serialized .ws — and became a wsForgetNode (v32) rather than a
+    //  despawn, so the object the modder placed survives the Persist. See the block at the save
+    //  call site for the full rationale and the guard change it forced.)
 }
 
 // --- 020-A Status Strip label helpers ----------------------------------------------------
@@ -884,8 +917,52 @@ void attemptPlacementSpawn() {
     // g_capBuildingTemplate already resolved above (ROUND 3/R3 ripple).
 
     g_capKind = DECO_CAPTURE_KIND_ADD;
-    std::strncpy(g_capCellName, g_placementCellName, sizeof(g_capCellName) - 1);
-    g_capCellName[sizeof(g_capCellName) - 1] = '\0';
+    // --- v32: DERIVE the cell name from the PLACEMENT POINT, do not trust the caller. ---
+    //
+    // g_placementCellName is whatever string the operator typed into the HOST_CMD STR2 payload; it
+    // was never validated against where the object actually landed. The .ilf NODE row stores the
+    // cell name as a LITERAL asciiz string, so a wrong one is silently wrong on disk while looking
+    // perfectly healthy — correct template, correct transform, correct framing, wrong room. That is
+    // the operator-supplied-cell-name gap; deriving closes it. It also honours the maintainer's
+    // standing rule that the container is resolved from the placement location, never the player.
+    // See Item 2 of
+    // .planning/handoff/2026-08-04-PROVIDER-HANDBACK-v32-forgetNode-cellName-interiorRefresh.md.
+    //
+    // destCell is the SAME CellProperty* the setParentCell reparent above already resolved via
+    // findCellAtWorldPosition(g_lastRayPt) — no second lookup, and by construction it is the cell
+    // that actually contains the placement point.
+    //
+    // Copy-out contract: the return is the NEEDED length INCLUDING NUL, and a too-small cap STILL
+    // returns that needed length rather than failing. So a return of 0 (null input / no name) OR a
+    // return larger than the buffer means we must NOT use what landed in the buffer — the latter is
+    // a truncated name, which is exactly the class of silently-wrong row this change exists to
+    // prevent. Both fall back to the caller-supplied name and say so in the existing words-only
+    // failure idiom (the strip's arm-failure line), rather than writing a truncation.
+    bool cellNameDerived = false;
+    if (swg::endpoints::getCellName && destCell != nullptr) {
+        char derived[128] = {};
+        const int needed = swg::endpoints::getCellName(destCell, derived, static_cast<int>(sizeof(derived)));
+        if (needed > 0 && needed <= static_cast<int>(sizeof(derived))) {
+            derived[sizeof(derived) - 1] = '\0';
+            std::strncpy(g_capCellName, derived, sizeof(g_capCellName) - 1);
+            g_capCellName[sizeof(g_capCellName) - 1] = '\0';
+            cellNameDerived = true;
+        } else {
+            // Words-only, no bare code — same idiom as every other failure message in this
+            // function. NOT the g_lastArmFailureReason/g_stripArmFailShownUntil strip pair the
+            // refuse-sites above use: that pair renders only while `!g_capArmed` (see
+            // renderDecorationStrip's showArmFail), and by this point the spawn HAS armed. This is
+            // a non-fatal degrade on an otherwise successful placement, so it goes to the debug
+            // trace rather than a strip line that structurally cannot appear.
+            dbg("overlay: placement — could not derive the cell name; falling back to the name supplied with the placement\n");
+        }
+    }
+    if (!cellNameDerived) {
+        // Row unresolved on this exe (pre-v32), or the derive failed above: keep today's behavior
+        // EXACTLY — the caller-supplied name verbatim.
+        std::strncpy(g_capCellName, g_placementCellName, sizeof(g_capCellName) - 1);
+        g_capCellName[sizeof(g_capCellName) - 1] = '\0';
+    }
     g_placementSpawnedId = newId;   // the temp preview node this ADD capture's eventual Persist despawns
 
     g_placementActive = false;   // successful spawn exits placement mode
