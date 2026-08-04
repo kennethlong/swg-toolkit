@@ -263,13 +263,44 @@ typedef int(__cdecl*     pWsSetNodeTemplateName)(int64_t id, const char* name); 
 typedef void(__cdecl*    pWsLoad)(const char* sceneName);   // static WorldSnapshot::load(char const*)
 typedef int(__cdecl*     pGetSceneId)(char* buf, int cap);  // game::getSceneId (v21 copy-out, size-first)
 // --- 05.1-09: wsRemoveNode (advertised, engine_advertise.cpp:993, WorldSnapshot.cpp:2348-2358).
-//     utinni_wsRemoveNode(networkIdInt) -> 1 removed / 0 miss (id-less/buildout-provenance node,
+//     wsRemoveNode(networkIdInt) -> 1 removed / 0 miss (id-less/buildout-provenance node,
 //     the engine's OWN wsIsBuildoutNode guard refuses these — T-05.1-09a's actual enforcement
 //     boundary, not caller discipline) / -1 occupied (try again). SCOPE: this-session
 //     wsAddObject-minted preview nodes ONLY — never called on an id-less .ilf-sourced decoration
 //     (RESEARCH Pitfall 2/4); the caller (Plan 13's live-despawn case) is responsible for only
 //     ever sending ids it tracked from its own wsAddObject spawns. ---
 typedef int(__cdecl*     pWsRemoveNode)(int64_t networkIdInt);
+// --- 05.1-19 (contract v32): wsForgetNode — drop a node from the snapshot WITHOUT despawning it
+//     (advertised "worldSnapshot::wsForgetNode"; provider handback
+//     .planning/handoff/2026-08-04-PROVIDER-HANDBACK-v32-forgetNode-cellName-interiorRefresh.md,
+//     Item 1). A shim over the WorldSnapshot::removeObject static: the sphere handle is dropped
+//     (so nothing can re-spawn) and removeNode tombstones the row, so every later saveFiltered
+//     skips it. finishLoadNow() prologue kept; NO occupancy guard — nothing is deleted, so there
+//     is nothing to protect.
+//
+//     1 = forgotten (a live, non-tombstone node was found) / 0 = no live node at that id.
+//
+//     ⚠ CALLER OBLIGATION 1 — THE LIVE Object SURVIVES. That is the entire point of the row and
+//     the ONLY difference from wsRemoveNode above, which is a TEARDOWN primitive (its step 5 does
+//     removeFromWorld() + delete on the whole subtree). After a forget the object stays in the
+//     world — rendered, gizmo-able, exactly where the user put it — for the rest of the session,
+//     and its persistent home is the .ilf row we just wrote.
+//
+//     ⚠ CALLER OBLIGATION 2 — A FORGOTTEN NODE CAN NEVER AGAIN BE TORN DOWN. The tombstone makes
+//     it invisible to ms_reader, so wsRemoveNode returns 0 for that id forever after. Therefore:
+//     ONLY forget on a SUCCESSFUL persist, at which point the .ws node is genuinely meaningless.
+//     PRE-PERSIST CANCEL (user places, changes their mind, hits Esc) MUST keep using wsRemoveNode
+//     — there we genuinely do want the object gone.
+//
+//     ⚠ CALLER OBLIGATION 3 — never pair a forget with refreshInteriorLayout on the same gesture;
+//     see that row's block below for why it would strand a duplicate we cannot delete.
+//
+//     Allocator note (provider, WorldSnapshot.cpp:~2198): wsAllocateIdRange's collision test
+//     consults NetworkIdManager, not just ms_reader. A forgotten node's Object is still alive and
+//     still registered, so its id reads as TAKEN and cannot be re-minted — the map-miss free-test
+//     is not the only gate, and we are not exposed regardless of whether we ever re-add at an
+//     explicit id. ---
+typedef int(__cdecl*     pWsForgetNode)(int64_t networkId);
 pWsAddObject      wsAddObject      = nullptr;
 pWsSaveSnapshot   wsSaveSnapshot   = nullptr;
 pWsGetSavePath    wsGetSavePath    = nullptr;
@@ -278,6 +309,7 @@ pWsSetNodeTemplateName wsSetNodeTemplateName = nullptr;
 pWsLoad           wsLoad           = nullptr;
 pGetSceneId       getSceneId       = nullptr;
 pWsRemoveNode     wsRemoveNode     = nullptr;
+pWsForgetNode     wsForgetNode     = nullptr;   // v32 — forget, do NOT tear down; see the block above
 
 // --- Ray-pick (advertised v20, provider handback 2026-07-19). Copy-out cursor
 //     ray-cast from the current camera through client-window pixel (x,y):
@@ -370,6 +402,70 @@ pGetAttachedTo               getAttachedTo               = nullptr;
 pIsChildObject               isChildObject               = nullptr;
 pWarpPlayer                  warpPlayer                  = nullptr;
 
+// --- 05.1-19 (contract v32): cellProperty::getCellName — a COPY-OUT of the inline
+//     CellProperty::getCellName() (declared CellProperty.h:120, inline body :249-252). Inline =>
+//     no out-of-line symbol to advertise, which is the ONLY reason we could not read it; the same
+//     pure ABI-visibility shape as object::isChildObject (v29, also inline -> shim). Provider
+//     handback 2026-08-04, Item 2.
+//
+//         int(void* cellProperty, char* buf, int cap) -> NEEDED LENGTH INCLUDING NUL;
+//                                                        0 = null input / no name.
+//
+//     ⚠ CALLER OBLIGATION 1 — wsGetSavePath CONVENTION. A too-small `cap` STILL returns the needed
+//     length rather than failing, so the caller can size and retry. Never treat a return larger
+//     than the buffer as success: the copy was truncated.
+//
+//     ⚠ CALLER OBLIGATION 2 — the WORLD cell returns the literal string "world"
+//     (CellProperty.cpp:225), NOT null. "world" means "not an interior cell, do not write an .ilf
+//     row"; it is an answer, not a failure. Only a 0 return means "no answer".
+//
+//     COPY-OUT, NOT the const char* we proposed — a deliberate provider change: m_cellName is
+//     assigned from cellTemplate.getName() (CellProperty.cpp:456), so it points into the TEMPLATE
+//     and its lifetime is the template's, not the cell's. The shim copies so no caller has to
+//     reason about a lifetime it cannot see. There is deliberately NO object->cell walk: the
+//     correct input is the CellProperty* for the PLACEMENT POINT, which findCellAtWorldPosition
+//     above already hands us (and never returns null). Game-thread-only, like the rest. ---
+typedef int(__cdecl* pGetCellName)(void* cellProperty, char* buf, int cap);
+pGetCellName getCellName = nullptr;
+
+// --- 05.1-19 (contract v32): clientInteriorLayoutManager::refreshInteriorLayout — re-apply ONE
+//     building's .ilf to the LIVE building with no scene reload (provider handback 2026-08-04,
+//     Item 3). This is the EDIT-visibility instrument: a building with server-owned occupants is
+//     KEPT across a reload and keeps rendering its pre-edit interior until a zone change or relog,
+//     so the canonical "persist the edit, reload, confirm it took" loop reports a false failure
+//     there today.
+//
+//         int(int64_t buildingNetworkId) -> 1 ok
+//                                           0 no such object / not a POB / not a building template
+//                                          -1 layout reload failed
+//
+//     Three things happen inside, and missing any ONE is a silent no-op — worth recording because
+//     that is what a failure looks like: (1) delete only THIS building's client-only interior
+//     objects; (2) reload the TEMPLATE's cached layout, TreeFile::forgetMissingFile first — the
+//     layout is cached on ClientBuildingObjectTemplate, not on the object, so without this step the
+//     rebuild would faithfully reproduce the PRE-EDIT .ilf; (3) clear each cell's applied-latch and
+//     reset its resume cursor. Re-creation is then left to the existing budgeted update(), so a
+//     large cantina spreads across frames under maxInteriorCreatesPerFrame instead of hitching.
+//
+//     ⚠ CALLER OBLIGATION 1 — GATE ON wsIsParsePending. Mid-parse ALSO returns 0, which is
+//     indistinguishable from a genuine miss. Poll first (wsIsParsePending is the one non-forcing
+//     ws* row) and refuse rather than call.
+//
+//     ⚠ CALLER OBLIGATION 2 — NEVER CALL WHILE A DECORATION IS ARMED. Step 1 frees the layout
+//     objects and step 3 + update() recreate them, which would leave overlay.cpp's g_capFocus /
+//     g_latchedFocus pointing at a freed Object.
+//
+//     ⚠ CALLER OBLIGATION 3 — DOES NOT COMPOSE WITH A LIVE PREVIEW, so this is deliberately NOT on
+//     the persist path. The refresh sweeps only client-only interior objects; layout objects never
+//     receive a NetworkId and our wsAddObject placements always do, so the two populations are
+//     disjoint by construction (which is what stops a refresh discarding a modder's unpersisted
+//     work). The consequence for us: a refresh does NOT remove a forgotten-but-live preview, so
+//     forget-then-refresh yields TWO visible copies — and the forgotten one is past wsRemoveNode's
+//     reach forever. overlay.cpp therefore exposes this ONLY as the deliberately-triggered
+//     HOST_CMD_ACTION_REFRESH_INTERIOR action and never calls it from applyPendingRebind(). ---
+typedef int(__cdecl* pRefreshInteriorLayout)(int64_t buildingNetworkId);
+pRefreshInteriorLayout refreshInteriorLayout = nullptr;
+
 // --- Non-forcing parse-completion poll (advertised v28, provider handback 2026-08-02).
 //     1 = snapshot parse in flight (world still rebuilding), 0 = idle/complete.
 //     This is the ONLY ws* row with no finishLoadNow() prologue — it is deliberately pure,
@@ -455,6 +551,7 @@ Binding g_agentBindings[] = {
     {"worldSnapshot::load",             (void**)&wsLoad},           // engine_advertise.cpp:726 (load/reload a scene)
     {"game::getSceneId",                (void**)&getSceneId},       // v21 handback (one-click reload / .ws auto-name)
     {"worldSnapshot::wsRemoveNode",     (void**)&wsRemoveNode},     // engine_advertise.cpp:993 — 1/0/-1; this-session preview-node despawn only (05.1-09)
+    {"worldSnapshot::wsForgetNode",     (void**)&wsForgetNode},     // v32 — forget the node, KEEP the Object; only on a SUCCESSFUL persist (never on cancel)
     // --- Ray-pick (advertised v20 handback 2026-07-19) ---
     {"clientWorld::collideScreenRay",       (void**)&collideScreenRay},
     {"clientWorld::collideScreenRayObject", (void**)&collideScreenRayObject}, // v22: borrowed Object* pick
@@ -474,6 +571,9 @@ Binding g_agentBindings[] = {
     {"object::isChildObject",                  (void**)&isChildObject},                  // v29 — THE mount discriminator (m_childObject flag; cells attach with asChildObject=false)
     {"playerCreatureController::warpClient",   (void**)&warpPlayer},                     // v30 — client-initiated SEQUENCED teleport; does the warp + camera retarget internally
     {"worldSnapshot::wsIsParsePending",        (void**)&wsIsParsePending},               // v28 — non-forcing completion poll (never swap for wsGetNodeCount)
+    // --- v32 handback 2026-08-04 — see the three block comments above for the caller obligations ---
+    {"cellProperty::getCellName",              (void**)&getCellName},                    // v32 — copy-out, returns needed length INCL NUL; world cell answers "world", not null
+    {"clientInteriorLayoutManager::refreshInteriorLayout", (void**)&refreshInteriorLayout}, // v32 — gate on wsIsParsePending; NEVER while armed; NEVER auto-called on the persist path
 };
 size_t g_agentBindingCount = sizeof(g_agentBindings) / sizeof(g_agentBindings[0]);
 
