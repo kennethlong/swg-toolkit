@@ -1079,6 +1079,30 @@ void renderPlacementMode() {
             ImGui::SameLine();
             if (ImGui::SmallButton("Place here")) attemptPlacementSpawn();
         }
+        // --- LIVE-CHECKPOINT DEFECT FIX (05.1-15, 2026-08-04): render the refusal reason HERE.
+        //     attemptPlacementSpawn has three refusal paths that deliberately leave placement mode
+        //     ACTIVE so the user can retry -- endpoint-unresolved (:827), outside-a-building (:844)
+        //     and spawn-failed/wsAddObject-returned-0 (:895). All three set g_lastArmFailureReason,
+        //     but the ONLY renderer of that string was renderDecorationStrip's Hover branch
+        //     (showArmFail), which structurally CANNOT appear while g_placementActive is true --
+        //     this placement strip is what draws instead. So every one of those three refusals was
+        //     invisible: the click "did nothing" from the user's side, with the reason written to a
+        //     variable nothing displayed.
+        //
+        //     Found the hard way during the 05.1-15 sign-off: a v33 wsAddObject regression refused
+        //     ~19 consecutive placements in total silence, and it took a DBWIN trace capture to see
+        //     what the UI already knew. Display-only -- no write path is touched.
+        //
+        //     Deadline-gated on the SAME g_stripArmFailShownUntil idiom the hover strip uses, so a
+        //     stale reason from an earlier failure can never render. NOTE: kStripMessageHoldSec is
+        //     2 s, which is brief for a surface the user is STUCK on (these refusals keep placement
+        //     mode active indefinitely). Left at the shared constant deliberately -- changing it
+        //     would alter the hover strip's behaviour too, which is out of scope for a display-only
+        //     fix mid-checkpoint. Worth revisiting.
+        if (g_lastArmFailureReason[0] != '\0' && ImGui::GetTime() < g_stripArmFailShownUntil) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "\xE2\x80\x94 %s", g_lastArmFailureReason);
+        }
     }
     ImGui::End();
 
