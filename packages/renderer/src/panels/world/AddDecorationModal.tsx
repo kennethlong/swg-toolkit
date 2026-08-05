@@ -45,35 +45,50 @@ export interface AddDecorationModalProps {
 /**
  * The object classes an interior-layout `.ilf` node may legitimately name.
  *
- * GROUND TRUTH, not convention: derived by extracting every `object/...iff` string from the real
- * `interiorlayout/toolkit/edit_1082874.ilf` (Mos Eisley cantina) — 50 distinct templates:
+ * GROUND TRUTH, not convention: every `object/...iff` string in the real
+ * `interiorlayout/toolkit/edit_1082874.ilf` (Mos Eisley cantina) — 51 distinct templates:
  *
- *     28  object/static/item/*          shared_item_bottle_tall.iff, shared_item_carbine_laser.iff
- *     20  object/tangible/furniture/*   shared_frn_all_lamp_free_s01.iff, shared_chair_s01.iff
- *      2  object/soundobject/*          shared_soundobject_cantina_large.iff
+ *     29  object/static/       item 21, structure 7, creature 1
+ *     20  object/tangible/     furniture 14, instrument 4, speaker 1, microphone 1
+ *      2  object/soundobject/
  *
- * Anchored at the START of the path, deliberately. The previous implementation substring-matched
- * `/furniture/` or `/tangible/` ANYWHERE in the path, which had two defects:
+ * TOP-LEVEL class is the right granularity, and getting that wrong is how this list was wrong
+ * twice in one session. A first pass used `object/tangible/furniture/`, which silently dropped the
+ * cantina's own band gear — `object/tangible/instrument/*`, `speaker`, `microphone`, six real
+ * decorations sitting in the very building we were testing against.
  *
- *   1. It MISSED all 28 `object/static/item/*` -- the largest class of real decorations, including
- *      the objects already sitting in the cantina.
- *   2. It ADMITTED `object/draft_schematic/furniture/*` -- CRAFTING SCHEMATICS, which contain
- *      "/furniture/" but are not world props at all. Handing one to wsAddObject killed the frame
- *      with an ACCESS_VIOLATION (DEP/execute at 0x736E6172, a pointer read out of string data),
- *      swallowed by the agent's outer SEH handler so the click silently did nothing. That cost a
- *      live sign-off session on 2026-08-04 and a wrongly-filed provider regression report.
+ * Anchored at the START of the path, deliberately. The ORIGINAL implementation substring-matched
+ * `/furniture/` or `/tangible/` ANYWHERE, which was wrong in both directions:
+ *
+ *   1. It MISSED every `object/static/*` — the largest class (29 of 51), including the object the
+ *      maintainer had just rotated successfully.
+ *   2. It ADMITTED `object/draft_schematic/furniture/*` — CRAFTING SCHEMATICS, which contain
+ *      "/furniture/" but are not world props. Handing one to `wsAddObject` killed the client frame
+ *      with an ACCESS_VIOLATION (DEP/execute at 0x736E6172 — a jump into ASCII, i.e. a call through
+ *      a pointer read out of string data), swallowed by the agent's outer SEH handler so the click
+ *      silently did nothing. Cost a live sign-off session and a wrongly-filed provider report.
+ *
+ * WHY THE ENGINE DOES NOT CATCH IT, so nobody assumes a safety net exists: the engine's own loader
+ * does `safe_cast<ClientObject *>(ObjectTemplateList::createObject(name))` and guards only against
+ * NULL — its "invalid interior object template name … Object will be skipped" diagnostic is a
+ * `DEBUG_WARNING`, compiled OUT of Release, and `safe_cast` is unchecked there
+ * (`ClientInteriorLayoutManager.cpp:143-161`). A wrong-class template that creates non-null yields
+ * a bad pointer and the next virtual call crashes. There is no Release-mode guard anywhere below
+ * this filter — it IS the guard.
  *
  * The substring rule came from plan text asserting the convention was `object/tangible/furniture/`
- * and from test fixtures carrying the same paths -- neither checked against real `.ilf` bytes.
- * This list is checked. See AGENTS.md's verify-against-ground-truth rule.
+ * plus test fixtures carrying the same invented paths. Neither was checked against real `.ilf`
+ * bytes. See AGENTS.md's verify-against-ground-truth rule.
  *
- * SCOPE NOTE: derived from ONE building's layout. Other interiors may legitimately use classes not
- * listed here; widen this list from real `.ilf` data when more is available, never from a plausible
- * guess. Being too narrow costs a missing tile; being too broad crashes the client.
+ * SCOPE NOTE: still derived from ONE building. Other interiors may use classes absent here. Widen
+ * ONLY from real `.ilf` data, never from a plausible guess. The proper long-term fix is to validate
+ * a candidate by its template's own IFF type rather than its path — the engine's real rule is "does
+ * `createObject` return a ClientObject", which is a type property, not a path property. Filed as a
+ * todo. Until then: too narrow costs a missing tile, too broad crashes the client.
  */
 const DECORATION_CLASS_PREFIXES = [
   'object/static/',
-  'object/tangible/furniture/',
+  'object/tangible/',
   'object/soundobject/',
 ] as const;
 

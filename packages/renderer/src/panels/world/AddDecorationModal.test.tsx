@@ -132,6 +132,30 @@ describe('AddDecorationModal — template class filter (ground truth from real .
     for (const p of [BOTTLE, CHAIR, SOUND]) expect(screen.getByText(p)).not.toBeNull();
   });
 
+  it('REGRESSION: offers object/tangible subtrees BEYOND furniture', () => {
+    // A first fix used `object/tangible/furniture/` and silently dropped the cantina's own band
+    // gear — six real decorations in the building under test. Top-level class is the boundary.
+    const BAND = [
+      'object/tangible/instrument/shared_mandoviol.iff',
+      'object/tangible/instrument/shared_fanfar.iff',
+      'object/tangible/microphone/shared_microphone.iff',
+      'object/tangible/speaker/shared_speaker.iff',
+    ];
+    seedVfs(BAND.map((p) => makeEntry(p)));
+    renderModal();
+    expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(BAND.length);
+  });
+
+  it('offers object/static subtrees beyond item (structure, creature)', () => {
+    const STATICS = [
+      'object/static/structure/general/shared_streetlamp_style_01.iff',
+      'object/static/creature/shared_endor_roba.iff',
+    ];
+    seedVfs(STATICS.map((p) => makeEntry(p)));
+    renderModal();
+    expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(STATICS.length);
+  });
+
   it('anchors on the class prefix rather than matching it anywhere in the path', () => {
     // Both contain a legitimate class name as a SUBSTRING but are not that class.
     seedVfs([
