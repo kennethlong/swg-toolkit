@@ -29,11 +29,23 @@ function makeEntry(path: string, overrides: Partial<VfsEntry> = {}): VfsEntry {
   } as VfsEntry;
 }
 
-const TABLE = 'object/tangible/furniture/all/shared_frn_tatt_table_cantina_table_3.iff';
-const CHAIR = 'object/tangible/furniture/all/shared_frn_tatt_chair_cantina_s1.iff';
-const CRATE = 'object/tangible/furniture/all/shared_frn_crate_metal_lg.iff';
+// Real paths, lifted from interiorlayout/toolkit/edit_1082874.ilf (Mos Eisley cantina). The
+// previous fixtures were invented and carried a convention the real bytes do not use, which is how
+// the substring-filter defect survived review.
+const BOTTLE = 'object/static/item/shared_item_bottle_tall.iff';           // object/static/*   (28 real)
+const CHAIR = 'object/tangible/furniture/cheap/shared_chair_s01.iff';      // tangible/furniture (20 real)
+const LAMP = 'object/tangible/furniture/all/shared_frn_all_lamp_free_s01.iff';
+const SOUND = 'object/soundobject/shared_soundobject_cantina_large.iff';   // soundobject       (2 real)
+
 /** NOT decoration-shaped — must never appear in the grid. */
 const CREATURE = 'object/creature/player/shared_human_male.iff';
+/**
+ * THE REGRESSION. A crafting schematic contains "/furniture/" but is not a world prop. The
+ * original substring filter offered these, and placing one killed the client frame with an
+ * ACCESS_VIOLATION swallowed by the agent's SEH handler — a silent no-op that cost a live sign-off
+ * session on 2026-08-04.
+ */
+const SCHEMATIC = 'object/draft_schematic/furniture/shared_furniture_painting_wall_s01.iff';
 
 function seedVfs(entries: VfsEntry[]): void {
   useTreStore.setState({ vfsEntries: entries });
@@ -56,7 +68,10 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof AddDecoratio
 }
 
 beforeEach(() => {
-  seedVfs([makeEntry(TABLE), makeEntry(CHAIR), makeEntry(CRATE), makeEntry(CREATURE)]);
+  seedVfs([
+    makeEntry(BOTTLE), makeEntry(CHAIR), makeEntry(LAMP), makeEntry(SOUND),
+    makeEntry(CREATURE), makeEntry(SCHEMATIC),
+  ]);
 });
 
 afterEach(() => {
@@ -75,20 +90,21 @@ describe('AddDecorationModal — 021-A Frame 1 elements', () => {
   it('renders a tile per decoration-shaped entry, excluding non-decoration paths', () => {
     renderModal();
     const tiles = screen.getAllByTestId('add-decoration-tile');
-    expect(tiles).toHaveLength(3); // TABLE, CHAIR, CRATE — never CREATURE
+    expect(tiles).toHaveLength(4); // BOTTLE, CHAIR, LAMP, SOUND
     expect(screen.queryByText(CREATURE)).toBeNull();
+    expect(screen.queryByText(SCHEMATIC)).toBeNull();
   });
 
   it('excludes tombstoned entries (a tombstone names a deleted file)', () => {
-    seedVfs([makeEntry(TABLE), makeEntry(CHAIR, { isTombstone: true })]);
+    seedVfs([makeEntry(BOTTLE), makeEntry(CHAIR, { isTombstone: true })]);
     renderModal();
     expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(1);
   });
 
   it('renders each tile with a humanized name and its full VFS path', () => {
     renderModal();
-    expect(screen.getByText('Frn Tatt Table Cantina Table 3')).not.toBeNull();
-    expect(screen.getByText(TABLE)).not.toBeNull();
+    expect(screen.getByText('Item Bottle Tall')).not.toBeNull();
+    expect(screen.getByText(BOTTLE)).not.toBeNull();
   });
 
   it('carries the target buildingId as a data attribute', () => {
@@ -97,10 +113,46 @@ describe('AddDecorationModal — 021-A Frame 1 elements', () => {
   });
 });
 
+describe('AddDecorationModal — template class filter (ground truth from real .ilf bytes)', () => {
+  it('REGRESSION: never offers a draft schematic, even though its path contains "/furniture/"', () => {
+    // The literal 2026-08-04 defect. A substring test for "/furniture/" matched
+    // object/draft_schematic/furniture/*, the modal offered a crafting schematic as a placeable
+    // prop, and wsAddObject died on it with an ACCESS_VIOLATION that the agent's SEH handler
+    // swallowed -- so the click silently did nothing and it took a DBWIN trace to find.
+    seedVfs([makeEntry(SCHEMATIC)]);
+    renderModal();
+    expect(screen.queryAllByTestId('add-decoration-tile')).toHaveLength(0);
+    expect(screen.getByTestId('add-decoration-empty')).not.toBeNull();
+  });
+
+  it('offers all three classes the real cantina .ilf actually uses', () => {
+    seedVfs([makeEntry(BOTTLE), makeEntry(CHAIR), makeEntry(SOUND)]);
+    renderModal();
+    expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(3);
+    for (const p of [BOTTLE, CHAIR, SOUND]) expect(screen.getByText(p)).not.toBeNull();
+  });
+
+  it('anchors on the class prefix rather than matching it anywhere in the path', () => {
+    // Both contain a legitimate class name as a SUBSTRING but are not that class.
+    seedVfs([
+      makeEntry('object/draft_schematic/furniture/shared_chair_s01.iff'),
+      makeEntry('object/weapon/ranged/object/static/lookalike.iff'),
+    ]);
+    renderModal();
+    expect(screen.queryAllByTestId('add-decoration-tile')).toHaveLength(0);
+  });
+
+  it('requires a compiled .iff template', () => {
+    seedVfs([makeEntry('object/static/item/shared_item_bottle_tall.txt')]);
+    renderModal();
+    expect(screen.queryAllByTestId('add-decoration-tile')).toHaveLength(0);
+  });
+});
+
 describe('AddDecorationModal — search filtering', () => {
   it('narrows the visible tile count to matching entries', () => {
     renderModal();
-    expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(3);
+    expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(4);
 
     fireEvent.change(screen.getByTestId('add-decoration-search'), { target: { value: 'chair' } });
 
@@ -111,7 +163,7 @@ describe('AddDecorationModal — search filtering', () => {
 
   it('matches case-insensitively against the path', () => {
     renderModal();
-    fireEvent.change(screen.getByTestId('add-decoration-search'), { target: { value: 'CRATE_METAL' } });
+    fireEvent.change(screen.getByTestId('add-decoration-search'), { target: { value: 'LAMP_FREE_S01' } });
     expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(1);
   });
 
@@ -128,7 +180,7 @@ describe('AddDecorationModal — search filtering', () => {
     fireEvent.change(search, { target: { value: 'chair' } });
     expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(1);
     fireEvent.change(search, { target: { value: '' } });
-    expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(3);
+    expect(screen.getAllByTestId('add-decoration-tile')).toHaveLength(4);
   });
 });
 
@@ -211,7 +263,7 @@ describe('AddDecorationModal — render cap is disclosed, never silent', () => {
 
 describe('humanizeTemplateName', () => {
   it('strips the shared_ prefix and .iff extension and title-cases the rest', () => {
-    expect(humanizeTemplateName(TABLE)).toBe('Frn Tatt Table Cantina Table 3');
+    expect(humanizeTemplateName(BOTTLE)).toBe('Item Bottle Tall');
   });
 
   it('handles a path with no directory or extension', () => {

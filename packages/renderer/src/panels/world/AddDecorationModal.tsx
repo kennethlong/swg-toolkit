@@ -43,15 +43,50 @@ export interface AddDecorationModalProps {
 // ─── Decoration-shaped scoping ────────────────────────────────────────────────
 
 /**
- * 021-A searches "furniture templates", not every mounted asset. Scope to the same path
- * convention the `.ilf`'s own objectTemplateName values use (`object/tangible/furniture/...`).
- * Tombstones are excluded — a tombstoned entry names a DELETED file, which would resolve to
- * nothing if placed.
+ * The object classes an interior-layout `.ilf` node may legitimately name.
+ *
+ * GROUND TRUTH, not convention: derived by extracting every `object/...iff` string from the real
+ * `interiorlayout/toolkit/edit_1082874.ilf` (Mos Eisley cantina) — 50 distinct templates:
+ *
+ *     28  object/static/item/*          shared_item_bottle_tall.iff, shared_item_carbine_laser.iff
+ *     20  object/tangible/furniture/*   shared_frn_all_lamp_free_s01.iff, shared_chair_s01.iff
+ *      2  object/soundobject/*          shared_soundobject_cantina_large.iff
+ *
+ * Anchored at the START of the path, deliberately. The previous implementation substring-matched
+ * `/furniture/` or `/tangible/` ANYWHERE in the path, which had two defects:
+ *
+ *   1. It MISSED all 28 `object/static/item/*` -- the largest class of real decorations, including
+ *      the objects already sitting in the cantina.
+ *   2. It ADMITTED `object/draft_schematic/furniture/*` -- CRAFTING SCHEMATICS, which contain
+ *      "/furniture/" but are not world props at all. Handing one to wsAddObject killed the frame
+ *      with an ACCESS_VIOLATION (DEP/execute at 0x736E6172, a pointer read out of string data),
+ *      swallowed by the agent's outer SEH handler so the click silently did nothing. That cost a
+ *      live sign-off session on 2026-08-04 and a wrongly-filed provider regression report.
+ *
+ * The substring rule came from plan text asserting the convention was `object/tangible/furniture/`
+ * and from test fixtures carrying the same paths -- neither checked against real `.ilf` bytes.
+ * This list is checked. See AGENTS.md's verify-against-ground-truth rule.
+ *
+ * SCOPE NOTE: derived from ONE building's layout. Other interiors may legitimately use classes not
+ * listed here; widen this list from real `.ilf` data when more is available, never from a plausible
+ * guess. Being too narrow costs a missing tile; being too broad crashes the client.
+ */
+const DECORATION_CLASS_PREFIXES = [
+  'object/static/',
+  'object/tangible/furniture/',
+  'object/soundobject/',
+] as const;
+
+/**
+ * 021-A searches placeable decoration templates, not every mounted asset. Tombstones are excluded
+ * — a tombstoned entry names a DELETED file, which would resolve to nothing if placed.
  */
 function isDecorationShaped(e: VfsEntry): boolean {
   if (e.isTombstone) return false;
   const p = e.path.toLowerCase();
-  return p.includes('/furniture/') || p.includes('/tangible/');
+  // Real interior-layout nodes always name a compiled template.
+  if (!p.endsWith('.iff')) return false;
+  return DECORATION_CLASS_PREFIXES.some((prefix) => p.startsWith(prefix));
 }
 
 /** `shared_frn_tatt_table_cantina_table_3.iff` → `Frn Tatt Table Cantina Table 3`. */
