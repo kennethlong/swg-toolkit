@@ -2,7 +2,22 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-08-04-SESSION-HANDOFF-phase05.1-wave3-to-wave5.md](2026-08-04-SESSION-HANDOFF-phase05.1-wave3-to-wave5.md)** — ACTIVE. ← start here.
+- **[2026-08-05-SESSION-HANDOFF-phase05.1-sign-off-in-progress.md](2026-08-05-SESSION-HANDOFF-phase05.1-sign-off-in-progress.md)** — ACTIVE. ← start here.
+  Phase **05.1 is 17/18**; only **05.1-15** (phase close) remains. Its Task 1 is done; Task 2 is the
+  13-step live sign-off checkpoint, **3 steps passed** (1 SC5 rotation, 6 ADD round trip + `(NEW)`
+  marker + deferred toast, 7 refusal paths). Working doc:
+  `05.1-15-CHECKPOINT-WORKSHEET.md` — running order, pre-filled step-12 gap ledger with code
+  citations, paste-ready step-13 annotations. **Carries the v33 investigation**, whose conclusion
+  reversed twice: reported as a blocking `wsAddObject` regression, retracted after a provider-staged
+  v32 control and a `.ws` swap both reproduced identically, and finally closed as OURS — a substring
+  filter admitting `object/draft_schematic/*` (crafting schematics) as placeable props. Three layers
+  of silence hid it (agent SEH swallow, our own rate limiter, three refusal paths writing to a
+  variable nothing rendered); all three now fixed. **Also corrects the `.ws` byte rule** the previous
+  handoff stated too broadly, and records that the engine has NO Release-mode guard below our
+  template filter (`ClientInteriorLayoutManager.cpp:143`, `DEBUG_WARNING` + unchecked `safe_cast`).
+  Supersedes the wave3-to-wave5 handoff below.
+
+- **[2026-08-04-SESSION-HANDOFF-phase05.1-wave3-to-wave5.md](2026-08-04-SESSION-HANDOFF-phase05.1-wave3-to-wave5.md)** — superseded by the above (05.1-14 closed since; sign-off checkpoint now in progress).
   Phase **05.1 is 16/18**; waves 3-4 closed (plans 11, 12, 13), resume at **Wave 5 (plan 05.1-14,
   the Add-decoration wizard)** via `/gsd:execute-phase 05.1`. Provider contract **v32** — all three
   new rows (`wsForgetNode`, `getCellName`, `refreshInteriorLayout`) consumed AND live-verified.
