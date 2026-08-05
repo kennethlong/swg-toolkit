@@ -1099,8 +1099,13 @@ void renderPlacementMode() {
         //     mode active indefinitely). Left at the shared constant deliberately -- changing it
         //     would alter the hover strip's behaviour too, which is out of scope for a display-only
         //     fix mid-checkpoint. Worth revisiting.
+        //     ON ITS OWN LINE, deliberately (2026-08-04, second attempt). The first version
+        //     appended this with SameLine() onto the existing single-line strip. That strip is
+        //     AlwaysAutoResize and positioned centred with a 0.5 pivot, so adding ~40 characters
+        //     to the tail made the window wider than the display and pushed the message off the
+        //     right edge -- the maintainer saw the width jump ("an obvious rerender") but never
+        //     the text. A newline keeps the window's width bounded by its longest single line.
         if (g_lastArmFailureReason[0] != '\0' && ImGui::GetTime() < g_stripArmFailShownUntil) {
-            ImGui::SameLine();
             ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "\xE2\x80\x94 %s", g_lastArmFailureReason);
         }
     }
@@ -1269,6 +1274,72 @@ void renderDecorationStrip() {
     ImGui::End();
 }
 
+// --- SEH detail capture (05.1-15, 2026-08-04). Both handlers below used a bare
+//     EXCEPTION_EXECUTE_HANDLER, which threw away everything that identifies the fault. That cost
+//     a full diagnosis cycle: a v33 access violation inside wsAddObject was swallowed here and
+//     reported to the provider as "wsAddObject returns 0" -- wrong mechanism, because from outside
+//     the handler a swallowed AV and a silent refusal look identical.
+//
+//     The filter records code + faulting address + the owning module and its RVA, so the provider
+//     can map it straight to a symbol against their PDB rather than guessing at a window of
+//     candidate calls. For an ACCESS_VIOLATION the record's ExceptionInformation also names the
+//     operation (0=read, 1=write, 8=DEP) and the inaccessible address -- both included, since
+//     "read of 0x00000000" and "write of 0xdddddddd" point at very different bugs.
+//
+//     The filter returns EXCEPTION_EXECUTE_HANDLER unchanged, so containment behaviour is
+//     IDENTICAL -- this only adds detail to a line that was already being logged.
+struct SehDetail {
+    DWORD  code;
+    void*  addr;
+    ULONG_PTR opKind;      // AV only: 0 read, 1 write, 8 DEP
+    ULONG_PTR badAddr;     // AV only: the inaccessible address
+    char   module[MAX_PATH];
+    uintptr_t rva;
+};
+
+int sehCaptureFilter(EXCEPTION_POINTERS* ep, SehDetail* out) {
+    if (out == nullptr) return EXCEPTION_EXECUTE_HANDLER;
+    std::memset(out, 0, sizeof(*out));
+    if (ep == nullptr || ep->ExceptionRecord == nullptr) return EXCEPTION_EXECUTE_HANDLER;
+
+    const EXCEPTION_RECORD* r = ep->ExceptionRecord;
+    out->code = r->ExceptionCode;
+    out->addr = r->ExceptionAddress;
+    if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2) {
+        out->opKind  = r->ExceptionInformation[0];
+        out->badAddr = r->ExceptionInformation[1];
+    }
+    // Resolve the owning module so the address is actionable. VirtualQuery's AllocationBase IS the
+    // HMODULE for a mapped image, which is what makes the RVA computable without a symbol handler.
+    MEMORY_BASIC_INFORMATION mbi = {};
+    if (VirtualQuery(r->ExceptionAddress, &mbi, sizeof(mbi)) == sizeof(mbi) && mbi.AllocationBase) {
+        char full[MAX_PATH] = {};
+        if (GetModuleFileNameA(reinterpret_cast<HMODULE>(mbi.AllocationBase), full, sizeof(full)) > 0) {
+            const char* base = std::strrchr(full, '\\');
+            std::strncpy(out->module, base ? base + 1 : full, sizeof(out->module) - 1);
+        }
+        out->rva = reinterpret_cast<uintptr_t>(r->ExceptionAddress) -
+                   reinterpret_cast<uintptr_t>(mbi.AllocationBase);
+    }
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+void formatSehDetail(const SehDetail& d, char* out, size_t cap) {
+    if (d.code == EXCEPTION_ACCESS_VIOLATION) {
+        std::snprintf(out, cap, "code=0x%08lX (ACCESS_VIOLATION %s 0x%p) at %s+0x%IX (abs 0x%p)",
+                      static_cast<unsigned long>(d.code),
+                      d.opKind == 1 ? "write to" : (d.opKind == 8 ? "DEP at" : "read from"),
+                      reinterpret_cast<void*>(d.badAddr),
+                      d.module[0] ? d.module : "(unknown module)",
+                      static_cast<size_t>(d.rva), d.addr);
+    } else {
+        std::snprintf(out, cap, "code=0x%08lX at %s+0x%IX (abs 0x%p)",
+                      static_cast<unsigned long>(d.code),
+                      d.module[0] ? d.module : "(unknown module)",
+                      static_cast<size_t>(d.rva), d.addr);
+    }
+}
+
 // --- 020-A strip fault containment (Bug A, 05.1-16). Own SEH handler so a bad per-frame
 //     engine read (a stale/freed borrowed Object*) costs a label for one frame, never the
 //     whole overlay — hkSwapChainPresent's outer handler stays as the last-resort net for
@@ -1277,17 +1348,20 @@ void renderDecorationStrip() {
 //     header comment: no C++ unwind objects may share a function with __try on this MSVC). ---
 void renderDecorationStripGuarded() {
     static uint32_t s_stripFaultCount = 0;
+    static SehDetail s_stripDetail = {};
     __try {
         renderDecorationStrip();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (sehCaptureFilter(GetExceptionInformation(), &s_stripDetail)) {
         ++s_stripFaultCount;
         // Rate-limited (hard requirement 4 — this fired 3,424 times in one run pre-fix):
         // first 5 verbatim, then every 50th, always carrying a running count + region.
         if (s_stripFaultCount <= 5 || (s_stripFaultCount % 50) == 0) {
-            char buf[160];
+            char detail[320];
+            formatSehDetail(s_stripDetail, detail, sizeof(detail));
+            char buf[480];
             std::snprintf(buf, sizeof(buf),
-                "overlay: SEH fault in renderDecorationStrip [020-A strip] — strip skipped this frame (count=%u)\n",
-                s_stripFaultCount);
+                "overlay: SEH fault in renderDecorationStrip [020-A strip] — strip skipped this frame (count=%u) %s\n",
+                s_stripFaultCount, detail);
             dbg(buf);
         }
     }
@@ -2076,17 +2150,20 @@ HRESULT __stdcall hkSwapChainPresent(IDXGISwapChain* sc, UINT syncInterval, UINT
     // the 020-A strip has its own scoped handler (renderDecorationStripGuarded) so a
     // fault there costs one label, not this entire frame (Bug A, 05.1-16).
     static uint32_t s_outerFaultCount = 0;
+    static SehDetail s_outerDetail = {};
     __try {
         renderFrame();
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (sehCaptureFilter(GetExceptionInformation(), &s_outerDetail)) {
         ++s_outerFaultCount;
         // Rate-limited (hard requirement 4 — this line alone fired 3,424 times in one
         // pre-fix run): first 5 verbatim, then every 50th, always with a running count.
         if (s_outerFaultCount <= 5 || (s_outerFaultCount % 50) == 0) {
-            char buf[160];
+            char detail[320];
+            formatSehDetail(s_outerDetail, detail, sizeof(detail));
+            char buf[480];
             std::snprintf(buf, sizeof(buf),
-                "overlay: SEH fault in renderFrame [outer/last-resort] — frame skipped (count=%u)\n",
-                s_outerFaultCount);
+                "overlay: SEH fault in renderFrame [outer/last-resort] — frame skipped (count=%u) %s\n",
+                s_outerFaultCount, detail);
             dbg(buf);
         }
     }
