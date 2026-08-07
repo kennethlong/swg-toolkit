@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Closed 05.1-14-PLAN.md: all 3 tasks autonomous, no checkpoint. AddDecorationModal (5dce4c9), ADD wiring + '(NEW)' diff + HOST_CMD ACK PROTOCOL consumer (ed0921e), SUMMARY (90b6860). Renderer 828 pass, root aggregate 742+2 skipped, tsc clean. Phase 05.1 is 17/18 -- ONLY 05.1-15 (phase close, wave 6) remains."
-last_updated: "2026-08-04T12:10:00.000Z"
-last_activity: 2026-08-04
+stopped_at: "PHASE 05.1 CLOSED 2026-08-07 — 18/18 plans. 05.1-15 sign-off checkpoint 13/13 steps, gap ledger 14/14 (0 escalated, 5 not-exercised and recorded as such), D-02/D-03/D-06/D-09/D-12 annotated in 05.1-CONTEXT.md. Renderer 838 pass / 78 files, live-inject 56/56, tsc clean. Four reporting defects found + fixed during sign-off (1ff6686, 12c35f2); the handoff Finding-2 hypothesis falsified live (5f1a4da). Next: plan the exterior .ws-node editing phase, then Phase 6 (Blender Bridge)."
+last_updated: "2026-08-07T13:10:00.000Z"
+last_activity: 2026-08-07
 progress:
   total_phases: 15
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 103
-  completed_plans: 102
-  percent: 99
+  completed_plans: 103
+  percent: 100
 ---
 
 # Project State
@@ -25,8 +25,36 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 05.1 (live-world-editor-productization) — EXECUTING
-Plan: 15 of 18 — the LAST one (05.1-16 inserted 2026-08-02 wave 2; 05.1-17 + 05.1-18 inserted 2026-08-02 wave 3)
+Phase: 05.1 (live-world-editor-productization) — ✅ **CLOSED 2026-08-07, 18/18 plans**
+Plan: — (05.1-15 was the last; SUMMARY written, checkpoint 13/13, ledger 14/14)
+
+### Phase 05.1 close-out (2026-08-07)
+
+The sign-off checkpoint passed in full. Everything expensive came from work done AROUND the
+numbered steps, not from the steps themselves:
+
+- **Per-template mirroring PROVEN LIVE, cross-instance — a project first.** Edited building 1105879;
+  building 1106500 (never edited, no `edit_*.ilf`) rendered that edit after `refreshInteriorLayout`,
+  because both resolve to one `shared_cloning_facility.ilf`. D-08's promise had been a design claim
+  carried by unit tests for the whole phase.
+- **Shared-mirror edits ACCUMULATE — a silent data-loss risk measured and cleared.** Building A's
+  derived file carries B's edit plus its own. Until this session no two edited buildings had ever
+  shared a mirror path, so nothing in the phase would have caught the alternative.
+- **Four reporting defects found and fixed** (`1ff6686`, `12c35f2`). Every refusal the system made
+  was already CORRECT; the whole two-session investigation was paid to reporting, not to logic.
+  They sharpen SC1's intent (see D-12's annotation): a surface showing NOTHING, or a true-but-empty
+  word like "aborted", satisfies "no raw codes" and fails the decision.
+- **The handoff's Finding-2 hypothesis is FALSIFIED** (`5f1a4da`) — `cleanupScene`-first is NOT why
+  the editor scene's POB is absent from the sphere tree. Tested live, `candidates=0` unchanged. Do
+  not re-derive it. Report filed for the provider.
+
+⚠ **Owed, non-blocking:** the provider report
+`.planning/handoff/2026-08-07-TOOLKIT-REPORT-editor-scene-sphere-tree.md` needs relaying (untracked
+on their side), including the correction that their quoted `.ilf` baseline `34086/bb1847fa3144` was
+already stale when written.
+
+**Historical note (superseded, kept for the wave ordering):** 05.1-16 inserted 2026-08-02 wave 2;
+05.1-17 + 05.1-18 inserted 2026-08-02 wave 3.
 NOTE (2026-08-04): 05.1-14 is CLOSED — the 021-A wizard modal, the ADD-flow wiring, the
       content-identity "(NEW)" marker, and the full HOST_CMD ACK PROTOCOL consumer are built and
       green (renderer 828, root 742+2 skipped, tsc clean). Only 05.1-15 (phase close) remains.
@@ -52,11 +80,11 @@ Status: Ready to execute
         the offline editor scene (per-instance path). Three provider ships in one night
         (v25 getContainingBuildingId; save-on-load disarm; GroundScene authored-row-erase
         fix). Full story: .planning/handoff/2026-07-30-live-world-editor-decoration-persist.md.
-Next: PRODUCTIZE the live world editor (sketch-first per AGENTS.md: real decoration-editor
-      panel replacing the CONSULT-69 debug probe; rotation-persist confirm; add/remove
-      decorations via wsAddObject; mirror-mode toggle). Then /gsd:plan-phase for Phase 6
-      (Blender Bridge).
-Last activity: 2026-08-04
+Next: Phase 05.1 is CLOSED. Recommended order — (1) plan the EXTERIOR .ws-node editing phase
+      (.planning/todos/pending/exterior-ws-node-editing.md; Tatooine alone has 15,808 .ws node
+      records, so this is the common case by a wide margin, and a .ws node parser now exists);
+      (2) Phase 5.2 Guided Workflows; (3) Phase 6 Blender Bridge.
+Last activity: 2026-08-07
   05-08: DTII grid editor complete (SchemaRail, real Hex view, round-trip gate wiring,
   dockview tab opening). Caught + fixed a vi.mock('@swg/native-core', ...) false-negative
   test gotcha (bare require() of a native addon bypasses vi.mock; monkey-patch the real

@@ -111,8 +111,16 @@ minting; this one is the backstop for rows that got past everything.
 ⚠ **The refusal branch itself is UNEXERCISED.** Nothing in that run handed it a wrong-class
 template, so `asClientObject()` → 0 → `delete` → `WARNING` has never actually run. A negative test
 was designed and deliberately deferred: plant one `draft_schematic` row in a **derived `.ilf` for a
-different building** — deliberately *not* `edit_1082874.ilf`, since that is your live working file
-and you have byte baselines recorded against it (`34086` / `bb1847fa3144`). Available on request.
+different building** — deliberately *not* `edit_1082874.ilf`, since that is your live working file.
+Available on request.
+
+> **Corrected 2026-08-07 (consumer).** This paragraph originally justified avoiding
+> `edit_1082874.ilf` by citing a byte baseline of `34086` / `bb1847fa3144`. **That pair was already
+> stale when written** — I lifted it from the "last known good" table in the 08-05 session handoff
+> without checking it was still current; the file was `34432` at the start of 08-06 and moved
+> several times that session. The file to avoid is unchanged; the numbers were wrong, and a stale
+> baseline is exactly the kind of thing that produces a false "nothing was written" call. Do not
+> rely on them.
 
 ## 5. Still open from your list
 
