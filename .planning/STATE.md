@@ -48,6 +48,42 @@ numbered steps, not from the steps themselves:
   the editor scene's POB is absent from the sphere tree. Tested live, `candidates=0` unchanged. Do
   not re-derive it. Report filed for the provider.
 
+### ⭐ POST-CLOSE (2026-08-07 evening): the editor-scene defect is FIXED — constraints retired
+
+The provider shipped a same-scene sphere-index re-arm and it is **verified live on our path**
+(`.planning/handoff/2026-08-07-TOOLKIT-CONFIRM-editor-scene-rearm-live.md`). At the identical
+position inside the Mos Eisley cantina, editor scene, no reload:
+
+```
+BEFORE  tree=  1/  0/9   candidates=0  WORLD
+AFTER   tree=106/236/0   candidates=1  HIT  cell=cantina building=1082874
+```
+
+**Three constraints this phase was signed off UNDER are now dead. Do not carry them into 5.2 or the
+exterior `.ws` work:**
+
+1. **"Load the editor scene LAST"** — the ordering rule that shaped the entire 05.1 sign-off
+   checkpoint (Part A of the worksheet). Gone: an editor scene now comes up fully populated.
+2. **"Any ADD after a `loadScene` derives `cellName: \"world\"`"** — the reason nothing could be
+   placed after step 5. `findCellAtWorldPosition` now resolves. *Worth one spot check before relying
+   on it.*
+3. **"`Reload scene` is required to get a usable editor scene"** — it is no longer load-bearing for
+   correctness, which also lowers the exposure of the todo below.
+
+Root cause was TWO mechanisms, and the split is why the obvious fix would have failed: class 1
+(`suppressObject` / failed creates strip a node's sphere handle) removed individual authored
+buildings; class 2 (the `PP_sphereTree` gate skipping buildout POB roots when not single-player)
+emptied the city. A same-scene `loadScene` early-returns before any re-parse, so neither population
+is ever re-indexed.
+
+**Our own lead was wrong and inverted** — we proposed objects retaining NON-ZERO spatial-subdivision
+handles and being refused by the add gate; the truth is handles are ZERO and never re-armed. Recorded
+so it is not later cited as the insight.
+
+**New todo from the provider's §5:** `reload-scene-discards-inflight-edits.md` — LOW. Our persists
+write to disk immediately (`wsSaveSnapshot` has exactly one call site, `overlay.cpp:707`), so only
+in-flight work is exposed, and the fix is a targeted warning against state we already track.
+
 ⚠ **Owed, non-blocking:** the provider report
 `.planning/handoff/2026-08-07-TOOLKIT-REPORT-editor-scene-sphere-tree.md` needs relaying (untracked
 on their side), including the correction that their quoted `.ilf` baseline `34086/bb1847fa3144` was
