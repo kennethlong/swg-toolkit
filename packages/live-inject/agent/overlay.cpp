@@ -338,6 +338,32 @@ bool     g_lastRebindMirrorOff = false;
 // worldEditorStore.recordArmFailure has a real source — not a dead-end local-only global (C8).
 char     g_lastArmFailureReason[256] = {};
 
+// Last PERSIST-attempt refusal reason (020-A armed state, Persist button). Same contract as
+// g_lastArmFailureReason above, and it exists for the same reason that one does.
+//
+// --- LIVE-REPORTED DEFECT, 2026-08-06 (05.1-15 sign-off session). ⚠ DO NOT "TIDY" THIS AWAY. ---
+// persistDecorationEdit() has always RETURNED a refusal reason (const char*, nullptr on success),
+// but its one and only call site discarded it:
+//
+//     if (ImGui::Button("Persist")) persistDecorationEdit();      // <- return value dropped
+//
+// So all three of its early refusals ("no armed edit", "focus/o2p unavailable", "getTransformO2P
+// (new) returned 0") were computed and thrown away. None of them reaches channelWriteCapture, so
+// there was NO rebind, NO result code and NO Activity entry; nothing was written to
+// g_lastArmFailureReason, so NOTHING rendered on the strip; and the arm is deliberately kept on
+// failure, so the strip just sat at ARMED. A completely silent no-op on the one gesture this phase
+// exists to deliver — against SC1 (a failure with no words at all is worse than a raw code) and C8
+// (failed attempts must appear in the Activity accordion).
+//
+// Observed live twice (armed decoration, Persist pressed, no message, no disk write, no Activity
+// entry). Exactly the class of bug dda0edd fixed for the PLACEMENT path one day earlier; the
+// persist path was never re-checked and had the same shape.
+//
+// NOTE the deliberate separate deadline below rather than reusing g_stripArmFailShownUntil: the
+// `showArmFail` gate is `!g_capArmed` (a failed ARM leaves nothing armed), whereas a failed
+// PERSIST keeps the arm on purpose so the user can retry. Reusing that flag would render nothing.
+char     g_lastPersistFailureReason[256] = {};
+
 // --- Placement mode (021-A Frame 2, Plan 12): agent-side state for the "Place in game" flow.
 //     Entered by HOST_CMD_ACTION_START_PLACEMENT (handleHostCommand(), below), rendered and
 //     click-handled by renderPlacementMode() (called from renderFrame(), after the hover-tracking
@@ -379,6 +405,7 @@ constexpr double kStripMessageHoldSec = 2.0;
 uint32_t g_stripLastShownResultEpoch = 0;   // last g_lastDecoResultEpoch the strip has shown
 double   g_stripResultShownUntil = 0.0;     // ImGui::GetTime() deadline for the current saved/failed text
 double   g_stripArmFailShownUntil = 0.0;    // ImGui::GetTime() deadline for "couldn't arm" text
+double   g_stripPersistFailShownUntil = 0.0; // ditto for "couldn't persist" (see g_lastPersistFailureReason)
 
 // Resolve the object the gizmo edits: a ray-picked object (re-resolved from its
 // id each frame) takes precedence, else the current in-game target, else the
@@ -510,7 +537,14 @@ const char* armDecorationEdit() {
     int64_t bldgId = 0;
     if (swg::endpoints::getContainingBuildingId) {
         bldgId = swg::endpoints::getContainingBuildingId(deco);
-        if (bldgId == 0) return "not inside a building — interior decorations only";
+        // Wording per .planning/todos/pending/exterior-ws-node-editing.md ("cheap interim polish",
+        // deferred 2026-08-02 to keep a checkpoint DLL stable, applied 2026-08-07 on the next touch
+        // of this file). The guard means WRONG ROUTE, not "not allowed": arming an exterior object
+        // would route a world object into the interior .ilf pipeline, where "which building contains
+        // this" has no answer. The end state per the maintainer's design intent is to ROUTE to a
+        // .ws-node path here, not to refuse — so the string names an unbuilt route rather than
+        // implying a prohibition. Revisit this guard when that route lands; do not read it as settled.
+        if (bldgId == 0) return "not inside a building — exterior editing needs .ws (not wired yet)";
     } else {
         bldgId = (g_lastRayId != 0) ? g_lastRayId : g_pickedId;
         if (bldgId == 0) return "no building id — hover a decoration (or click the building), then Arm";
@@ -1247,8 +1281,65 @@ void renderDecorationStrip() {
                 } else {
                     ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "ARMED");
                 }
+                // --- LIVE-REPORTED DEFECT, 2026-08-07. ⚠ DO NOT "TIDY" THIS AWAY. ---
+                // A FAILED REBIND RESULT CANNOT REACH THE `Failed` STRIP STATE. The classification
+                // above is `if (g_capArmed) state = Armed;` FIRST, and a failed rebind deliberately
+                // KEEPS the arm so the user can retry without re-arming (applyPendingRebind clears
+                // g_capArmed only on DECO_RESULT_OK). So `DecoStripState::Failed` is structurally
+                // unreachable for every retry-preserving failure — the strip just sits at ARMED
+                // while the World panel alone records the outcome. Sketch 020-A specs a `failed`
+                // state; for persist failures it essentially never rendered.
+                //
+                // Observed live: a Persist that came back DECO_RESULT_ABORTED produced an Activity
+                // entry ("Aborted") and NOTHING on the strip. Distinct from — and stacked on top of
+                // — the discarded-refusal-reason defect fixed above: that one never sent a capture
+                // at all, this one sends it and drops the ANSWER. Both had to be fixed to make a
+                // failed Persist visible in-game.
+                //
+                // Rendered here rather than by reordering the state machine: `Armed` legitimately
+                // owns this frame (the edit IS still armed, the delta readout is still correct), so
+                // the result is additive information, not a competing state.
+                if (showResult && g_lastDecoResult != DECO_RESULT_OK) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f),
+                                       "failed \xE2\x80\x94 see World panel (still armed, retry or Esc)");
+                }
+                if (g_lastPersistFailureReason[0] != '\0' &&
+                    ImGui::GetTime() < g_stripPersistFailShownUntil) {
+                    // Own line, not SameLine(): the strip is AlwaysAutoResize and centre-pivoted,
+                    // so appending a long reason inline pushes it off-screen — the same mistake
+                    // made and corrected on the placement strip (dda0edd).
+                    ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f),
+                                       "couldn't persist \xE2\x80\x94 %s", g_lastPersistFailureReason);
+                }
                 ImGui::SameLine();
-                if (ImGui::Button("Persist")) persistDecorationEdit();
+                if (ImGui::Button("Persist")) {
+                    // See g_lastPersistFailureReason's declaration for the defect this closes.
+                    const char* failReason = persistDecorationEdit();
+                    if (failReason != nullptr) {
+                        std::strncpy(g_lastPersistFailureReason, failReason,
+                                     sizeof(g_lastPersistFailureReason) - 1);
+                        g_lastPersistFailureReason[sizeof(g_lastPersistFailureReason) - 1] = '\0';
+
+                        // C8: publish off-process via the CAPTURE region so the World panel's
+                        // recordArmFailure has a real source, exactly as the F-arm failure path
+                        // does. Reuses kind=ARM_FAILED rather than minting a new kind: the
+                        // renderer stores `capture.cellName` VERBATIM as the history message
+                        // (worldEditorStore.recordArmFailure), adding no "couldn't arm" wording of
+                        // its own, so a prefixed reason reads correctly in the Activity accordion
+                        // without touching channel.h, contracts/live-inject.ts and the renderer.
+                        DecorationCapture cap = {};
+                        cap.kind = DECO_CAPTURE_KIND_ARM_FAILED;
+                        cap.buildingId = 0;
+                        std::snprintf(cap.cellName, sizeof(cap.cellName), "persist refused \xE2\x80\x94 %s",
+                                      failReason);
+                        channelWriteCapture(&cap, ++g_captureEpoch);
+
+                        g_stripPersistFailShownUntil = ImGui::GetTime() + kStripMessageHoldSec;
+                    } else {
+                        // Capture sent — clear any stale refusal so it cannot outlive its cause.
+                        g_lastPersistFailureReason[0] = '\0';
+                    }
+                }
                 ImGui::SameLine();
                 if (ImGui::Button("Esc")) {
                     g_capArmed = false;
