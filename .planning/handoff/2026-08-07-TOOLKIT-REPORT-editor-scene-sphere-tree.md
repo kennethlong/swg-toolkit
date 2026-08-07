@@ -43,6 +43,9 @@ Pass condition chosen to be instrumented rather than visual: load the editor sce
 12:51:19.189  [cellAtPos] WORLD pos=<3448.00,4.00,-4824.00> candidates=0 portals=0 idValid=0 rejectedForId=0
 ```
 
+Full agent trace for this run (tracked):
+`.planning/research/captures/2026-08-07-fix-verification-and-cleanupscene-experiment.log`
+
 Identical to the run with `cleanupScene` in place:
 
 ```

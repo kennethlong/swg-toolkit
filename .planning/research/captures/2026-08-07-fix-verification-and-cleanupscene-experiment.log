@@ -1,0 +1,86 @@
+# DBWIN capture — 05.1-15 fix verification + cleanupScene experiment, 2026-08-07
+# Five client PIDs across successive re-injects (49456, 68544, 68624, 71160, 20256) —
+#   each agent rebuild required a fresh inject. pid=20256 is the cleanupScene experiment run.
+# FILTERED: agent lines only (overlay:/editor.ilf/editor.ws/cellAtPos), PortalCullProbe
+#   per-frame spam removed. Raw capture was 9,032 lines and also carried unrelated
+#   processes' OutputDebugString traffic — DBWIN is system-wide.
+#
+# KEY EVIDENCE:
+#   - cellAtPos candidates=0 in the editor scene, WITH and WITHOUT cleanupScene
+#     -> the falsification behind 5f1a4da and the provider report.
+#   - 12:51:15 'SKIPPING cleanupScene (v33 teardown experiment)' followed by a normal
+#     loadScene and NO FATAL / no InputScheme.cpp:480 — the 05.1-16 crash condition
+#     did not fire on v33.
+#
+11:32:52.642 pid=49456 overlay: SEH fault in renderFrame [outer/last-resort] â€” frame skipped (count=1) code=0xC0000005 (ACCESS_VIOLATION read from 0x0000006F) at SwgClient_r.exe+0xDE8EB3 (abs 0x01B88EB3)
+11:32:52.661 pid=49456 overlay: SEH fault in renderFrame [outer/last-resort] â€” frame skipped (count=2) code=0xC0000005 (ACCESS_VIOLATION read from 0x00000067) at SwgClient_r.exe+0xDE8EB3 (abs 0x01B88EB3)
+11:32:52.676 pid=49456 overlay: SEH fault in renderFrame [outer/last-resort] â€” frame skipped (count=3) code=0xC0000005 (ACCESS_VIOLATION read from 0x00000067) at SwgClient_r.exe+0xDE8EB3 (abs 0x01B88EB3)
+11:32:52.688 pid=49456 overlay: SEH fault in renderFrame [outer/last-resort] â€” frame skipped (count=4) code=0xC0000005 (ACCESS_VIOLATION read from 0x00000067) at SwgClient_r.exe+0xDE8EB3 (abs 0x01B88EB3)
+11:32:52.707 pid=49456 overlay: SEH fault in renderFrame [outer/last-resort] â€” frame skipped (count=5) code=0xC0000005 (ACCESS_VIOLATION read from 0x0000004C) at agent-1786119229441-65704-kcl68u.dll+0x2B52 (abs 0x6C682B52)
+11:34:49.105 pid=68544 overlay: game::mainLoop detour installed (deferred-queue drain point live, outside Present)
+11:34:50.313 pid=68544 overlay: D3D11 overlay installed (advertised swapchain latched)
+11:34:50.316 pid=68544 overlay: allowTargetAnything ON (editing session; session-scoped, not persisted)
+11:34:53.722 pid=68544 overlay: hkSwapChainPresent first fire (DXGI detour confirmed)
+11:34:53.725 pid=68544 overlay: WndProc subclass installed (ImGui input live)
+11:34:53.727 pid=68544 overlay: ImGui DX11 initialized (first Present)
+11:38:06.192 pid=68624 overlay: game::mainLoop detour installed (deferred-queue drain point live, outside Present)
+11:38:07.399 pid=68624 overlay: D3D11 overlay installed (advertised swapchain latched)
+11:38:07.402 pid=68624 overlay: allowTargetAnything ON (editing session; session-scoped, not persisted)
+11:38:10.890 pid=68624 overlay: hkSwapChainPresent first fire (DXGI detour confirmed)
+11:38:10.893 pid=68624 overlay: WndProc subclass installed (ImGui input live)
+11:38:10.894 pid=68624 overlay: ImGui DX11 initialized (first Present)
+12:29:43.526 pid=71160 overlay: game::mainLoop detour installed (deferred-queue drain point live, outside Present)
+12:29:44.929 pid=71160 overlay: D3D11 overlay installed (advertised swapchain latched)
+12:29:44.934 pid=71160 overlay: allowTargetAnything ON (editing session; session-scoped, not persisted)
+12:29:48.513 pid=71160 overlay: hkSwapChainPresent first fire (DXGI detour confirmed)
+12:29:48.519 pid=71160 overlay: WndProc subclass installed (ImGui input live)
+12:29:48.527 pid=71160 overlay: ImGui DX11 initialized (first Present)
+12:33:48.722 pid=71160 overlay: deferred LoadScene â€” frame 1: cleanupScene (scene is live)
+12:33:48.725 pid=71160 overlay: scene changed (cleanupScene (frame 1)) â€” cached object pointers invalidated, edit disarmed
+12:33:48.864 pid=71160 overlay: deferred LoadScene â€” frame 2: loadScene (game thread, outside Present)
+12:33:49.008 pid=71160 overlay: scene changed (loadScene) â€” cached object pointers invalidated, edit disarmed
+12:33:53.286 pid=71160 overlay: teleport click â€” origin=HOST_CMD player=375D0120 sceneEpoch=2 target=(-1290.0, 12.0, -3590.0)
+12:33:53.288 pid=71160 [cellAtPos] WORLD pos=<-1290.00,12.00,-3590.00> candidates=0 portals=0 idValid=0 rejectedForId=0
+12:33:53.289 pid=71160 overlay: teleport cell â€” before=0B748830 after=0B748830 world=0B748830 warpPlayer=1
+12:35:13.647 pid=71160 overlay: teleport click â€” origin=HOST_CMD player=375D0120 sceneEpoch=2 target=(3448.0, 4.0, -4824.0)
+12:35:13.649 pid=71160 [cellAtPos] WORLD pos=<3448.00,4.00,-4824.00> candidates=0 portals=0 idValid=0 rejectedForId=0
+12:35:13.650 pid=71160 overlay: teleport cell â€” before=362254E0 after=0B748830 world=0B748830 warpPlayer=1
+12:36:01.541 pid=71160 overlay: teleport click â€” origin=HOST_CMD player=375D0120 sceneEpoch=2 target=(3480.0, 3.0, -4870.0)
+12:36:01.543 pid=71160 [cellAtPos] WORLD pos=<3480.00,3.00,-4870.00> candidates=0 portals=0 idValid=0 rejectedForId=0
+12:36:01.545 pid=71160 overlay: teleport cell â€” before=0B748830 after=0B748830 world=0B748830 warpPlayer=1
+12:36:02.767 pid=71160 overlay: teleport click â€” origin=HOST_CMD player=375D0120 sceneEpoch=2 target=(3480.0, 3.0, -4870.0)
+12:36:02.769 pid=71160 [cellAtPos] WORLD pos=<3480.00,3.00,-4870.00> candidates=1 portals=0 idValid=0 rejectedForId=0
+12:36:02.772 pid=71160 overlay: teleport cell â€” before=0B748830 after=0B748830 world=0B748830 warpPlayer=1
+12:36:04.030 pid=71160 overlay: teleport click â€” origin=HOST_CMD player=375D0120 sceneEpoch=2 target=(3480.0, 3.0, -4870.0)
+12:36:04.032 pid=71160 [cellAtPos] WORLD pos=<3480.00,3.00,-4870.00> candidates=1 portals=0 idValid=0 rejectedForId=0
+12:36:04.034 pid=71160 overlay: teleport cell â€” before=0B748830 after=0B748830 world=0B748830 warpPlayer=1
+12:36:06.259 pid=71160 overlay: teleport click â€” origin=HOST_CMD player=375D0120 sceneEpoch=2 target=(3480.0, 3.0, -4870.0)
+12:36:06.261 pid=71160 [cellAtPos] WORLD pos=<3480.00,3.00,-4870.00> candidates=1 portals=0 idValid=0 rejectedForId=0
+12:36:06.263 pid=71160 overlay: teleport cell â€” before=0B748830 after=0B748830 world=0B748830 warpPlayer=1
+12:36:56.156 pid=71160 overlay: scene changed (reload current scene) â€” cached object pointers invalidated, edit disarmed
+12:36:56.158 pid=71160 overlay: deferred Reload â€” wsUnloadSnapshot+wsLoad (game thread, outside Present)
+12:36:57.036 pid=71160 [editor.ws] wsUnloadSnapshot OK (scene name reset; generation=2; keptServerOwnedRoots=0)
+12:36:57.330 pid=71160 overlay: reload complete â€” wsIsParsePending 1->0 after 6 ticks (sawPending=1); acking rebuilt
+12:37:38.053 pid=71160 overlay: teleport click â€” origin=HOST_CMD player=375D0120 sceneEpoch=2 target=(3480.0, 3.0, -4870.0)
+12:37:38.055 pid=71160 [cellAtPos] WORLD pos=<3480.00,3.00,-4870.00> candidates=0 portals=0 idValid=0 rejectedForId=0
+12:37:38.057 pid=71160 overlay: teleport cell â€” before=0B748830 after=0B748830 world=0B748830 warpPlayer=1
+12:37:47.811 pid=71160 overlay: deferred LoadScene â€” frame 1: cleanupScene (scene is live)
+12:37:47.814 pid=71160 overlay: scene changed (cleanupScene (frame 1)) â€” cached object pointers invalidated, edit disarmed
+12:37:47.949 pid=71160 overlay: deferred LoadScene â€” frame 2: loadScene (game thread, outside Present)
+12:37:48.099 pid=71160 overlay: scene changed (loadScene) â€” cached object pointers invalidated, edit disarmed
+12:37:52.019 pid=71160 overlay: teleport click â€” origin=HOST_CMD player=3F3B39E0 sceneEpoch=4 target=(3480.0, 3.0, -4870.0)
+12:37:52.021 pid=71160 [cellAtPos] WORLD pos=<3480.00,3.00,-4870.00> candidates=0 portals=0 idValid=0 rejectedForId=0
+12:37:52.023 pid=71160 overlay: teleport cell â€” before=0B748830 after=0B748830 world=0B748830 warpPlayer=1
+12:50:42.731 pid=20256 overlay: game::mainLoop detour installed (deferred-queue drain point live, outside Present)
+12:50:44.137 pid=20256 overlay: D3D11 overlay installed (advertised swapchain latched)
+12:50:44.142 pid=20256 overlay: allowTargetAnything ON (editing session; session-scoped, not persisted)
+12:50:47.670 pid=20256 overlay: hkSwapChainPresent first fire (DXGI detour confirmed)
+12:50:47.674 pid=20256 overlay: WndProc subclass installed (ImGui input live)
+12:50:47.677 pid=20256 overlay: ImGui DX11 initialized (first Present)
+12:51:15.182 pid=20256 overlay: deferred LoadScene â€” frame 1: SKIPPING cleanupScene (v33 teardown experiment)
+12:51:15.185 pid=20256 overlay: scene changed (cleanupScene (frame 1)) â€” cached object pointers invalidated, edit disarmed
+12:51:15.195 pid=20256 overlay: deferred LoadScene â€” frame 2: loadScene (game thread, outside Present)
+12:51:15.472 pid=20256 overlay: scene changed (loadScene) â€” cached object pointers invalidated, edit disarmed
+12:51:19.187 pid=20256 overlay: teleport click â€” origin=HOST_CMD player=366CEAD0 sceneEpoch=2 target=(3448.0, 4.0, -4824.0)
+12:51:19.189 pid=20256 [cellAtPos] WORLD pos=<3448.00,4.00,-4824.00> candidates=0 portals=0 idValid=0 rejectedForId=0
+12:51:19.191 pid=20256 overlay: teleport cell â€” before=0B698830 after=0B698830 world=0B698830 warpPlayer=1
