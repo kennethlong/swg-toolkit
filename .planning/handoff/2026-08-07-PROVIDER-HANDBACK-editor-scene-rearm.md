@@ -86,21 +86,30 @@ previously invisible in the only build anyone runs.
 Expect a burst of the middle one during login and the last one during a hybrid session; both are
 normal. What is **not** normal is either appearing *after* a re-arm line.
 
-## 5. ⚠ Your `Reload scene` button destroys unsaved work — flagging, not fixing
+## 5. Why not a forced re-parse — and a claim of ours CORRECTED
 
-We considered fixing this by forcing a full re-parse on every `loadScene` (what SwgGodClient,
-Utinni and your reload all do) and **rejected it**: `unload()` calls `ms_reader.clear()`, and every
-unpersisted `wsAddObject` / `wsSetNodeTemplateName` / moved transform lives in `ms_reader` until
-`wsSaveSnapshot`. Making that automatic would silently discard a modder's unsaved placements on every
-editor load, plus a ~3.1 s parse.
+We considered fixing this by forcing a full re-parse on every `loadScene` (what SwgGodClient, Utinni
+and your reload all do) and rejected it. The reasons that stand:
 
-Notably **all three tools expose that rebuild as an explicit user action**, never implicitly — the
-user knows whether they have saved. That is the right call, and it is why the fix is surgical.
+- **~3.1 s of parse on every editor scene load**, on your hot loop.
+- **It walks straight into the CONSULT-71 kept-root residual** on every editor load after a connected
+  session: the guard leaves server-owned POB roots alive, the re-parsed node then fails create and is
+  stripped, and the building shows stale/absent state until a zone change.
+- **Id-allocator hazard**: the mint's free-test is a reader map-miss, so a cleared `ms_reader` makes
+  just-minted ids look free.
+- All three existing tools expose that rebuild as an **explicit user action**, never implicit.
 
-But it does mean your `Reload scene` button, used mid-session, discards unsaved `ms_reader` edits
-with no warning. Utinni's `unloadSnapshot()` is a bare pass-through with no guard either. **Your
-call** — a save prompt or a dirty-flag check on that button would close it. Not ours to fix, and now
-that the reload is no longer required for correctness, the exposure is lower.
+> ⚠ **CORRECTED 2026-08-07 (maintainer).** An earlier version of this section also claimed the
+> re-parse would "silently discard a modder's unsaved placements", and warned that your `Reload
+> scene` button is a data-loss footgun needing a save prompt. **That overstated it and the warning is
+> withdrawn.** The toolkit persists to disk immediately when the user presses persist, so there is no
+> long-lived accumulation of unpersisted objects — the exposure is bounded by whatever has happened
+> since the last persist, which the user controls, not a session's worth of work.
+>
+> What remains true at code level: `unload()` does call `ms_reader.clear()` (`:639-640`), and
+> mutations do live in `ms_reader` until `wsSaveSnapshot`. What was wrong was inferring a workflow
+> hazard from that capability without checking how your persist actually behaves. No action needed on
+> your side; the reasons above are sufficient on their own to keep the fix surgical.
 
 ## 6. Corrections carried
 
