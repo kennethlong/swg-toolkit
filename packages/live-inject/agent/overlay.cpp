@@ -1504,6 +1504,63 @@ int      g_deferredTail = 0;   // next slot to produce
 int      g_deferredCount = 0;
 uint32_t g_deferredDroppedCount = 0;
 
+// ── 2026-08-07 EXPERIMENT (handoff "Finding 2" — *test it, do not assume*) ────────────────────
+// Flip this ONE flag back to false to restore the pre-v33 behaviour exactly.
+//
+// WHY: the provider's v33 engine_gameLoadScene destroys the outgoing GroundScene itself, but that
+// fix is UNREACHABLE from our call path. Game::cleanupScene is quit() + _setScene(0) — it nulls
+// ms_scene WITHOUT deleting — so by the time loadScene runs, v33's `if (outgoing)` guard sees null,
+// skips the teardown, and the incoming GroundScene ctor double-runs ClientWorld::install() over a
+// live world. The outgoing scene is also leaked outright.
+//
+// MEASURED CONSEQUENCE, instrumented live 2026-08-07 in the editor scene:
+//     [cellAtPos] WORLD pos=<3448.00,4.00,-4824.00> candidates=0 portals=0
+// candidates=0 means the POB is ABSENT FROM THE SPHERE TREE, so findCellAtWorldPosition falls back
+// to the world cell, warpPlayer parents the player to the world cell at interior coordinates, and
+// portal culling then hides the interior (player not in its cells) AND everything outside (occluded
+// by the building being stood inside). Reported as "teleport into the cantina renders nothing;
+// walking in through the door renders correctly" — the door path works because a physical portal
+// transition never consults that lookup. Contrast a server-connected session, same class of point:
+//     [cellAtPos] HIT ... candidates=2 portals=1 cell=insurance building=1106500
+//
+// RISK, stated plainly: the two-frame sequence was introduced by 05.1-16 AFTER a re-entrant
+// loadScene crashed the client, and the dispatch site records a REAL FATAL at InputScheme.cpp:480
+// ("fetchGroundInputMap called on a new player without releasing old one") when loadScene runs with
+// a scene still live. The whole bet is that v33's own teardown now releases what cleanupScene used
+// to. If the bet is wrong the failure is a hard client crash within a second or two — loud and
+// immediate, not subtle.
+//
+// DELIBERATELY NARROW: removes ONLY the gameCleanupScene() CALL. The frame gap is kept (harmless if
+// unnecessary, still correct if the engine wants a tick), and so is the frame-1
+// invalidateSceneCachedPointers — that closed a captured strip fault in the teardown window, and
+// with v33 tearing down INSIDE loadScene the object graph still dies while our cached pointers are
+// live. Removing the invalidation would reopen a defect already paid for.
+//
+// ── RESULT 2026-08-07: HYPOTHESIS FALSIFIED. Flag returned to false. ──────────────────────────
+// Ran the experiment live (agent pid 20256, editor scene, teleport to the bookmark above):
+//     12:51:15  frame 1: SKIPPING cleanupScene (v33 teardown experiment)
+//     12:51:15  frame 2: loadScene (game thread, outside Present)
+//     12:51:19  [cellAtPos] WORLD pos=<3448.00,4.00,-4824.00> candidates=0 portals=0
+// Still candidates=0. Our cleanupScene-first ordering is NOT why the POB is absent from the sphere
+// tree, and the handoff's candidate fix for "Finding 2" is wrong. Do not re-derive it.
+//
+// TWO FINDINGS WORTH KEEPING, both from the negative run:
+//   1. NO CRASH. loadScene ran with a scene still live and the client survived — no FATAL, no
+//      InputScheme.cpp:480, no fetchGroundInputMap error. That FATAL is the entire reason 05.1-16
+//      introduced the two-frame sequence. On v33 the condition appears resolved upstream, so the
+//      sequence may no longer be load-bearing for crash-safety (it is retained anyway: one run is
+//      not a soak, and it costs a frame).
+//   2. THE OLD PATH LEAKS THE OUTGOING SCENE, and this flag would fix it. cleanupScene nulls
+//      ms_scene without deleting, so v33's `if (outgoing)` guard sees null and skips its teardown;
+//      skipping cleanupScene lets v33 see a live scene and destroy it properly. NOT measured
+//      (no memory instrumentation) — reasoned from the provider's own handback. Pre-existing, not
+//      a regression, which is why the flag is still false: changing scene-lifecycle behaviour on
+//      the strength of one loadScene, immediately before a phase close, is not a good trade.
+//
+// The real defect stays with the provider and is now precisely characterized — see
+// .planning/handoff/2026-08-07-TOOLKIT-REPORT-editor-scene-sphere-tree.md
+constexpr bool kLetV33TearDownTheOutgoingScene = false;
+
 // 05.1-17: a LoadScene that has completed frame 1 (cleanupScene) and is waiting for frame 2
 // (loadScene) is MID-SEQUENCE. A Reload must never execute in that window: it would run
 // wsUnloadSnapshot+wsLoad against a scene cleanupScene already tore down, and frame 2 would
@@ -1665,8 +1722,13 @@ void drainDeferredCommands() {
                 // teardown and construction. We reproduce that by re-queueing ourselves once
                 // after cleanup, so the load lands on the NEXT drain (i.e. the next mainLoop
                 // tick) rather than immediately after the teardown returns.
-                if (!cmd.sceneCleaned && swg::endpoints::gameCleanupScene) {
-                    dbg("overlay: deferred LoadScene — frame 1: cleanupScene (scene is live)");
+                // See kLetV33TearDownTheOutgoingScene's declaration for the whole rationale.
+                if (!cmd.sceneCleaned && (swg::endpoints::gameCleanupScene || kLetV33TearDownTheOutgoingScene)) {
+                    if (kLetV33TearDownTheOutgoingScene) {
+                        dbg("overlay: deferred LoadScene — frame 1: SKIPPING cleanupScene (v33 teardown experiment)");
+                    } else {
+                        dbg("overlay: deferred LoadScene — frame 1: cleanupScene (scene is live)");
+                    }
                     // Invalidate BEFORE the teardown, not only after frame 2's loadScene. The object
                     // graph dies HERE — a full frame before the load — and a DebugView capture caught
                     // the strip faulting inside exactly that window (loadScene @53874.902 -> strip
@@ -1675,7 +1737,7 @@ void drainDeferredCommands() {
                     // itself creates and then discards.
                     invalidateSceneCachedPointers("cleanupScene (frame 1)");
                     ++g_sceneEpoch;   // 05.1-18: the ONLY signal that bumps once per scene swap
-                    swg::endpoints::gameCleanupScene();
+                    if (!kLetV33TearDownTheOutgoingScene) swg::endpoints::gameCleanupScene();
                     DeferredCmd next = cmd;          // hostCmdEpoch carries forward with the copy
                     next.sceneCleaned = true;
                     if (!enqueueDeferredCmd(next)) {
