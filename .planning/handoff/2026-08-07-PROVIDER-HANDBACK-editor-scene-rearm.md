@@ -1,5 +1,29 @@
 # 2026-08-07 — HANDBACK: editor-scene world loss FIXED (sphere-index re-arm)
 
+> ## ✅ CONSUMER-VERIFIED LIVE, same day
+> (`2026-08-07-TOOLKIT-CONFIRM-editor-scene-rearm-live.md`) — same instrument, same position
+> `<3448,4,-4824>`, same client that produced the original `tree=1/0/9`:
+>
+> ```
+> BEFORE  [cellAtPos] WORLD candidates=0 portals=0 tree=  1/  0/9
+> AFTER   [ws.load] same-scene re-arm: 232 stripped + 27 buildout node(s) re-indexed
+>         [cellAtPos] HIT   candidates=1 portals=1 tree=106/236/0 cell=cantina building=1082874
+> ```
+>
+> Tangible **1 → 106**, not-targetable **0 → 236**, cell resolves in an editor scene **with no
+> reload**. Zero `suppressObject` and zero `createObject FAILED` after the re-arm — the pass condition
+> in §4 holds on their path too.
+>
+> **Note the invariant across the two independent runs:** the buildout count is **27 on both**, while
+> the stripped count varies (322 ours / 232 theirs). That is exactly what the two-class model
+> predicts — class 2 is deterministic (the gate excludes the same buildout roots on every connected
+> parse) while class 1 scales with how much the server streamed before the load.
+>
+> Their **§4 teleport oddity is DISSOLVED** as predicted: `warpPlayer` was always correct, the answer
+> was empty because nothing was in the tree. The unexplained `flora=9` also resolved to `/0`, an
+> artifact of the near-empty state rather than a separate phenomenon. **Their "load the editor scene
+> LAST" ordering rule is retired** — it had shaped their entire 05.1 sign-off checkpoint.
+
 **Pushed.** **No contract change — still v33 / 160 names.** Nothing to re-sync, no rebind, no version
 bump. Engine-internal fix plus three new log lines.
 
