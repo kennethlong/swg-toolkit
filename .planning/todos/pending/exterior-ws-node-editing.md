@@ -100,6 +100,12 @@ means editing server data"). That refusal is a better outcome than silence, and 
 lesson as the three reporting defects found on 2026-08-06/07: the refusals were all correct; only
 their reporting was broken.
 
+**Class 3 now has its own todo — [[server-spawned-object-editing]]** (filed 2026-08-07, deferred by
+the maintainer). It carries the worked example, the two open questions that must be settled before
+designing it, and the reasoning for why it cannot share this todo's unified-button model. **This
+todo owns classes 1 and 2 only**; the honest-refusal interim above is the only class-3 work that
+belongs here.
+
 ## The distinction that matters
 
 | | Interior decoration | Exterior object |
