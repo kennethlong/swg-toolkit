@@ -2,7 +2,20 @@
 
 Active handoffs (newest first). One file per workstream; read the active one before resuming.
 
-- **[2026-08-05-SESSION-HANDOFF-phase05.1-sign-off-in-progress.md](2026-08-05-SESSION-HANDOFF-phase05.1-sign-off-in-progress.md)** — ACTIVE. ← start here.
+- **[2026-08-07-SESSION-HANDOFF-phase05.1-CLOSED-and-the-deletion-incident.md](2026-08-07-SESSION-HANDOFF-phase05.1-CLOSED-and-the-deletion-incident.md)** — ACTIVE. ← start here.
+  Phase **05.1 is CLOSED** (18/18, sign-off 13/13, ledger 14/14) and `main` is **pushed**
+  (`862f0f6`, 180 commits). Carries **the `.ilf` deletion incident**: a mirror toggle deleted 34,422
+  bytes of persisted work, silently, reporting zero failures — the durable building-template map
+  self-poisoned with a DERIVED template, so the "mirror path" resolved to the user's own edit file.
+  Four defects fixed (`808bcca`), five regression tests, nothing lost. **Only reachable because the
+  provider's editor-scene fix landed the same day** — which also **retired three constraints the
+  phase was signed off under** (§3): editor-scene-goes-last, `cellName:"world"` after a `loadScene`,
+  and reload-required. Two instruments documented that beat the ones I built (§4:
+  `SwgClient_report.log`, `%TEMP%\swg-toolkit-decoration-stage\`), plus the `.ws` node layout and
+  three scripts promoted to `packages/harness/scripts/`. Next phase: **exterior `.ws`-node editing**
+  (§6). Two items owed by the maintainer, none by me (§7).
+
+- **[2026-08-05-SESSION-HANDOFF-phase05.1-sign-off-in-progress.md](2026-08-05-SESSION-HANDOFF-phase05.1-sign-off-in-progress.md)** — SUPERSEDED by the above.
   Phase **05.1 is 17/18**; only **05.1-15** (phase close) remains. Its Task 1 is done; Task 2 is the
   13-step live sign-off checkpoint, **3 steps passed** (1 SC5 rotation, 6 ADD round trip + `(NEW)`
   marker + deferred toast, 7 refusal paths). Working doc:
