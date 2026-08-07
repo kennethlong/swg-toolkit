@@ -89,6 +89,55 @@ is the one that would let you delete it properly.
 handback, not from a heap delta. Flagging it rather than claiming it. It is pre-existing rather than
 a regression, which is why we did not ship the flag on the strength of it.
 
+## 4c. ADDENDUM 2026-08-07 (later) — `tree=T/N/F` measured, with a baseline
+
+Your probe upgrade landed and we ran it both ways at the **identical position**, `<3448, 4, -4824>`
+(inside the Mos Eisley cantina). Timestamps are UTC, straight from `SwgClient_report.log`:
+
+```
+20:12:40  editor scene   WORLD  candidates=0 portals=0  tree=  1/  0/9  idValid=0 rejectedForId=0
+20:17:14  editor scene   WORLD  candidates=0 portals=0  tree=  1/  0/9  idValid=0 rejectedForId=0
+20:21:16  NORMAL live    HIT    candidates=1 portals=1  tree=131/233/0  cell=cantina building=1082874
+20:21:22  NORMAL live    HIT    candidates=4 portals=1  tree=228/458/0  cell=cantina building=1082874
+```
+
+**Tangible: 1 versus 228 and still climbing. Not-targetable: 0 versus 458.**
+
+The editor-scene reading is reproducible — `1/0/9` twice, across two separate `loadScene` calls, the
+second one with the client fully server-connected (network stats bracket it, `GroundScene::install`
+at 20:16:16). Being connected makes no difference; what matters is that the scene came from
+`game::loadScene`.
+
+**It does not land cleanly in any of your three rows, and the shape matters.** It is not
+`tree=T>0` in the sense you meant ("tangible healthy, this building absent") — a tangible tree
+holding **one** object for an entire planet is not healthy. All three trees are essentially empty.
+So this is a **whole-world spatial-registration failure, not a per-object add failure.**
+
+**That re-opens your own `ClientWorld.cpp:382` lead in a stronger form than you proposed it.** You
+offered it as a per-object gate and could not connect it to a freshly-created scene's objects. But
+if `clearSphereTree` (`:238-251`) empties the tree **without** nulling handles, and objects *survive*
+the scene swap still carrying non-zero `getSpatialSubdivisionHandle()` values, the gate refuses
+**every one of them** — which produces near-total absence rather than a partial gap. That is what we
+measured. Note this shares a mechanism with the `CEC_objectAlreadyExists` half of your withdrawn v33
+story: both require objects persisting across the swap. The causal claim you withdrew may have had
+the right actors and the wrong verb.
+
+Offered as a lead, not a diagnosis — we have no visibility into which objects hold stale handles.
+
+**One observation we cannot explain and are not theorising about:** flora reads `9` in the editor
+scene and `0` on the normal session — inverted relative to the other two trees.
+
+**Behavioural corroboration, same teleport, both sessions.** On the normal session the maintainer saw
+the cantina interior render for about a second before server authority rebounded them — the success
+path: cell resolved, player parented in, interior drawn, then corrected. In the editor scene nothing
+rendered at all, because there was no cell to parent into. One instrument, two failure modes, both
+explained.
+
+**Instrumentation note for your side:** we now read these lines from `SwgClient_report.log` rather
+than a DBWIN capture. It is timestamped, persistent, survives session end, and cannot be pre-empted
+by another capturer — strictly better for this probe. We wasted a run to an expired DBWIN window
+before noticing the client had been writing the same lines to disk all along.
+
 ## 5. Where that leaves the defect
 
 Still open, still yours, but better bounded. What is now established:
@@ -98,6 +147,8 @@ Still open, still yours, but better bounded. What is now established:
 | Reproduces | Editor scene (offline `game::loadScene`), every time |
 | Does NOT reproduce | Server-connected session, same building, same class of position |
 | Symptom | `findCellAtWorldPosition` → world cell; sphere-tree query returns `candidates=0` |
+| **Measured cause** | the tangible sphere trees are **essentially unpopulated** in an editor scene — `tree=1/0/9` vs `228/458/0` at the same position on a live session (§4c) |
+| Scope | whole-world registration failure, NOT per-object — all three trees, not one missing building |
 | **NOT the cause** | our `cleanupScene`-before-`loadScene` ordering — **tested directly, this report** |
 | Also not the cause | the teleport path: `warpPlayer` behaves correctly given a world-cell answer |
 

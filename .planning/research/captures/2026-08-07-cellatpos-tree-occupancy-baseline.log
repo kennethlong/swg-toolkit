@@ -1,0 +1,16 @@
+# [cellAtPos] tree=T/N/F occupancy — editor scene vs live session, 2026-08-07
+# Source: swg-client-v2/stage/SwgClient_report.log (the client's OWN report log — timestamped,
+#   persistent, no capturer needed; strictly better than DBWIN for this probe).
+# Timestamps are UTC (20:12:40 UTC = 15:12:40 local).
+# Probe position identical in all four: <3448.00, 4.00, -4824.00>, inside the Mos Eisley cantina.
+# T/N/F = tangible / tangibleNotTargetable / tangibleFlora sphere-tree occupancy.
+#
+# EDITOR SCENE (two separate loadScene calls; the 20:17 one fully server-connected):
+#   tangible 1, notTargetable 0 — essentially unpopulated. candidates=0, world-cell fallback.
+# NORMAL LIVE SESSION (no editor scene loaded), same position:
+#   tangible 131 -> 228 and climbing, notTargetable 233 -> 458. HIT, cell=cantina.
+#
+20260807201240:SwgClient:reportLog:[cellAtPos] WORLD pos=<3448.00,4.00,-4824.00> candidates=0 portals=0 tree=1/0/9 idValid=0 rejectedForId=0
+20260807201714:SwgClient:reportLog:[cellAtPos] WORLD pos=<3448.00,4.00,-4824.00> candidates=0 portals=0 tree=1/0/9 idValid=0 rejectedForId=0
+20260807202116:SwgClient:reportLog:[cellAtPos] HIT pos=<3448.00,4.00,-4824.00> candidates=1 portals=1 tree=131/233/0 cell=cantina building=1082874
+20260807202122:SwgClient:reportLog:[cellAtPos] HIT pos=<3448.00,4.00,-4824.00> candidates=4 portals=1 tree=228/458/0 cell=cantina building=1082874
