@@ -1,0 +1,448 @@
+# DBWIN capture — 05.1-15 sign-off session, 2026-08-06 (steps 8/9/10/11)
+# Client pid 54176, server-connected, contract v33, mapping Local\SwgToolkitLive_uwycqhj5.
+# FILTERED: pid=54176 only, with PortalCullProbe/cellAtPos per-frame spam removed
+#   (10,689 of 11,128 client lines were that spam; 439 signal lines retained).
+# Raw capture was 14,960 lines / 2.9 MB and also held unrelated processes'
+#   OutputDebugString traffic (Edge crashpad, Microsoft ECS) — DBWIN is system-wide.
+# Cited by 05.1-15-CHECKPOINT-WORKSHEET.md for: the sceneEpoch-does-not-advance finding,
+#   the teleport rubber-band evidence, and the refreshInteriorLayout acks.
+#
+19:01:11.714 pid=54176 endpoints: contract version mismatch -- resolving by name anyway
+19:01:11.718 pid=54176 overlay: game::mainLoop detour installed (deferred-queue drain point live, outside Present)
+19:01:11.769 pid=54176 ClientMain: Command Line = ""
+19:01:11.771 pid=54176 ClientMain: Memory size = 1536 MB
+19:01:11.773 pid=54176 InstallTimer:    0.0000 544 SetupSharedRegex::install
+19:01:11.812 pid=54176 InstallTimer:    0.0389 17398592 SetupSharedFile::install
+19:01:11.815 pid=54176 InstallTimer:    0.0000 864 SetupSharedMath::install
+19:01:11.817 pid=54176 InstallTimer:      0.0002 192 CachedFileManager::install
+19:01:11.952 pid=54176 InstallTimer:    0.1371 9772160 SetupSharedUtility::install
+19:01:11.955 pid=54176 InstallTimer:    0.0000 1936 SetupSharedRandom::install
+19:01:11.958 pid=54176 Log observer setup: file:SwgClient_report.log
+19:01:11.961 pid=54176 InstallTimer:    0.0030 2144 SetupSharedLog::install
+19:01:11.963 pid=54176 InstallTimer:    0.0000 880 SetupSharedImage::install
+19:01:11.966 pid=54176 InstallTimer:    0.0001 15696 SetupSharedNetwork::install
+19:01:11.976 pid=54176 InstallTimer:      0.0082 2164336 ObjectTemplateList::install
+19:01:11.979 pid=54176 InstallTimer:    0.0110 2220112 SetupSharedObject::install
+19:01:11.986 pid=54176 InstallTimer:      0.0000 4304 ConfigSharedGame::install
+19:01:11.991 pid=54176 InstallTimer:      0.0012 14656 SpatialChatManager::install
+19:01:11.994 pid=54176 InstallTimer:      0.0006 24272 MoodManager::install 
+19:01:12.052 pid=54176 InstallTimer:      0.0572 10496 TravelManager::install 
+19:01:12.055 pid=54176 InstallTimer:      0.0000 192 GameScheduler::install
+19:01:12.069 pid=54176 InstallTimer:      0.0137 888752 AppearanceManager::install
+19:01:12.081 pid=54176 InstallTimer:      0.0115 307808 CustomizationManager::install 
+19:01:12.083 pid=54176 InstallTimer:      0.0005 6192 SharedBuffBuilderManager::install 
+19:01:12.085 pid=54176 InstallTimer:      0.0000 48 SharedImageDesignerManager::install 
+19:01:12.087 pid=54176 InstallTimer:      0.0006 9968 TextManager::install
+19:01:12.089 pid=54176 InstallTimer:      0.0012 19808 GameLanguageManager::install
+19:01:12.110 pid=54176 InstallTimer:      0.0200 1351136 ShipChassis::install 
+19:01:12.119 pid=54176 InstallTimer:      0.0081 451344 ShipComponentDescriptor::install 
+19:01:12.122 pid=54176 InstallTimer:      0.0012 27488 ShipComponentWeaponManager::install
+19:01:12.583 pid=54176 InstallTimer:      0.4610 9258352 ShipComponentAttachmentManager::install 
+19:01:12.585 pid=54176 InstallTimer:      0.0001 0 ShipSlotIdManager::install
+19:01:12.586 pid=54176 InstallTimer:      0.0007 46256 ShipTurretManager::install
+19:01:12.598 pid=54176 InstallTimer:      0.0104 1104448 ObjectUsabilityManager::install
+19:01:12.600 pid=54176 InstallTimer:      0.0012 601728 AssetCustomizationManager::install
+19:01:12.602 pid=54176 InstallTimer:      0.0005 21424 MountValidScaleRangeTable::install
+19:01:12.604 pid=54176 InstallTimer:      0.0005 16496 WearableAppearanceMap::install
+19:01:12.606 pid=54176 InstallTimer:      0.0000 64 AsteroidGenerationManager::install
+19:01:12.609 pid=54176 InstallTimer:      0.0000 64 NebulaManager::install
+19:01:12.611 pid=54176 InstallTimer:      0.0015 21120 HyperspaceManager::install
+19:01:12.612 pid=54176 InstallTimer:      0.0008 9104 PlayerFormationManager::install
+19:01:12.662 pid=54176 InstallTimer:      0.0001 1664 GroundZoneManager::install
+19:01:12.664 pid=54176 InstallTimer:      0.0012 91136 SharedSaddleManager::install
+19:01:12.670 pid=54176 InstallTimer:    0.6908 22413632 SetupSharedGame::install
+19:01:12.769 pid=54176 InstallTimer:      0.0016 3328 WaterTypeManager::install
+19:01:12.771 pid=54176 InstallTimer:    0.0020 6656 SetupSharedTerrain::install
+19:01:12.774 pid=54176 InstallTimer:    0.0000 96 SetupSharedXml::install
+19:01:12.777 pid=54176 InstallTimer:    0.0000 2160 SetupSharedPathfinding::install
+19:01:12.779 pid=54176 Audio: Starting intialization
+19:01:12.851 pid=54176 Audio: 
+19:01:12.853 pid=54176 Audio: Miles speakers are 2 Speakers
+19:01:12.855 pid=54176 Audio: Miles Max DIG_MIXER_CHANNELS(64)
+19:01:12.858 pid=54176 Audio: room_type bus_index=0 (master bus) -- 9.3b reverb API port (35-02).
+19:01:12.860 pid=54176 Audio: Finished initializing
+19:01:12.861 pid=54176 InstallTimer:    0.0830 320816 SetupClientAudio::install
+19:01:13.123 pid=54176 Direct3d11_ConstantBuffer: NO_OVERWRITE ring active (2 stages x 1048576 bytes; 1280-byte entries, 80-constant windows via XSSetConstantBuffers1)
+19:01:13.127 pid=54176 overlay: D3D11 overlay installed (advertised swapchain latched)
+19:01:13.129 pid=54176 overlay: allowTargetAnything ON (editing session; session-scoped, not persisted)
+19:01:13.133 pid=54176 +=======================================================================
+19:01:13.136 pid=54176 dPVS 5.11.12 built Jun 18 2026 22:40:01
+19:01:13.138 pid=54176 +=======================================================================
+19:01:13.384 pid=54176 Direct3d11_ShaderCache: preload complete (1116 cached shaders in RAM)
+19:01:13.857 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\Bink\BinkVideo.cpp(106) : WARNING 75edc8cc: Error binding to Bink video DLL (binkw32.dll)!
+19:01:13.882 pid=54176 InstallTimer:        0.0028 10960 DirectInputNamespace::installKeyboardDevice
+19:01:13.886 pid=54176 InstallTimer:        0.0000 10352 DirectInputNamespace::installMouseDevice
+19:01:13.962 pid=54176 InstallTimer:        0.0749 0 DirectInputNamespace::installJoystickDevices
+19:01:13.965 pid=54176 InstallTimer:      0.1056 21360 DirectInput::install
+19:01:13.969 pid=54176 InstallTimer:    0.1089 23408 SetupClientDirectInput::install
+19:01:14.097 pid=54176 InstallTimer:    0.1278 2852512 SetupClientObject::install
+19:01:14.100 pid=54176 InstallTimer:      0.0000 768 ConfigClientAnimation::install
+19:01:14.102 pid=54176 InstallTimer:      0.0000 960 PlaybackScript::install
+19:01:14.104 pid=54176 InstallTimer:      0.0000 80 PlaybackScriptTemplate::install
+19:01:14.107 pid=54176 InstallTimer:      0.0000 128 PlaybackScriptTemplateList::install
+19:01:14.109 pid=54176 InstallTimer:      0.0000 128 StopActionTemplate::install
+19:01:14.111 pid=54176 InstallTimer:      0.0000 96 TimerPlaybackActionTemplate::install
+19:01:14.113 pid=54176 InstallTimer:      0.0000 96 WatcherActionTemplate::install
+19:01:14.116 pid=54176 InstallTimer:      0.0000 48 PlaybackScriptManager::install
+19:01:14.118 pid=54176 InstallTimer:    0.0192 2304 SetupClientAnimation::install
+19:01:14.121 pid=54176 InstallTimer:    0.0026 316432 SetupClientSkeletalAnimation::install
+19:01:14.123 pid=54176 InstallTimer:    0.0000 1728 SetupClientTextureRenderer::install
+19:01:14.126 pid=54176 InstallTimer:    0.0008 412880 SetupClientTerrain::install
+19:01:14.128 pid=54176 InstallTimer:    0.0010 491328 SetupClientParticle::install
+19:01:14.130 pid=54176 InstallTimer:      0.0002 32480 ConfigClientGame::install
+19:01:14.131 pid=54176 InstallTimer:      0.0000 48 ClientObject::install
+19:01:14.133 pid=54176 InstallTimer:      0.0001 3232 SetupSharedCollision::install
+19:01:14.134 pid=54176 InstallTimer:      0.0000 48 ClientObjectTemplate::install
+19:01:14.136 pid=54176 InstallTimer:      0.0000 48 ClientCellObjectTemplate::install
+19:01:14.138 pid=54176 InstallTimer:      0.0000 0 ClientGameAppearanceEvents::install
+19:01:14.140 pid=54176 InstallTimer:      0.0000 224 LightsaberAppearanceTemplate::install
+19:01:14.141 pid=54176 InstallTimer:        0.0000 32 LightsaberCollisionManagerNamespace::BladeInfo
+19:01:14.143 pid=54176 InstallTimer:      0.0014 80 LightsaberCollisionManager::install
+19:01:14.147 pid=54176 InstallTimer:      0.0035 10688 PostProcessingEffectsManager::install
+19:01:14.149 pid=54176 InstallTimer:      0.0000 1136 Bloom::install
+19:01:14.151 pid=54176 InstallTimer:      0.0000 48 SaddleManager::install
+19:01:14.155 pid=54176 InstallTimer:      0.0000 848 TangibleObject::install
+19:01:14.158 pid=54176 InstallTimer:      0.0009 2768 CreatureObject::install
+19:01:14.159 pid=54176 InstallTimer:      0.0001 1456 CreatureController::install 
+19:01:14.161 pid=54176 InstallTimer:      0.0000 2912 RemoteCreatureController::install
+19:01:14.163 pid=54176 InstallTimer:      0.0000 2176 PlayerCreatureController::install
+19:01:14.165 pid=54176 InstallTimer:      0.0000 784 GameAnimationMessageCallback::install
+19:01:14.167 pid=54176 InstallTimer:      0.0007 336 ClientStructureFootprintObject::install
+19:01:14.169 pid=54176 InstallTimer:      0.0000 320 ClientStructureFootprintObjectNotification::install
+19:01:14.171 pid=54176 InstallTimer:      0.0005 384 ClientBattlefieldMarkerOutlineObject::install
+19:01:14.173 pid=54176 InstallTimer:      0.0000 512 ClientBattlefieldMarkerOutlineObjectNotification::install
+19:01:14.176 pid=54176 InstallTimer:      0.0000 0 ClientPathObject::install
+19:01:14.177 pid=54176 InstallTimer:      0.0000 304 ClientPathObjectNotification::install
+19:01:14.179 pid=54176 InstallTimer:      0.0000 2176 WanderController::install
+19:01:14.181 pid=54176 InstallTimer:      0.0000 0 ClientNoBuildNotification::install
+19:01:14.183 pid=54176 InstallTimer:      0.0000 48 TurretObject::install
+19:01:14.189 pid=54176 InstallTimer:      0.0000 2784 PlayerShipController::install
+19:01:14.192 pid=54176 InstallTimer:      0.0000 544 ShipController::install
+19:01:14.195 pid=54176 InstallTimer:      0.0000 2256 RemoteShipController::install
+19:01:14.196 pid=54176 InstallTimer:      0.0000 2544 PlayerShipTurretController::install
+19:01:14.198 pid=54176 InstallTimer:      0.0000 1968 ShipObject::install
+19:01:14.200 pid=54176 InstallTimer:      0.0000 1712 ShipObjectDestruction::install
+19:01:14.201 pid=54176 InstallTimer:      0.0000 48 ClientBattlefieldMarkerObjectTemplate::install
+19:01:14.203 pid=54176 InstallTimer:      0.0000 48 ClientBuildingObjectTemplate::install 
+19:01:14.207 pid=54176 InstallTimer:      0.0000 352 ClientObjectTerrainModificationNotification::install
+19:01:14.208 pid=54176 InstallTimer:      0.0000 48 ClientConstructionContractObjectTemplate::install
+19:01:14.211 pid=54176 InstallTimer:      0.0000 48 ClientCreatureObjectTemplate::install
+19:01:14.213 pid=54176 InstallTimer:      0.0000 48 ClientFactoryObjectTemplate::install
+19:01:14.217 pid=54176 InstallTimer:      0.0000 48 ClientGroupObjectTemplate::install
+19:01:14.218 pid=54176 InstallTimer:      0.0000 48 ClientGuildObjectTemplate::install
+19:01:14.221 pid=54176 InstallTimer:      0.0000 48 ClientInstallationObjectTemplate::install
+19:01:14.222 pid=54176 InstallTimer:      0.0000 48 ClientMissionObjectTemplate::install
+19:01:14.224 pid=54176 InstallTimer:      0.0000 48 ClientPlayerQuestObjectTemplate::install
+19:01:14.227 pid=54176 InstallTimer:      0.0000 48 ClientPlayerObjectTemplate::install
+19:01:14.229 pid=54176 InstallTimer:      0.0000 48 ClientResourceContainerObjectTemplate::install
+19:01:14.231 pid=54176 InstallTimer:      0.0000 48 ClientShipObjectTemplate::install
+19:01:14.234 pid=54176 InstallTimer:      0.0000 48 ClientStaticObjectTemplate::install
+19:01:14.236 pid=54176 InstallTimer:      0.0005 7584 ClientTangibleObjectTemplate::install
+19:01:14.238 pid=54176 InstallTimer:      0.0000 48 ClientUniverseObjectTemplate::install
+19:01:14.241 pid=54176 InstallTimer:      0.0000 48 ClientVehicleObjectTemplate::install
+19:01:14.247 pid=54176 InstallTimer:      0.0000 48 ClientWaypointObjectTemplate::install
+19:01:14.253 pid=54176 InstallTimer:      0.0009 89664 ClientWeaponObjectTemplate::install
+19:01:14.256 pid=54176 InstallTimer:      0.0000 48 ClientIntangibleObjectTemplate::install
+19:01:14.259 pid=54176 InstallTimer:      0.0000 48 ClientManufactureSchematicObjectTemplate::install
+19:01:14.262 pid=54176 InstallTimer:      0.0000 720 ClientDataTemplateList::install
+19:01:14.264 pid=54176 InstallTimer:      0.0000 720 ClientDataFile::install
+19:01:14.266 pid=54176 InstallTimer:      0.0000 176 TrackingProjectile::install
+19:01:14.269 pid=54176 InstallTimer:      0.0000 176 NonTrackingProjectile::install
+19:01:14.271 pid=54176 InstallTimer:      0.0000 720 ShipProjectile::install
+19:01:14.273 pid=54176 InstallTimer:      0.0000 96 AlignToHardpointActionTemplate::install
+19:01:14.275 pid=54176 InstallTimer:      0.0000 96 ArcTargetActionTemplate::install
+19:01:14.277 pid=54176 InstallTimer:      0.0000 96 ChangePostureActionTemplate::install
+19:01:14.279 pid=54176 InstallTimer:      0.0000 96 ChangeScaleActionTemplate::install
+19:01:14.282 pid=54176 InstallTimer:      0.0000 96 CloneWeaponActionTemplate::install
+19:01:14.284 pid=54176 InstallTimer:      0.0000 96 FaceTargetActionTemplate::install
+19:01:14.287 pid=54176 InstallTimer:      0.0000 96 FireSetupActionTemplate::install
+19:01:14.290 pid=54176 InstallTimer:      0.0000 96 WaitForBoltActionTemplate::install
+19:01:14.292 pid=54176 InstallTimer:      0.0000 640 FireProjectileActionTemplate::install
+19:01:14.294 pid=54176 InstallTimer:      0.0000 96 FireTurretActionTemplate::install
+19:01:14.296 pid=54176 InstallTimer:      0.0000 96 GrenadeLobActionTemplate::install
+19:01:14.298 pid=54176 InstallTimer:      0.0000 128 HardpointTargetActionTemplate::install
+19:01:14.300 pid=54176 InstallTimer:      0.0000 96 HomingTargetActionTemplate::install
+19:01:14.302 pid=54176 InstallTimer:      0.0000 176 PlayParticleSystemActionTemplate::install
+19:01:14.305 pid=54176 InstallTimer:      0.0000 96 PlaySkeletalAnimationActionTemplate::install
+19:01:14.307 pid=54176 InstallTimer:      0.0000 0 PlaySkeletalAnimationAction::install
+19:01:14.310 pid=54176 InstallTimer:      0.0000 96 StartTrailsActionTemplate::install
+19:01:14.313 pid=54176 InstallTimer:      0.0000 96 StopTrailsActionTemplate::install
+19:01:14.315 pid=54176 InstallTimer:      0.0000 128 TemporaryAttachedObjectActionTemplate::install
+19:01:14.317 pid=54176 InstallTimer:      0.0000 128 ThrowSwordActionTemplate::install
+19:01:14.320 pid=54176 InstallTimer:      0.0000 128 UseLightningActionTemplate::install
+19:01:14.322 pid=54176 InstallTimer:      0.0000 176 UseLightningAction::install
+19:01:14.324 pid=54176 InstallTimer:      0.0007 5360 GamePlaybackScript::install
+19:01:14.325 pid=54176 InstallTimer:      0.0000 128 ClientEffectTemplateList::install
+19:01:14.327 pid=54176 InstallTimer:      0.0000 1616 ClientEffectManager::install
+19:01:14.329 pid=54176 InstallTimer:      0.0006 2912 ClientEventManager::install
+19:01:14.332 pid=54176 InstallTimer:      0.0000 1920 ClientSecureTradeManager::install
+19:01:14.697 pid=54176 InstallTimer:      0.3648 9196864 PlayerMusicManager::install
+19:01:14.700 pid=54176 InstallTimer:      0.0014 99728 MatchMakingManager::install
+19:01:14.702 pid=54176 InstallTimer:      0.0000 48 CustomerServiceManager::install
+19:01:14.704 pid=54176 InstallTimer:      0.0000 640 AlarmManager::install
+19:01:14.706 pid=54176 InstallTimer:      0.0000 48 ChatLogManager::install
+19:01:14.707 pid=54176 InstallTimer:      0.0008 31680 ClientTextManager::install
+19:01:14.708 pid=54176 InstallTimer:      0.0000 400 CommunityManager::install
+19:01:14.709 pid=54176 InstallTimer:      0.0002 4336 CombatSpecialMoveVisualData::install
+19:01:14.710 pid=54176 InstallTimer:      0.0000 336 GameNetworkConnection::install
+19:01:14.711 pid=54176 InstallTimer:      0.0003 5584 AwayFromKeyBoardManager::install
+19:01:14.712 pid=54176 InstallTimer:      0.0000 576 InputActivityManager::install
+19:01:14.713 pid=54176 InstallTimer:      0.0000 48 StartTrailsAction::install
+19:01:14.715 pid=54176 InstallTimer:      0.0000 304 ClientImageDesignerManager::install
+19:01:14.716 pid=54176 InstallTimer:      0.0000 80 ClientBuffBuilderManager::install
+19:01:14.717 pid=54176 InstallTimer:      0.0000 48 ClientIncubatorManager::install
+19:01:14.718 pid=54176 InstallTimer:      0.0000 1168 ClientUniverse::install
+19:01:14.732 pid=54176 InstallTimer:      0.0073 2167184 GroundScene::install
+19:01:14.734 pid=54176 InstallTimer:      0.0000 3888 WorldSnapshot::install
+19:01:14.736 pid=54176 InstallTimer:      0.0000 832 ClientInteriorLayoutManager::install
+19:01:14.740 pid=54176 InstallTimer:        0.0035 173968 PlayerCreationManager::install 
+19:01:14.743 pid=54176 InstallTimer:      0.0037 173968 PlayerCreationManagerClient::install
+19:01:14.745 pid=54176 InstallTimer:        0.0000 48 SlotRuleNamespace::SlotOccupiedRule
+19:01:14.747 pid=54176 InstallTimer:        0.0000 48 SlotRuleNamespace::NegateRule
+19:01:14.749 pid=54176 InstallTimer:        0.0000 48 SlotRuleNamespace::AndRule
+19:01:14.751 pid=54176 InstallTimer:        0.0000 48 SlotRuleNamespace::OrRule
+19:01:14.753 pid=54176 InstallTimer:      0.0077 240 SlotRule::install
+19:01:14.755 pid=54176 InstallTimer:      0.0007 32112 ProjectileManager::install
+19:01:14.757 pid=54176 InstallTimer:      0.0007 13456 MissileManager::install
+19:01:14.758 pid=54176 InstallTimer:        0.0009 28528 FormManager::install 
+19:01:14.760 pid=54176 InstallTimer:      0.0020 28576 FormManagerClient::install
+19:01:14.762 pid=54176 InstallTimer:      0.0000 1232 ClientAsteroidManager::install
+19:01:14.765 pid=54176 InstallTimer:      0.0002 432 ShipWeaponGroupManager::install
+19:01:14.766 pid=54176 InstallTimer:        0.0000 688 CollisionCallbackManager::install
+19:01:14.781 pid=54176 InstallTimer:      0.0158 652832 CollisionCallbacks::install
+19:01:14.803 pid=54176 InstallTimer:      0.0225 439584 ShipTargetAppearanceManager::install
+19:01:14.838 pid=54176 InstallTimer:      0.0343 1031568 SpaceDeath::install
+19:01:14.841 pid=54176 InstallTimer:        0.0000 880 NebulaShellShaderPrimitive::install
+19:01:14.842 pid=54176 InstallTimer:      0.0034 1488 NebulaManagerClient::install
+19:01:14.845 pid=54176 InstallTimer:        0.0000 48 ClientShipTargetingNamespace::install
+19:01:14.847 pid=54176 InstallTimer:      0.0020 96 ClientShipTargeting::install
+19:01:14.848 pid=54176 InstallTimer:      0.0000 528 DustAppearance::install
+19:01:14.910 pid=54176 InstallTimer:      0.0615 697728 SpacePreloadedAssetManager::install
+19:01:15.163 pid=54176 InstallTimer:      0.0000 768 CockpitCamera::install
+19:01:15.166 pid=54176 InstallTimer:      0.0000 608 SpaceTargetBracketOverlay::install
+19:01:15.206 pid=54176 InstallTimer:      0.0392 603568 ZoneMapObject::install
+19:01:15.209 pid=54176 InstallTimer:      0.0011 2960 HyperspaceIoWin::install
+19:01:15.286 pid=54176 InstallTimer:      0.0761 5306048 ShipHitEffectsManagerClient::install
+19:01:15.289 pid=54176 InstallTimer:      0.0006 10064 DroidProgramSizeManager::install
+19:01:15.574 pid=54176 InstallTimer:      0.2854 4797968 CombatEffectsManager::install
+19:01:15.584 pid=54176 InstallTimer:      0.0006 800 ClientObjectUsabilityManager::install
+19:01:15.790 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\SHAREDSKILLSYSTEM\src\shared\SkillObject.cpp(441) : WARNING 860d2942: Could not find skill DEPRECATED_SKILLS in DataTable
+19:01:16.265 pid=54176 InstallTimer:      0.6722 2932240 SkillManager::install
+19:01:16.268 pid=54176 InstallTimer:    2.1410 35835728 SetupClientGame::install
+19:01:16.270 pid=54176 InstallTimer:    0.0009 2096 SetupClientBugReporting::install
+19:01:16.271 pid=54176 InstallTimer:    0.0000 544 SetupSharedIoWin::install
+19:01:16.272 pid=54176 InstallTimer:  4.5314 130961248 root
+19:01:16.276 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\core\MoodManagerClient.cpp(158) : WARNING 0f1d0c85: MoodManagerClient 'mood_types' specifies invalid mood type 'undead'
+19:01:16.278 pid=54176 InstallTimer:    0.0031 207888 MoodManagerClient::install
+19:01:16.279 pid=54176 InstallTimer:    0.0000 2224 ObjectAttributeManager::install
+19:01:16.280 pid=54176 InstallTimer:    0.0000 624 DraftSchematicManager::install
+19:01:16.282 pid=54176 InstallTimer:      0.0000 1552 AuctionManagerClientListener::install
+19:01:16.283 pid=54176 InstallTimer:    0.0012 1552 AuctionManagerClient::install
+19:01:16.285 pid=54176 InstallTimer:    0.0004 1536 PlanetMapManagerClient::install
+19:01:16.286 pid=54176 InstallTimer:    0.0000 0 ResourceIconManager::install
+19:01:16.288 pid=54176 InstallTimer:    0.0000 448 ClientRegionManager::install
+19:01:16.289 pid=54176 InstallTimer:    0.0000 0 QuestJournalManager::install
+19:01:16.301 pid=54176 InstallTimer:    0.0052 730400 QuestManager::install
+19:01:16.304 pid=54176 InstallTimer:    0.0000 7168 CommandCppFuncs::install
+19:01:16.306 pid=54176 InstallTimer:    0.0000 0 ClientCommandQueue::install
+19:01:16.307 pid=54176 InstallTimer:      0.0000 80 ClientCombatPlaybackManager::StringVariableFiller
+19:01:16.309 pid=54176 InstallTimer:      0.0000 80 ClientCombatPlaybackManager::FloatVariableFiller
+19:01:16.311 pid=54176 InstallTimer:      0.0000 80 ClientCombatPlaybackManager::IntVariableFiller
+19:01:16.318 pid=54176 InstallTimer:    0.0120 949872 ClientCombatPlaybackManager::install
+19:01:16.320 pid=54176 InstallTimer:    0.0000 3984 GameNetwork::install
+19:01:16.322 pid=54176 InstallTimer:        0.0000 64 CuiLayerRenderer
+19:01:16.324 pid=54176 InstallTimer:      0.0012 2032 CuiLayer
+19:01:16.639 pid=54176 InstallTimer:      0.3138 21158976 LoadRootPage
+19:01:16.876 pid=54176 InstallTimer:      0.2179 1248800 Link
+19:01:16.927 pid=54176 InstallTimer:        0.0005 73376 SocialsManager::install 
+19:01:16.929 pid=54176 unknown location : WARNING 09b44987: CuiChatParser [chat_emoticon_socials] specifies invalid social [undead_claw]
+19:01:16.931 pid=54176 unknown location : WARNING 09b44987: CuiChatParser [chat_emoticon_socials] specifies invalid social [undead_crouch]
+19:01:16.942 pid=54176 unknown location : WARNING abf922bb: CuiSocialsManager:: Entry [undead_claw] is not a valid social type.
+19:01:16.944 pid=54176 unknown location : WARNING abf922bb: CuiSocialsManager:: Entry [undead_crouch] is not a valid social type.
+19:01:16.947 pid=54176 InstallTimer:      0.0220 1646720 CuiManagerManager
+19:01:16.949 pid=54176 unknown(0x006FF500) : WARNING f7d861fd: Invalid StringId NAME  [ui:Species_description]
+19:01:16.953 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedFile\src\shared\Iff.cpp(523) : WARNING f7d861fd: Invalid StringId NAME  [ui:gender_selection]
+19:01:16.957 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientUserInterface\src\shared\core\CuiManager.cpp(1471) : WARNING f7d861fd: Invalid StringId NAME  [ui:clothing_selection]
+19:01:16.972 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientUserInterface\src\shared\core\CuiManager.cpp(1471) : WARNING f7d861fd: Invalid StringId NAME  [ui_charsheet:gcw_rank1]
+19:01:16.988 pid=54176 InstallTimer:      0.0401 1217328 Strings
+19:01:16.990 pid=54176 InstallTimer:    0.6672 25536768 CuiManager
+19:01:17.016 pid=54176 InstallTimer:    0.0000 512 PreloadedAssetManager::install
+19:01:17.018 pid=54176 Preloading took [0.00] seconds and increased memory usage by [0.00] MB.
+19:01:17.019 pid=54176 InstallTimer:  0.7448 34419424 Game::install
+19:01:17.082 pid=54176 overlay: hkSwapChainPresent first fire (DXGI detour confirmed)
+19:01:17.086 pid=54176 overlay: WndProc subclass installed (ImGui input live)
+19:01:17.089 pid=54176 overlay: ImGui DX11 initialized (first Present)
+19:01:44.659 pid=54176 [MGN-PROBE] FETCH [appearance/mesh/sul_m_body.lmg] isEnabled=1 bind=0 supportsAsync=0 -> SYNC
+19:01:44.661 pid=54176 [MGN-PROBE] FETCH [appearance/mesh/sul_m_head.lmg] isEnabled=1 bind=0 supportsAsync=0 -> SYNC
+19:01:44.664 pid=54176 [MGN-PROBE] FETCH [appearance/mesh/underwear_bottom_f.lmg] isEnabled=1 bind=0 supportsAsync=0 -> SYNC
+19:01:44.666 pid=54176 [MGN-PROBE] FETCH [appearance/mesh/underwear_bottom_m.lmg] isEnabled=1 bind=0 supportsAsync=0 -> SYNC
+19:01:44.667 pid=54176 [MGN-PROBE] FETCH [appearance/mesh/sul_m_body_l0.mgn] isEnabled=1 bind=1 supportsAsync=1 -> ASYNC
+19:01:44.669 pid=54176 [MGN-PROBE] FETCH [appearance/mesh/sul_m_head_l0.mgn] isEnabled=1 bind=1 supportsAsync=1 -> ASYNC
+19:01:44.670 pid=54176 [MGN-PROBE] FETCH [appearance/mesh/sul_m_body_l1.mgn] isEnabled=1 bind=1 supportsAsync=1 -> ASYNC
+19:01:44.672 pid=54176 [MGN-PROBE] FETCH [appearance/mesh/sul_m_head_l1.mgn] isEnabled=1 bind=1 supportsAsync=1 -> ASYNC
+19:01:46.413 pid=54176 InstallTimer:  0.0000 11200 ClientWorld::install
+19:01:46.532 pid=54176 InstallTimer:  0.0160 840016 GameMusicManager::install
+19:01:46.661 pid=54176 CuiSettings loaded inventory state from profiles/swg/swg/127040355.uis
+19:01:46.663 pid=54176 CuiChatHistory loaded inventory state from profiles/swg/swg/127040355.cht
+19:01:46.752 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientUserInterface\src\shared\core\CuiMediator.cpp(1507) : WARNING ab8f0ad0: Unable to find CodeData object 'bigViewerBackground1' [bigPage.Toolbar.bigViewerBackground1] from [/GroundHUD.Toolbar] for [SwgCuiToolbar]
+19:01:46.755 pid=54176 unknown location : WARNING ab8f0ad0: Unable to find CodeData object 'bigViewerBackground2' [bigPage.Toolbar.bigViewerBackground2] from [/GroundHUD.Toolbar] for [SwgCuiToolbar]
+19:01:47.671 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedSynchronization\src\win32\Mutex.cpp(51) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_fat_human_male_02.cdf unable to set int variable /private/index_color_3
+19:01:48.002 pid=54176 VOLZERO sound/music_main_title.snd tmpl=1.000 fade=0.027 atten=1.000 user=1.000 dist=0.0 cutoff=8.0 pos=0
+19:01:48.277 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedObject\src\shared\container\ArrangementDescriptor.cpp(137) : WARNING eb0cc988: ArrangementDescriptor [abstract/slot/arrangement/arrangement_structure.iff] specified invalid slot name [structure_control_device], ignoring
+19:01:49.648 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedFoundation\src\shared\Fatal.cpp(329) : WARNING a70f9aef: ClientWeaponObjectTemplate empty cef template name for [object/weapon/ranged/pistol/shared_pistol_launcher.iff], cef [missHitOther]
+19:01:49.650 pid=54176 unknown location : WARNING a70f9aef: ClientWeaponObjectTemplate empty cef template name for [object/weapon/ranged/pistol/shared_pistol_launcher.iff], cef [missHitNothing]
+19:01:49.656 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedSynchronization\src\win32\RecursiveMutex.cpp(51) : WARNING a70f9aef: ClientWeaponObjectTemplate empty cef template name for [object/weapon/ranged/heavy/shared_heavy_rocket_launcher.iff], cef [missHitOther]
+19:01:49.658 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedFoundation\src\shared\Fatal.cpp(329) : WARNING a70f9aef: ClientWeaponObjectTemplate empty cef template name for [object/weapon/ranged/heavy/shared_heavy_rocket_launcher.iff], cef [missHitNothing]
+19:01:49.699 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(3287) : WARNING fa66d8fb: ClientDataFile [clientdata/creature/client_shared_cr_angler.cdf] unable to load sound template [sound/cr_angler_vocalize.snd]
+19:01:50.044 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_noble_human_m_01.cdf unable to set int variable /private/index_color_3
+19:01:50.052 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_noble_human_m_02.cdf unable to set int variable /private/index_color_3
+19:01:50.110 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_noble_human_m_01.cdf unable to set int variable /private/index_color_3
+19:01:50.493 pid=54176 [MGN-PROBE] RANK1-DESTROY-PENDING ~SkeletalMeshGenerator while uncreated [appearance/mesh/mun_all_imprv_banner_s01.mgn]
+19:01:52.931 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\Texture.cpp(488) : WARNING d30f207b: Could not open texture texture/dewback_saddle_n.dds
+19:01:53.509 pid=54176 InstallTimer:  0.0004 20096 ClientWaypointObject::install
+19:02:10.612 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShaderTemplate.cpp(997) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:02:10.614 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShader.cpp(141) : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_sm_hc8_phong.sht
+19:02:10.914 pid=54176 unknown(0xFFA0A0A0) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:02:10.918 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShader.cpp(141) : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_sm_hc8_phong.sht
+19:02:11.974 pid=54176 unknown(0x775A2307) : WARNING 197e6485: could not open shader template shader/chiss_f_body_sm.sht
+19:02:12.720 pid=54176 unknown(0x775A2307) : WARNING 197e6485: could not open shader template shader/chiss_m_body_sm.sht
+19:02:13.410 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:02:13.412 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_hcb13.sht
+19:02:14.127 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:02:14.129 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_hcb13.sht
+19:05:55.756 pid=54176 [editor.ilf] refreshInteriorLayout OK id=1082874 deleted=228 cellsArmed=15
+19:06:49.953 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:06:49.956 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_hcb13.sht
+19:06:49.968 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:06:49.970 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_sm_hc8_phong.sht
+19:06:51.721 pid=54176 unknown(0x775A2307) : WARNING 197e6485: could not open shader template shader/chiss_m_body_sm.sht
+19:08:53.176 pid=54176 [editor.ilf] refreshInteriorLayout OK id=1082874 deleted=267 cellsArmed=15
+19:09:50.931 pid=54176 unknown(0x775A2307) : WARNING 197e6485: could not open shader template shader/chiss_m_body_sm.sht
+19:09:51.836 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:09:51.838 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_sm_hc8_phong.sht
+19:12:24.504 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:12:24.507 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_sm_hc8_phong.sht
+19:15:57.740 pid=54176 [editor.ws] wsAllocateIdRange: authored ids at/above the ceiling exist (max=609457649 >= 16777216) -- excluded from seeding
+19:15:57.743 pid=54176 [editor.ws] wsAddObject OK: id=9995371 cells=0 template=object/static/creature/shared_dathomir_gaping_spider.iff containedById=1082874
+19:16:20.728 pid=54176 [editor.ws] wsSetNodeTemplateName OK: id=1082874 object/building/toolkit/edit_1082874.iff -> object/building/toolkit/edit_1082874.iff
+19:16:20.731 pid=54176 [editor.ws] wsForgetNode OK id=9995371 (row dropped; live Object untouched)
+19:16:20.742 pid=54176 [editor.ws] wsSaveSnapshot OK: d:/code/swg-client-v2/stage/override/snapshot/tatooine.ws
+19:33:58.599 pid=54176 VOLZERO sound/music_figrin_dan_song_1.snd tmpl=1.000 fade=1.000 atten=0.122 user=1.000 dist=36.4 cutoff=40.0 pos=1
+19:35:51.852 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:35:51.855 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_sm_hc8_phong.sht
+19:35:53.036 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:35:53.039 pid=54176 unknown(0x775B32E9) : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/shoes_s07_hcb13.sht
+19:36:20.966 pid=54176 unknown(0x775A2307) : WARNING 197e6485: could not open shader template shader/chiss_m_body_sm.sht
+19:38:19.256 pid=54176 [editor.ws] wsSetNodeTemplateName OK: id=1082874 object/building/toolkit/edit_1082874.iff -> object/building/toolkit/edit_1082874.iff
+19:38:19.268 pid=54176 [editor.ws] wsSaveSnapshot OK: d:/code/swg-client-v2/stage/override/snapshot/tatooine.ws
+19:41:12.280 pid=54176 [editor.ws] wsSetNodeTemplateName OK: id=1082874 object/building/toolkit/edit_1082874.iff -> object/building/toolkit/edit_1082874.iff
+19:41:12.294 pid=54176 [editor.ws] wsSaveSnapshot OK: d:/code/swg-client-v2/stage/override/snapshot/tatooine.ws
+19:45:35.544 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:35.549 pid=54176 overlay: teleport cell â€” before=3AB92920 after=0AC18830 world=0AC18830 warpPlayer=1
+19:45:39.981 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:39.985 pid=54176 overlay: teleport cell â€” before=3AB92920 after=0AC18830 world=0AC18830 warpPlayer=1
+19:45:41.566 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:41.571 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:43.528 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:43.533 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:44.680 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:44.685 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:45.569 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:45.573 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:46.605 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:46.611 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:47.869 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:47.873 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:49.445 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:49.447 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:50.400 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:50.405 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:51.322 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:51.325 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:52.173 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:52.178 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:45:53.268 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=2AEC9CB0 sceneEpoch=0 target=(-1290.0, 12.0, -3590.0)
+19:45:53.273 pid=54176 overlay: teleport cell â€” before=3AB92920 after=447B5DE0 world=0AC18830 warpPlayer=1
+19:54:22.336 pid=54176 VOLZERO sound/music_figrin_dan_song_1.snd tmpl=1.000 fade=1.000 atten=0.123 user=1.000 dist=36.3 cutoff=40.0 pos=1
+19:54:32.309 pid=54176 unknown(0x775F17A6) : WARNING 7511624a: designer bug: /shared_owner/ customization data missing for object template [object/creature/npc/theme_park/shared_player_transport.iff].
+19:54:32.315 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedObject\src\shared\customization\CustomizationData.cpp(446) : WARNING 7511624a: designer bug: /shared_owner/ customization data missing for object template [object/creature/npc/theme_park/shared_player_transport.iff].
+19:55:34.341 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShaderTemplate.cpp(997) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:55:34.344 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShader.cpp(141) : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/boots_s05_sm_hc8.sht
+19:55:46.928 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_tatooine_trandoshan_f_02.cdf unable to set int variable /shared_owner/blend_flat_chest
+19:56:01.312 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShaderTemplate.cpp(997) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:56:01.315 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShader.cpp(141) : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/boots_s05_hcsb21.sht
+19:56:05.227 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShaderTemplate.cpp(997) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+19:56:05.230 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShader.cpp(141) : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/boots_s05_hcsb21.sht
+19:56:48.515 pid=54176 InstallTimer:  0.0000 8688 ClientWorld::install
+19:56:48.689 pid=54176 InstallTimer:  0.0004 832 GameMusicManager::install
+19:56:48.889 pid=54176 CuiSettings loaded inventory state from profiles/swg/swg/127040355.uis
+19:56:48.892 pid=54176 CuiChatHistory loaded inventory state from profiles/swg/swg/127040355.cht
+19:56:52.029 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_tatooine_trandoshan_f_02.cdf unable to set int variable /shared_owner/blend_flat_chest
+19:56:52.494 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedFoundation\src\shared\Fatal.cpp(329) : WARNING 7511624a: designer bug: /shared_owner/ customization data missing for object template [object/creature/npc/theme_park/shared_player_transport.iff].
+19:56:52.499 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedObject\src\shared\customization\CustomizationData.cpp(446) : WARNING 7511624a: designer bug: /shared_owner/ customization data missing for object template [object/creature/npc/theme_park/shared_player_transport.iff].
+19:57:53.958 pid=54176 unknown location : WARNING 197e6485: could not open shader template c:/a_exported/shader/eqp_starship_mfg_station_m_s1_screen1_aef11_base.sht
+19:57:53.961 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\StaticShaderTemplate.cpp(123) : WARNING c597f1e0: Problem loading shader template for SwitchTextureShaderTemplate shader/eqp_starship_mfg_station_m_s1_screen1_aef11.sht
+19:57:53.967 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\ShaderTemplateList.cpp(226) : WARNING 197e6485: could not open shader template c:/a_exported/shader/eqp_starship_mfg_station_m_s1_screen2_aef11_base.sht
+19:57:54.119 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\StaticShaderTemplate.cpp(102) : WARNING c597f1e0: Problem loading shader template for SwitchTextureShaderTemplate shader/eqp_starship_mfg_station_m_s1_screen2_aef11.sht
+20:00:06.150 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:00:06.153 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/armor_composite_boots_ptrn_swap_hcsb21.sht
+20:00:06.159 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\ShaderPrimitiveSorter.cpp(1256) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:00:06.161 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/armor_composite_boots_base_ptrn_swap_hcsb21.sht
+20:00:09.768 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:00:09.771 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/armor_composite_boots_ptrn_swap_hcsb21.sht
+20:00:09.773 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\ShaderPrimitiveSorter.cpp(1159) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:00:09.776 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/armor_composite_boots_base_ptrn_swap_hcsb21.sht
+20:00:13.676 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:00:13.679 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/armor_composite_boots_ptrn_swap_hcsb21.sht
+20:00:13.682 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\ShaderPrimitiveSorter.cpp(1159) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:00:13.684 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/armor_composite_boots_base_ptrn_swap_hcsb21.sht
+20:18:11.110 pid=54176 InstallTimer:  0.0000 8688 ClientWorld::install
+20:18:11.267 pid=54176 InstallTimer:  0.0002 864 GameMusicManager::install
+20:18:11.360 pid=54176 CuiSettings loaded inventory state from profiles/swg/swg/127040355.uis
+20:18:11.362 pid=54176 CuiChatHistory loaded inventory state from profiles/swg/swg/127040355.cht
+20:18:13.884 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientSkeletalAnimation\src\shared\appearance\SkeletalAppearanceTemplate.cpp(1137) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_tatooine_trandoshan_f_02.cdf unable to set int variable /shared_owner/blend_flat_chest
+20:18:14.067 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedObject\src\shared\customization\CustomizationData.cpp(446) : WARNING 7511624a: designer bug: /shared_owner/ customization data missing for object template [object/creature/npc/theme_park/shared_player_transport.iff].
+20:18:14.069 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedObject\src\shared\customization\CustomizationData.cpp(446) : WARNING 7511624a: designer bug: /shared_owner/ customization data missing for object template [object/creature/npc/theme_park/shared_player_transport.iff].
+20:18:16.977 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShaderTemplate.cpp(997) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:18:16.979 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShader.cpp(141) : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/boots_s05_sm_hc8.sht
+20:18:47.427 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\ShaderTemplateList.cpp(226) : WARNING 197e6485: could not open shader template c:/a_exported/shader/ksk_all_spaceterminal_screen_aef11_base.sht
+20:18:47.429 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\SwitchTextureShaderTemplate.cpp(136) : WARNING c597f1e0: Problem loading shader template for SwitchTextureShaderTemplate shader/ksk_all_spaceterminal_screen_aef11.sht
+20:18:52.956 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_fat_human_male_02.cdf unable to set int variable /private/index_color_3
+20:18:53.989 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\ShaderTemplateList.cpp(226) : WARNING 197e6485: could not open shader template c:/a_exported/shader/eqp_starship_mfg_station_m_s1_screen1_aef11_base.sht
+20:18:53.992 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\StaticShaderTemplate.cpp(123) : WARNING c597f1e0: Problem loading shader template for SwitchTextureShaderTemplate shader/eqp_starship_mfg_station_m_s1_screen1_aef11.sht
+20:18:53.997 pid=54176 unknown location : WARNING 197e6485: could not open shader template c:/a_exported/shader/eqp_starship_mfg_station_m_s1_screen2_aef11_base.sht
+20:18:54.005 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\StaticShaderTemplate.cpp(102) : WARNING c597f1e0: Problem loading shader template for SwitchTextureShaderTemplate shader/eqp_starship_mfg_station_m_s1_screen2_aef11.sht
+20:19:21.033 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedSynchronization\src\win32\Mutex.cpp(51) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_noble_human_m_01.cdf unable to set int variable /private/index_color_3
+20:19:21.038 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_noble_human_m_02.cdf unable to set int variable /private/index_color_3
+20:19:21.149 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_noble_human_m_01.cdf unable to set int variable /private/index_color_3
+20:19:47.516 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShaderTemplate.cpp(997) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:19:47.519 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\CustomizableShader.cpp(141) : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/boots_s05_sm_hc8.sht
+20:19:47.868 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGraphics\src\shared\ShaderTemplateList.cpp(226) : WARNING 197e6485: could not open shader template shader/chiss_f_body_sm.sht
+20:19:55.191 pid=54176 unknown(0x8B64903D) : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:19:55.194 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/boots_s05_hcsb21.sht
+20:20:27.836 pid=54176 unknown location : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_fat_human_male_02.cdf unable to set int variable /private/index_color_3
+20:21:03.714 pid=54176 [editor.ws] wsSetNodeTemplateName OK: id=1105879 object/building/tatooine/shared_cloning_facility_tatooine.iff -> object/building/toolkit/edit_1105879.iff
+20:21:03.725 pid=54176 [editor.ws] wsSaveSnapshot OK: d:/code/swg-client-v2/stage/override/snapshot/tatooine.ws
+20:22:11.749 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=45E2BBB0 sceneEpoch=0 target=(3442.0, 5.0, -5021.0)
+20:22:11.753 pid=54176 overlay: teleport cell â€” before=3F089C50 after=4227B510 world=0AC18830 warpPlayer=1
+20:26:28.789 pid=54176 overlay: teleport click â€” origin=HOST_CMD player=45E2BBB0 sceneEpoch=0 target=(3442.0, 5.0, -5021.0)
+20:26:28.795 pid=54176 overlay: teleport cell â€” before=3F089C50 after=4227B510 world=0AC18830 warpPlayer=1
+20:29:01.634 pid=54176 unknown(0xFFFFFFFF) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_fat_human_male_02.cdf unable to set int variable /private/index_color_3
+20:29:30.661 pid=54176 unknown location : WARNING 4ca632d0: CustomizableShaderTemplate::TextureFactorIntOperation::execute error
+20:29:30.664 pid=54176 unknown location : WARNING 39bcedc8: CustomizableShader::prepareToView() failed for shader/boots_s05_sm_hc8.sht
+20:30:19.821 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedFile\src\shared\Iff.cpp(1188) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_tatooine_trandoshan_f_02.cdf unable to set int variable /shared_owner/blend_flat_chest
+20:30:47.740 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_fat_human_male_02.cdf unable to set int variable /private/index_color_3
+20:31:15.576 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_fat_human_male_02.cdf unable to set int variable /private/index_color_3
+20:31:30.441 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedFoundation\src\shared\Fatal.cpp(329) : WARNING 7511624a: designer bug: /shared_owner/ customization data missing for object template [object/creature/npc/theme_park/shared_player_transport.iff].
+20:31:30.442 pid=54176 D:\Code\swg-client-v2\src\engine\shared\library\sharedFoundation\src\shared\Fatal.cpp(329) : WARNING 7511624a: designer bug: /shared_owner/ customization data missing for object template [object/creature/npc/theme_park/shared_player_transport.iff].
+20:31:50.929 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(1529) : WARNING f4162f7b: ClientDataFile clientdata/npc/client_shared_npc_dressed_commoner_naboo_human_f_05.cdf failed to apply wearable
+20:32:22.620 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_fat_human_male_02.cdf unable to set int variable /private/index_color_3
+20:42:26.314 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientGame\src\shared\objectTemplate\ClientDataFile.cpp(2996) : WARNING de7fca28: CDF clientdata/npc/client_shared_npc_dressed_commoner_fat_human_male_02.cdf unable to set int variable /private/index_color_3
+20:44:10.084 pid=54176 [editor.ilf] refreshInteriorLayout OK id=1106500 deleted=46 cellsArmed=6
+20:48:55.655 pid=54176 [editor.ws] wsSetNodeTemplateName OK: id=1106500 object/building/tatooine/shared_cloning_facility_tatooine.iff -> object/building/toolkit/edit_1106500.iff
+20:48:55.669 pid=54176 [editor.ws] wsSaveSnapshot OK: d:/code/swg-client-v2/stage/override/snapshot/tatooine.ws
+20:57:42.463 pid=54176 D:\Code\swg-client-v2\src\engine\client\library\clientUserInterface\src\shared\core\CuiManager.cpp(1471) : WARNING f7d861fd: Invalid StringId NAME  [building_name:military_gate_house]
+20:57:42.465 pid=54176 unknown location : WARNING f7d861fd: Invalid StringId NAME  [building_name:Lucky Despot Hotel and Casino]
+20:57:47.436 pid=54176 [editor.ws] wsSetNodeTemplateName OK: id=1106500 object/building/toolkit/edit_1106500.iff -> object/building/toolkit/edit_1106500.iff
+20:57:47.447 pid=54176 [editor.ws] wsSaveSnapshot OK: d:/code/swg-client-v2/stage/override/snapshot/tatooine.ws
+21:09:09.410 pid=54176 VOLZERO sound/music_event_sunset.snd tmpl=1.000 fade=0.050 atten=1.000 user=1.000 dist=0.0 cutoff=8.0 pos=0

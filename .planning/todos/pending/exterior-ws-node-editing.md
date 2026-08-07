@@ -65,6 +65,41 @@ The maintainer wants to position objects **outside** buildings. That capability 
 partly reachable today — it is blocked by the toolkit having exactly ONE persist route, not by any
 client limitation.
 
+## ⚠ There are THREE object classes, not two (established live 2026-08-07)
+
+The interior/exterior split below is real but INCOMPLETE. A third class exists and is not reachable
+by either route, which was discovered by trying to persist a cloning terminal and failing correctly:
+
+| Object class | Defined in | Persist route | Status |
+| --- | --- | --- | --- |
+| Interior decoration | `.ilf` interior layout (client) | derived template + `wsSetNodeTemplateName` rebind | **BUILT** (Phase 05.1) |
+| Exterior world object | `.ws` node (client) | direct node edit + `wsSaveSnapshot` | designed here, NOT built |
+| **Server-spawned object** | **server datatable** | **edit datatable + server push** | **not designed** |
+
+**Worked example — the cloning facility terminal.** `object/tangible/terminal/shared_terminal_cloning.iff`
+is **absent** from `interiorlayout/shared_cloning_facility.ilf`'s 46 rows (verified against pristine
+TRE bytes; the layout holds bacta tanks, particles, beds and wall data terminals). It is defined
+server-side in
+`swg-main/dsrc/sku.0/sys.server/compiled/game/datatables/structure/municipal/cloning_facility_terminal.tab`
+and spawned at runtime into the building's cell.
+
+So it can be MOVED live with the gizmo but nothing client-side owns its position — the server
+restores it. `decorationPersist` refuses with *"could not resolve picked … in any cell"*, which is
+**correct**: there is no `.ilf` row to rewrite.
+
+**Consequence for this todo's design intent.** The intent is "the buttons work the same no matter
+where you are; the editor resolves the container behind the scenes." That holds for classes 1 and 2,
+which are both client-side and both end in `wsSaveSnapshot`. **Class 3 cannot join that model** — it
+needs a server datatable edit and a server push, an entirely different pipeline with different
+lifetime and deploy semantics. Attempting to hide that behind the same button would promise a
+persistence the toolkit cannot deliver against a live server.
+
+Recommended: route classes 1+2 through the unified flow this todo describes, and give class 3 an
+HONEST refusal that names the reason ("this object is spawned by the server — moving it permanently
+means editing server data"). That refusal is a better outcome than silence, and it is the same
+lesson as the three reporting defects found on 2026-08-06/07: the refusals were all correct; only
+their reporting was broken.
+
 ## The distinction that matters
 
 | | Interior decoration | Exterior object |

@@ -2,8 +2,21 @@
 created: 2026-08-02
 resolves_phase: 5.2
 source: 05.1-05 live checkpoint — maintainer APPROVED shipping the two-segment label, fix deferred
-depends_on: provider cell-name shim (change request filed by 05.1-15)
+depends_on: none — UNBLOCKED 2026-08-04 (v32 `getCellName`, live-confirmed)
 ---
+
+> **⚠ UPDATED 2026-08-06 — the blocker below is CLOSED; the todo is now purely elective.**
+> Cause 1 ("cell segment genuinely unresolvable") was true at contract v26. The provider shipped
+> **`getCellName`** in v32 and it is **confirmed live** (2026-08-04, `.planning/handoff/2026-08-04-TOOLKIT-CONFIRM-v32-live.md`
+> — tested adversarially: a `WRONGCELL_SENTINEL` in the payload was overridden and the `.ilf` row
+> read `foyer1`, resolved from the placement point while the player stood outside).
+> The `depends_on` change request was correctly **never filed** — see
+> `.planning/handoff/2026-08-04-A1-cellname-gap-CLOSED-no-change-request-filed.md` and 05.1-15's
+> rewritten `verification_instrument_changed` block, which explicitly forbids filing it.
+>
+> **What remains is steps 1 + 2 below only** (bind the row, add the middle segment) — two lines, no
+> external round trip. Step 3 (friendly building display name) is the genuinely 5.2-shaped half and
+> keeps this todo targeted there. Still deferred by default; cheap to pull forward on request.
 
 # HUD strip: restore the cell segment (and friendlier building name) to the 020-A label
 
@@ -29,12 +42,13 @@ Cantina Table · Cantina Tatooine
 
 ## Two distinct causes — do not conflate them
 
-**1. Cell segment — genuinely unresolvable client-side today.** All 150 rows of the client's
-advertised catalog were checked (`engine_hookpoints.inc`, contract v26): `object::getParentCell`
-returns the cell *object* and `objectTemplate::getPortalLayoutFilename` returns the `.pob` path, but
-**nothing returns a cell NAME string**. Needs a provider shim — same pattern as
-`object::getContainingBuildingId` (v25). **05.1-15 files that change request**; this todo is the
-consumer side and is blocked on the handback.
+**1. Cell segment — ~~genuinely unresolvable client-side today~~ RESOLVED at contract v32.** As
+written (v26): all 150 catalog rows were checked (`engine_hookpoints.inc`) — `object::getParentCell`
+returns the cell *object*, `objectTemplate::getPortalLayoutFilename` returns the `.pob` path, and
+nothing returned a cell NAME string. A provider shim was needed, same pattern as
+`object::getContainingBuildingId` (v25). **That shim shipped as `getCellName` in v32 and is
+live-confirmed.** No change request was filed and none should be. This half is now a two-line
+consumer change (steps 1-2 below), not a blocked dependency.
 
 **2. Building name is a prettified template path, not a display name.** `prettifyTemplateLabel()` in
 `overlay.cpp` does: strip dir → drop `shared_` → drop `.iff` → underscores to spaces → title case.
