@@ -126,7 +126,25 @@ export function makeReadVfs(overrideDir: string): (vfsPath: string) => Buffer {
     const st = useTreStore.getState();
     const norm = vfsPath.replace(/\\/g, '/').toLowerCase();
     const entry = st.vfsEntries.find((e) => e.path === norm);
-    if (!entry) throw new Error(`readVfs: no VFS entry and no loose file for ${vfsPath}`);
+    if (!entry) {
+      // FIELD-OBSERVED 2026-08-07: with no project open, a modder armed a decoration, dragged the
+      // gizmo and pressed Persist, and the ONLY feedback was this function's generic message
+      // naming an internal template path — which reads as "that asset is missing" when the real
+      // state is "nothing is mounted to look in".
+      //
+      // Deliberately NOT guarded on studioDir upstream: a null studioDir is a SUPPORTED state
+      // (pinned by 'resolves to true when studioDir is null (no bound project) — no regression'),
+      // because the override dir is resolved from the CLIENT EXE, not the project. A persist whose
+      // every input resolves loosely genuinely works with no project bound. The real precondition
+      // is a populated TRE mount, and it only bites when the loose lookup above misses — so the
+      // distinction belongs exactly here, not in an upfront gate that would break that case.
+      if (st.vfsEntries.length === 0) {
+        throw new Error(
+          `no TRE archives are mounted — open a project so ${vfsPath} can be read from the client's data`,
+        );
+      }
+      throw new Error(`readVfs: no VFS entry and no loose file for ${vfsPath}`);
+    }
     const winnerArc = st.archives.find((a) => a.archiveIndex === entry.winnerArchiveIndex);
     const isTocSourced = winnerArc ? winnerArc.entryCount === 0 : false;
     const descriptor = st.tocIndex && isTocSourced ? st.tocIndex.resolveFull(entry.path) ?? null : null;
@@ -170,7 +188,7 @@ export function handleDecorationCapture(
   epoch: number,
   capture: DecorationCapture,
   ctx: { mappingName: string; clientExe: string | null; studioDir?: string | null },
-): { mirrorToStockIlf: boolean; cellName?: string; rowIndex?: number } {
+): { mirrorToStockIlf: boolean; cellName?: string; rowIndex?: number; abortReason?: string } {
   const F = LIVE_DECORATION_REBIND_FLAGS;
   const studioDir = ctx.studioDir ?? null;
   // Resolved ONCE, early, before the try/catch — available on every exit path (C7). A missing
@@ -247,7 +265,16 @@ export function handleDecorationCapture(
     dbg(`capture #${epoch}: ABORT — ${(e as Error).message}`);
     log('error', 'log', `Decoration edit #${epoch} failed: ${(e as Error).message}`);
     try { addon.writeRebind(ctx.mappingName, epoch, capture.buildingInstanceId, '', F.ABORT); } catch { /* channel gone */ }
-    return { mirrorToStockIlf };
+    // FIELD-OBSERVED 2026-08-07: this path used to return only mirrorToStockIlf, so the RESULT
+    // handler had nothing but decorationResultLabel(ABORTED) = "aborted" to put in the Activity
+    // accordion — while the sentence that actually explains the failure (e.g. "could not resolve
+    // picked object/tangible/terminal/shared_terminal_cloning.iff in any cell") went ONLY to the
+    // Log tab above. D-12 makes the World panel the surface that owns decoration outcomes, so it
+    // was getting the least informative version of an outcome it owns; "aborted" satisfies SC1's
+    // letter (a word, not a code) and fails its intent. Carrying the reason on the SAME return
+    // value the caller already stashes (C7's pattern) keeps it on the existing seam — no new
+    // channel field, no second store call, no change to when the entry is written.
+    return { mirrorToStockIlf, abortReason: (e as Error).message };
   }
 }
 

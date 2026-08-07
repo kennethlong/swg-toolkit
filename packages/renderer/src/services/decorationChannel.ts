@@ -21,11 +21,26 @@ function readFloats(view: DataView, offset: number, count: number): number[] {
   return out;
 }
 
+/**
+ * Read a NUL-terminated string the agent wrote into the channel.
+ *
+ * DECODES AS UTF-8, NOT ASCII — do not "simplify" this back.
+ * `new TextDecoder('ascii')` is a WHATWG alias for **windows-1252**, which cannot represent
+ * anything the agent writes above 0x7F. `overlay.cpp` deliberately emits UTF-8 em-dashes
+ * (`\xE2\x80\x94`) in its user-facing strings to match the sketch typography — e.g.
+ * `"not inside a building — interior decorations only"` (overlay.cpp:540). Under the old ascii
+ * decode those three bytes surfaced in the World panel's Activity accordion as the mojibake
+ * `â€"`, which is what a maintainer actually saw live on 2026-08-07.
+ *
+ * UTF-8 is a strict superset of ASCII, so the two pure-path callers below
+ * (decorationTemplateName / buildingTemplateVfsPath, both VFS paths) decode identically; only
+ * the dual-purpose cellName slot — which carries a failure REASON on kind=ARM_FAILED — changes.
+ */
 function readAsciiz(buf: ArrayBuffer, offset: number, maxLen: number): string {
   const bytes = new Uint8Array(buf, offset, maxLen);
   let nul = bytes.indexOf(0);
   if (nul < 0) nul = maxLen;
-  return new TextDecoder('ascii').decode(bytes.slice(0, nul));
+  return new TextDecoder('utf-8').decode(bytes.slice(0, nul));
 }
 
 /**

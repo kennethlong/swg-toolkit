@@ -135,6 +135,30 @@ describe('parseDecorationCapture — CAPTURE_KIND/CAPTURE_CELL_NAME decode (05.1
     expect(r!.capture.cellName).toBe('could not resolve target cell');
   });
 
+  it('decodes a UTF-8 em-dash in the reason string rather than mojibake (regression: TextDecoder("ascii") is windows-1252)', () => {
+    // FIELD-OBSERVED 2026-08-07: the Activity accordion rendered `â€"` where overlay.cpp had
+    // written a real em-dash. `new TextDecoder('ascii')` is a WHATWG alias for windows-1252 and
+    // cannot represent anything above 0x7F; the agent deliberately emits UTF-8 em-dashes in its
+    // user-facing strings (7 of them in overlay.cpp) to match the sketch typography. The cellName
+    // slot is dual-purpose and carries the failure REASON on kind=ARM_FAILED, so this is the slot
+    // where it surfaced. Guards the decoder, not the message.
+    const { buf, view } = makeBuf();
+    writeCapture(view, { seq: 2, epoch: 9, buildingId: 0n, original: orig, next: moved, deco: DECO, bldg: BLDG });
+    view.setUint32(D.CAPTURE_KIND.offset, LIVE_DECORATION_CAPTURE_KIND.ARM_FAILED, true);
+
+    // Write the exact bytes the agent writes: UTF-8, NOT one char per code unit.
+    const reason = 'not inside a building — exterior editing needs .ws (not wired yet)';
+    const utf8 = new TextEncoder().encode(reason);
+    expect(utf8.length).toBeGreaterThan(reason.length); // the em-dash really is multi-byte
+    utf8.forEach((b, i) => view.setUint8(D.CAPTURE_CELL_NAME.offset + i, b));
+    view.setUint8(D.CAPTURE_CELL_NAME.offset + utf8.length, 0);
+
+    const out = parseDecorationCapture(buf);
+    expect(out?.capture.cellName).toBe(reason);
+    expect(out?.capture.cellName).toContain('—');
+    expect(out?.capture.cellName).not.toContain('â');
+  });
+
   it('an unrecognized CAPTURE_KIND value fails safe to "edit" rather than throwing', () => {
     const { buf, view } = makeBuf();
     writeCapture(view, { seq: 2, epoch: 1, buildingId: BIG_ID, original: orig, next: moved, deco: DECO, bldg: BLDG });

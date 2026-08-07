@@ -250,6 +250,9 @@ export function useChannelReader(): void {
       mirrorToStockIlf: boolean;
       cellName?: string;
       rowIndex?: number;
+      /** Set only when the orchestrator caught an error and sent ABORT — the real reason, which
+       *  otherwise reaches the Log tab alone while the Activity accordion shows bare "aborted". */
+      abortReason?: string;
     } | null = null;
 
     function poll() {
@@ -276,7 +279,7 @@ export function useChannelReader(): void {
         const cap = parseDecorationCapture(buf);
         if (cap !== null && cap.epoch > lastCaptureEpoch) {
           lastCaptureEpoch = cap.epoch;
-          const { mirrorToStockIlf, cellName, rowIndex } = handleDecorationCapture(cap.epoch, cap.capture, {
+          const { mirrorToStockIlf, cellName, rowIndex, abortReason } = handleDecorationCapture(cap.epoch, cap.capture, {
             mappingName,
             clientExe: useLiveStore.getState().clientLabel,
             studioDir,
@@ -285,7 +288,7 @@ export function useChannelReader(): void {
           // arrive to correlate against — stashing it here would risk a LATER, unrelated RESULT
           // epoch spuriously matching a stale pendingCapture.
           if (cap.capture.kind !== 'arm-failed') {
-            pendingCapture = { epoch: cap.epoch, capture: cap.capture, mirrorToStockIlf, cellName, rowIndex };
+            pendingCapture = { epoch: cap.epoch, capture: cap.capture, mirrorToStockIlf, cellName, rowIndex, abortReason };
           }
         }
         const res = readDecorationResult(buf);
@@ -306,7 +309,11 @@ export function useChannelReader(): void {
             const buildingLabel =
               useWorldEditorStore.getState().tree.find((b) => b.buildingId === resolved.capture.buildingInstanceId)
                 ?.displayLabel ?? resolved.capture.buildingInstanceId;
-            const baseMessage = decorationResultLabel(res.code);
+            // Prefer the orchestrator's caught reason over the generic result label on an abort:
+            // "could not resolve picked <template> in any cell" instead of bare "aborted". The
+            // label remains the fallback for every result the AGENT originated (rebind refused,
+            // node not found, a save reason), where no host-side exception exists to explain it.
+            const baseMessage = resolved.abortReason ?? decorationResultLabel(res.code);
             const message = res.code === 0 ? formatPersistMessage(baseMessage, resolved.mirrorToStockIlf) : baseMessage;
             useWorldEditorStore.getState().recordPersistResult({
               timestampISO: new Date().toISOString(),

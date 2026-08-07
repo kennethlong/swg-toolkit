@@ -199,6 +199,40 @@ describe('handleDecorationCapture — mirrorToStockIlf resolution (D-08, C7)', (
   });
 });
 
+describe('handleDecorationCapture — abortReason surfacing (2026-08-07 field findings)', () => {
+  it('an unmountable read says NOTHING IS MOUNTED, not "no VFS entry" — nothing seeded loose, empty treStore', () => {
+    // FIELD-OBSERVED: with no project open, the ONLY feedback from a Persist was
+    // "readVfs: no VFS entry and no loose file for object/building/..." — which reads as "that
+    // asset is missing" when the real state is "nothing is mounted to look in".
+    // NOTE: deliberately does NOT seed the building loosely, so the treStore fallback is reached.
+    const studioDir = path.join(tmpRoot, 'studio');
+    const r = handleDecorationCapture(1, baseCapture, { mappingName: 'm', clientExe: CLIENT_EXE, studioDir });
+    expect(r.abortReason).toContain('no TRE archives are mounted');
+    expect(r.abortReason).toContain('open a project');
+    const lastCall = (addon.writeRebind as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
+    expect(lastCall[4]).toBe(0x2); // ABORT still sent, so the agent releases its pending state
+  });
+
+  it('returns the caught error message as abortReason so Activity can show it instead of bare "aborted"', () => {
+    // The RESULT handler prefers abortReason over decorationResultLabel(ABORTED); without this the
+    // World panel — the surface D-12 says owns decoration outcomes — showed only the word
+    // "aborted" while the explanatory sentence went to the Log tab alone.
+    const studioDir = path.join(tmpRoot, 'studio');
+    seedStockBuilding(OVERRIDE_DIR, BUILDING_VFS, STOCK_ILF_VFS);
+    const failCapture: DecorationCapture = { ...baseCapture, decorationTemplateName: 'object/tangible/nope.iff' };
+    const r = handleDecorationCapture(1, failCapture, { mappingName: 'm', clientExe: CLIENT_EXE, studioDir });
+    expect(r.abortReason).toBeDefined();
+    expect(r.abortReason).toContain('object/tangible/nope.iff');
+  });
+
+  it('a SUCCESSFUL capture carries no abortReason', () => {
+    const studioDir = path.join(tmpRoot, 'studio');
+    seedStockBuilding(OVERRIDE_DIR, BUILDING_VFS, STOCK_ILF_VFS);
+    const r = handleDecorationCapture(1, baseCapture, { mappingName: 'm', clientExe: CLIENT_EXE, studioDir });
+    expect(r.abortReason).toBeUndefined();
+  });
+});
+
 describe('handleDecorationCapture — capture.kind branching (D-01/C8/MED-10)', () => {
   it("C8: kind='arm-failed' calls recordArmFailure with the exact reason string and touches nothing else", () => {
     const spy = vi.fn();
