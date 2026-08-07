@@ -126,12 +126,48 @@ export function writeStockMirror(
 }
 
 /**
+ * TRUE when `vfsPath` names a file the toolkit itself AUTHORS — an `interiorlayout/toolkit/*.ilf`
+ * derived edit file. Such a path can NEVER legitimately be a stock mirror TARGET: a mirror is a
+ * shadow of a SHIPPED stock layout, and the toolkit dir contains only the user's own work.
+ *
+ * --- INCIDENT 2026-08-07: this predicate exists because its absence destroyed a user's file. ---
+ * `worldEditorBuildingTemplates` is documented (worldEditorScan.ts:62-64) to hold each building's
+ * STOCK template path, but the orchestrator wrote whatever template the AGENT reported. Once a
+ * rebind has landed in the `.ws`, an editor-scene capture reports the DERIVED template, so the map
+ * silently self-poisoned. reconcileMirrorMode then resolved that building's "stock mirror path" by
+ * reading the DERIVED template — which declares `interiorlayout/toolkit/edit_<id>.ilf` — so the
+ * mirror path became the user's own edit file, and mirror-OFF unlinked it. 34,422 bytes of
+ * persisted work, deleted by a toggle, with zero errors reported on either pass.
+ * Root cause is fixed upstream (see resolveStockBuildingTemplate + the Phase-2a cross-check), but
+ * this guard is the invariant that makes the whole CLASS impossible regardless of how the path was
+ * derived — a mirror is never a file we authored.
+ */
+export function isToolkitAuthoredIlfPath(vfsPath: string): boolean {
+  return /(^|\/)interiorlayout\/toolkit\//i.test(vfsPath.replace(/\\/g, '/'));
+}
+
+/**
  * Delete the stock-path mirror file at `stockIlfVfsPath` inside `deps.overrideDir` (mirror mode
  * turned off, or reconcileMirrorMode's rollback undoing a prior write). Throws if the file does
  * not exist — callers that need "delete if present" semantics check existence first
  * (reconcileMirrorMode does; assembleDecorationEdit never calls this today).
+ *
+ * REFUSES a toolkit-authored path (see isToolkitAuthoredIlfPath). The guard lives in the PRIMITIVE,
+ * not at the call site, because there are TWO destructive routes here — reconcileMirrorMode's
+ * mirror-OFF branch and its rollback of a prior write — and a call-site guard would cover one and
+ * miss the other. Throwing (rather than silently skipping) is deliberate: the OFF branch turns it
+ * into a reported failure entry with zero writes, and the rollback's per-entry catch already
+ * degrades it to the documented `diskState: 'uncertain'` residual. A silent skip would leave the
+ * same invisible wrongness that made the original incident take a crew of four to find.
  */
 export function removeStockMirror(deps: { overrideDir: string }, stockIlfVfsPath: string): void {
+  if (isToolkitAuthoredIlfPath(stockIlfVfsPath)) {
+    throw new Error(
+      `refusing to delete ${stockIlfVfsPath} as a stock mirror — that path is a toolkit-authored ` +
+      `edit file, not a mirror of a shipped layout. This means a building's stock template path ` +
+      `resolved to a derived template; the durable worldEditorBuildingTemplates map is likely stale.`,
+    );
+  }
   const filePath = path.join(deps.overrideDir, stockIlfVfsPath);
   fs.unlinkSync(filePath);
 }
@@ -277,8 +313,22 @@ export function assembleDecorationEdit(edit: DecorationEdit, deps: DecorationPer
   // Per-template visibility mirror: shadow the STOCK ilf path so server-streamed instances (which
   // spawn from the stock template) read the edited layout too. Scope caveat traced loudly.
   if (deps.mirrorToStockIlf) {
-    stagedEntries.push(writeStockMirror(deps, stockIlfVfs, editedIlf));
-    logf(`assemble: mirrored edited .ilf to STOCK path ${stockIlfVfs} (per-TEMPLATE — every instance of this layout shows the edit)`);
+    // SKIP, never throw, when the resolved "stock" path is the file we just wrote. A throw here
+    // would abort AFTER editedIlfFilePath was already written above — a half-applied persist, worse
+    // than a missing mirror. Skipping keeps the edit intact and says so loudly.
+    // (Incident 2026-08-07: with a self-poisoned building-template map this collapse was SILENT —
+    // the mirror "wrote" onto the edit file itself, so the real stock mirror silently went stale for
+    // a full day while every persist reported success. See isToolkitAuthoredIlfPath.)
+    if (stockIlfVfs === editedIlfVfsPath || isToolkitAuthoredIlfPath(stockIlfVfs)) {
+      logf(
+        `assemble: MIRROR SKIPPED — resolved stock path ${stockIlfVfs} is this building's own edit ` +
+        `file, so mirroring would be a no-op and the real stock mirror would silently go stale. ` +
+        `The building's stock template path is wrong (derived template recorded as stock?).`,
+      );
+    } else {
+      stagedEntries.push(writeStockMirror(deps, stockIlfVfs, editedIlf));
+      logf(`assemble: mirrored edited .ilf to STOCK path ${stockIlfVfs} (per-TEMPLATE — every instance of this layout shows the edit)`);
+    }
   }
 
   return {

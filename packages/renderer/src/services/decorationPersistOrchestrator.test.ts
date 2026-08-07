@@ -30,6 +30,7 @@ import { writeWorkspaceJson, readWorkspaceJson } from './projectBinding';
 import { useWorldEditorStore } from '../state/worldEditorStore';
 import type { WorldEditorBuilding } from './worldEditorScan';
 import { sendDespawnNode } from './hostCommand';
+import { removeStockMirror } from './decorationPersist';
 
 vi.mock('./hostCommand', () => ({ sendDespawnNode: vi.fn() }));
 
@@ -57,6 +58,7 @@ let makeReadVfs: typeof import('./decorationPersistOrchestrator').makeReadVfs;
 let _clearOverrideDirCache: typeof import('./decorationPersistOrchestrator')._clearOverrideDirCache;
 let removeDecorationRow: typeof import('./decorationPersistOrchestrator').removeDecorationRow;
 let addBackDecorationRow: typeof import('./decorationPersistOrchestrator').addBackDecorationRow;
+let resolveStockBuildingTemplate: typeof import('./decorationPersistOrchestrator').resolveStockBuildingTemplate;
 
 beforeAll(async () => {
   const mod = await import('./decorationPersistOrchestrator');
@@ -66,6 +68,7 @@ beforeAll(async () => {
   _clearOverrideDirCache = mod._clearOverrideDirCache;
   removeDecorationRow = mod.removeDecorationRow;
   addBackDecorationRow = mod.addBackDecorationRow;
+  resolveStockBuildingTemplate = mod.resolveStockBuildingTemplate;
 });
 
 // ── Synthetic stock building template (SBOT → DERV + interiorLayoutFileName param) ─────────────
@@ -488,6 +491,96 @@ describe('reconcileMirrorMode — ROUND-3-REVIEW R1 (two-arg scan; unknown block
 
     // The flag was never persisted.
     expect(readWorkspaceJson(studioDir).mirrorToStockIlf).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INCIDENT 2026-08-07 — a mirror toggle DELETED a user's edit_<id>.ilf (34,422 B
+// of persisted work), silently, reporting zero failures on both passes.
+//
+// Chain: the agent reports the LIVE node's template, which after the first rebind
+// IS our derived template -> that path was written into worldEditorBuildingTemplates
+// (documented to hold the STOCK path) -> reconcileMirrorMode read the DERIVED
+// template to resolve the "stock mirror path" -> it declares
+// interiorlayout/toolkit/edit_<id>.ilf -> mirror-OFF unlinked the user's own file.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('reconcileMirrorMode — INCIDENT 2026-08-07: never unlink a toolkit-authored .ilf', () => {
+  it('a building whose recorded template is DERIVED fails cleanly instead of deleting its own edit file', () => {
+    const studioDir = path.join(tmpRoot, 'studio');
+    const DERIVED_VFS = 'object/building/toolkit/edit_bldgA.iff';
+    // The poisoned state: the map holds the DERIVED template rather than the stock one.
+    writeWorkspaceJson(studioDir, {
+      kind: 'mod-project', clientPath: null, mirrorToStockIlf: true,
+      worldEditorBuildingTemplates: { bldgA: DERIVED_VFS },
+    });
+    seedEditedBuilding(OVERRIDE_DIR, 'bldgA', ILF_A_VFS, newTable);
+
+    const editedAbs = path.join(OVERRIDE_DIR, 'interiorlayout', 'toolkit', 'edit_bldgA.ilf');
+    const before = fs.readFileSync(editedAbs);
+
+    // readVfs resolves the derived template exactly as makeReadVfs would (loose override hit).
+    const readVfs = makeReadVfsMap({ [DERIVED_VFS]: synthSbot('interiorlayout/toolkit/edit_bldgA.ilf') });
+    const { failures } = reconcileMirrorMode(studioDir, OVERRIDE_DIR, readVfs, false);
+
+    // THE REGRESSION: the file must still exist, byte-identical.
+    expect(fs.existsSync(editedAbs)).toBe(true);
+    expect(fs.readFileSync(editedAbs).equals(before)).toBe(true);
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0].buildingId).toBe('bldgA');
+    expect(failures[0].diskState).toBe('unchanged');
+    expect(failures[0].error).toContain('toolkit-authored');
+    // The flag must not move on a failed pass (R6).
+    expect(readWorkspaceJson(studioDir).mirrorToStockIlf).toBe(true);
+  });
+
+  it('removeStockMirror itself refuses — the guard is in the primitive, so BOTH the OFF branch and the rollback route are covered', () => {
+    const target = path.join(OVERRIDE_DIR, 'interiorlayout', 'toolkit', 'edit_bldgZ.ilf');
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, Buffer.from('user work'));
+
+    expect(() => removeStockMirror({ overrideDir: OVERRIDE_DIR }, 'interiorlayout/toolkit/edit_bldgZ.ilf'))
+      .toThrow(/toolkit-authored/);
+    expect(fs.existsSync(target)).toBe(true);
+
+    // A genuine stock mirror path is still deletable — the guard must not over-reach.
+    const stock = path.join(OVERRIDE_DIR, ILF_A_VFS);
+    fs.mkdirSync(path.dirname(stock), { recursive: true });
+    fs.writeFileSync(stock, Buffer.from('mirror'));
+    removeStockMirror({ overrideDir: OVERRIDE_DIR }, ILF_A_VFS);
+    expect(fs.existsSync(stock)).toBe(false);
+  });
+});
+
+describe('resolveStockBuildingTemplate — INCIDENT 2026-08-07: the map must not self-poison', () => {
+  it('a DERIVED captured template is never recorded, and the map\'s known stock path is used instead', () => {
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, {
+      kind: 'mod-project', clientPath: null,
+      worldEditorBuildingTemplates: { bldgA: STOCK_A_VFS },
+    });
+    const r = resolveStockBuildingTemplate('object/building/toolkit/edit_bldgA.iff', 'bldgA', studioDir);
+    expect(r.stockPath).toBe(STOCK_A_VFS);   // the pre-rebind truth wins
+    expect(r.mapWritable).toBe(false);        // and the derived path is never written back
+  });
+
+  it('a STOCK captured template is trusted and recordable', () => {
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+    const r = resolveStockBuildingTemplate(STOCK_A_VFS, 'bldgA', studioDir);
+    expect(r.stockPath).toBe(STOCK_A_VFS);
+    expect(r.mapWritable).toBe(true);
+  });
+
+  it('a DERIVED capture with NO prior map entry stays underived rather than fabricating one', () => {
+    const studioDir = path.join(tmpRoot, 'studio');
+    writeWorkspaceJson(studioDir, { kind: 'mod-project', clientPath: null });
+    const derived = 'object/building/toolkit/edit_bldgA.iff';
+    const r = resolveStockBuildingTemplate(derived, 'bldgA', studioDir);
+    // The derived template's DERV base names a GENERIC base, never the specific stock building,
+    // so the stock path is genuinely unrecoverable here — say so rather than guess.
+    expect(r.stockPath).toBe(derived);
+    expect(r.mapWritable).toBe(false);
   });
 });
 

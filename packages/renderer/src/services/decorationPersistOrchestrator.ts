@@ -24,7 +24,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 
 import { LIVE_DECORATION_REBIND_FLAGS } from '@swg/contracts';
-import type { DecorationCapture } from '@swg/contracts';
+import type { DecorationCapture, StagingAction } from '@swg/contracts';
 
 import type { DetectedClient } from '@swg/contracts';
 import {
@@ -32,6 +32,7 @@ import {
   sanitizeId,
   writeStockMirror,
   removeStockMirror,
+  isToolkitAuthoredIlfPath,
   type DecorationEdit,
   type DecorationPersistResult,
 } from './decorationPersist';
@@ -154,9 +155,66 @@ export function makeReadVfs(overrideDir: string): (vfsPath: string) => Buffer {
   };
 }
 
+// ─── Stock-vs-derived building template (incident 2026-08-07) ─────────────────
+
+/** TRUE for a building template the TOOLKIT authored (`object/building/toolkit/edit_<id>.iff`),
+ *  as opposed to a stock template shipped in the client's TREs. */
+export function isDerivedBuildingTemplate(vfsPath: string): boolean {
+  return /(^|\/)object\/building\/toolkit\//i.test(vfsPath.replace(/\\/g, '/'));
+}
+
+/**
+ * Resolve the building's STOCK template path, preferring the durable map over a capture that may
+ * be reporting a derived template.
+ *
+ * --- WHY THIS EXISTS. Do not "simplify" back to trusting the capture. ---
+ * The agent reports whatever template the LIVE node currently has. Model-D rebinds the `.ws` node
+ * to a DERIVED template (`object/building/toolkit/edit_<id>.iff`) on the first persist — so from
+ * the SECOND capture onward in that building, the agent honestly reports the derived path. Before
+ * 2026-08-07 that path was (a) written into `worldEditorBuildingTemplates`, which is documented to
+ * hold the STOCK path, and (b) used to resolve the mirror target. Consequences, both silent:
+ * the stock mirror stopped being updated (the mirror target collapsed onto the edit file itself),
+ * and a later mirror-OFF toggle DELETED the user's `edit_<id>.ilf` because that had become the
+ * resolved "mirror path".
+ *
+ * Why the derived template cannot simply be walked back to its stock source: its DERV/base chunk
+ * names a GENERIC shared base (e.g. `object/building/base/shared_base_cantina.iff`), never the
+ * specific stock building file — worldEditorScan.ts:18-24 documents exactly this. So the durable
+ * map, populated from the FIRST (pre-rebind) capture, is the only record of the stock path. It must
+ * therefore be treated as write-once-correct rather than last-write-wins.
+ */
+export function resolveStockBuildingTemplate(
+  capturedPath: string,
+  buildingId: string,
+  studioDir: string | null,
+): { stockPath: string; mapWritable: boolean } {
+  if (!isDerivedBuildingTemplate(capturedPath)) {
+    // Stock (or at least not ours) — trustworthy, and safe to record.
+    return { stockPath: capturedPath, mapWritable: true };
+  }
+  const known = studioDir !== null
+    ? (readWorkspaceJson(studioDir).worldEditorBuildingTemplates ?? {})[buildingId]
+    : undefined;
+  // A derived capture must NEVER be written to the map. If the map already knows the stock path
+  // (the normal case — it was recorded pre-rebind), use it. If it does not, we genuinely cannot
+  // recover it, so return the derived path and let the downstream mirror guard skip rather than
+  // fabricate a target.
+  return { stockPath: known && !isDerivedBuildingTemplate(known) ? known : capturedPath, mapWritable: false };
+}
+
 // ─── Durable staging (temp copy → avoids deploy-time self-copy) ────────────────
 
-function stageDurable(entries: { virtualPath: string; filePath: string }[]): void {
+/**
+ * Copy each entry to a durable temp path and stage it.
+ *
+ * The entry's OWN `action` is preserved. It used to be hardcoded to `'add'` here, which had two
+ * consequences found during the 2026-08-07 incident: a stock mirror (declared `'modify'` — it
+ * shadows a SHIPPED file) was staged as `'add'`, and because `stagingStore.addEntry` de-dupes by
+ * `virtualPath`, a colliding entry silently replaced its predecessor. The Deploy tab therefore read
+ * `2 staged · 2 add · 0 modify` for a persist that had pushed three entries — and that reading is
+ * what made a correct diagnosis look falsified. Staging must report what actually happened.
+ */
+function stageDurable(entries: { virtualPath: string; filePath: string; action?: StagingAction }[]): void {
   const tmpRoot = path.join(os.tmpdir(), 'swg-toolkit-decoration-stage');
   fs.mkdirSync(tmpRoot, { recursive: true });
   for (const e of entries) {
@@ -164,8 +222,14 @@ function stageDurable(entries: { virtualPath: string; filePath: string }[]): voi
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     const tmpPath = path.join(tmpRoot, `${sha256.slice(0, 16)}_${path.basename(e.virtualPath)}`);
     fs.writeFileSync(tmpPath, bytes);
-    // New instance-named toolkit/ paths shadow nothing → 'add'.
-    useStagingStore.getState().addEntry({ virtualPath: e.virtualPath, action: 'add', replacementFilePath: tmpPath, sha256 });
+    // New instance-named toolkit/ paths shadow nothing → 'add' remains the default; a stock mirror
+    // declares 'modify' and now keeps it.
+    useStagingStore.getState().addEntry({
+      virtualPath: e.virtualPath,
+      action: e.action ?? 'add',
+      replacementFilePath: tmpPath,
+      sha256,
+    });
   }
 }
 
@@ -211,9 +275,22 @@ export function handleDecorationCapture(
     const overrideDir = resolveRunningClientOverrideDir(ctx.clientExe);
     if (!overrideDir) throw new Error("could not resolve the running client's loose override dir (no searchPath?)");
 
+    // Incident 2026-08-07: prefer the durable map's STOCK path over a capture that is reporting our
+    // own derived template (every capture after the first rebind does). See
+    // resolveStockBuildingTemplate for the full mechanism and why the derived path is a dead end.
+    const { stockPath: stockBuildingTemplate, mapWritable } = resolveStockBuildingTemplate(
+      capture.buildingTemplateVfsPath,
+      sanitizeId(capture.buildingInstanceId),
+      studioDir,
+    );
+    if (stockBuildingTemplate !== capture.buildingTemplateVfsPath) {
+      dbg(`capture #${epoch}: captured template is DERIVED (${capture.buildingTemplateVfsPath}); ` +
+          `using the durable map's stock path ${stockBuildingTemplate} instead`);
+    }
+
     const edit: DecorationEdit = {
       buildingInstanceId: capture.buildingInstanceId,
-      buildingTemplateVfsPath: capture.buildingTemplateVfsPath,
+      buildingTemplateVfsPath: stockBuildingTemplate,
       decorationTemplateName: capture.decorationTemplateName,
       originalO2p: capture.originalO2p,
       newO2p: capture.newO2p,
@@ -239,13 +316,16 @@ export function handleDecorationCapture(
     // OFFLINE Remove (no live capture to read it from) can recover it later. Best-effort — a
     // failure to persist this bookkeeping map must never abort or fail the persist itself (the
     // .ilf write + REBIND have already succeeded by this point).
-    if (studioDir !== null && capture.buildingTemplateVfsPath) {
+    // `mapWritable` is FALSE when the capture reported our own derived template — writing that here
+    // is what self-poisoned the map on 2026-08-07 and ultimately deleted a user's .ilf. The map is
+    // write-once-correct: the pre-rebind capture is the only one that ever knows the stock path.
+    if (studioDir !== null && capture.buildingTemplateVfsPath && mapWritable) {
       try {
         const prevMap = readWorkspaceJson(studioDir).worldEditorBuildingTemplates ?? {};
         updateWorkspaceMeta(studioDir, {
           worldEditorBuildingTemplates: {
             ...prevMap,
-            [sanitizeId(capture.buildingInstanceId)]: capture.buildingTemplateVfsPath,
+            [sanitizeId(capture.buildingInstanceId)]: stockBuildingTemplate,
           },
         });
       } catch (e) {
@@ -487,6 +567,26 @@ export function reconcileMirrorMode(
           buildingId: b.buildingId,
           diskState: 'unchanged',
           error: `decorationPersist: ${b.buildingTemplateVfsPath} has no interiorLayoutFileName`,
+        });
+        continue;
+      }
+      // CROSS-CHECK (incident 2026-08-07): a resolved mirror path must never be a file the toolkit
+      // authored, and never any scanned building's own edit file. Validated HERE, in the zero-writes
+      // phase, so a poisoned input produces a reported failure and an untouched disk rather than a
+      // deletion. removeStockMirror carries the same invariant as a last-resort primitive guard;
+      // this layer exists so the user gets a diagnosis instead of an exception.
+      const mirrorAbs = path.join(overrideDir, stockIlfVfs);
+      const collides = isToolkitAuthoredIlfPath(stockIlfVfs)
+        || buildings.some((other) => path.resolve(other.editedIlfPath) === path.resolve(mirrorAbs));
+      if (collides) {
+        resolveFailures.push({
+          buildingId: b.buildingId,
+          diskState: 'unchanged',
+          error:
+            `this building's stock mirror path resolved to ${stockIlfVfs}, which is a toolkit-authored ` +
+            `edit file rather than a shipped stock layout — refusing to reconcile it. Its recorded ` +
+            `stock building template (${b.buildingTemplateVfsPath}) is a DERIVED template, so the ` +
+            `durable map entry is stale; re-persist a decoration in this building to repair it.`,
         });
         continue;
       }
